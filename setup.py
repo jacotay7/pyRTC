@@ -10,8 +10,7 @@ setup(
     license='GNU',
     packages=['pyRTC'],
     install_requires=['numpy',
-                      'matplotlib',
-                      'multiprocessing'                   
+                      'matplotlib',              
                       ],
 
     classifiers=[
