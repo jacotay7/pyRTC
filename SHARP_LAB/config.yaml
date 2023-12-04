@@ -1,0 +1,26 @@
+wfs:
+  name: XIMEA
+  pupilsRadius: 32
+  binning: 2
+  exposure: 500
+  gain: 0
+  bitDepth: 10
+  left: 272
+  top: 50
+  width: 192
+  height: 192
+  darkCount: 1000
+  pupils: 
+  - 44,58
+  - 45,139
+  - 150,76
+  - 130,139
+
+wfc:
+  name: "ALPAO"
+  serial: "BAX118"
+  numActuators: 97
+  numModes: 95
+  flatFile: "/etc/chai/dm_flat.txt"
+  m2cFile: "/etc/chai/m2c.dat"
+  

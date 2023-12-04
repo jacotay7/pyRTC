@@ -25,7 +25,7 @@ class RealTimeView(QMainWindow):
         # Create Matplotlib Figure and Axes
         self.figure = Figure(figsize=(8, 8), tight_layout=True)
         self.axes = self.figure.add_subplot(111)
-        frame = self.shm.read()
+        frame = self.shm.read_noblock_safe(flagInd=4)
         im = self.axes.imshow(frame, cmap='inferno', interpolation='nearest', 
                                 origin='upper',vmin = np.min(frame), vmax = np.max(frame))
         self.cbar = self.figure.colorbar(im)
@@ -42,16 +42,17 @@ class RealTimeView(QMainWindow):
 
     def update_view(self):
         try:
-            frame = self.shm.read()
+            frame = self.shm.read_noblock(flagInd=4)
+            if isinstance(frame,np.ndarray):
             
-            # Clear the previous plot
-            self.axes.clear()
-            # Plot the image using imshow
-            im = self.axes.imshow(frame, cmap='inferno', interpolation='nearest', 
-                                    origin='upper',vmin = np.min(frame), vmax = np.max(frame))
-            self.cbar.set_ticks(np.linspace(np.min(frame), np.max(frame), 10))
-            # Refresh the canvas
-            self.canvas.draw()
+                # Clear the previous plot
+                self.axes.clear()
+                # Plot the image using imshow
+                im = self.axes.imshow(frame, cmap='inferno', interpolation='nearest', 
+                                        origin='upper',vmin = np.min(frame), vmax = np.max(frame))
+                self.cbar.set_ticks(np.linspace(np.min(frame), np.max(frame), 10))
+                # Refresh the canvas
+                self.canvas.draw()
         except:
             print("Unable to View Image")
 
@@ -63,10 +64,17 @@ class RealTimeView(QMainWindow):
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
-    shm_name, shm_width, shm_height = sys.argv[1:]
+    shm_name, shm_width, shm_height, shm_dtype = sys.argv[1:]
     shm_width = int(shm_width)
     shm_height = int(shm_height)
-    view = RealTimeView(shm_name, shm_width, shm_height,np.float64, 30)
+    if shm_dtype == 'u16':
+        shm_dtype = np.uint16
+    elif shm_dtype == 'f32':
+        shm_dtype = np.float32
+    else:
+        shm_dtype = np.float64
+
+    view = RealTimeView(shm_name, shm_width, shm_height, shm_dtype, 10)
 
     view.show()
     sys.exit(app.exec_())

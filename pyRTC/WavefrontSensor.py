@@ -1,22 +1,52 @@
 """
 Wavefront Sensor Superclass
 """
-from pyRTC.Pipeline import ImageSHM
+from pyRTC.Pipeline import ImageSHM, work
 import numpy as np
 import matplotlib.pyplot as plt
+import threading
+import os
+import time
+from numba import jit
+
+@jit(nopython=True)
+def computeSlopesPYWFS(p1=np.array([],dtype=np.float32), 
+                       p2=np.array([],dtype=np.float32),
+                       p3=np.array([],dtype=np.float32), 
+                       p4=np.array([],dtype=np.float32), 
+                       flatNorm=True):
+    # p1 = image[p1mask]
+    # p2 = image[p2mask]
+    # p3 = image[p3mask]
+    # p4 = image[p4mask]
+
+    x_slopes = (p1 + p2) - (p3 + p4)
+    y_slopes = (p1 + p3) - (p2 + p4)
+
+    # if flatNorm:
+    norm = np.ones(x_slopes.size)*np.mean(p1+p2+p3+p4)
+    # else:
+        # norm = p1+p2+p3+p4
+    x_slopes = np.divide(x_slopes,norm)
+    y_slopes = np.divide(y_slopes,norm)
+
+    return np.concatenate((x_slopes,
+                           y_slopes))
 
 class WavefrontSensor:
 
     def __init__(self, imageShape, wfsType = "PYWFS", signalType = 'slopes', flatNorm=True, layout=None) -> None:
 
         self.imageShape = imageShape
-        self.image = ImageSHM("wfs", imageShape, np.float64)
-        self.signal = ImageSHM("signal", imageShape, np.float64)
-        self.data = np.zeros(imageShape)
+        self.imagedType = np.uint16
+        self.signaldType = np.float32
+        self.image = ImageSHM("wfs", imageShape, self.imagedType)
+        self.signal = ImageSHM("signal", imageShape, self.signaldType)
+        self.data = np.zeros(imageShape, dtype=self.imagedType)
         self.wfsType = wfsType
         self.signalType = signalType
         self.layout = layout
-
+        self.affinity = 12
 
         if wfsType == "PYWFS":
             a, b = int(0.25*imageShape[0]), int(0.75*imageShape[0])
@@ -25,6 +55,39 @@ class WavefrontSensor:
             self.setPupils([(a,c), (a,d), (b,c), (b,d)], r)
             self.flatNorm = flatNorm
 
+        self.alive = True
+        self.running = False
+
+        functionsToRun = ["expose","computeSignal"]
+        self.workThreads = []
+        for i, functionName in enumerate(functionsToRun):
+            # Launch a separate thread
+            workThread = threading.Thread(target=work, args = (self,functionName), daemon=True)
+            # Start the thread
+            workThread.start()
+            # Set CPU affinity for the thread
+            # print(workThread.native_id, {self.affinity+i,})
+            os.sched_setaffinity(workThread.native_id, {self.affinity+i,})  
+            self.workThreads.append(workThread)
+
+        return
+    
+    def __del__(self):
+        print("Deleeting WFS Object")
+        self.alive = False
+        # for workThread in self.workThreads:
+
+        #     workThread.join()
+        return
+
+    def start(self):
+
+        self.running = True
+        return
+    
+    def stop(self):
+
+        self.running = False
         return
     
     def setRoi(self, roi):
@@ -55,34 +118,25 @@ class WavefrontSensor:
         self.image.write(self.data)
         return
 
-    def readImage(self):
-        return self.image.read()
+    def readImage(self,flagInd=0):
+        return self.image.read(flagInd=flagInd)
 
-    def read(self):
-        return self.signal.read()
+    def read(self,flagInd=0):
+        return self.signal.read(flagInd=flagInd)
 
+
+   
     def computeSignal(self):
-        image = self.readImage()
+        image = self.readImage().astype(self.signaldType)
 
         if self.wfsType == "PYWFS":
             if self.signalType == "slopes":
-                p1 = image[np.where(self.pupilMask == 1)]
-                p2 = image[np.where(self.pupilMask == 2)]
-                p3 = image[np.where(self.pupilMask == 3)]
-                p4 = image[np.where(self.pupilMask == 4)]
-
-                x_slopes = (p1 + p2) - (p3 + p4)
-                y_slopes = (p1 + p3) - (p2 + p4)
-
-                if self.flatNorm:
-                    norm = np.mean(p1+p2+p3+p4)
-                else:
-                    norm = p1+p2+p3+p4
-                
-                x_slopes /= norm
-                y_slopes /= norm
-                signal = np.concatenate([x_slopes, y_slopes])
-                self.signal.write(signal)
+                p1,p2,p3,p4 = image[self.p1mask], image[self.p2mask], image[self.p3mask], image[self.p4mask]
+                self.signal.write(computeSlopesPYWFS(p1=p1,
+                                                     p2=p2,
+                                                     p3=p3,
+                                                     p4=p4,
+                                                          flatNorm=self.flatNorm))
         return
 
     def setPupils(self, pupilLocs, pupilRadius):
@@ -91,7 +145,7 @@ class WavefrontSensor:
         self.computePupilsMask()
         if self.signalType == "slopes":
             del self.signal
-            self.signal = ImageSHM("signal", (np.count_nonzero(self.pupilMask)//2,), np.float64)
+            self.signal = ImageSHM("signal", (np.count_nonzero(self.pupilMask)//2,), self.signaldType)
             slopemask =  self.pupilMask[self.pupilLocs[0][1]-self.pupilRadius+1:self.pupilLocs[0][1]+self.pupilRadius, 
                                         self.pupilLocs[0][0]-self.pupilRadius+1:self.pupilLocs[0][0]+self.pupilRadius] > 0
             self.layout = np.concatenate([slopemask, slopemask], axis=1)
@@ -99,13 +153,17 @@ class WavefrontSensor:
 
     def computePupilsMask(self):
         pupils = []
-        self.pupilMask = np.zeros_like(self.readImage())
+        self.pupilMask = np.zeros(self.imageShape)
         xx,yy = np.meshgrid(np.arange(self.pupilMask.shape[0]),np.arange(self.pupilMask.shape[1]))
         for i, pupil_loc in enumerate(self.pupilLocs):
             px, py = pupil_loc
             zz = np.sqrt((xx-px)**2 + (yy-py)**2)
             pupils.append(zz < self.pupilRadius)
             self.pupilMask += pupils[-1]*(i+1)
+        self.p1mask = self.pupilMask == 1
+        self.p2mask = self.pupilMask == 2
+        self.p3mask = self.pupilMask == 3
+        self.p4mask = self.pupilMask == 4
         return
 
     def plotPupils(self):
@@ -127,7 +185,7 @@ class WavefrontSensor:
         return
 
     def signal2D(self, signal, layout=None):
-        if layout is None and not self.layout is None:
+        if layout is None and isinstance(self.layout, np.ndarray):
             layout = self.layout
         else:
             return -1
@@ -138,12 +196,12 @@ class WavefrontSensor:
         return curSignal2D
     
     def plot(self):
-        arr = self.readImage()
+        arr = self.readImage(flagInd=1)
         plt.imshow(arr, cmap = 'inferno', origin='lower')
         plt.colorbar()
         plt.show()
 
-        curSignal = self.read()
+        curSignal = self.read(flagInd=1)
         if not (self.layout is None):
             curSignalPlot = self.signal2D(curSignal)
         else:

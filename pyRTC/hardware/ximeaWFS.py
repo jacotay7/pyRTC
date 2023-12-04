@@ -21,7 +21,7 @@ class XIMEA_WFS(WavefrontSensor):
 
 
         self.img = xiapi.Image()
-
+       
         super().__init__((self.cam.get_width(),self.cam.get_height()))
         self.cam.start_acquisition()
         return
@@ -60,11 +60,16 @@ class XIMEA_WFS(WavefrontSensor):
     def expose(self):
         
         self.cam.get_image(self.img)
-        self.data = self.img.get_image_data_numpy()
+        self.data = np.ndarray((self.img.width,self.img.height), 
+                               buffer= self.img.get_image_data_raw(), 
+                               dtype=np.uint16)
         super().expose()
+
         return
 
     def __del__(self):
+        super().__del__()
         self.cam.stop_acquisition()
         self.cam.close_device()
+        
         return

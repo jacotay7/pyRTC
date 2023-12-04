@@ -8,7 +8,7 @@ setup(
     author='Jacob Taylor',
     author_email='jacob.taylor@mail.utoronto.ca',
     license='GNU',
-    packages=['pyRTC'],
+    packages=['pyRTC','pyRTC.hardware'],
     install_requires=['numpy',
                       'matplotlib',              
                       ],
