@@ -10,7 +10,11 @@ setup(
     license='GNU',
     packages=['pyRTC','pyRTC.hardware'],
     install_requires=['numpy',
-                      'matplotlib',              
+                      'matplotlib',
+                      'PyYaml',
+                      'numba',
+                      'scipy',
+                      'pyqt5'             
                       ],
 
     classifiers=[

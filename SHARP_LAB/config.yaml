@@ -1,8 +1,22 @@
+loop:
+  gain: 0.0001
+  numDroppedModes: 30
+  pokeAmp: 0.01
+  numItersIM: 50
+  affinity: 11
+  delay: 1
+  method: push-pull
+  IMFile: "/home/whetstone/pyRTC/SHARP_LAB/IM.npy"
+  functions:
+  - standardIntegrator
+
 wfs:
   name: XIMEA
+  type: PYWFS
+  signalType: slopes
   pupilsRadius: 32
   binning: 2
-  exposure: 500
+  exposure: 3333
   gain: 0
   bitDepth: 10
   left: 272
@@ -10,17 +24,45 @@ wfs:
   width: 192
   height: 192
   darkCount: 1000
+  darkFile: "/home/whetstone/pyRTC/SHARP_LAB/dark.npy"
+  affinity: 12
+  flatNorm: True
   pupils: 
-  - 44,58
-  - 45,139
-  - 150,76
-  - 130,139
+  - 44,57
+  - 45,138
+  - 150,75
+  - 130,138
+  functions:
+  - expose
+  - computeSignal
 
 wfc:
   name: "ALPAO"
   serial: "BAX118"
   numActuators: 97
   numModes: 95
-  flatFile: "/etc/chai/dm_flat.txt"
-  m2cFile: "/etc/chai/m2c.dat"
-  
+  flatFile: "/home/whetstone/pyRTC/SHARP_LAB/newFlat.npy"
+  m2cFile: "/etc/chai/m2c_kl.dat"
+  affinity: 16
+  commandCap: 0.8
+  hardwareDelay: 0.001 #seconds
+  functions:
+  - sendToHardware
+
+psf:
+  name: "FLIR"
+  index: 0
+  affinity: 14
+  exposure: 1000
+  gain: 0
+  bitDepth: 16
+  left: 728
+  top: 356
+  width: 256
+  height: 256
+  darkCount: 1000
+  darkFile: "/home/whetstone/pyRTC/SHARP_LAB/psfDark.npy"
+  integration: 1000
+  functions:
+  - expose
+  - integrate

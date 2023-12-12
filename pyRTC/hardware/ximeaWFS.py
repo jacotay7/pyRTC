@@ -1,29 +1,36 @@
 from pyRTC.WavefrontSensor import *
 from ximea import xiapi
+from pyRTC.Pipeline import *
+from pyRTC.utils import *
+import argparse
+import sys
+import os 
 
 class XIMEA_WFS(WavefrontSensor):
 
-    def __init__(self, exposure = None, roi = None, binning = None, gain = None, bitDepth = None):
-        
+    def __init__(self, conf):
+        super().__init__(conf)
         self.cam = xiapi.Camera()
         self.cam.open_device()
 
-        if not (bitDepth is None):
-            self.setBitDepth(bitDepth)
-        if not (binning is None):
-            self.setBinning(binning)
-        if not (exposure is None):
-            self.setExposure(exposure)
-        if not (roi is None):
+        if "bitDepth" in conf:
+            self.setBitDepth(conf["bitDepth"])
+        if "binning" in conf:
+            self.setBinning(conf["binning"])
+        if "exposure" in conf:
+            self.setExposure(conf["exposure"])
+        if "top" in conf and "left" in conf and "width" in conf and "height" in conf:
+            roi=[conf["width"],conf["height"],conf["left"],conf["top"]]
             self.setRoi(roi)
-        if not (gain is None):
-            self.setGain(gain)
+        if "gain" in conf:
+            self.setGain(conf["gain"])
 
 
         self.img = xiapi.Image()
        
-        super().__init__((self.cam.get_width(),self.cam.get_height()))
+
         self.cam.start_acquisition()
+
         return
 
     def setRoi(self, roi):
@@ -69,7 +76,45 @@ class XIMEA_WFS(WavefrontSensor):
 
     def __del__(self):
         super().__del__()
+        time.sleep(1e-1)
         self.cam.stop_acquisition()
         self.cam.close_device()
         
         return
+    
+if __name__ == "__main__":
+
+    #Prevents camera output from messing with communication
+    original_stdout = sys.stdout
+    sys.stdout = open(os.devnull, 'w')
+
+    # Create argument parser
+    parser = argparse.ArgumentParser(description="Read a config file from the command line.")
+
+    # Add command-line argument for the config file
+    parser.add_argument("-c", "--config", required=True, help="Path to the config file")
+
+    # Parse command-line arguments
+    args = parser.parse_args()
+
+    conf = read_yaml_file(args.config)
+
+    pid = os.getpid()
+    os.sched_setaffinity(pid, {conf["wfs"]["affinity"],})
+    decrease_nice(pid)
+
+    confWFS = conf["wfs"]
+    wfs = XIMEA_WFS(conf=confWFS)
+
+    wfs.start()
+    
+    #Go back to communicating with the main program through stdout
+    sys.stdout = original_stdout
+
+    # wfs.takeDark()
+    # plt.imshow(wfs.dark)
+    # plt.show()
+    l = Listener(wfs)
+    while l.running:
+        l.listen()
+        time.sleep(1e-3)

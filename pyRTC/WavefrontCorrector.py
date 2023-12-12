@@ -14,36 +14,32 @@ def ModaltoZonalWithFlat(correction=np.array([],dtype=np.float32),
                        flat=np.array([],dtype=np.float32)):
     return M2C@correction + flat
 
-
 class WavefrontCorrector:
 
-    def __init__(self, dofs, layout=None, M2C=None) -> None:
+    def __init__(self, conf) -> None:
 
-        self.dofs = dofs
-        self.correctionVector = ImageSHM("wfc", (self.dofs,), np.float32)
+        self.numActuators = conf["numActuators"]
+        self.numModes = conf["numModes"]
+        self.affinity = conf["affinity"]
+        self.m2cFile = conf["m2cFile"]
+        self.correctionVector = ImageSHM("wfc", (self.numModes,), np.float32)
         self.correctionVector2D = None
+        
         #If its an array it will initialize a 2D correction ImageSHM for display
-        self.setLayout(layout)
+        self.setLayout(None)
 
         #Set an initial Flat
-        self.flat = np.zeros(self.dofs, dtype=np.float32)
+        self.flat = np.zeros(self.numActuators, dtype=np.float32)
+        self.flatModal = np.zeros(self.numModes,  dtype=self.flat.dtype)
         self.currentShape = np.zeros_like(self.flat)
         
-        self.affinity = 10
+        #Initialize the basis for corrections
+        self.readM2C()
+
         self.alive = True
         self.running = False
 
-        #Initialize the basis for corrections
-        self.M2C = M2C #[dofs, numModes]
-        #If not specified, create zonal basis
-        if self.M2C is None:
-            self.M2C = np.eye(self.dofs)
-        self.M2C = self.M2C.astype(self.flat.dtype)
-        self.C2M = np.linalg.pinv(self.M2C)
-        self.currentCorrection = np.zeros(self.M2C.shape[1], dtype=self.flat.dtype)
-
-        self.numModes = M2C.shape[1]
-        functionsToRun = ["sendToHardware"]
+        functionsToRun = conf["functions"]
         self.workThreads = []
         for i, functionName in enumerate(functionsToRun):
             # Launch a separate thread
@@ -56,7 +52,7 @@ class WavefrontCorrector:
         return
     
     def __del__(self):
-        print("Deleeting WFC Object")
+        self.stop()
         self.alive=False
         return
     
@@ -81,41 +77,69 @@ class WavefrontCorrector:
             self.correctionVector2D_template = self.correctionVector2D.read_noblock_safe()
         return
     
+    def setM2C(self, M2C):
+
+        if not isinstance(M2C, np.ndarray):
+            self.M2C = np.eye(self.numActuators)
+        else:
+            self.M2C = M2C.astype(self.flat.dtype)
+
+        self.C2M = np.linalg.pinv(self.M2C)
+        self.currentCorrection = np.zeros(self.M2C.shape[1], dtype=self.flat.dtype)
+        self.flatModal = self.C2M@self.flat
+
+
+    def readM2C(self, filename=''):
+        if filename == '':
+            filename = self.m2cFile
+
+        if '.dat' in filename:
+            M2C = np.fromfile(filename,dtype=np.float64).reshape(self.numActuators,self.numModes)
+        elif '.npy' in filename:
+            M2C = np.load(filename)
+        else:
+            self.setM2C(None)
+            return
+        
+        #Normalize each mode
+        for i in range(M2C.shape[1]):
+            M2C[:,i] /= np.std(M2C[:,i])
+        self.setM2C(M2C)
+        return 
     
     def sendToHardware(self,flagInd=0):
-        self.currentShape = self.correctionVector.read(flagInd=flagInd)
-        #Overwrite with hardware instructions
+        #Read a new modal correction in M2C basis
+        self.currentCorrection = self.correctionVector.read(flagInd=flagInd)
+        #Convert to Zonal, this will be connected to the hardware by the child class
+        self.currentShape = ModaltoZonalWithFlat(self.currentCorrection, self.M2C, self.flat)
+        #If we have a 2D SHM instance, update it 
+        if isinstance(self.correctionVector2D, ImageSHM):
+            self.correctionVector2D_template[self.layout] = self.currentShape - self.flat
+            self.correctionVector2D.write(self.correctionVector2D_template)
+        #Overwrite with hardware instructions after this to send to hardware
         return
-    
-    # def sendToHardware(self,correction,flagInd=0):
-    #     self.writeZonal(correction)
-    #     self.sendToHardware()
-    #     return
 
     def read(self):
         return self.currentCorrection
 
-    def readZonal(self):
-        return self.currentShape
-    
-    def write(self, correction):
+    def write(self, correction,flagInd=0):
         self.currentCorrection = correction
-        return self.writeZonal(ModaltoZonalWithFlat(correction, self.M2C, self.flat))
-    
-    def writeZonal(self, correction):
-        self.correctionVector.write(correction)
-        if isinstance(self.correctionVector2D, ImageSHM):
-            self.correctionVector2D_template[self.layout] = correction - self.flat
-            self.correctionVector2D.write(self.correctionVector2D_template)
-        return
+        self.correctionVector.write(self.currentCorrection, flagInd=flagInd)
+        return 
 
     def flatten(self):
-        self.writeZonal(self.flat)
+        self.write(np.zeros_like(self.currentCorrection))
+        return
+
+    def push(self, mode, amp):
+        corr = np.zeros_like(self.currentCorrection)
+        corr[int(mode)] = float(amp)
+        self.write(corr)
         return
 
     def plot(self, removeFlat=False):
         
-        curCorrection = self.readZonal(flagInd=1)
+        curCorrection = self.read(flagInd=1)
         if removeFlat:
             curCorrection -= self.flat
 

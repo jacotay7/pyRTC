@@ -35,49 +35,62 @@ def computeSlopesPYWFS(p1=np.array([],dtype=np.float32),
 
 class WavefrontSensor:
 
-    def __init__(self, imageShape, wfsType = "PYWFS", signalType = 'slopes', flatNorm=True, layout=None) -> None:
+    def __init__(self, conf) -> None:
 
-        self.imageShape = imageShape
-        self.imagedType = np.uint16
-        self.signaldType = np.float32
-        self.image = ImageSHM("wfs", imageShape, self.imagedType)
-        self.signal = ImageSHM("signal", imageShape, self.signaldType)
-        self.data = np.zeros(imageShape, dtype=self.imagedType)
-        self.wfsType = wfsType
-        self.signalType = signalType
-        self.layout = layout
-        self.affinity = 12
+        self.imageShape = (conf["width"], conf["height"])
+        self.imageRawDType = np.uint16
+        self.imageDType = np.int32
+        self.signalDType = np.float32
+        self.imageRaw = ImageSHM("wfsRaw", self.imageShape, self.imageRawDType)
+        self.image = ImageSHM("wfs", self.imageShape, self.imageDType)
+        self.signal = ImageSHM("signal", self.imageShape, self.signalDType)
 
-        if wfsType == "PYWFS":
-            a, b = int(0.25*imageShape[0]), int(0.75*imageShape[0])
-            c, d = int(0.25*imageShape[1]), int(0.75*imageShape[1])
-            r = min(imageShape[0]-b,imageShape[1]-d)
-            self.setPupils([(a,c), (a,d), (b,c), (b,d)], r)
-            self.flatNorm = flatNorm
+        self.data = np.zeros(self.imageShape, dtype=self.imageRawDType)
+        self.dark = np.zeros(self.imageShape, dtype=self.imageDType)
+
+        self.wfsType = conf["type"] #wfsType
+        self.signalType = conf["signalType"] #signalType
+        self.layout = None#layout
+        self.affinity = conf["affinity"]
+        self.darkCount = conf["darkCount"]
+        self.darkFile = conf["darkFile"]
+
+        self.loadDark()
+
+        if self.wfsType == "PYWFS":
+            #Check if we have specified a pupil layout
+            if "pupils" in conf.keys():
+                pupilLocs = [(int(x.split(',')[1]), int(x.split(',')[0])) for x in conf["pupils"]]
+                self.setPupils(pupilLocs, conf["pupilsRadius"])
+            else: #Default Pupil layout
+                a, b = int(0.25*self.imageShape[0]), int(0.75*self.imageShape[0])
+                c, d = int(0.25*self.imageShape[1]), int(0.75*self.imageShape[1])
+                r = min(self.imageShape[0]-b,self.imageShape[1]-d)
+                self.setPupils([(a,c), (a,d), (b,c), (b,d)], r)
+            if self.signalType == 'slopes':
+                #Set normalization
+                self.flatNorm = conf["flatNorm"]
+
 
         self.alive = True
         self.running = False
 
-        functionsToRun = ["expose","computeSignal"]
         self.workThreads = []
+        functionsToRun = conf["functions"]
         for i, functionName in enumerate(functionsToRun):
             # Launch a separate thread
             workThread = threading.Thread(target=work, args = (self,functionName), daemon=True)
             # Start the thread
             workThread.start()
             # Set CPU affinity for the thread
-            # print(workThread.native_id, {self.affinity+i,})
             os.sched_setaffinity(workThread.native_id, {self.affinity+i,})  
             self.workThreads.append(workThread)
 
         return
     
     def __del__(self):
-        print("Deleeting WFS Object")
+        self.stop()
         self.alive = False
-        # for workThread in self.workThreads:
-
-        #     workThread.join()
         return
 
     def start(self):
@@ -115,7 +128,8 @@ class WavefrontSensor:
         return
     
     def expose(self):
-        self.image.write(self.data)
+        self.imageRaw.write(self.data)
+        self.image.write(self.data.astype(self.imageDType) - self.dark)
         return
 
     def readImage(self,flagInd=0):
@@ -123,11 +137,34 @@ class WavefrontSensor:
 
     def read(self,flagInd=0):
         return self.signal.read(flagInd=flagInd)
+    
+    def takeDark(self, flagInd=0):
+        self.setDark(np.zeros_like(self.dark))
+        dark = np.zeros(self.imageShape, dtype=np.float64)
+        for i in range(self.darkCount):
+            dark += self.readImage(flagInd=flagInd).astype(np.float64)
+        dark /= self.darkCount
+        self.setDark(dark)        
+        return 
 
+    def setDark(self, dark):
+        self.dark = dark.astype(self.imageDType)
+        return
+    
+    def saveDark(self,filename=''):
+        if filename == '':
+            filename = self.darkFile
+        np.save(filename, self.dark)
+        return
+    
+    def loadDark(self,filename=''):
+        if filename == '':
+            filename = self.darkFile
+        self.dark = np.load(filename)
+        return
 
-   
     def computeSignal(self):
-        image = self.readImage().astype(self.signaldType)
+        image = self.readImage().astype(self.signalDType)
 
         if self.wfsType == "PYWFS":
             if self.signalType == "slopes":
@@ -145,7 +182,8 @@ class WavefrontSensor:
         self.computePupilsMask()
         if self.signalType == "slopes":
             del self.signal
-            self.signal = ImageSHM("signal", (np.count_nonzero(self.pupilMask)//2,), self.signaldType)
+            self.signalSize = np.count_nonzero(self.pupilMask)//2
+            self.signal = ImageSHM("signal", (self.signalSize,), self.signalDType)
             slopemask =  self.pupilMask[self.pupilLocs[0][1]-self.pupilRadius+1:self.pupilLocs[0][1]+self.pupilRadius, 
                                         self.pupilLocs[0][0]-self.pupilRadius+1:self.pupilLocs[0][0]+self.pupilRadius] > 0
             self.layout = np.concatenate([slopemask, slopemask], axis=1)
