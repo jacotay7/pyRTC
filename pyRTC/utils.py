@@ -5,6 +5,12 @@ import os
 from subprocess import PIPE, Popen
 import numpy as np
 
+
+def setFromConfig(conf, name, default):
+    if name in conf.keys():
+        return conf[name]
+    return default
+
 def signal2D(signal, layout):
     curSignal2D = np.zeros(layout.shape)
     slopemask = layout[:,:layout.shape[1]//2]

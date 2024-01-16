@@ -3,11 +3,12 @@ import numpy as np
 import yaml
 import matplotlib.pyplot as plt
 #Import pyRTC classes
-from pyRTC.Loop import *
+from pyRTC.hardware.predictLoop import *
 #Import hardware classes
 from pyRTC.hardware.ALPAODM import *
 from pyRTC.hardware.ximeaWFS import *
 from pyRTC.hardware.SpinnakerScienceCam import *
+from pyRTC.SlopesProcess import *
 # %% clean up
 # from pyRTC.Pipeline import clear_shms
 # shms = ["wfs","wfc","wfc2D","signal","psfShort","psfLong"]
@@ -35,14 +36,15 @@ psf.takeDark()
 # psf.loadDark("./psfDark.npy")
 # psf.plot()
 # %% Initialize DM
-dm = ALPAODM(confWFC["serial"], 
-             functionsToRun = confWFC["functions"],
-             flatFile = confWFC["flatFile"], 
-             M2C=M2C)
+dm = ALPAODM(confWFC) #["serial"], 
+             #functionsToRun = confWFC["functions"],
+             #flatFile = confWFC["flatFile"], 
+             #M2C=M2C)
 dm.setFlat(np.load("newFlat.npy"))
 dm.start()
 time.sleep(1e-1)
 dm.flatten()
+
 # # %% probe focus
 # correction = np.zeros_like(dm.read())
 # correction[0] = 0.02
@@ -52,39 +54,18 @@ dm.flatten()
 # dm.write(correction)
 
 # %% Initialize WFS
-#Create camera object, take an image
-wfs = XIMEA_WFS(exposure=confWFS["exposure"],
-                functionsToRun = confWFS["functions"], 
-                roi=[confWFS["width"],confWFS["height"],confWFS["left"],confWFS["top"]], 
-                binning=confWFS["binning"], 
-                gain=confWFS["gain"], 
-                bitDepth=confWFS["bitDepth"])
-pupilLocs = [(int(x.split(',')[1]), int(x.split(',')[0])) for x in confWFS["pupils"]]
-wfs.setPupils(pupilLocs, confWFS["pupilsRadius"])
+confWFS = conf["wfs"]
+wfs = XIMEA_WFS(conf=confWFS)
+time.sleep(4)
 wfs.start()
 time.sleep(1e-1)
-# wfs.takeDark()
-# wfs.saveDark("./dark")
-wfs.loadDark("./dark.npy")
 
-# # %%Pupil Finding
-# from matplotlib.colors import LogNorm
-# pupilLocs = [(int(x.split(',')[1]), int(x.split(',')[0])) for x in confWFS["pupils"]]
-# pupilLocs[0] = (pupilLocs[0][0]-1,pupilLocs[0][1])
-# pupilLocs[1] = (pupilLocs[1][0]-1,pupilLocs[1][1])
-# pupilLocs[2] = (pupilLocs[2][0]-1,pupilLocs[2][1])
-# pupilLocs[3] = (pupilLocs[3][0]-1,pupilLocs[3][1])
-# r = confWFS["pupilsRadius"] -1
-# wfs.setPupils(pupilLocs, r)
+# %% 
+slope = SlopesProcess(conf)
+slope.start()
 
-# for i in range(4):
-#     plt.imshow(wfs.readImage()*wfs.pupilMask, norm = LogNorm(vmin=20,vmax=1000))
-#     r = wfs.pupilRadius
-#     plt.xlim(wfs.pupilLocs[i][0]-r, wfs.pupilLocs[i][0]+r)
-#     plt.ylim(wfs.pupilLocs[i][1]-r, wfs.pupilLocs[i][1]+r)
-#     plt.show()
 # %%  Inialize Loop
-loop = Loop(wfs, dm, functionsToRun=confLoop["functions"])
+loop = predictLoop(conf) #wfs, dm, functionsToRun=confLoop["functions"])
 # %% Compute OL IM
 # loop.computeIM(pokeAmp=0.01,
 #             #    delay = 1,
@@ -98,7 +79,7 @@ loop = Loop(wfs, dm, functionsToRun=confLoop["functions"])
 #                hardwareDelay=1e-3,
 #                method='docrime')
 # np.save("dcIM", loop.IM)
-loop.IM = np.load("ppIM.npy")
+loop.IM = np.load("IM.npy")
 # for i in range(5):
 #     loop.plotIM(row=i)
 
@@ -117,17 +98,20 @@ loop.IM = np.load("ppIM.npy")
 #     plt.imshow(np.vstack([a_row2D,b_row2D,a_row2D-b_row2D]), cmap = 'inferno', aspect='auto')
 #     plt.colorbar()
 #     plt.show()
+# %% Compute IM
+# loop.pushPullIM()
+
 # %% Compute CM
-loop.computeCM(rcond=0.1)
+loop.computeCM() #rcond=0.1)
 plt.imshow(loop.CM, aspect='auto')
 plt.show()
 dm.flatten()
 # %% Run Loop 
 dm.flatten()
 time.sleep(1e-2)
-loop.setGain(0)
+loop.setGain(1e-1)
 loop.start()
-time.sleep(100)
+time.sleep(1000)
 loop.stop()
 # %% Run Loop 
 # dm.flatten()

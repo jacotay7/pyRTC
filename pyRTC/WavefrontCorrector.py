@@ -2,6 +2,7 @@
 Wavefront Corrector Superclass
 """
 from pyRTC.Pipeline import ImageSHM, work
+from pyRTC.utils import *
 import numpy as np
 import matplotlib.pyplot as plt
 import threading
@@ -18,10 +19,12 @@ class WavefrontCorrector:
 
     def __init__(self, conf) -> None:
 
+        self.name = conf["name"]
         self.numActuators = conf["numActuators"]
         self.numModes = conf["numModes"]
         self.affinity = conf["affinity"]
         self.m2cFile = conf["m2cFile"]
+        
         self.correctionVector = ImageSHM("wfc", (self.numModes,), np.float32)
         self.correctionVector2D = None
         
@@ -33,6 +36,10 @@ class WavefrontCorrector:
         self.flatModal = np.zeros(self.numModes,  dtype=self.flat.dtype)
         self.currentShape = np.zeros_like(self.flat)
         
+        self.setDelay(setFromConfig(conf, "frameDelay", 0))
+
+        self.saveFile = setFromConfig(conf, "saveFile", "wfcShape.npy")
+
         #Initialize the basis for corrections
         self.readM2C()
 
@@ -88,7 +95,15 @@ class WavefrontCorrector:
         self.currentCorrection = np.zeros(self.M2C.shape[1], dtype=self.flat.dtype)
         self.flatModal = self.C2M@self.flat
 
-
+    def setDelay(self,delay):
+        self.frameDelay = delay
+        self.shapeBuffer = np.zeros((self.frameDelay+1, *self.currentShape.shape), dtype=self.currentShape.dtype)
+        #Fill with current commands
+        for i in range(self.shapeBuffer.shape[0]):
+            self.shapeBuffer[i] = self.flat.copy()
+        
+        return
+    
     def readM2C(self, filename=''):
         if filename == '':
             filename = self.m2cFile
@@ -110,8 +125,16 @@ class WavefrontCorrector:
     def sendToHardware(self,flagInd=0):
         #Read a new modal correction in M2C basis
         self.currentCorrection = self.correctionVector.read(flagInd=flagInd)
-        #Convert to Zonal, this will be connected to the hardware by the child class
-        self.currentShape = ModaltoZonalWithFlat(self.currentCorrection, self.M2C, self.flat)
+        #If we added a frame delay
+        if self.frameDelay > 0:
+            #Roll back shape buffer by 1
+            self.shapeBuffer[:-1] = self.shapeBuffer[1:]
+            #Compute a new shape in zonal basis
+            self.shapeBuffer[-1] = ModaltoZonalWithFlat(self.currentCorrection, self.M2C, self.flat)
+            #Set the current shape
+            self.currentShape = self.shapeBuffer[0]
+        else:
+            self.currentShape = ModaltoZonalWithFlat(self.currentCorrection, self.M2C, self.flat)
         #If we have a 2D SHM instance, update it 
         if isinstance(self.correctionVector2D, ImageSHM):
             self.correctionVector2D_template[self.layout] = self.currentShape - self.flat
@@ -135,6 +158,12 @@ class WavefrontCorrector:
         corr = np.zeros_like(self.currentCorrection)
         corr[int(mode)] = float(amp)
         self.write(corr)
+        return
+
+    def saveShape(self,filename=''):
+        if filename == '':
+            filename = self.saveFile
+        np.save(filename, self.currentShape)
         return
 
     def plot(self, removeFlat=False):

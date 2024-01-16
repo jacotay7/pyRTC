@@ -1,79 +1,77 @@
 # %% IMPORTS
-import argparse
 #Import pyRTC classes
-from pyRTC.Loop import *
 from pyRTC.Pipeline import *
-#Import hardware classes
-# from pyRTC.hardware.ALPAODM import *
-# from pyRTC.hardware.ximeaWFS import *
-from pyRTC.hardware.SpinnakerScienceCam import *
-#Import utils
 from pyRTC.utils import *
 
-# # Create argument parser
-# parser = argparse.ArgumentParser(description="Read a config file from the command line.")
-
-# # Add command-line argument for the config file
-# parser.add_argument("-c", "--config", required=True, help="Path to the config file")
-
-# # Parse command-line arguments
-# args = parser.parse_args()
-# config = args.config
+RECALIBRATE = False
 
 # %% IMPORTS
-config = '../SHARP_LAB/config.yaml'
+config = '/home/whetstone/pyRTC/SHARP_LAB/config.yaml'
+N = np.random.randint(3000,6000)
+# %% Launch DM
+wfc = hardwareLauncher("./hardware/ALPAODM.py", config, N)
+wfc.launch()
 
 # %% Launch WFS
-wfs = hardwareLauncher("./hardware/ximeaWFS.py", config)
+wfs = hardwareLauncher("./hardware/ximeaWFS.py", config, N+1)
 wfs.launch()
-time.sleep(4)
+
+# %% Launch slopes
+slopes = hardwareLauncher("./SlopesProcess.py", config, N+2)
+slopes.launch()
+
 # %% Launch PSF Cam
-psfCam = hardwareLauncher("./hardware/SpinnakerScienceCam.py", config)
+psfCam = hardwareLauncher("./hardware/SpinnakerScienceCam.py", config, N+3)
 psfCam.launch()
-time.sleep(2)
 
-# %% Launch DM
-wfc = hardwareLauncher("./hardware/ALPAODM.py", config)
-wfc.launch()
-time.sleep(0.5)
 # %% Launch Loop Class
-loop = hardwareLauncher("./Loop.py", config)
+loop = hardwareLauncher("./Loop.py", config, N+4)
+# loop = hardwareLauncher("./hardware/predictLoop.py", config)
 loop.launch()
-time.sleep(0.5)
 
+# %% Calibrate
 
-# %% Take Darks
-# time.sleep(2)
-psfCam.run("takeDark")
-psfCam.run("saveDark")
-wfs.run("takeDark")
-wfs.run("saveDark")
+if RECALIBRATE == True:
 
-# %%Compute an new IM
-wfc.run("flatten")
-loop.run("computeIM")
-loop.run("saveIM")
-wfc.run("flatten")
-time.sleep(1)
+    slopes.setProperty("refSlopesFile", "")
+    slopes.run("loadRefSlopes")
+    ##### slopes.setProperty("offsetY", 3)
+
+    input("Sources Off?")
+    psfCam.run("takeDark")
+    psfCam.run("saveDark")
+    wfs.run("takeDark")
+    wfs.run("saveDark")
+    input("Sources On?")
+
+    slopes.run("takeRefSlopes")
+    slopes.setProperty("refSlopesFile", "/home/whetstone/pyRTC/SHARP_LAB/ref.npy")
+    slopes.run("saveRefSlopes")
+
+    loop.setProperty("pokeAmp", 0.03)
+    loop.setProperty("numItersIM", 100)
+    loop.setProperty("IMFile", "/home/whetstone/pyRTC/SHARP_LAB/IM.npy")
+    wfc.run("flatten")
+    loop.run("computeIM")
+    loop.run("saveIM")
+    wfc.run("flatten")
+    time.sleep(1)
 
 # %%
-loop.setProperty("numDroppedModes", 10)
+loop.setProperty("numDroppedModes", 20)
 loop.run("computeCM")
 
 # %%Launch Loop for 5 seconds
-loop.run("setGain",0.3)
+loop.run("setGain",0.01)
 wfc.run("flatten")
 loop.run("start")
 time.sleep(5)
+# %% Stop Loop
 loop.run("stop")
 wfc.run("flatten")
-
-
-# input()
-
-
-# %% Kill everything
-hardware = [psfCam, wfs, wfc, loop]
+wfc.run("flatten")
+# %% Kill e89verything
+hardware = [slopes, psfCam, wfs, wfc, loop]
 for h in hardware:
     h.shutdown()
     time.sleep(1)
