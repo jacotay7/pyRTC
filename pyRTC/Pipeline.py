@@ -10,6 +10,8 @@ import threading
 import os 
 import sys
 from pyRTC.utils import *
+import socket
+import json 
 
 def work(obj, functionName):
     """
@@ -17,19 +19,20 @@ def work(obj, functionName):
     """
     #Get what function we need to run
     workFunction = getattr(obj, functionName, None)
-    count = 0
-    N = 10000
-    times = np.zeros(N)
+    # count = 0
+    # N = 10000
+    # times = np.zeros(N)
     #If the wfs object is still alive
     while obj.alive:
         #If we are meant to be running
         if obj.running:
-            start = time.time()
+            # start = time.time()
             #Call it
             workFunction()
-            diff = time.time()-start
-            times[count % N] = diff
-            count += 1
+            # time.sleep(1e-5)
+            # diff = time.time()-start
+            # times[count % N] = diff
+            # count += 1
             # if count % N == 0:
             #     print(f"Thread {functionName} -- Mean Execution Time {1000*np.mean(times):.3f}ms")
         else:
@@ -111,7 +114,7 @@ class ImageSHM:
         # print(f"Reading from SHM: {self.name}")
         
         while not self.checkNew():
-            time.sleep(1e-4)
+            time.sleep(1e-5)
         arr = np.copy(self.arr)
         return arr
 
@@ -209,130 +212,172 @@ def clear_shms(names):
 
 class hardwareLauncher:
 
-    def __init__(self, hardwareFile, configFile) -> None:
+    def __init__(self, hardwareFile, configFile, port) -> None:
         self.hardwareFile = hardwareFile
-        self.command = ["python", hardwareFile, "-c", f"{os.getcwd() + '/' + configFile}"]
+        self.command = ["python", hardwareFile, "-c", f"{configFile}", "-p", f"{port}"]
         self.running = False
-
+        # Client configuration
+        self.host = '127.0.0.1'  # localhost
+        self.port = port
         return
     
     def launch(self):
         if not self.running:
-            print(f"Launching: {self.hardwareFile}")
+            print(f"Launching Process: {self.hardwareFile}")
             self.process = Popen(self.command,stdin=PIPE,stdout=PIPE, text=True, bufsize=1)
             self.running = True
+
+            # Create a socket object
+            self.processSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            print(f"Waiting for Process at {self.host}:{self.port}")
+            connected = False
+            restTime = 1
+            while not connected:
+                time.sleep(restTime)
+                try:
+                    # Connect to the server
+                    self.processSocket.connect((self.host, self.port))
+                    connected = True
+                except Exception as e:
+                    print(f"Connection failed: {e}")
+                    print("Retrying in {} seconds...".format(restTime))
+
+            print("Connected")
+
         return
     
     def shutdown(self):
-        message = f'shutdown,1'
+        message = {"type": "shutdown"}
         return self.writeAndRead(message)
 
     def getProperty(self, property):
-        message = f'Get,{property}'
+        message = {"type": "get", "property": property}
         return self.writeAndRead(message)
     
     def setProperty(self, property, value):
-        message = f'Set,{property},{str(value)}'
+        message = {"type": "set", "property": property, "value": value}
         return self.writeAndRead(message)
 
     def run(self, function, *args):
-        message = f'Run,{function}'
-        for arg in args:
-            message += ','+str(arg)
+        message = {"type": "run", "function": function}
+        for i, arg in enumerate(args):
+            message[f"arg_{i+1}"] = arg
         return self.writeAndRead(message)
 
     def writeAndRead(self,message):
-        _property = "NOT_IN_WORD"
-        keyword = message.split(',')[0].lower()
-        if 'get' in keyword: 
-            _property = message.split(',')[1]
         if self.running:
-           print(f"Sending: {message}")
-           self.write(message)
-           resp = self.read()
-           print(f"Received Reply: {resp}")
-           if resp == 'OK':
-               return 1
-           elif resp == 'BAD':
-               return -1
-           elif _property in resp:
-               return resp.split(',')[1]
-           else:
-               return -1
+            self.write(message)
+            reply = self.read()
+            #If there are issues with the reply format
+            if type(reply) != type(dict()) or "status" not in reply.keys():
+                return -1
+            #If there was an issue on the process end
+            if reply["status"] == 'BAD':
+                return -1
+            #If our request went through
+            if reply["status"] == 'OK':
+                #If the reply came with a property to return
+                if "property" in reply.keys():
+                    return reply["property"]
+                #Otherwise just return OK
+                else:
+                    return 1
+        #default is a fail
         return -1
 
     def write(self, message):
-        # self.process.stdin.flush()
-        self.process.stdin.write(message + '\n')
-        self.process.stdin.flush()
+        message = json.dumps(message)
+        self.processSocket.send(message.encode())
         return
     
     def read(self):
-
-        return self.process.stdout.readline().rstrip()
+        reply = self.processSocket.recv(4096).decode()
+        return json.loads(reply)
     
 
 class Listener:
 
-    def __init__(self, hardware) -> None:
+    def __init__(self, hardware, port) -> None:
         self.hardware = hardware
         self.running = True
+        self.keyCharacter = '$'
+        self.host = '127.0.0.1'  # localhost
+        self.port = port
+
+        # Create a socket object
+        server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+
+        print(f"{hardware.name}: Binding to {self.host}:{self.port}")
+        # Bind the socket to a specific address and port
+        server_socket.bind((self.host, self.port))
+        # Listen for incoming connections
+        server_socket.listen()
+        print(f"{hardware.name}: Awaiting RTC connection")
+        #Connect to the RTC process that spawned you
+        self.RTCsocket, self.RTCaddress = server_socket.accept()
+
+        self.OKMessage = {"status": "OK"}
+        self.BadMessage = {"status": "BAD"}
+
         return
     
     def listen(self):
-        line = read_input_with_timeout(1)
-        # line = sys.stdin.readline().rstrip()#.lower()
-        # print(f"Received: {line}", )
-        if not isinstance(line, str) or line == '':
-            return
-        # line = line.lower()
-        lineSplit = line.split(',')
-        keyword = lineSplit[0].lower()
-        if "shutdown" in keyword:
+
+        #Read request from the RTC
+        request = self.read()
+        if "type" not in request:
+            self.write(self.BadMessage)
+
+        #Sort behaviour by request type
+        requestType = request["type"]
+        if requestType == "shutdown":
             try:
                 self.hardware.__del__()
                 self.running = False
-                self.write("OK")
+                self.write(self.OKMessage)
             except:
-                self.write("BAD")
-        elif "get" in keyword:
+                self.write(self.BadMessage)
+        elif requestType == "get":
             try:
-                propertyName = lineSplit[1]
+                propertyName = request["property"]
                 property = getattr(self.hardware, propertyName)
-                self.write(propertyName+','+str(property))
+                message = self.OKMessage.copy()
+                message["property"] = property
+                self.write(message)
             except:
-                self.write("BAD")
-        elif "set" in keyword:
+                self.write(self.BadMessage)
+        elif requestType == "set":
             try:
-                propertyName = lineSplit[1]
-                propertyValue = lineSplit[2]
+                propertyName = request["property"]
+                propertyValue = request["value"]
                 property = getattr(self.hardware, propertyName)
                 setattr(self.hardware, propertyName, type(property)(propertyValue))
-                self.write("OK")
+                self.write(self.OKMessage)
             except:
-                self.write("BAD")
-        elif "run" in keyword:
-            # try:
-            functionName = lineSplit[1]
-            args = []
-            if len(lineSplit) > 2:
-                for arg in lineSplit[2:]:
-                    if is_numeric(arg):
-                        args.append(float(arg))
-                    else:
-                        args.append(arg)
-            function = getattr(self.hardware, functionName)
-            if len(args) > 0:
-                function(*args)
-            else:
-                function()
-            self.write("OK")
-            # except:
-            #     self.write("BAD")
+                self.write(self.BadMessage)
+        elif requestType == "run":
+            try:
+                functionName = request["function"]
+                args = []
+                for i in range(0, len(request.keys())-2):
+                    arg = request[f"arg_{i+1}"]
+                    args.append(arg)
+                function = getattr(self.hardware, functionName)
+                if len(args) > 0:
+                    function(*args)
+                else:
+                    function()
+                self.write(self.OKMessage)
+            except:
+                self.write(self.BadMessage)
         else:
-            self.write("BAD")
+            self.write(self.BadMessage)
 
-    def write(self,message):
-        # print(f"Replying: {message}")
-        sys.stdout.write(message + '\n')
-        sys.stdout.flush()
+    def write(self, message):
+        message = json.dumps(message)
+        self.RTCsocket.send(message.encode())
+        return
+    
+    def read(self):
+        reply = self.RTCsocket.recv(4096).decode()
+        return json.loads(reply)

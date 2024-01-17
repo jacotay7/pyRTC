@@ -11,7 +11,8 @@ class XIMEA_WFS(WavefrontSensor):
     def __init__(self, conf):
         super().__init__(conf)
         self.cam = xiapi.Camera()
-        self.cam.open_device()
+        # self.cam.open_device()
+        self.cam.open_device_by("XI_OPEN_BY_SN", conf["serial"])
 
         if "bitDepth" in conf:
             self.setBitDepth(conf["bitDepth"])
@@ -84,15 +85,12 @@ class XIMEA_WFS(WavefrontSensor):
     
 if __name__ == "__main__":
 
-    #Prevents camera output from messing with communication
-    original_stdout = sys.stdout
-    sys.stdout = open(os.devnull, 'w')
-
     # Create argument parser
     parser = argparse.ArgumentParser(description="Read a config file from the command line.")
 
     # Add command-line argument for the config file
     parser.add_argument("-c", "--config", required=True, help="Path to the config file")
+    parser.add_argument("-p", "--port", required=True, help="Port for communication")
 
     # Parse command-line arguments
     args = parser.parse_args()
@@ -108,13 +106,7 @@ if __name__ == "__main__":
 
     wfs.start()
     
-    #Go back to communicating with the main program through stdout
-    sys.stdout = original_stdout
-
-    # wfs.takeDark()
-    # plt.imshow(wfs.dark)
-    # plt.show()
-    l = Listener(wfs)
+    l = Listener(wfs, port= int(args.port))
     while l.running:
         l.listen()
         time.sleep(1e-3)

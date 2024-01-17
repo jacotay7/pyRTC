@@ -2,6 +2,7 @@
 Wavefront Sensor Superclass
 """
 from pyRTC.Pipeline import ImageSHM, work
+from pyRTC.utils import *
 import numpy as np
 import matplotlib.pyplot as plt
 import threading
@@ -13,6 +14,7 @@ class ScienceCamera:
 
     def __init__(self, conf) -> None:
 
+        self.name = conf["name"]
         self.imageShape = (conf["width"], conf["height"])
         self.imageRawDType = np.uint16
         self.imageDType = np.int32
@@ -23,7 +25,7 @@ class ScienceCamera:
         self.data = np.zeros(self.imageShape, dtype=self.imageRawDType)
         self.dark = np.zeros(self.imageShape, dtype=self.imageDType)
         self.darkCount = conf["darkCount"]
-        self.darkFile = conf["darkFile"]
+        self.darkFile = setFromConfig(conf, "darkFile", "")
 
         self.loadDark()
 
@@ -124,9 +126,14 @@ class ScienceCamera:
         return
     
     def loadDark(self,filename=''):
+        #If no file given, first try dark file
         if filename == '':
             filename = self.darkFile
-        self.dark = np.load(filename)
+        #If we are still without a file, set zeros
+        if filename == '':
+            self.dark = np.zeros_like(self.dark)
+        else: #If we have a filename
+            self.dark = np.load(filename)
         return
     
     def plot(self):

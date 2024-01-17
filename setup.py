@@ -14,7 +14,8 @@ setup(
                       'PyYaml',
                       'numba',
                       'scipy',
-                      'pyqt5'             
+                      'pyqt5',
+                      'argparse'             
                       ],
 
     classifiers=[

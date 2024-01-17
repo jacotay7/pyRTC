@@ -94,15 +94,12 @@ class spinCam(ScienceCamera):
 
 if __name__ == "__main__":
 
-    #Prevents camera output from messing with communication
-    original_stdout = sys.stdout
-    sys.stdout = open(os.devnull, 'w')
-
     # Create argument parser
     parser = argparse.ArgumentParser(description="Read a config file from the command line.")
 
     # Add command-line argument for the config file
     parser.add_argument("-c", "--config", required=True, help="Path to the config file")
+    parser.add_argument("-p", "--port", required=True, help="Port for communication")
 
     # Parse command-line arguments
     args = parser.parse_args()
@@ -114,14 +111,9 @@ if __name__ == "__main__":
     decrease_nice(pid)
 
     psf = spinCam(conf=conf["psf"])
-    # psf.loadDark(conf["psf"]["darkFile"])
     psf.start()
-    
-    #Go back to communicating with the main program through stdout
-    sys.stdout = original_stdout
 
-
-    l = Listener(psf)
+    l = Listener(psf, port = int(args.port))
     while l.running:
         l.listen()
         time.sleep(1e-3)

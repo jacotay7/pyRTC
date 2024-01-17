@@ -32,7 +32,8 @@ class Loop:
         self.confWFS = conf["wfs"]
         self.confWFC = conf["wfc"]
         self.confLoop = conf["loop"]
-
+        self.name = "Loop"
+        
         #Read wfs signal's metadata and open a stream to the shared memory
         self.wfsMeta = ImageSHM("signal_meta", (4,), np.float64).read_noblock_safe()
         self.signalDType = float_to_dtype(self.wfsMeta[3])
@@ -59,7 +60,7 @@ class Loop:
         self.numItersIM = self.confLoop["numItersIM"]
         self.delay = self.confLoop["delay"]
         self.IMMethod = self.confLoop["method"]
-        self.IMFile = self.confLoop["IMFile"]
+        self.IMFile = setFromConfig(self.confLoop, "IMFile", "")
         
         self.loadIM()
 
@@ -206,7 +207,10 @@ class Loop:
     def loadIM(self,filename=''):
         if filename == '':
             filename = self.IMFile
-        self.IM = np.load(filename)
+        if filename == '':
+            self.IM = np.zeros_like(self.IM)
+        else:
+            self.IM = np.load(filename)
         self.computeCM()
 
     def flatten(self):
@@ -218,19 +222,40 @@ class Loop:
         self.CM[:self.numActiveModes,:] = np.linalg.pinv(self.IM[:,:self.numActiveModes], rcond=0)
         self.CM[self.numActiveModes:,:] = 0
         self.gCM = self.gain*self.CM
+        self.fIM = np.copy(self.IM)
+        self.fIM[:,self.numActiveModes:] = 0
         return 
         
-    # def standardIntegratorPertub(self,flagInd=0):
+    # @jit(nopython=True)
+    def updateCorrectionPOL(self, correction=np.array([], dtype=np.float32), slopes=np.array([], dtype=np.float32)):
+            
+        # Compute POL Slopes s_{POL} = s_{RES} + IM*c_{n-1}
+        # print(f'slopes: {slopes.shape}, IM: {self.IM.shape}, corr: {correction.shape}')
+        s_pol = slopes - self.fIM@correction
 
-    #     slopes = self.wfs.read(flagInd=flagInd)
-    #     perturb = np.random.uniform(-self.perturbAmp, self.perturbAmp, self.wfc.currentCorrection.size).reshape(self.wfc.currentCorrection.shape)
-    #     newCorrection = updateCorrectionPerturb(correction=self.wfc.currentCorrection,
-    #                                     perturb=perturb, 
-    #                                     gCM=self.gCM, 
-    #                                     slopes=slopes)
-    #     newCorrection[self.numActiveModes:] = 0
-    #     self.wfc.write(newCorrection)
-    #     return
+        # Update Command Vector c_n = g*CM*s_{POL} + (1 − g) c_{n-1}  https://arxiv.org/pdf/1903.12124.pdf Eq 3
+        return (1-self.gain)*correction - np.dot(self.gCM,s_pol)
+
+    def standardIntegratorPOL(self,flagInd=0):
+
+        residual_slopes = self.wfsShm.read(flagInd=flagInd)
+        currentCorrection = self.wfcShm.read()
+        # print(f'slopes: {residual_slopes.shape}, IM: {self.IM.shape}, corr: {currentCorrection.shape}')
+
+        newCorrection = self.updateCorrectionPOL(correction=currentCorrection, 
+                                                 slopes=residual_slopes)
+        newCorrection[self.numActiveModes:] = 0
+        self.wfcShm.write(newCorrection)
+
+        return
+
+    # // Compute POL Slopes s_{POL} = s_{RES} + IM*c_{n-1}  https://arxiv.org/pdf/1903.12124.pdf Eq 1
+    # if(modal)
+    #   pol_slope_vector = _InteractionMatrix(Eigen::all,Eigen::seqN(0,num_used_modes))*(command_modal(Eigen::seqN(0,num_used_modes)) - dm_flat_modal(Eigen::seqN(0,num_used_modes))) + slope_vector.cast<double>();
+    # else
+    #   pol_slope_vector = _InteractionMatrix*(command_zonal - dm_flat_zonal) + slope_vector.cast<double>();
+
+    # pol_slopes_wo.send(&pol_slope_vector(0));
 
     
     def standardIntegrator(self,flagInd=0):
@@ -256,15 +281,12 @@ class Loop:
 
 if __name__ == "__main__":
 
-    #Prevents camera output from messing with communication
-    original_stdout = sys.stdout
-    sys.stdout = open(os.devnull, 'w')
-
     # Create argument parser
     parser = argparse.ArgumentParser(description="Read a config file from the command line.")
 
     # Add command-line argument for the config file
     parser.add_argument("-c", "--config", required=True, help="Path to the config file")
+    parser.add_argument("-p", "--port", required=True, help="Port for communication")
 
     # Parse command-line arguments
     args = parser.parse_args()
@@ -277,12 +299,7 @@ if __name__ == "__main__":
 
     loop = Loop(conf=conf)
     
-    # Go back to communicating with the main program through stdout
-    sys.stdout = original_stdout
-
-    # input()
-
-    l = Listener(loop)
+    l = Listener(loop, port= int(args.port))
     while l.running:
         l.listen()
         time.sleep(1e-3)

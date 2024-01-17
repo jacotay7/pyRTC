@@ -15,7 +15,7 @@ def read_shared_memory(shm_arr):
     return np.copy(shm_arr)
 
 class RealTimeView(QMainWindow):
-    def __init__(self,  shm_name, shm_width, shm_height, shm_dtype, fps):
+    def __init__(self, shm_name, shm_width, shm_height, shm_dtype, fps):
         super().__init__()
 
         self.old_count = 0
@@ -23,7 +23,7 @@ class RealTimeView(QMainWindow):
         self.shm = ImageSHM(shm_name, (shm_width, shm_height), shm_dtype)
         self.metadata = ImageSHM(shm_name+"_meta", (4,), np.float64)
 
-        self.setWindowTitle('PyRTC Viewer')
+        self.setWindowTitle(f'{shm_name} - PyRTC Viewer')
         self.setGeometry(100, 100, 800, 600)
 
         central_widget = QWidget(self)
@@ -34,7 +34,13 @@ class RealTimeView(QMainWindow):
         self.axes = self.figure.add_subplot(111)
 
         frame = self.shm.read_noblock_safe(flagInd=4)
-        self.im = self.axes.imshow(frame, cmap='inferno', interpolation='nearest', 
+
+        aspect = None
+        ASPECTCAP = 10
+        if shm_width/shm_height < 1/ASPECTCAP or shm_width/shm_height > ASPECTCAP:
+            aspect = "auto"
+
+        self.im = self.axes.imshow(frame, cmap='inferno', interpolation='nearest', aspect=aspect,
                                 origin='upper',vmin = np.min(frame), vmax = np.max(frame))
         
         self.fpsText = self.axes.text(frame.shape[1]//2,int(1.15*frame.shape[0]), 'PAUSED', fontsize=18, ha='center', va='bottom', color = 'g')
@@ -79,7 +85,7 @@ class RealTimeView(QMainWindow):
             # print(vmin,vmax)
             self.im.set_data(frame)
             if self.log:
-                vmin, vmax = max(vmin, 1e-3), max(1e-2, vmax)
+                vmin, vmax = max(vmin,vmax/1e4), max(1e-2, vmax)
             self.im.set_clim(vmin, vmax)
                 
             if isinstance(self.cbar,matplotlib.colorbar.Colorbar):
