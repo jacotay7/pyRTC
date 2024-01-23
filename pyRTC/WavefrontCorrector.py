@@ -8,8 +8,9 @@ import matplotlib.pyplot as plt
 import threading
 import os
 from numba import jit
+from sys import platform
 
-@jit(nopython=True)
+# @jit(nopython=True)
 def ModaltoZonalWithFlat(correction=np.array([],dtype=np.float32), 
                        M2C=np.array([[]],dtype=np.float32), 
                        flat=np.array([],dtype=np.float32)):
@@ -48,13 +49,17 @@ class WavefrontCorrector:
 
         functionsToRun = conf["functions"]
         self.workThreads = []
+        
         for i, functionName in enumerate(functionsToRun):
             # Launch a separate thread
             workThread = threading.Thread(target=work, args = (self,functionName), daemon=True)
+            
             # Start the thread
             workThread.start()
+            
             # Set CPU affinity for the thread
-            os.sched_setaffinity(workThread.native_id, {(self.affinity+i)%os.cpu_count(),})  
+            if platform != 'darwin':
+                os.sched_setaffinity(workThread.native_id, {self.affinity+i,})
             self.workThreads.append(workThread)
         return
     
@@ -145,7 +150,7 @@ class WavefrontCorrector:
     def read(self):
         return self.currentCorrection
 
-    def write(self, correction,flagInd=0):
+    def write(self, correction, flagInd=0):
         self.currentCorrection = correction
         self.correctionVector.write(self.currentCorrection, flagInd=flagInd)
         return 
@@ -160,7 +165,7 @@ class WavefrontCorrector:
         self.write(corr)
         return
 
-    def saveShape(self,filename=''):
+    def saveShape(self, filename=''):
         if filename == '':
             filename = self.saveFile
         np.save(filename, self.currentShape)

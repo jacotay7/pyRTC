@@ -9,6 +9,7 @@ import threading
 import os
 import time
 from numba import jit
+from sys import platform
 
 class ScienceCamera:
 
@@ -44,7 +45,8 @@ class ScienceCamera:
             workThread.start()
             # Set CPU affinity for the thread
             # print(workThread.native_id, {self.affinity+i,})
-            os.sched_setaffinity(workThread.native_id, {self.affinity+i,})  
+            if platform != 'darwin':
+                os.sched_setaffinity(workThread.native_id, {self.affinity+i,})
             self.workThreads.append(workThread)
 
         return

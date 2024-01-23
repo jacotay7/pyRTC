@@ -9,6 +9,7 @@ import threading
 import os
 import time
 from numba import jit
+from sys import platform
 
 class WavefrontSensor:
 
@@ -42,7 +43,8 @@ class WavefrontSensor:
             # Start the thread
             workThread.start()
             # Set CPU affinity for the thread
-            os.sched_setaffinity(workThread.native_id, {self.affinity+i,})  
+            if platform != 'darwin':
+                os.sched_setaffinity(workThread.native_id, {self.affinity+i,})  
             self.workThreads.append(workThread)
 
         return
