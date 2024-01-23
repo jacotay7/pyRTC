@@ -11,6 +11,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import time
 from numba import jit
+from sys import platform
 
 @jit(nopython=True)
 def computeSlopesPYWFS(p1=np.array([],dtype=np.float32), 
@@ -92,7 +93,7 @@ class SlopesProcess:
 
         if self.wfsType.lower() == "pywfs":
             #Check if we have specified a pupil layout
-            self.signal = ImageSHM("signal", self.imageShape, self.signalDType)
+            # self.signal = ImageSHM("signal", self.imageShape, self.signalDType)
 
             if "pupils" in self.conf.keys():
                 pupilLocs = [(int(x.split(',')[1]), int(x.split(',')[0])) for x in self.conf["pupils"]]
@@ -116,6 +117,15 @@ class SlopesProcess:
             # del self.signal
             self.signalSize = int(2*self.numRegions**2)
             self.signalShape = (2*self.numRegions,self.numRegions)
+
+            print(f'subApSpacing: {self.subApSpacing}')
+            print(f'numRegions: {self.numRegions}')
+            print(f'offsetX: {self.offsetX}')
+            print(f'offsetY: {self.offsetY}')
+            print(f'signalSize: {self.signalSize}')
+            print(f'signalShape: {self.signalShape}')
+            print(f'signalDType: {self.signalDType}')
+
             self.signal = ImageSHM("signal", self.signalShape, self.signalDType)
 
             #Initialize Valid Subaperture Mask
@@ -139,7 +149,8 @@ class SlopesProcess:
             workThread.start()
             # Set CPU affinity for the thread
             # print(workThread.native_id, {self.affinity+i,})
-            os.sched_setaffinity(workThread.native_id, {(self.affinity+i)%os.cpu_count(),})  
+            if platform != 'darwin':
+                os.sched_setaffinity(workThread.native_id, {self.affinity+i,})
             self.workThreads.append(workThread)
 
         return
@@ -223,11 +234,14 @@ class SlopesProcess:
         if self.wfsType == "PYWFS":
             if self.signalType == "slopes":
                 p1,p2,p3,p4 = image[self.p1mask], image[self.p2mask], image[self.p3mask], image[self.p4mask]
-                self.signal.write(computeSlopesPYWFS(p1=p1,
-                                                     p2=p2,
-                                                     p3=p3,
-                                                     p4=p4,
-                                                          flatNorm=self.flatNorm))
+                slope_signal = computeSlopesPYWFS(p1=p1,
+                                                    p2=p2,
+                                                    p3=p3,
+                                                    p4=p4,
+                                                    flatNorm=self.flatNorm)
+                self.signal.write(slope_signal)
+                self.signal2D.write(self.computeSlopeMap(slope_signal))
+                
         elif self.wfsType == "SHWFS":
             if self.signalType == "slopes":
                 threshold = np.mean(image)*self.shwfsContrast
@@ -245,12 +259,13 @@ class SlopesProcess:
         self.pupilRadius = pupilRadius
         self.computePupilsMask()
         if self.signalType == "slopes":
-            del self.signal
             self.signalSize = np.count_nonzero(self.pupilMask)//2
-            self.signal = ImageSHM("signal", (self.signalSize,), self.signalDType)
             slopemask =  self.pupilMask[self.pupilLocs[0][1]-self.pupilRadius+1:self.pupilLocs[0][1]+self.pupilRadius, 
                                         self.pupilLocs[0][0]-self.pupilRadius+1:self.pupilLocs[0][0]+self.pupilRadius] > 0
             self.layout = np.concatenate([slopemask, slopemask], axis=1)
+            self.signal = ImageSHM("signal", (self.signalSize,), self.signalDType)
+            self.signal2D = ImageSHM("slopemap", (self.layout.shape[0], self.layout.shape[1]), self.signalDType)
+            
         return
 
     def computePupilsMask(self):
@@ -286,7 +301,7 @@ class SlopesProcess:
         plt.show()
         return
 
-    def signal2D(self, signal, layout=None):
+    def computeSlopeMap(self, signal, layout=None):
         if layout is None and isinstance(self.layout, np.ndarray):
             layout = self.layout
         else:
