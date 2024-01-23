@@ -1,0 +1,70 @@
+loop:
+  gain: 0.1
+  numDroppedModes: 30
+  pokeAmp: 0.02
+  numItersIM: 1
+  affinity: 2
+  delay: 2
+  method: push-pull
+  functions:
+  - standardIntegrator
+  # - standardIntegratorPOL
+
+
+wfs:
+  name: OOPAOWFS
+  binning: 2
+  exposure: 2000
+  gain: 0
+  bitDepth: 10
+  left: 0
+  top: 0
+  width: 48
+  height: 48
+  darkCount: 1000
+  affinity: 3
+  flatNorm: False
+  functions:
+  - expose
+
+slopes:
+  type: PYWFS
+  signalType: slopes
+  subApSpacing: 4
+  subApOffsetX: 0
+  subApOffsetY: 0
+  affinity: 4
+  flatNorm: False
+  functions:
+  - computeSignal
+
+wfc:
+  name: "OOPAOWFC"
+  numActuators: 356
+  numModes: 356
+  flatFile: ""
+  saveFile: ""
+  m2cFile:  ""
+  affinity: 5
+  commandCap: 0.8
+  hardwareDelay: 0.001
+  frameDelay: 0
+  functions:
+  - sendToHardware
+
+psf:
+  name: "OOPAOPSF"
+  index: 0
+  exposure: 80
+  gain: 0
+  bitDepth: 16
+  left: 0
+  top: 0
+  width: 128
+  height: 128
+  darkCount: 1000
+  integration: 500000
+  affinity: 6
+  functions:
+  - expose
+  - integrate

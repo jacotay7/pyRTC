@@ -8,26 +8,12 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 import time
-#from numba import jit
 import torch
-import hidet
 import logging
 from pyRTC.hardware.models import *
-import cProfile
 
 torch.set_grad_enabled(False)
 
-LOGGER = logging.getLogger()
-
-# def profile_function(func):
-#     def inner(*args, **kwargs):
-#         with cProfile.Profile() as pr:
-#             ret = func(*args, **kwargs)
-#         pr.dump_stats(f"{func.__name__}_{time.time_ns()}.pstats")
-#         return ret
-#     return inner
-
-# @profile_function
 class predictLoop(Loop):
 
     def __init__(self, conf) -> None:

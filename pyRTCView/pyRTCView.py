@@ -112,7 +112,8 @@ class RealTimeView(QMainWindow):
 
 if __name__ == '__main__':
     pid = os.getpid()
-    os.sched_setaffinity(pid, {0,})
+    if sys.platform != 'darwin':
+        os.sched_setaffinity(pid, {0,})
 
     app = QApplication(sys.argv)
     shm_name, shm_width, shm_height, shm_dtype = sys.argv[1:]

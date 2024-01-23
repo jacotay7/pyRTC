@@ -5,12 +5,12 @@ from pyRTC.Pipeline import *
 from pyRTC.utils import *
 import threading
 import argparse
-import sys
 import os 
 import numpy as np
 import matplotlib.pyplot as plt
 import time
 from numba import jit
+from sys import platform
 
 @jit(nopython=True)
 def updateCorrection(correction=np.array([], dtype=np.float32), 
@@ -77,7 +77,8 @@ class Loop:
             workThread.start()
             # Set CPU affinity for the thread
             # print(workThread.native_id, {self.affinity+i,})
-            os.sched_setaffinity(workThread.native_id, {(self.affinity+i)%os.cpu_count(),})  
+            if platform != 'darwin':
+                os.sched_setaffinity(workThread.native_id, {(self.affinity+i)%os.cpu_count(),})  
             self.workThreads.append(workThread)
 
         return
