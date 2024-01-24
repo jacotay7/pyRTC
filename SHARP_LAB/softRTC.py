@@ -73,7 +73,7 @@ np.save(filename, psfs)
 
 
 shmName = 'wfc2D'
-metadataSHM = ImageSHM(shmName+"_meta", (4,), np.float64)
+metadataSHM = ImageSHM(shmName+"_meta", (ImageSHM.METADATA_SIZE,), np.float64)
 N = 1000
 times = np.empty(N)
 counts = np.empty(N)
@@ -93,7 +93,7 @@ plt.show()
 # plt.plot(times)
 # plt.show()
 # %% Generate Valid SubAps for SHWFS
-wfsMeta = ImageSHM("signal_meta", (4,), np.float64).read_noblock_safe()
+wfsMeta = ImageSHM("signal_meta", (ImageSHM.METADATA_SIZE,), np.float64).read_noblock_safe()
 signalDType = float_to_dtype(wfsMeta[3])
 signalSize = int(wfsMeta[2]//signalDType.itemsize)
 wfsShm = ImageSHM("signal", (signalSize,), signalDType)

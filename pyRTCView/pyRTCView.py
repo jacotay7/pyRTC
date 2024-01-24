@@ -6,6 +6,7 @@ from PyQt5.QtWidgets import QApplication, QMainWindow, QVBoxLayout, QWidget, QPu
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 from pyRTC.Pipeline import ImageSHM
+from pyRTC.utils import *
 import matplotlib.pyplot as plt
 from matplotlib.colors import LogNorm, Normalize
 import matplotlib
@@ -15,14 +16,21 @@ def read_shared_memory(shm_arr):
     return np.copy(shm_arr)
 
 class RealTimeView(QMainWindow):
-    def __init__(self, shm_name, shm_width, shm_height, shm_dtype, fps):
+    def __init__(self, shm_name, fps):
         super().__init__()
 
         self.old_count = 0
         self.old_time = 0
-        self.shm = ImageSHM(shm_name, (shm_width, shm_height), shm_dtype)
-        self.metadata = ImageSHM(shm_name+"_meta", (4,), np.float64)
+        self.metadata = ImageSHM(shm_name+"_meta", (ImageSHM.METADATA_SIZE,), np.float64)
+        metadata = self.metadata.read_noblock()
+        shm_width, shm_height = int(metadata[4]),  int(metadata[5])
 
+        shm_height = max(1,shm_height)
+        shm_width = max(1,shm_width)
+
+        shm_dtype = float_to_dtype(metadata[3])
+        self.shm = ImageSHM(shm_name, (shm_width, shm_height), shm_dtype)
+        
         self.setWindowTitle(f'{shm_name} - PyRTC Viewer')
         self.setGeometry(100, 100, 800, 600)
 
@@ -33,7 +41,7 @@ class RealTimeView(QMainWindow):
         self.figure = Figure(figsize=(8, 8), tight_layout=True)
         self.axes = self.figure.add_subplot(111)
 
-        frame = self.shm.read_noblock_safe(flagInd=4)
+        frame = self.shm.read_noblock_safe()
 
         aspect = None
         ASPECTCAP = 10
@@ -67,8 +75,8 @@ class RealTimeView(QMainWindow):
 
     def update_view(self):
         # try:
-        frame = self.shm.read_noblock(flagInd=4)
-        metadata = self.metadata.read_noblock(flagInd=4)
+        frame = self.shm.read_noblock()
+        metadata = self.metadata.read_noblock()
         new_count = metadata[0]
         new_time = metadata[1]
         if new_time > self.old_time:
@@ -116,23 +124,9 @@ if __name__ == '__main__':
         os.sched_setaffinity(pid, {0,})
 
     app = QApplication(sys.argv)
-    shm_name, shm_width, shm_height, shm_dtype = sys.argv[1:]
-    shm_width = int(shm_width)
-    shm_height = int(shm_height)
-    if shm_dtype == 'u16':
-        shm_dtype = np.uint16
-    elif shm_dtype == 'i16':
-        shm_dtype = np.int16
-    elif shm_dtype == 'i32':
-        shm_dtype = np.int32
-    elif shm_dtype == 'u8':
-        shm_dtype = np.uint8
-    elif shm_dtype == 'f32':
-        shm_dtype = np.float32
-    else:
-        shm_dtype = np.float64
+    shm_name = sys.argv[1]
 
-    view = RealTimeView(shm_name, shm_width, shm_height, shm_dtype, 30)
+    view = RealTimeView(shm_name, 30)
 
     view.show()
     sys.exit(app.exec_())

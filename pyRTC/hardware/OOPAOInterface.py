@@ -17,110 +17,93 @@ from OOPAO.tools.displayTools import displayMap
 
 class _OOPAOWFSensor(WavefrontSensor):
 
-    def __init__(self, wfsConf, param) -> None:
+    def __init__(self, wfsConf, tel, ngs, atm, dm, wfs) -> None:
         
-        self.param = param
-        self.wfs = None
-
+        self.tel = tel
+        self.ngs = ngs
+        self.atm = atm
+        self.dm = dm
+        self.wfs = wfs
+        
         super().__init__(wfsConf)
         
     def expose(self):
-        
+
+        #Advance the atmosphere
+        self.atm.update()
+
+        #Propagate the ngs to the wfs and apply the DM state
+        self.ngs*self.tel*self.dm*self.wfs
+
+        #Generate a new exposure
         self.data = self.wfs.cam.frame.astype(np.uint16)
         super().expose()
 
         return
 
+    def addAtmosphere(self):
+        self.tel+self.atm
+
+    def removeAtmosphere(self):
+        self.tel-self.atm
+
 class _OOPAOWFCorrector(WavefrontCorrector):
 
-    def __init__(self, correctorConf, param) -> None:
+    def __init__(self, correctorConf, tel, dm) -> None:
     
-        self.param = param
-        self.dm = None
-    
+        self.tel = tel
+        self.dm = dm
+        
+        self.dm.coefs = 0
         super().__init__(correctorConf)
+
+        #Set-up additional pyRTC parameters from simulation
+        numActuators = self.dm.validAct.size
+        self.setLayout(self.dm.validAct.reshape(int(np.sqrt(numActuators)),
+                                                            int(np.sqrt(numActuators))))
 
     def readM2C(self, filename=''):
         self.setM2C(None)
     
-    def sendToHardware(self, flagInd=0):
-        self.M2C = np.float32(self.M2C)
-        super().sendToHardware(flagInd)
+    def sendToHardware(self):
+        
+        super().sendToHardware()
 
         self.dm.coefs = self.currentShape.astype(np.float64)
 
     def setFlat(self, flat):
         super().setFlat(flat)
         self.dm.flat = flat 
-        
-        
-class _OOPAOSlopesProcess(SlopesProcess):
 
-    def __init__(self, conf, param) -> None:
-    
-        self.param = param
-        self.wfs = None
-        self.atm = None
-        self.ngs = None
-        self.tel = None
-        self.dm = None
-        self.src = None
-    
-        super().__init__(conf)
-        
-        self.total_OPD = [None]
-        self.residual_OPD = [None]
-        self.strehl_history = [None]
-        
-    def passOOPAOVars(self, wfsIn, atmIn, ngsIn, telIn, dmIn, srcIn):
-        self.wfs = wfsIn
-        self.atm = atmIn
-        self.ngs = ngsIn
-        self.tel = telIn
-        self.dm = dmIn
-        self.src = srcIn
-    
-    def computeSignal(self):
-        
-        self.total_OPD.append(np.std(self.tel.OPD[np.where(self.tel.pupil>0)])*1e9)
-        
-        super().computeSignal()
-            
-        self.atm.update()
-        self.ngs*self.tel*self.dm*self.wfs
-        self.src*self.tel
-        
-        self.residual_OPD.append(np.std(self.tel.OPD[np.where(self.tel.pupil>0)])*1e9)
-        self.strehl_history.append(np.exp(-np.var(self.tel.src.phase[np.where(self.tel.pupil==1)])))
-        
-    def reset(self):
-        self.total_OPD = [None]
-        self.residual_OPD = [None]
-        self.strehl_history = [None]
-        
 
 class _OOPAOScienceCamera(ScienceCamera):
 
-    def __init__(self, scienceConf, param) -> None:
-    
-        self.param = param
-        self.tel = None
-        
+    def __init__(self, scienceConf, tel, src, atm, dm) -> None:
+        self.tel = tel
+        self.src = src
+        self.atm = atm
+        self.dm = dm
+
         super().__init__(scienceConf)
         
     def expose(self):
-        
+
+        #Add current dm state to the telescope
+        self.src*self.tel*self.dm
+        #Compute PSF
         self.tel.computePSF(zeroPaddingFactor=5, N_crop=136)
+        #Check that we still have the right source coupled
         self.data = (255.*self.tel.PSF_norma_zoom).astype(np.uint16)
         
-        # if self.data is None:
-        #     self.data = np.ones_like(self.dark).astype(np.uint16)
-        # else:
-        #     self.data = self.data.astype(np.uint16)
-
         super().expose()
 
         return
+    
+    def addAtmosphere(self):
+        self.tel+self.atm
+
+    def removeAtmosphere(self):
+        self.tel-self.atm
 
 class OOPAOInterface():
 
@@ -135,41 +118,28 @@ class OOPAOInterface():
         correctorConf = conf["wfc"]
         scienceConf = conf["psf"]
 
-        self.tel = None
-        self.dm = None
-        self.wfs = None
-        self.science = None
-        self.ngs = None
-        self.atm = None
-        self.stepCounter = 0
-        self.ao_calib = None
-        self.M2C = None
-
-        self.wfsInterface = _OOPAOWFSensor(wfsConf, param)
-        self.dmInterface  = _OOPAOWFCorrector(correctorConf, param)
-        self.psfInterface = _OOPAOScienceCamera(scienceConf, param)
-        self.slopesInterface = _OOPAOSlopesProcess(conf, param)
-        
-        self.initializeSimulation()
-
-    def addAtmosphere(self):
-        self.tel+self.atm
-
-    def removeAtmosphere(self):
-        self.tel-self.atm
-
-    def initializeSimulation(self, param=None):
-        
         if param is None:
             param = self.param
         else:
             self.param = param
 
+        #Create our Telescope Simulatation
         self.tel = Telescope(resolution     = param['resolution'],
                         diameter            = param['diameter'],
                         samplingTime        = param['samplingTime'],
                         centralObstruction  = param['centralObstruction'])
-       
+        
+        #A second copy of the telescope so that the PSF camera is fighting with the
+        #Wavefront Sensor
+        self.tel_psf = Telescope(resolution     = param['resolution'],
+                diameter            = param['diameter'],
+                samplingTime        = param['samplingTime'],
+                centralObstruction  = param['centralObstruction'])
+        
+        self.src = Source(optBand   = 'K', magnitude = param['magnitude'])
+        self.src*self.tel_psf
+
+        #Create a guide star
         self.ngs = Source(optBand = param['opticalBand'], magnitude = param['magnitude'])
         self.ngs*self.tel
 
@@ -180,17 +150,12 @@ class OOPAOInterface():
                fractionalR0  = param['fractionnalR0'],\
                windDirection = param['windDirection'],\
                altitude      = param['altitude'])
-        
-        self.atm.initializeAtmosphere(self.tel)
-        self.tel+self.atm
+
         self.dm=DeformableMirror(telescope          = self.tel,
-                                     nSubap         = param['nSubaperture'], 
-                                     mechCoupling   = param['mechanicalCoupling'])
+                                        nSubap         = param['nSubaperture'], 
+                                        mechCoupling   = param['mechanicalCoupling'])
 
-        # make sure tel and atm are separated to initialize the PWFS
-        self.tel-self.atm
-
-        # create the Pyramid Object
+        # create the Pyramid WFS Object
         self.wfs = Pyramid(nSubap         = param['nSubaperture'],
                     telescope             = self.tel,
                     modulation            = param['modulation'],
@@ -199,59 +164,33 @@ class OOPAOInterface():
                     psfCentering          = param['psfCentering'],
                     postProcessing        = param['postProcessing'])
         
-        # generate M2C
-        self.M2C =  compute_M2C(param             = param,
-                                telescope         = self.tel,
-                                atmosphere        = self.atm,
-                                deformableMirror  = self.dm,
-                                nameFolder        = None,
-                                nameFile          = None,
-                                remove_piston     = True)
-        
-        # calibrate to get IM
-        # self.ao_calib =  ao_calibration(param            = param,
-        #                                 ngs              = self.ngs,
-        #                                 tel              = self.tel,
-        #                                 atm              = self.atm,
-        #                                 dm               = self.dm,
-        #                                 wfs              = self.wfs,
-        #                                 nameFolderIntMat = None,
-        #                                 nameIntMat       = None,
-        #                                 nameFolderBasis  = None,
-        #                                 nameBasis        = None,
-        #                                 nMeasurements    = 100)
-        
-        self.src = Source(optBand   = 'K', magnitude = param['magnitude'])
-        self.src*self.tel
-        
-        # combine telescope with atmosphere
-        self.tel+self.atm
+        #Initialize the atmosphere
+        self.atm.initializeAtmosphere(self.tel)
 
-        # initialize DM commands
-        self.dm.coefs=0
-        self.ngs*self.tel*self.dm*self.wfs
+        self.wfsInterface = _OOPAOWFSensor(wfsConf, self.tel, self.ngs, self.atm, self.dm, self.wfs)
+        self.dmInterface  = _OOPAOWFCorrector(correctorConf, self.tel, self.dm)
+        self.psfInterface = _OOPAOScienceCamera(scienceConf, self.tel_psf, self.src, self.atm, self.dm)
 
-        self.dmInterface.dm = self.dm
-        self.wfsInterface.wfs = self.wfs
-        self.psfInterface.tel = self.tel
-        
-        self.slopesInterface.passOOPAOVars(self.wfs, self.atm, self.ngs, self.tel, self.dm, self.src)
-        
-        return self.dmInterface, self.wfsInterface, self.psfInterface, self.slopesInterface
+        #Add the atmosphere to the system
+        self.addAtmosphere()
+
+    def addAtmosphere(self):
+        self.psfInterface.addAtmosphere()
+        self.wfsInterface.addAtmosphere()
+
+    def removeAtmosphere(self):
+        self.psfInterface.removeAtmosphere()
+        self.wfsInterface.removeAtmosphere()
 
     def restartSimulation(self):
-        # reset atmosphere
-        self.atm.initializeAtmosphere(self.tel)
-        self.tel+self.atm
+        del self.wfsInterface
+        del self.dmInterface
+        del self.psfInterface
 
-        # reset DM
-        self.dm.coefs=0
-        self.ngs*self.tel*self.dm*self.wfs
+        self.__init__(param=self.param)
 
-        # reset count
-        self.stepCounter = 0
-        
-        self.slopesInterface.reset()
+    def get_hardware(self):
+        return self.wfsInterface, self.dmInterface, self.psfInterface
 
 
 def _initializeDummyParameterFile():
@@ -301,9 +240,6 @@ def _initializeDummyParameterFile():
     param['radialScaling'        ] = 0                                              # radial scaling in percentage of diameter
     param['tangentialScaling'    ] = 0                                              # tangential scaling in percentage of diameter
     
-
-    
-    
     ###%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% WFS PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     
     param['modulation'            ] = 5                                             # modulation radius in ratio of wavelength over telescope diameter
@@ -312,17 +248,6 @@ def _initializeDummyParameterFile():
     param['lightThreshold'        ] = 0.1                                           # light threshold to select the valid pixels
     param['postProcessing'        ] = 'slopesMaps'                                  # post-processing of the PWFS signals 
     
-    
-    ###%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% LOOP PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-
-    param['nLoop'                 ] = 5000                                          # number of iteration                             
-    param['photonNoise'           ] = True                                          # Photon Noise enable  
-    param['readoutNoise'          ] = 0                                             # Readout Noise value
-    param['gainCL'                ] = 0.5                                           # integrator gain
-    param['nModes'                ] = 300                                           # number of KL modes controlled 
-    param['nPhotonPerSubaperture' ] = 1000                                          # number of photons per subaperture (update of ngs.magnitude)
-    param['getProjector'          ] = True                                          # modal projector too get modal coefficients of the turbulence and residual phase
-
     ###%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% OUTPUT DATA %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
     # name of the system
@@ -341,3 +266,28 @@ def _initializeDummyParameterFile():
     createFolder(param['pathOutput'])
     
     return param
+
+if __name__ == "__main__":
+
+    # Create argument parser
+    parser = argparse.ArgumentParser(description="Read a config file from the command line.")
+
+    # Add command-line argument for the config file
+    parser.add_argument("-c", "--config", required=True, help="Path to the config file")
+    parser.add_argument("-p", "--port", required=True, help="Port for communication")
+
+    # Parse command-line arguments
+    args = parser.parse_args()
+
+    conf = read_yaml_file(args.config)
+
+    pid = os.getpid()
+    os.sched_setaffinity(pid, {conf["wfs"]["affinity"],})
+    decrease_nice(pid)
+
+    sim = OOPAOInterface(conf=conf)
+    
+    l = Listener(sim, port= int(args.port))
+    while l.running:
+        l.listen()
+        time.sleep(1e-3)

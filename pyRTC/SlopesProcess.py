@@ -80,7 +80,7 @@ class SlopesProcess:
         self.conf = conf["slopes"]
 
         #Read wfs images's metadata and open a stream to the shared memory
-        self.wfsMeta = ImageSHM("wfs_meta", (4,), np.float64).read_noblock_safe()
+        self.wfsMeta = ImageSHM("wfs_meta", (ImageSHM.METADATA_SIZE,), np.float64).read_noblock_safe()
         self.imageDType = float_to_dtype(self.wfsMeta[3])
         self.wfsShm = ImageSHM("wfs", self.imageShape, self.imageDType)
 
@@ -168,8 +168,8 @@ class SlopesProcess:
         self.running = False
         return
     
-    def read(self,flagInd=0):
-        return self.signal.read(flagInd=flagInd)
+    def read(self):
+        return self.signal.read()
     
     def readImage(self):
         return self.wfsShm.read()
@@ -196,13 +196,13 @@ class SlopesProcess:
         return
 
 
-    def takeRefSlopes(self, flagInd=0):
+    def takeRefSlopes(self):
         #Reset reference slopes to zero
         self.setRefSlopes(np.zeros_like(self.refSlopes))
         refSlopes = np.zeros_like(self.refSlopes)
         #Average 1000 slopes measurements
         for i in range(1000):
-            refSlopes += self.read(flagInd=flagInd).astype(refSlopes.dtype)
+            refSlopes += self.read().astype(refSlopes.dtype)
         refSlopes /= 1000
         self.setRefSlopes(refSlopes)        
         return 
@@ -264,7 +264,7 @@ class SlopesProcess:
                                         self.pupilLocs[0][0]-self.pupilRadius+1:self.pupilLocs[0][0]+self.pupilRadius] > 0
             self.layout = np.concatenate([slopemask, slopemask], axis=1)
             self.signal = ImageSHM("signal", (self.signalSize,), self.signalDType)
-            self.signal2D = ImageSHM("slopemap", (self.layout.shape[0], self.layout.shape[1]), self.signalDType)
+            self.signal2D = ImageSHM("signal2D", (self.layout.shape[0], self.layout.shape[1]), self.signalDType)
             
         return
 

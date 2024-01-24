@@ -35,14 +35,14 @@ class Loop:
         self.name = "Loop"
         
         #Read wfs signal's metadata and open a stream to the shared memory
-        self.wfsMeta = ImageSHM("signal_meta", (4,), np.float64).read_noblock_safe()
+        self.wfsMeta = ImageSHM("signal_meta", (ImageSHM.METADATA_SIZE,), np.float64).read_noblock_safe()
         self.signalDType = float_to_dtype(self.wfsMeta[3])
         self.signalSize = int(self.wfsMeta[2]//self.signalDType.itemsize)
         self.wfsShm = ImageSHM("signal", (self.signalSize,), self.signalDType)
         self.nullSignal = np.zeros(self.signalSize, dtype=self.signalDType)
 
         #Read wfc metadata and open a stream to the shared memory
-        self.wfcMeta = ImageSHM("wfc_meta", (4,), np.float64).read_noblock_safe()
+        self.wfcMeta = ImageSHM("wfc_meta", (ImageSHM.METADATA_SIZE,), np.float64).read_noblock_safe()
         self.wfcDType = float_to_dtype(self.wfcMeta[3])
         self.numModes = int(self.wfcMeta[2]//self.wfcDType.itemsize)
         self.wfcShm = ImageSHM("wfc", (self.numModes,), self.wfcDType)
@@ -58,7 +58,7 @@ class Loop:
         self.hardwareDelay = self.confWFC["hardwareDelay"]
         self.pokeAmp = self.confLoop["pokeAmp"] 
         self.numItersIM = self.confLoop["numItersIM"]
-        self.delay = self.confLoop["delay"]
+        self.delay = setFromConfig(self.confLoop, "delay", 0)
         self.IMMethod = self.confLoop["method"]
         self.IMFile = setFromConfig(self.confLoop, "IMFile", "")
         
@@ -105,7 +105,7 @@ class Loop:
         self.perturbAmp = amp
         return
 
-    def pushPullIM(self, flagInd=0):
+    def pushPullIM(self):
          
         #For each mode
         for i in range(self.numModes):
@@ -118,11 +118,11 @@ class Loop:
             #Add some delay to ensure one-to-one
             time.sleep(self.hardwareDelay)
             #Burn the first new image since we were moving the DM during the exposure
-            self.wfsShm.read(flagInd=flagInd)
+            self.wfsShm.read()
             #Average out N new WFS frames
             tmp_plus = np.zeros_like(self.IM[:,i])
             for n in range(self.numItersIM):
-                tmp_plus += self.wfsShm.read(flagInd=flagInd)
+                tmp_plus += self.wfsShm.read()
             tmp_plus /= self.numItersIM
 
             #Minus amplitude
@@ -132,11 +132,11 @@ class Loop:
             #Add some delay to ensure one-to-one
             time.sleep(self.hardwareDelay)
             #Burn the first new image since we were moving the DM during the exposure
-            self.wfsShm.read(flagInd=flagInd)
+            self.wfsShm.read()
             #Average out N new WFS frames
             tmp_minus = np.zeros_like(self.IM[:,i])
             for n in range(self.numItersIM):
-                tmp_minus += self.wfsShm.read(flagInd=flagInd)
+                tmp_minus += self.wfsShm.read()
             tmp_minus /= self.numItersIM
 
             #Compute the normalized difference
@@ -179,7 +179,7 @@ class Loop:
             corrections[-1] = correction
 
             #Get current WFS response
-            slopes = self.wfsShm.read(flagInd=flagInd).reshape(slopes.shape)
+            slopes = self.wfsShm.read().reshape(slopes.shape)
         
             #Correlate Current response with old correction by delay time
             cross += slopes@corrections[0].T
@@ -237,9 +237,9 @@ class Loop:
         # Update Command Vector c_n = g*CM*s_{POL} + (1 − g) c_{n-1}  https://arxiv.org/pdf/1903.12124.pdf Eq 3
         return (1-self.gain)*correction - np.dot(self.gCM,s_pol)
 
-    def standardIntegratorPOL(self,flagInd=0):
+    def standardIntegratorPOL(self):
 
-        residual_slopes = self.wfsShm.read(flagInd=flagInd)
+        residual_slopes = self.wfsShm.read()
         currentCorrection = self.wfcShm.read()
         # print(f'slopes: {residual_slopes.shape}, IM: {self.IM.shape}, corr: {currentCorrection.shape}')
 
@@ -250,18 +250,10 @@ class Loop:
 
         return
 
-    # // Compute POL Slopes s_{POL} = s_{RES} + IM*c_{n-1}  https://arxiv.org/pdf/1903.12124.pdf Eq 1
-    # if(modal)
-    #   pol_slope_vector = _InteractionMatrix(Eigen::all,Eigen::seqN(0,num_used_modes))*(command_modal(Eigen::seqN(0,num_used_modes)) - dm_flat_modal(Eigen::seqN(0,num_used_modes))) + slope_vector.cast<double>();
-    # else
-    #   pol_slope_vector = _InteractionMatrix*(command_zonal - dm_flat_zonal) + slope_vector.cast<double>();
-
-    # pol_slopes_wo.send(&pol_slope_vector(0));
-
     
-    def standardIntegrator(self,flagInd=0):
+    def standardIntegrator(self):
 
-        slopes = self.wfsShm.read(flagInd=flagInd)
+        slopes = self.wfsShm.read()
         currentCorrection = self.wfcShm.read()
         newCorrection = updateCorrection(correction=currentCorrection, 
                                         gCM=self.gCM, 

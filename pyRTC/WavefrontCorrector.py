@@ -127,9 +127,9 @@ class WavefrontCorrector:
         self.setM2C(M2C)
         return 
     
-    def sendToHardware(self,flagInd=0):
+    def sendToHardware(self):
         #Read a new modal correction in M2C basis
-        self.currentCorrection = self.correctionVector.read(flagInd=flagInd)
+        self.currentCorrection = self.correctionVector.read()
         #If we added a frame delay
         if self.frameDelay > 0:
             #Roll back shape buffer by 1
@@ -150,9 +150,9 @@ class WavefrontCorrector:
     def read(self):
         return self.currentCorrection
 
-    def write(self, correction, flagInd=0):
+    def write(self, correction):
         self.currentCorrection = correction
-        self.correctionVector.write(self.currentCorrection, flagInd=flagInd)
+        self.correctionVector.write(self.currentCorrection, )
         return 
 
     def flatten(self):
@@ -173,7 +173,7 @@ class WavefrontCorrector:
 
     def plot(self, removeFlat=False):
         
-        curCorrection = self.read(flagInd=1)
+        curCorrection = self.read()
         if removeFlat:
             curCorrection -= self.flat
 

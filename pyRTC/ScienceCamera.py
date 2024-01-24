@@ -98,21 +98,21 @@ class ScienceCamera:
     def integrate(self):
         x = np.zeros(self.data.shape)
         for i in range(self.integrationLength):
-            x += self.read(flagInd=1).astype(x.dtype)
+            x += self.read().astype(x.dtype)
         self.psfLong.write(x/self.integrationLength)
         return 
 
-    def read(self,flagInd=0):
-        return self.psfShort.read(flagInd=flagInd)
+    def read(self):
+        return self.psfShort.read()
     
-    def readLong(self,flagInd=0):
-        return self.psfLong.read(flagInd=flagInd)
+    def readLong(self):
+        return self.psfLong.read()
     
-    def takeDark(self, flagInd=0):
+    def takeDark(self):
         self.setDark(np.zeros_like(self.dark))
         dark = np.zeros(self.imageShape, dtype=np.float64)
         for i in range(self.darkCount):
-            dark += self.read(flagInd=flagInd).astype(np.float64)
+            dark += self.read().astype(np.float64)
         dark /= self.darkCount
         self.setDark(dark)        
         return 
@@ -139,7 +139,7 @@ class ScienceCamera:
         return
     
     def plot(self):
-        arr = self.read(flagInd=1)
+        arr = self.read()
         plt.imshow(arr, cmap = 'inferno', origin='lower')
         plt.colorbar()
         plt.show()

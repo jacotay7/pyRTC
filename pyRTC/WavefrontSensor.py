@@ -93,14 +93,14 @@ class WavefrontSensor:
         self.image.write(self.data.astype(self.imageDType) - self.dark)
         return
 
-    def read(self,flagInd=0):
-        return self.image.read(flagInd=flagInd)
+    def read(self):
+        return self.image.read()
     
-    def takeDark(self, flagInd=0):
+    def takeDark(self):
         self.setDark(np.zeros_like(self.dark))
         dark = np.zeros(self.imageShape, dtype=np.float64)
         for i in range(self.darkCount):
-            dark += self.read(flagInd=flagInd).astype(np.float64)
+            dark += self.read().astype(np.float64)
         dark /= self.darkCount
         self.setDark(dark)        
         return 
@@ -127,7 +127,7 @@ class WavefrontSensor:
         return
     
     def plot(self):
-        arr = self.read(flagInd=1)
+        arr = self.read()
         plt.imshow(arr, cmap = 'inferno', origin='lower')
         plt.colorbar()
         plt.show()

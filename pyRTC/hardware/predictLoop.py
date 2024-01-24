@@ -142,13 +142,13 @@ class predictLoop(Loop):
     def setNormMethod(self, n):
         self.normMethod = n
     # @profile_function
-    def standardIntegratorPOL(self,flagInd=0):
+    def standardIntegratorPOL(self):
 
         self.burnCount += 1
         currentCorrection = torch.from_numpy(self.wfcShm.read()).to(self.device)
-        slopes = torch.from_numpy(self.wfsShm.read(flagInd=flagInd)).to(self.device)
+        slopes = torch.from_numpy(self.wfsShm.read()).to(self.device)
 
-        # next_pol = np.zeros((self.pol.shape[-2], self.pol.shape[-1])) #self.wfsShm.read(flagInd=flagInd)
+        # next_pol = np.zeros((self.pol.shape[-2], self.pol.shape[-1])) #self.wfsShm.read()
         
         next_pol = self.updateCorrectionPOL(currentCorrection, slopes)
             
@@ -217,7 +217,7 @@ class predictLoop(Loop):
 
         return
     
-    def standardIntegrator(self,flagInd=0):
+    def standardIntegrator(self):
         raise NotImplementedError('Model Requires POL Integration')
 
 
