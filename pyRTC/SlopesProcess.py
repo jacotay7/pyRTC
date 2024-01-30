@@ -149,7 +149,7 @@ class SlopesProcess:
             workThread.start()
             # Set CPU affinity for the thread
             # print(workThread.native_id, {self.affinity+i,})
-            if platform != 'darwin':
+            if platform not in ['darwin', 'win32']:
                 os.sched_setaffinity(workThread.native_id, {self.affinity+i,})
             self.workThreads.append(workThread)
 
