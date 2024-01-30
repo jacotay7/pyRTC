@@ -60,7 +60,10 @@ class ImageSHM:
             self.shm = shared_memory.SharedMemory(name=name)
             print(f"Opening Existing Shared Memory Object {self.name}")
 
-        # resource_tracker.unregister(self.shm._name, 'shared_memory')
+        #Doesn't work in windows
+        if sys.platform != 'win32':
+            resource_tracker.unregister(self.shm._name, 'shared_memory')
+            
         self.arr = np.ndarray(shape, dtype=dtype, buffer=self.shm.buf)
         #If we are not opening a metadata shm
         if self.areData:

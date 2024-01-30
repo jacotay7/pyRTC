@@ -4,7 +4,11 @@ import select
 import os 
 from subprocess import PIPE, Popen
 import numpy as np
+import psutil
 
+def set_affinity(affinity):
+    psutil.Process(os.getpid()).cpu_affinity([affinity,])
+    return
 
 def setFromConfig(conf, name, default):
     if name in conf.keys():

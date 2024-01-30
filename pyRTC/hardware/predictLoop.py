@@ -236,7 +236,7 @@ if __name__ == "__main__":
     conf = read_yaml_file(args.config)
 
     pid = os.getpid()
-    os.sched_setaffinity(pid, {conf["loop"]["affinity"],})
+    set_affinity((conf["loop"]["affinity"])%os.cpu_count()) 
     decrease_nice(pid)
 
     loop = predictLoop(conf=conf)

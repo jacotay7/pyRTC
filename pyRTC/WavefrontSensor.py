@@ -43,8 +43,7 @@ class WavefrontSensor:
             # Start the thread
             workThread.start()
             # Set CPU affinity for the thread
-            if platform not in ['darwin', 'win32']:
-                os.sched_setaffinity(workThread.native_id, {self.affinity+i,})  
+            set_affinity((self.affinity+i)%os.cpu_count())   
             self.workThreads.append(workThread)
 
         return

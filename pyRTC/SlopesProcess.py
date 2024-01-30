@@ -148,9 +148,7 @@ class SlopesProcess:
             # Start the thread
             workThread.start()
             # Set CPU affinity for the thread
-            # print(workThread.native_id, {self.affinity+i,})
-            if platform not in ['darwin', 'win32']:
-                os.sched_setaffinity(workThread.native_id, {self.affinity+i,})
+            set_affinity((self.affinity+i)%os.cpu_count())
             self.workThreads.append(workThread)
 
         return
@@ -327,7 +325,7 @@ if __name__ == "__main__":
     conf = read_yaml_file(args.config)
 
     pid = os.getpid()
-    os.sched_setaffinity(pid, {conf["slopes"]["affinity"],})
+    set_affinity(conf["slopes"]["affinity"]%os.cpu_count())
     decrease_nice(pid)
 
     slopes = SlopesProcess(conf=conf)
