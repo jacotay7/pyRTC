@@ -106,7 +106,7 @@ class Loop:
         return
 
     def pushPullIM(self):
-         
+        
         #For each mode
         for i in range(self.numModes):
             #Reset the correction
@@ -220,6 +220,9 @@ class Loop:
     
     def computeCM(self):
         self.numActiveModes = self.numModes-self.numDroppedModes
+        if self.numActiveModes < 0:
+            print("Invalid Number of Modes used in CM. Check numDroppedModes")
+            return
         self.CM[:self.numActiveModes,:] = np.linalg.pinv(self.IM[:,:self.numActiveModes], rcond=0)
         self.CM[self.numActiveModes:,:] = 0
         self.gCM = self.gain*self.CM

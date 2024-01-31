@@ -97,7 +97,10 @@ class WavefrontCorrector:
             self.M2C = M2C.astype(self.flat.dtype)
 
         self.C2M = np.linalg.pinv(self.M2C)
-        self.currentCorrection = np.zeros(self.M2C.shape[1], dtype=self.flat.dtype)
+        self.numModes = self.M2C.shape[1]
+        self.currentCorrection = np.zeros(self.numModes, dtype=self.flat.dtype)
+        del self.correctionVector
+        self.correctionVector = ImageSHM("wfc", (self.numModes,), np.float32)
         self.flatModal = self.C2M@self.flat
 
     def setDelay(self,delay):

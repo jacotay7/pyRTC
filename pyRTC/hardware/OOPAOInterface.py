@@ -30,7 +30,8 @@ class _OOPAOWFSensor(WavefrontSensor):
     def expose(self):
 
         #Advance the atmosphere
-        self.atm.update()
+        if self.tel.isPaired:
+            self.atm.update()
 
         #Propagate the ngs to the wfs and apply the DM state
         self.ngs*self.tel*self.dm*self.wfs
@@ -83,13 +84,23 @@ class _OOPAOScienceCamera(ScienceCamera):
         self.src = src
         self.atm = atm
         self.dm = dm
-
+        self.old_opd = tel.OPD.copy()
         super().__init__(scienceConf)
         
     def expose(self):
 
-        #Add current dm state to the telescope
-        self.src*self.tel*self.dm
+        #We need to manually add the current atmosphere OPD to the telescope
+        new_atm = not (self.atm.OPD == self.old_opd).all()
+        if self.tel.isPaired and new_atm :
+            self.old_opd = self.atm.OPD.copy()
+        elif not self.tel.isPaired: 
+            self.old_opd = np.zeros_like(self.old_opd)
+        
+        if self.dm.OPD.shape == self.old_opd.shape:
+            self.tel.OPD = self.old_opd + self.dm.OPD
+        
+        # #Add current dm state to the telescope
+        self.src*self.tel#*self.dm
         #Compute PSF
         self.tel.computePSF(zeroPaddingFactor=5, N_crop=136)
         #Check that we still have the right source coupled
@@ -136,7 +147,8 @@ class OOPAOInterface():
                 samplingTime        = param['samplingTime'],
                 centralObstruction  = param['centralObstruction'])
         
-        self.src = Source(optBand   = 'K', magnitude = param['magnitude'])
+        self.src = Source(optBand   = param["sourceBand"], 
+                          magnitude = param['magnitude'])
         self.src*self.tel_psf
 
         #Create a guide star
@@ -201,8 +213,8 @@ def _initializeDummyParameterFile():
     
     ###%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% ATMOSPHERE PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     
-    param['r0'                   ] = 0.3                                            # value of r0 in the visibile in [m]
-    param['L0'                   ] = 30                                             # value of L0 in the visibile in [m]
+    param['r0'                   ] = 0.3                                            # value of r0 in the visible in [m]
+    param['L0'                   ] = 30                                             # value of L0 in the visible in [m]
     param['fractionnalR0'        ] = [0.45,0.1,0.1,0.25,0.1]                        # Cn2 profile
     param['windSpeed'            ] = [10,12,11,15,20]                               # wind speed of the different layers in [m.s-1]
     param['windDirection'        ] = [0,72,144,216,288]                             # wind direction of the different layers in [degrees]
@@ -224,8 +236,8 @@ def _initializeDummyParameterFile():
     
     param['magnitude'            ] = 8                                              # magnitude of the guide star
     param['opticalBand'          ] = 'I'                                            # optical band of the guide star
-    
-    
+    param['sourceBand'          ] = 'K'
+
     ###%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% DM PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     param['nActuator'            ] = param['nSubaperture']+1                        # number of actuators 
     param['mechanicalCoupling'   ] = 0.45

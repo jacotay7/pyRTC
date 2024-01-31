@@ -1,6 +1,6 @@
 loop:
   gain: 0.1
-  numDroppedModes: 30
+  numDroppedModes: 0
   pokeAmp: 0.000001 #1000nm
   numItersIM: 1
   affinity: 2
