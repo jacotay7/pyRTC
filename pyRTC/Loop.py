@@ -76,9 +76,7 @@ class Loop:
             # Start the thread
             workThread.start()
             # Set CPU affinity for the thread
-            # print(workThread.native_id, {self.affinity+i,})
-            if platform != 'darwin':
-                os.sched_setaffinity(workThread.native_id, {(self.affinity+i)%os.cpu_count(),})  
+            set_affinity((self.affinity+i)%os.cpu_count())  
             self.workThreads.append(workThread)
 
         return
@@ -290,7 +288,7 @@ if __name__ == "__main__":
     conf = read_yaml_file(args.config)
 
     pid = os.getpid()
-    os.sched_setaffinity(pid, {conf["loop"]["affinity"],})
+    set_affinity((conf["loop"]["affinity"])%os.cpu_count()) 
     decrease_nice(pid)
 
     loop = Loop(conf=conf)

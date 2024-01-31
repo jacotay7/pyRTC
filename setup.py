@@ -15,7 +15,8 @@ setup(
                       'numba',
                       'scipy',
                       'pyqt5',
-                      'argparse'             
+                      'argparse',
+                      'psutil'             
                       ],
 
     classifiers=[
