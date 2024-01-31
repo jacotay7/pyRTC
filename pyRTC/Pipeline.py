@@ -74,7 +74,8 @@ class ImageSHM:
             except:
                 self.metadataShm = shared_memory.SharedMemory(name= name+"_meta")
                 print(f"Opening Existing Shared Memory Object {self.name}"+"_meta")
-            # resource_tracker.unregister(self.metadataShm._name, 'shared_memory')
+            if sys.platform != 'win32':
+                resource_tracker.unregister(self.metadataShm._name, 'shared_memory')
             self.metadata = np.ndarray(self.metadata.shape, dtype=self.metadata.dtype, buffer=self.metadataShm.buf)
             self.updateMetadata()
 
