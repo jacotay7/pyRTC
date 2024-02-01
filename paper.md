@@ -50,30 +50,31 @@ While extreme AO applications may still require custom C++ solutions, pyRTC is e
 - Test systems for hardware/software at on-sky speeds.
 - Any neural network/AI-based controller built in Python.
 
+## Features and Implementation
+
+pyRTC is structured in order to minimize the amount of additional coding required to integrate pyRTC into a new hardware environment. The way pyRTC accomplishes this is by defining abstract superclasses for AO components, namely:
+
+- Loop.py: Responsible for the AO integrator logic, relies on data products from the slopes process class.  
+- ScienceCamera.py,  Responsible for the PSF logic, connects to the PSF camera and produces data products for further processing 
+- SlopesProcess.py,  Responsible for the slopes computations, relies on data products from the WavefrontSensor class. 
+- WavefrontCorrector.py,  Responsible for the controlling the Deformable Mirror, receives commands from Loop class or elsewhere.
+- WavefrontSensor.py,  Responsible for the WFS logic, connects to the WFS camera and produces data products for the SlopesProcess class. 
+
+These superclasses are then overridden by the user defined `hardware` class which interfaces with the hardware's API. We have provided examples in the `pyRTC/hardware` folder. Ideally, users will contribute their hardware examples and the repository will serve as a library of examples for new users to follow. For some of the components (e.g., SlopesProcess), users can choose to override the classes if they require specific computations or they can use the classes default functionality. We intend to expand the scope of the default functionality as new use cases emerge. 
+
+Once the hardware classes have been established, a communication interface implemented in `Pipeline.py` allows the user to initialize their AO loop as either a set of independent processes which communicate via TCP (for performance, to get around the GIL), or within a single program (for simplicity). In either case, pyRTC has been written to be entirely initialized using a config YAML file. This includes the functions which will be included in the main RTC pipeline. Therefore, once the core hardware compatibility has been written, all of the real-time manipulation of the system is to be done via iPython interface, or via config file changes.
+
+### Shared Memory and Live Viewing 
+
+pyRTC is built using shared memory objects provided by the `multiprocessing` python package. Therefore, all data products shared between pyRTC components are available for soft real-time viewing and analysis. pyRTC comes with a real-time viewing script called `pyRTCView.py` which utilizes the pyQT5 package to produce a live feed of a specific shared memory object. For example, to view the images produced by the WavefrontSensor class run:
+
+```
+python pyRTCView.py wfs
+```
+
+We hope to expand this viewer into an example GUI in the future. 
+
 ---
-
-<!-- # Citations -->
-
-<!-- Citations to entries in paper.bib should be in
-[rMarkdown](http://rmarkdown.rstudio.com/authoring_bibliographies_and_citations.html)
-format.
-
-If you want to cite a software repository URL (e.g. something on GitHub without a preferred
-citation) then you can do it with the example BibTeX entry below for @fidgit.
-
-For a quick reference, the following citation commands can be used:
-- `@author:2001`  ->  "Author et al. (2001)"
-- `[@author:2001]` -> "(Author et al., 2001)"
-- `[@author1:2001; @author2:2001]` -> "(Author1 et al., 2001; Author2 et al., 2002)"
-
-# Figures
-
-Figures can be included like this:
-![Caption for example figure.\label{fig:example}](figure.png)
-and referenced from text using \autoref{fig:example}.
-
-Figure sizes can be customized by adding an optional second parameter:
-![Caption for example figure.](figure.png){ width=20% } -->
 
 # Acknowledgements
 
@@ -81,3 +82,4 @@ Figure sizes can be customized by adding an optional second parameter:
 Oh, and support from Kathryn Johnston during the genesis of this project. -->
 
 # References
+
