@@ -46,19 +46,12 @@ Since each AO system utilizes a unique hardware configuration, every new AO syst
 
 In order to test pyRTC without access to the specific AO hardware required, we have provided some examples of how to run pyRTC with a simulated AO system.
 
-For our examples we will be using the open-source AO simlation software OOPAO developped by Héritier, C. et al. (https://github.com/cheritier/OOPAO/tree/master). Please follow their installation instructions before continuing.
-
-```
-add OOPAO instructions 
-```
+For our examples we will be using the open-source AO simulation software OOPAO developed by Héritier, C. et al. (https://github.com/cheritier/OOPAO/tree/master). Please refer to their repository for installation instructions. 
 
 ## Examples
 
-For now, we have provided two examples of how to set up a single conjugate AO (SCAO) system, one implementing a Shack-Hartmann wavefront sensor, and the other implementing a Pyramid Wavefront Sensor. These examples assume that you have correctly iniatlized the corresponding simulated hardware.
+We have provided an example of how to set up a single conjugate AO (SCAO) system using a Pyramid Wavefront Sensor. This example uses the OOPAO simulation software to simulate the hardware components of an AO system so that pyRTC can be tested without the need of real AO hardware. All examples can be found under the `examples` folder.
 
-```
-add examples info 
-```
 
 # Contributing
 
