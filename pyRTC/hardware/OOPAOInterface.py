@@ -103,10 +103,10 @@ class _OOPAOScienceCamera(ScienceCamera):
         # #Add current dm state to the telescope
         self.src*self.tel#*self.dm
         #Compute PSF
-        self.tel.computePSF(zeroPaddingFactor=5, N_crop=136)
+        self.tel.computePSF(zeroPaddingFactor=5)
         #Check that we still have the right source coupled
         self.data = (255.*self.tel.PSF_norma_zoom).astype(np.uint16)
-        
+
         super().expose()
 
         return

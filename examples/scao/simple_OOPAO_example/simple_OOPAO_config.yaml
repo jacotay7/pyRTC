@@ -1,0 +1,56 @@
+loop:
+  gain: 0.1
+  numDroppedModes: 0
+  pokeAmp: 0.000001 #1000nm
+  numItersIM: 10
+  affinity: 2
+  method: push-pull
+  functions:
+  - standardIntegrator
+
+wfs:
+  name: OOPAOWFS
+  width: 32
+  height: 32
+  darkCount: 10
+  affinity: 3
+  functions:
+  - expose
+
+slopes:
+  type: SHWFS
+  signalType: slopes
+  affinity: 4
+  refSlopesFile: ""
+  validSubApsFile: ""
+  subApSpacing: 8
+  subApOffsetX: 0
+  subApOffsetY: 0
+  functions:
+  - computeSignal
+
+wfc:
+  name: "OOPAOWFC"
+  numActuators: 21
+  numModes: 21
+  flatFile: ""
+  saveFile: "flat.npy"
+  m2cFile:  ""
+  affinity: 3
+  commandCap: 0.8
+  hardwareDelay: 0.1
+  frameDelay: 0
+  functions:
+  - sendToHardware
+
+psf:
+  name: "OOPAOPSF"
+  index: 0
+  width: 54
+  height: 54
+  darkCount: 1000
+  integration: 100
+  affinity: 3
+  functions:
+  - expose
+  # - integrate
