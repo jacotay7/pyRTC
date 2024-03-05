@@ -9,6 +9,7 @@ from OOPAO.Atmosphere import Atmosphere
 from OOPAO.DeformableMirror import DeformableMirror
 from OOPAO.MisRegistration import MisRegistration
 from OOPAO.Pyramid import Pyramid
+from OOPAO.ShackHartmann import ShackHartmann
 from OOPAO.Source import Source
 from OOPAO.Telescope import Telescope
 from OOPAO.calibration.ao_calibration import ao_calibration
@@ -167,14 +168,25 @@ class OOPAOInterface():
                                         nSubap         = param['nSubaperture'], 
                                         mechCoupling   = param['mechanicalCoupling'])
 
-        # create the Pyramid WFS Object
-        self.wfs = Pyramid(nSubap         = param['nSubaperture'],
-                    telescope             = self.tel,
-                    modulation            = param['modulation'],
-                    lightRatio            = param['lightThreshold'],
-                    n_pix_separation      = param['n_pix_separation'],
-                    psfCentering          = param['psfCentering'],
-                    postProcessing        = param['postProcessing'])
+        if conf["slopes"]["type"].lower() == "pywfs":
+
+            # create the Pyramid WFS Object
+            self.wfs = Pyramid(nSubap         = param['nSubaperture'],
+                        telescope             = self.tel,
+                        modulation            = param['modulation'],
+                        lightRatio            = param['lightThreshold'],
+                        n_pix_separation      = param['n_pix_separation'],
+                        psfCentering          = param['psfCentering'],
+                        postProcessing        = param['postProcessing'])
+            
+        else:
+            self.wfs = ShackHartmann(nSubap          = param['nSubaperture'],        # number of subaperture
+                        telescope             = self.tel,                  # telescope object
+                        lightRatio            = 0.5,                  # flux threshold to select valid sub-subaperture
+                        binning_factor        = 1,                    # binning factor
+                        is_geometric          = False,                # Flag to use a geometric shack-hartmann (direct gradient measurement)
+                        shannon_sampling      = True)                 # Flag to use a shannon sampling for the shack-hartmann spots
+
         
         #Initialize the atmosphere
         self.atm.initializeAtmosphere(self.tel)
