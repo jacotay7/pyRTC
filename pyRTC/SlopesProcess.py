@@ -59,7 +59,7 @@ def computeSlopesSHWFS(image=np.array([],dtype=np.float32),
             start_i = int(np.round(spacing*i,0)) + offsetY
             start_j = int(np.round(spacing*j,0)) + offsetX
             #Ignore if we go off the edge of the image
-            if start_j+intN < image.shape[1] and start_i+intN < image.shape[0]:
+            if start_j+intN <= image.shape[1] and start_i+intN <= image.shape[0]:
                 sub_im = image[start_i:start_i+intN,
                             start_j:start_j+intN]
                 norm = np.sum(sub_im)
