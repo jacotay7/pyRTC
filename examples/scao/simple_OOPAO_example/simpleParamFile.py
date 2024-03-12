@@ -48,7 +48,8 @@ def initializeParameterFile():
     param['tangentialScaling'    ] = 0                                              # tangential scaling in percentage of diameter
     
     ###%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% WFS PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-    
+    param['modulation'            ] = 5                                             # modulation radius in ratio of wavelength over telescope diameter
+
     param['n_pix_separation'      ] = 4                                             # separation ratio between the PWFS pupils
     param['psfCentering'          ] = False                                         # centering of the FFT and of the PWFS mask on the 4 central pixels
     param['lightThreshold'        ] = 0.15                                           # light threshold to select the valid pixels
