@@ -120,6 +120,8 @@ class OOPAOInterface():
 
     def __init__(self, conf, param=None) -> None:
 
+        self.name = "OOPAO-IO"
+
         if param is None:
             self.param = _initializeDummyParameterFile()
         else:
@@ -204,6 +206,8 @@ class OOPAOInterface():
     def get_hardware(self):
         return self.wfsInterface, self.dmInterface, self.psfInterface
 
+    def __getattr__(self, name):
+        return None
 
 def _initializeDummyParameterFile():
     from OOPAO.tools.tools import createFolder
@@ -297,8 +301,9 @@ if __name__ == "__main__":
     set_affinity((conf["wfs"]["affinity"])%os.cpu_count()) 
     decrease_nice(pid)
 
-    sim = OOPAOInterface(conf=conf)
-    
+    sim = OOPAOInterface(conf=conf, param=None)
+    wfs, dm, psf = sim.get_hardware()
+
     l = Listener(sim, port= int(args.port))
     while l.running:
         l.listen()

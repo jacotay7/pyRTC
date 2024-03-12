@@ -7,7 +7,8 @@ import numpy as np
 import psutil
 
 def set_affinity(affinity):
-    psutil.Process(os.getpid()).cpu_affinity([affinity,])
+    if sys.platform != 'darwin':
+        psutil.Process(os.getpid()).cpu_affinity([affinity,])
     return
 
 def setFromConfig(conf, name, default):
@@ -56,8 +57,9 @@ def float_to_dtype(dtype_float):
     return np.dtype(dtypes[int(dtype_float)])
 
 def decrease_nice(pid):
-    cmd = ["sudo","renice","-n","-19","-p",str(pid)]
-    Popen(cmd,stdin=open(os.devnull, 'w'),stdout=open(os.devnull, 'w'))
+    if sys.platform != 'darwin':
+        cmd = ["sudo","renice","-n","-19","-p",str(pid)]
+        Popen(cmd,stdin=open(os.devnull, 'w'),stdout=open(os.devnull, 'w'))
     return
 
 def read_yaml_file(file_path):

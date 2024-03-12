@@ -3,15 +3,29 @@
 #Import pyRTC classes
 from pyRTC.Pipeline import *
 from pyRTC.utils import *
+from pyRTC.hardware.OOPAOInterface import OOPAOInterface
 
 RECALIBRATE = False
-hardware_folder = "../../pyRTC/hardware/"
-# %% IMPORTS
+hardware_folder = "../../pyRTC/"
+# %% Load Config
 config = './pywfs_OOPAO_config.yaml'
+
+# Load the configuration file
+def read_yaml_file(file_path):
+    with open(file_path, 'r') as file:
+        conf = yaml.safe_load(file)
+    return conf
+
+#Now we can read our YAML config file 
+conf = read_yaml_file(config)
+
 N = np.random.randint(3000,6000)
 # %% Launch sim, this is WFS, DM and PSF Camera
-sim = hardwareLauncher(hardware_folder+"OOPAOInterface.py", config, N)
-sim.launch()
+# sim = hardwareLauncher(hardware_folder+"OOPAOInterface.py", config, N)
+# sim.launch()
+
+sim = OOPAOInterface(conf=conf, param=None)
+wfs, dm, psf = sim.get_hardware()
 
 # %% Launch slopes
 slopes = hardwareLauncher(hardware_folder+"SlopesProcess.py", config, N+1)
