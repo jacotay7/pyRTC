@@ -91,7 +91,7 @@ class WavefrontCorrector:
     def setM2C(self, M2C):
 
         if not isinstance(M2C, np.ndarray):
-            self.M2C = np.eye(self.numActuators)
+            self.M2C = np.eye(self.numActuators)[:,:self.numModes]
         else:
             self.M2C = M2C.astype(self.flat.dtype)
 

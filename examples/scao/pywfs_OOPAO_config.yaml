@@ -35,7 +35,7 @@ slopes:
 wfc:
   name: "OOPAOWFC"
   numActuators: 356
-  numModes: 356
+  numModes: 100
   flatFile: ""
   saveFile: "flat.npy"
   m2cFile:  ""
