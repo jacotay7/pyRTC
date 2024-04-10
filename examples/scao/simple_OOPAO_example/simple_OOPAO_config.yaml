@@ -5,6 +5,7 @@ loop:
   numItersIM: 10
   affinity: 2
   method: push-pull
+  IMFile: "simpleIM.npy"
   functions:
   - standardIntegrator
 
@@ -46,8 +47,8 @@ wfc:
 psf:
   name: "OOPAOPSF"
   index: 0
-  width: 54
-  height: 54
+  width: 160
+  height: 160
   darkCount: 1000
   integration: 100
   affinity: 3

@@ -49,8 +49,8 @@ wfc:
 psf:
   name: "OOPAOPSF"
   index: 0
-  width: 128
-  height: 128
+  width: 400
+  height: 400
   darkCount: 1000
   integration: 100
   affinity: 3

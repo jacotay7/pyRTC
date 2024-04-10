@@ -88,6 +88,30 @@ class _OOPAOScienceCamera(ScienceCamera):
         self.old_opd = tel.OPD.copy()
         super().__init__(scienceConf)
         
+    # def expose(self):
+
+    #     #We need to manually add the current atmosphere OPD to the telescope
+    #     new_atm = not (self.atm.OPD == self.old_opd).all()
+    #     if self.tel.isPaired and new_atm :
+    #         self.old_opd = self.atm.OPD.copy()
+    #     elif not self.tel.isPaired: 
+    #         self.old_opd = np.zeros_like(self.old_opd)
+        
+    #     if self.dm.OPD.shape == self.old_opd.shape:
+    #         self.tel.OPD = self.old_opd + self.dm.OPD
+        
+    #     # #Add current dm state to the telescope
+    #     self.src*self.tel#*self.dm
+    #     #Compute PSF
+    #     self.tel.computePSF(zeroPaddingFactor=5)
+    #     #Check that we still have the right source coupled
+    #     self.data = (255.*self.tel.PSF_norma_zoom).astype(np.uint16)
+
+    #     super().expose()
+
+    #     return
+    
+
     def expose(self):
 
         #We need to manually add the current atmosphere OPD to the telescope
@@ -103,10 +127,10 @@ class _OOPAOScienceCamera(ScienceCamera):
         # #Add current dm state to the telescope
         self.src*self.tel#*self.dm
         #Compute PSF
-        self.tel.computePSF(zeroPaddingFactor=5)
+        self.tel.computePSF(zeroPaddingFactor=5, N_crop=None)
         #Check that we still have the right source coupled
-        self.data = (255.*self.tel.PSF_norma_zoom).astype(np.uint16)
-
+        self.data = (255.*self.tel.PSF_norma).astype(np.uint16)
+        
         super().expose()
 
         return
@@ -143,6 +167,8 @@ class OOPAOInterface():
         
         #A second copy of the telescope so that the PSF camera is fighting with the
         #Wavefront Sensor
+
+        # print('RESOLUTION', param['resolution'])
         self.tel_psf = Telescope(resolution     = param['resolution'],
                 diameter            = param['diameter'],
                 samplingTime        = param['samplingTime'],

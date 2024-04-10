@@ -41,6 +41,15 @@ class Loop:
         self.wfsShm = ImageSHM("signal", (self.signalSize,), self.signalDType)
         self.nullSignal = np.zeros(self.signalSize, dtype=self.signalDType)
 
+
+        #Read wfs SLOPES metadata and open a stream to the shared memory
+        self.slopesMeta = ImageSHM("signal2D_meta", (ImageSHM.METADATA_SIZE,), np.float64).read_noblock_safe()
+        self.slopesDType = float_to_dtype(self.slopesMeta[3])
+        self.slopesSize = int(self.slopesMeta[2]//self.slopesDType.itemsize)
+        self.slope_width, self.slope_height = int(self.slopesMeta[4]),  int(self.slopesMeta[5])
+        self.slopesShm = ImageSHM("signal2D", (self.slope_width, self.slope_height), self.slopesDType)
+        
+
         #Read wfc metadata and open a stream to the shared memory
         self.wfcMeta = ImageSHM("wfc_meta", (ImageSHM.METADATA_SIZE,), np.float64).read_noblock_safe()
         self.wfcDType = float_to_dtype(self.wfcMeta[3])
