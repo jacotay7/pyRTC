@@ -1,16 +1,27 @@
 """
 Loop Superclass
 """
+
+import os 
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["OPENBLAS_NUM_THREADS"] = "1" 
+os.environ["MKL_NUM_THREADS"] = "1" 
+os.environ["VECLIB_MAXIMUM_THREADS"] = "1" 
+os.environ["NUMEXPR_NUM_THREADS"] = "1" 
+os.environ['NUMBA_NUM_THREADS'] = '1'
+
 from pyRTC.Pipeline import *
 from pyRTC.utils import *
 import threading
 import argparse
-import os 
+
 import numpy as np
 import matplotlib.pyplot as plt
 import time
 from numba import jit
 from sys import platform
+
+
 
 @jit(nopython=True)
 def updateCorrection(correction=np.array([], dtype=np.float32), 
@@ -63,6 +74,7 @@ class Loop:
         self.IM = np.zeros((self.signalSize, self.numModes),dtype=self.signalDType)
         self.CM = np.zeros((self.numModes, self.signalSize),dtype=self.signalDType)
         self.gain = self.confLoop["gain"]
+        self.leakyGain = setFromConfig(self.confLoop, "leakyGain", 0)
         self.perturbAmp = 0
         self.hardwareDelay = self.confWFC["hardwareDelay"]
         self.pokeAmp = self.confLoop["pokeAmp"] 
@@ -87,6 +99,7 @@ class Loop:
             # Set CPU affinity for the thread
             set_affinity((self.affinity+i)%os.cpu_count())  
             self.workThreads.append(workThread)
+            print(f"Registering Work Function {functionName} on CPU {(self.affinity+i)%os.cpu_count()}")
 
         return
 
@@ -265,6 +278,17 @@ class Loop:
 
         slopes = self.wfsShm.read()
         currentCorrection = self.wfcShm.read()
+        newCorrection = updateCorrection(correction=currentCorrection, 
+                                        gCM=self.gCM, 
+                                        slopes=slopes)
+        newCorrection[self.numActiveModes:] = 0
+        self.wfcShm.write(newCorrection)
+        return
+    
+    def leakyIntegrator(self):
+
+        slopes = self.wfsShm.read()
+        currentCorrection = (1-self.leakyGain)*self.wfcShm.read()
         newCorrection = updateCorrection(correction=currentCorrection, 
                                         gCM=self.gCM, 
                                         slopes=slopes)

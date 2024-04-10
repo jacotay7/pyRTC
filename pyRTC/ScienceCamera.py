@@ -11,6 +11,7 @@ import time
 from numba import jit
 from sys import platform
 
+
 class ScienceCamera:
 
     def __init__(self, conf) -> None:
@@ -27,8 +28,12 @@ class ScienceCamera:
         self.dark = np.zeros(self.imageShape, dtype=self.imageDType)
         self.darkCount = conf["darkCount"]
         self.darkFile = setFromConfig(conf, "darkFile", "")
+        self.model = np.zeros(self.imageShape, dtype=self.psfLongDtype)
+        self.modelFile = setFromConfig(conf, "modelFile", "")
+        self.strehl_ratio = 0
 
         self.loadDark()
+        self.loadModelPSF()
 
         self.integrationLength = conf["integration"]
         self.affinity = conf["affinity"]
@@ -136,6 +141,46 @@ class ScienceCamera:
             self.dark = np.load(filename)
         return
     
+    def takeModelPSF(self):
+        self.model = self.readLong()
+        return
+
+    def setModelPSF(self, model):
+        self.model = model.astype(self.psfLongDtype)
+        return
+    
+    def saveModelPSF(self,filename=''):
+        if filename == '':
+            filename = self.modelFile
+        np.save(filename, self.model)
+        return
+    
+    def loadModelPSF(self,filename=''):
+        #If no file given, first try dark file
+        if filename == '':
+            filename = self.modelFile
+        #If we are still without a file, set zeros
+        if filename == '':
+            self.model = np.zeros_like(self.model)
+        else: #If we have a filename
+            self.model = np.load(filename)
+        return
+
+    def computeStrehl(self, median_filter_size = 1, gaussian_sigma = 0):
+
+
+        model = clean_image_for_strehl(self.model, 
+                                       median_filter_size = median_filter_size, 
+                                       gaussian_sigma = gaussian_sigma)
+
+        current = clean_image_for_strehl(self.readLong(), 
+                                         median_filter_size = median_filter_size, 
+                                         gaussian_sigma = gaussian_sigma)
+
+        self.strehl_ratio = np.max(current) / np.max(model)
+
+        return self.strehl_ratio
+
     def plot(self):
         arr = self.read()
         plt.imshow(arr, cmap = 'inferno', origin='lower')
