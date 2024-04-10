@@ -5,6 +5,55 @@ import os
 from subprocess import PIPE, Popen
 import numpy as np
 import psutil
+from scipy.ndimage import median_filter, gaussian_filter
+
+def compute_fwhm_dark_subtracted_image(image):
+    # Filter to keep only negative values
+    negative_pixels = image[image < 1]
+    
+    # Compute the histogram of negative values
+    # Adjust bins and range as necessary for your specific image
+    hist, bins = np.histogram(negative_pixels, bins=np.arange(np.min(negative_pixels), 1)+0.5)
+    # Since the distribution is symmetric, we can mirror the histogram to get the full distribution
+    hist_full = np.concatenate((hist[::-1], hist))
+    
+    # Compute the bin centers from the bin edges
+    bin_centers = (bins[:-1] + bins[1:]) / 2
+    bin_centers_full = np.concatenate((-bin_centers[::-1], bin_centers))
+
+    # Find the maximum value (mode of the distribution)
+    peak_value = np.max(hist_full)
+    half_max = peak_value / 2
+    
+    # Find the points where the histogram crosses the half maximum
+    cross_points = np.where(np.diff((hist_full > half_max).astype(int)))[0]
+    
+    # Assuming the distribution is sufficiently smooth and has a single peak,
+    # the FWHM is the distance between the first and last crossing points
+    fwhm_value = np.abs(bin_centers_full[cross_points[-1]] - bin_centers_full[cross_points[0]])
+    
+    return fwhm_value
+
+def clean_image_for_strehl(img, median_filter_size = 3, gaussian_sigma = 1):
+
+    corrected_img = median_filter(img, size=median_filter_size)  # Hot pixel correction
+    corrected_img = gaussian_filter(corrected_img, sigma=gaussian_sigma)  # Smoothing
+    
+    return corrected_img
+
+def gaussian_2d_grid(i, j, sigma, grid_size):
+    grid = np.zeros((grid_size, grid_size))
+    for x in range(grid_size):
+        for y in range(grid_size):
+            if x == i and y == j:
+                continue  # Skip the center point as its value should be 0
+            else:
+                # Compute the Gaussian value
+                grid[x, y] = np.exp(-((x - i)**2 + (y - j)**2) / (2 * sigma**2))
+    
+    grid /= np.sum(grid)
+
+    return grid
 
 def set_affinity(affinity):
     # Unsupported by MacOS
