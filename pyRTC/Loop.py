@@ -57,8 +57,8 @@ class Loop:
         self.slopesMeta = ImageSHM("signal2D_meta", (ImageSHM.METADATA_SIZE,), np.float64).read_noblock_safe()
         self.slopesDType = float_to_dtype(self.slopesMeta[3])
         self.slopesSize = int(self.slopesMeta[2]//self.slopesDType.itemsize)
-        self.slope_width, self.slope_height = int(self.slopesMeta[4]),  int(self.slopesMeta[5])
-        self.slopesShm = ImageSHM("signal2D", (self.slope_width, self.slope_height), self.slopesDType)
+        self.slopes_width, self.slopes_height = int(self.slopesMeta[4]),  int(self.slopesMeta[5])
+        self.slopesShm = ImageSHM("signal2D", (self.slopes_width, self.slopes_height), self.slopesDType)
         
 
         #Read wfc metadata and open a stream to the shared memory
@@ -66,6 +66,16 @@ class Loop:
         self.wfcDType = float_to_dtype(self.wfcMeta[3])
         self.numModes = int(self.wfcMeta[2]//self.wfcDType.itemsize)
         self.wfcShm = ImageSHM("wfc", (self.numModes,), self.wfcDType)
+
+
+        #Read the wfc2D metadata and open a stream to the shared memory
+        self.wfc2DMeta = ImageSHM("wfc2D_meta", (ImageSHM.METADATA_SIZE,), np.float64).read_noblock_safe()
+        self.wfc2DDType = float_to_dtype(self.wfc2DMeta[3])
+        self.wfc2DSize = int(self.wfc2DMeta[2]//self.wfc2DDType.itemsize)
+        self.wfc2D_width, self.wfc2D_height = int(self.wfc2DMeta[4]),  int(self.wfc2DMeta[5])
+        self.wfc2DShm = ImageSHM("wfc2D", (self.wfc2D_width, self.wfc2D_height), self.wfc2DDType)
+
+
 
         self.numDroppedModes = self.confLoop["numDroppedModes"]
         self.numActiveModes = self.numModes - self.numDroppedModes
