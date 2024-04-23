@@ -16,7 +16,8 @@ setup(
                       'scipy',
                       'pyqt5',
                       'argparse',
-                      'psutil'             
+                      'psutil',
+                      'astropy'             
                       ],
 
     classifiers=[

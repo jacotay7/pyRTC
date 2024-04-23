@@ -6,7 +6,7 @@ from pyRTC.utils import *
 RECALIBRATE = False
 
 # %% IMPORTS
-config = '/home/whetstone/pyRTC/SHARP_LAB/config.yaml'
+config = '/home/whetstone/pyRTC/REVOLT/config.yaml'
 N = np.random.randint(3000,6000)
 # %% Launch DM
 wfc = hardwareLauncher("./hardware/ALPAODM.py", config, N)

@@ -1,0 +1,116 @@
+loop:
+  gain: 0.1
+  numDroppedModes: 0
+  pokeAmp: 0.02
+  numItersIM: 50
+  affinity: 2
+  delay: 2
+  method: push-pull
+  IMFile: "/home/revoltuser/pyRTC/REVOLT/IM.npy"
+  functions:
+   - standardIntegrator
+
+
+wfs:
+  name: CBlue
+  index: 0
+  binning: 2
+  exposure: 2000 # microseconds
+  gain: 0
+  bitDepth: 10
+  left: 0
+  top: 0
+  width: 352
+  height: 352
+  darkCount: 1000
+  darkFile: "/home/revoltuser/pyRTC/REVOLT/dark.npy"
+  affinity: 3
+  functions:
+  - expose
+
+slopes:
+  type: SHWFS
+  signalType: slopes
+  refSlopesFile: "/home/revoltuser/pyRTC/REVOLT/refSlopes.npy"
+  validSubApsFile: "/home/revoltuser/pyRTC/REVOLT/validSubAps.npy"
+  subApSpacing: 22
+  subApOffsetX: 0
+  subApOffsetY: 0
+  affinity: 4
+  contrast: 0
+  functions:
+  - computeSignal
+
+# wfs:
+#   name: XIMEA
+#   serial: "13056250"
+#   type: PYWFS
+#   signalType: slopes
+#   pupilsRadius: 32
+#   binning: 2
+#   exposure: 3333
+#   gain: 0
+#   bitDepth: 10
+#   left: 272
+#   top: 50
+#   width: 192
+#   height: 192
+#   darkCount: 1000
+#   darkFile: "/home/whetstone/pyRTC/SHARP_LAB/dark.npy"
+#   affinity: 12
+#   flatNorm: True
+#   pupils: 
+#   - 44,57
+#   - 45,138
+#   - 150,75
+#   - 130,138
+#   functions:
+#   - expose
+#   - computeSignal
+
+wfc:
+  name: "ALPAO"
+  serial: "alpaoHSDM277-15-005"
+  numActuators: 277
+  numModes: 100
+  flatFile: "/home/revoltuser/pyRTC/REVOLT/eyeDoctor_07March2024.fits"
+  saveFile: "/home/revoltuser/pyRTC/REVOLT/wfcShape.npy"
+  m2cFile:  "/home/revoltuser/pyRTC/REVOLT/m2c.npy"
+  affinity: 5
+  commandCap: 0.8
+  hardwareDelay: 0.001 #seconds
+  frameDelay: 0
+  functions:
+  - sendToHardware
+
+psf:
+  name: "FLIR"
+  index: 0
+  exposure: 80
+  gain: 0
+  bitDepth: 16
+  left: 808
+  top: 420
+  width: 128
+  height: 128
+  darkCount: 1000
+  darkFile: "/home/whetstone/pyRTC/SHARP_LAB/psfDark.npy"
+  integration: 500000
+  affinity: 6
+  functions:
+  - expose
+  - integrate
+
+modulator:
+  name: 'E-727'
+  libFolder: '/opt/PI/lib64/'
+  digitalFreq: 20000 #Hz
+  frequency: 300 #Hz
+  amplitude: 1000
+  relativeAmplitude: 1
+  offsetX: 2500
+  offsetY: 2500
+  phaseOffset: 0
+  servosOn: True
+  autoZero: True
+

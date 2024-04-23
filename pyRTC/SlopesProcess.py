@@ -109,7 +109,7 @@ class SlopesProcess:
 
         elif self.wfsType.lower() == "shwfs":
 
-            self.shwfsContrast = 4
+            self.shwfsContrast = setFromConfig(self.conf, "contrast", 0)
             self.subApSpacing = self.conf["subApSpacing"]
             self.numRegions = self.imageShape[0]//int(np.round(self.subApSpacing,0))
             self.offsetX = self.conf["subApOffsetX"]
