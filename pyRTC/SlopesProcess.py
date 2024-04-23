@@ -86,19 +86,20 @@ class SlopesProcess:
 
         self.signalDType = np.float32
         # self.signal = ImageSHM("signal", self.imageShape, self.signalDType)
+        self.imageNoise = setFromConfig(self.conf,"imageNoise", 0)
 
         self.wfsType = self.conf["type"] 
         self.signalType = self.conf["signalType"] 
-        self.layout = None
+        self.validSubAps = None
 
         if self.wfsType.lower() == "pywfs":
-            #Check if we have specified a pupil layout
+            #Check if we have specified a pupil validSubAps
             # self.signal = ImageSHM("signal", self.imageShape, self.signalDType)
 
             if "pupils" in self.conf.keys():
                 pupilLocs = [(int(x.split(',')[1]), int(x.split(',')[0])) for x in self.conf["pupils"]]
                 self.setPupils(pupilLocs, self.conf["pupilsRadius"])
-            else: #Default Pupil layout
+            else: #Default Pupil validSubAps
                 a, b = int(0.25*self.imageShape[0]), int(0.75*self.imageShape[0])
                 c, d = int(0.25*self.imageShape[1]), int(0.75*self.imageShape[1])
                 r = min(self.imageShape[0]-b,self.imageShape[1]-d)
@@ -114,9 +115,17 @@ class SlopesProcess:
             self.numRegions = self.imageShape[0]//int(np.round(self.subApSpacing,0))
             self.offsetX = self.conf["subApOffsetX"]
             self.offsetY = self.conf["subApOffsetY"]
-            # del self.signal
-            self.signalSize = int(2*self.numRegions**2)
-            self.signalShape = (2*self.numRegions,self.numRegions)
+            self.refSlopeCount = setFromConfig(self.conf, "refSlopeCount", 1000)
+            self.signal2DSize = int(2*self.numRegions**2)
+            self.signal2DShape = (2*self.numRegions,self.numRegions)
+
+            #Initialize Valid Subaperture Mask
+            self.validSubApsFile = setFromConfig(self.conf, "validSubApsFile", "")
+            self.validSubAps = np.ones(self.signal2DShape, dtype=bool)
+            self.loadValidSubAps()
+
+            self.signalSize = np.sum(self.validSubAps)
+            self.signalShape = (self.signalSize,)
 
             print(f'subApSpacing: {self.subApSpacing}')
             print(f'numRegions: {self.numRegions}')
@@ -127,14 +136,11 @@ class SlopesProcess:
             print(f'signalDType: {self.signalDType}')
 
             self.signal = ImageSHM("signal", self.signalShape, self.signalDType)
-
-            #Initialize Valid Subaperture Mask
-            self.validSubApsFile = setFromConfig(self.conf, "validSubApsFile", "")
-            self.validSubAps = np.ones(self.signalShape, dtype=self.signalDType)
-            self.loadValidSubAps()
+            self.signal2D = ImageSHM("signal2D", self.signal2DShape, self.signalDType)
+            
             #Initialize the reference slopes
             self.refSlopesFile = setFromConfig(self.conf, "refSlopesFile", "")
-            self.refSlopes = np.zeros(self.signalShape, dtype=self.signalDType)
+            self.refSlopes = np.zeros(self.signal2DShape, dtype=self.signalDType)
             self.loadRefSlopes()
 
         self.affinity = self.conf["affinity"]
@@ -198,10 +204,11 @@ class SlopesProcess:
         #Reset reference slopes to zero
         self.setRefSlopes(np.zeros_like(self.refSlopes))
         refSlopes = np.zeros_like(self.refSlopes)
-        #Average 1000 slopes measurements
-        for i in range(1000):
-            refSlopes += self.read().astype(refSlopes.dtype)
-        refSlopes /= 1000
+        #Average self.refSlopeCount slopes measurements
+        for i in range(self.refSlopeCount):
+            cur_slopes = self.read().astype(refSlopes.dtype)
+            refSlopes += self.computeSignal2D(cur_slopes)
+        refSlopes /= self.refSlopeCount
         self.setRefSlopes(refSlopes)        
         return 
 
@@ -228,30 +235,41 @@ class SlopesProcess:
     
     def computeSignal(self):
         image = self.readImage().astype(self.signalDType)
-
-        if self.wfsType == "PYWFS":
-            if self.signalType == "slopes":
+        if self.signalType == "slopes":
+            if self.wfsType == "PYWFS":
                 p1,p2,p3,p4 = image[self.p1mask], image[self.p2mask], image[self.p3mask], image[self.p4mask]
                 slope_signal = computeSlopesPYWFS(p1=p1,
                                                     p2=p2,
                                                     p3=p3,
                                                     p4=p4,
                                                     flatNorm=self.flatNorm)
-                self.signal.write(slope_signal)
-                self.signal2D.write(self.computeSlopeMap(slope_signal))
                 
-        elif self.wfsType == "SHWFS":
-            if self.signalType == "slopes":
-                threshold = np.mean(image)*self.shwfsContrast
+                
+                    
+            elif self.wfsType == "SHWFS":
+                
+                # threshold = np.std(image[image < np.mean(image)])*self.shwfsContrast
+                threshold = self.imageNoise*self.shwfsContrast
                 image[image < threshold] = 0
                 slopes = computeSlopesSHWFS(image, 
-                                                     self.refSlopes, 
-                                                     self.subApSpacing,
-                                                     self.offsetX,
-                                                     self.offsetY)
-                self.signal.write(slopes*self.validSubAps)
+                                                    self.refSlopes, 
+                                                    self.subApSpacing,
+                                                    self.offsetX,
+                                                    self.offsetY)
+                slope_signal = slopes[self.validSubAps]
+
+            self.signal.write(slope_signal)
+            self.signal2D.write(self.computeSignal2D(slope_signal))
         return
     
+    def computeImageNoise(self):
+        img = self.readImage()
+        if img[img < 0].size > 0:
+            self.imageNoise = compute_fwhm_dark_subtracted_image(img)/2
+        else:
+            print("Image is not dark subtracted")
+        return
+
     def setPupils(self, pupilLocs, pupilRadius):
         self.pupilLocs = pupilLocs
         self.pupilRadius = pupilRadius
@@ -260,9 +278,9 @@ class SlopesProcess:
             self.signalSize = np.count_nonzero(self.pupilMask)//2
             slopemask =  self.pupilMask[self.pupilLocs[0][1]-self.pupilRadius+1:self.pupilLocs[0][1]+self.pupilRadius, 
                                         self.pupilLocs[0][0]-self.pupilRadius+1:self.pupilLocs[0][0]+self.pupilRadius] > 0
-            self.layout = np.concatenate([slopemask, slopemask], axis=1)
+            self.setValidSubAps(np.concatenate([slopemask, slopemask], axis=1))
             self.signal = ImageSHM("signal", (self.signalSize,), self.signalDType)
-            self.signal2D = ImageSHM("signal2D", (self.layout.shape[0], self.layout.shape[1]), self.signalDType)
+            self.signal2D = ImageSHM("signal2D", (self.validSubAps.shape[0], self.validSubAps.shape[1]), self.signalDType)
             
         return
 
@@ -299,15 +317,18 @@ class SlopesProcess:
         plt.show()
         return
 
-    def computeSlopeMap(self, signal, layout=None):
-        if layout is None and isinstance(self.layout, np.ndarray):
-            layout = self.layout
+    def computeSignal2D(self, signal, validSubAps=None):
+        if validSubAps is None and isinstance(self.validSubAps, np.ndarray):
+            validSubAps = self.validSubAps
         else:
             return -1
-        curSignal2D = np.zeros(layout.shape)
-        slopemask = layout[:,:layout.shape[1]//2]
-        curSignal2D[:,:layout.shape[1]//2][slopemask] = signal[:signal.size//2]
-        curSignal2D[:,layout.shape[1]//2:][slopemask] = signal[signal.size//2:]
+        curSignal2D = np.zeros(validSubAps.shape)
+        if self.wfsType.lower() == "pywfs":
+            slopemask = validSubAps[:,:validSubAps.shape[1]//2]
+            curSignal2D[:,:validSubAps.shape[1]//2][slopemask] = signal[:signal.size//2]
+            curSignal2D[:,validSubAps.shape[1]//2:][slopemask] = signal[signal.size//2:]
+        else:
+            curSignal2D[validSubAps] = signal
         return curSignal2D
     
 if __name__ == "__main__":
