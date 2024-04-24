@@ -1,5 +1,6 @@
 loop:
   gain: 0.1
+  leakyGain: 0.01
   numDroppedModes: 0
   pokeAmp: 0.02
   numItersIM: 50
@@ -7,8 +8,8 @@ loop:
   delay: 2
   method: push-pull
   IMFile: "/home/revoltuser/pyRTC/REVOLT/IM.npy"
-  functions:
-   - standardIntegrator
+  functions: 
+  - leakyIntegrator
 
 
 wfs:
@@ -33,11 +34,12 @@ slopes:
   signalType: slopes
   refSlopesFile: "/home/revoltuser/pyRTC/REVOLT/refSlopes.npy"
   validSubApsFile: "/home/revoltuser/pyRTC/REVOLT/validSubAps.npy"
+  imageNoise: 7.5 #ADU Readnoise
   subApSpacing: 22
   subApOffsetX: 0
   subApOffsetY: 0
+  contrast: 20
   affinity: 4
-  contrast: 0
   functions:
   - computeSignal
 
@@ -76,6 +78,8 @@ wfc:
   flatFile: "/home/revoltuser/pyRTC/REVOLT/eyeDoctor_07March2024.fits"
   saveFile: "/home/revoltuser/pyRTC/REVOLT/wfcShape.npy"
   m2cFile:  "/home/revoltuser/pyRTC/REVOLT/m2c.npy"
+  floatingActuatorFile: "/home/revoltuser/pyRTC/REVOLT/floatingActuators.npy"
+  floatingInfluenceRadius: 0.8
   affinity: 5
   commandCap: 0.8
   hardwareDelay: 0.001 #seconds

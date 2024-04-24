@@ -1,16 +1,26 @@
 """
 Wavefront Corrector Superclass
 """
+import os 
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["OPENBLAS_NUM_THREADS"] = "1" 
+os.environ["MKL_NUM_THREADS"] = "1" 
+os.environ["VECLIB_MAXIMUM_THREADS"] = "1" 
+os.environ["NUMEXPR_NUM_THREADS"] = "1" 
+os.environ['NUMBA_NUM_THREADS'] = '1'
+os.environ['TBB_NUM_THREADS'] = '1'
+
 from pyRTC.Pipeline import ImageSHM, work
 from pyRTC.utils import *
 import numpy as np
 import matplotlib.pyplot as plt
 import threading
-import os
-from numba import jit
+from numba import set_num_threads, jit
 from sys import platform
 
-# @jit(nopython=True)
+# set_num_threads(1)
+
+@jit(nopython=True)
 def ModaltoZonalWithFlat(correction=np.array([],dtype=np.float32), 
                        M2C=np.array([[]],dtype=np.float32),
                        flat=np.array([],dtype=np.float32)):

@@ -124,7 +124,7 @@ class SlopesProcess:
             self.validSubAps = np.ones(self.signal2DShape, dtype=bool)
             self.loadValidSubAps()
 
-            self.signalSize = np.sum(self.validSubAps)
+            self.signalSize = int(np.sum(self.validSubAps))
             self.signalShape = (self.signalSize,)
 
             print(f'subApSpacing: {self.subApSpacing}')
@@ -196,7 +196,7 @@ class SlopesProcess:
         if filename == '':
             self.validSubAps = np.ones_like(self.validSubAps)
         else: #If we have a filename
-            self.validSubAps = np.load(filename)
+            self.validSubAps = np.load(filename).astype(self.validSubAps.dtype)
         return
 
 

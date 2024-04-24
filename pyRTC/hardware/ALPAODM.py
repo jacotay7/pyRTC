@@ -5,6 +5,12 @@ import struct
 import argparse
 import sys
 import os 
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["OPENBLAS_NUM_THREADS"] = "1" 
+os.environ["MKL_NUM_THREADS"] = "1" 
+os.environ["VECLIB_MAXIMUM_THREADS"] = "1" 
+os.environ["NUMEXPR_NUM_THREADS"] = "1" 
+os.environ['NUMBA_NUM_THREADS'] = '1'
 
 #Prevents camera output from messing with communication
 original_stdout = sys.stdout
@@ -36,8 +42,10 @@ class ALPAODM(WavefrontCorrector):
         layout = self.generateLayout()
         self.setLayout(layout)
 
-        if conf["floatingActuatorsFile"][-4:] == '.npy':
-            floatActuatorInds = np.load(conf["floatingActuatorsFile"])
+        self.floatingActuatorFile = setFromConfig(conf, "floatingActuatorFile", "")
+
+        if len(self.floatingActuatorFile) > 4 and self.floatingActuatorFile[-4:] == '.npy':
+            floatActuatorInds = np.load(conf["floatingActuatorFile"])
             self.deactivateActuators(floatActuatorInds)
 
         #Read the flat from the specified flat file
@@ -70,6 +78,7 @@ class ALPAODM(WavefrontCorrector):
             xx, yy = np.meshgrid(np.arange(11), np.arange(11))
             layout = np.sqrt((xx - 5)**2 + (yy-5)**2) < 5.5
         elif self.numActuators == 277:
+            #Note this just defines the shape, the numbers don't matter
             layout = np.array([[0,0,0,0,0,0,271,272,273,274,275,276,277,0,0,0,0,0,0],
                                 [0,0,0,0,0,262,263,264,265,266,267,268,269,270,0,0,0,0,0],
                                 [0,0,0,0,251,252,253,254,255,256,257,258,259,260,261,0,0,0,0],
