@@ -16,7 +16,7 @@ class ScienceCamera:
     def __init__(self, conf) -> None:
 
         self.name = conf["name"]
-        self.imageShape = (conf["width"], conf["height"])
+        self.imageShape = conf["height"], (conf["width"])
         self.imageRawDType = np.uint16
         self.imageDType = np.int32
         self.psfLongDtype = np.float64
