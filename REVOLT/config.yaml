@@ -88,18 +88,18 @@ wfc:
   - sendToHardware
 
 psf:
-  name: "FLIR"
+  name: "ALLIEDVISION"
   index: 0
   exposure: 80
   gain: 0
-  bitDepth: 16
-  left: 808
-  top: 420
-  width: 128
-  height: 128
-  darkCount: 1000
-  darkFile: "/home/whetstone/pyRTC/SHARP_LAB/psfDark.npy"
-  integration: 500000
+  bitDepth: 14
+  left: 0
+  top: 0
+  width: 320
+  height: 256
+  darkCount: 2
+  darkFile: "" #"/home/whetstone/pyRTC/SHARP_LAB/psfDark.npy"
+  integration: 5
   affinity: 6
   functions:
   - expose

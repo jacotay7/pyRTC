@@ -108,7 +108,7 @@ def float_to_dtype(dtype_float):
 
 def decrease_nice(pid):
     # Unsupported by MacOS
-    if sys.platform != 'darwin':
+    if sys.platform != 'darwin'  and sys.platform != 'win32':
         cmd = ["sudo","-S","/usr/bin/renice","-n","-19","-p",str(pid)]
         Popen(cmd,stdin=open(os.devnull, 'w'),stdout=open(os.devnull, 'w'))
     return

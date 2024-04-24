@@ -149,21 +149,22 @@ def clear_shms(names):
 
 class hardwareLauncher:
 
-    def __init__(self, hardwareFile, configFile, port) -> None:
+    def __init__(self, hardwareFile, configFile, port, remoteProcess=False) -> None:
         self.hardwareFile = hardwareFile
         self.command = ["python", hardwareFile, "-c", f"{configFile}", "-p", f"{port}"]
         self.running = False
         # Client configuration
         self.host = '127.0.0.1'  # localhost
         self.port = port
+        self.remoteProcess = remoteProcess
         return
     
     def launch(self):
         if not self.running:
-            print(f"Launching Process: {self.hardwareFile}")
-            self.process = Popen(self.command,stdin=PIPE,stdout=PIPE, text=True, bufsize=1)
-            self.running = True
-
+            if not self.remoteProcess:
+                print(f"Launching Process: {self.hardwareFile}")
+                self.process = Popen(self.command,stdin=PIPE,stdout=PIPE, text=True, bufsize=1)
+                
             # Create a socket object
             self.processSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             print(f"Waiting for Process at {self.host}:{self.port}")
@@ -179,6 +180,7 @@ class hardwareLauncher:
                     print(f"Connection failed: {e}")
                     print("Retrying in {} seconds...".format(restTime))
 
+            self.running = True
             print("Connected")
 
         return
@@ -234,11 +236,11 @@ class hardwareLauncher:
 
 class Listener:
 
-    def __init__(self, hardware, port) -> None:
+    def __init__(self, hardware, port, host = '127.0.0.1') -> None:
         self.hardware = hardware
         self.running = True
         self.keyCharacter = '$'
-        self.host = '127.0.0.1'  # localhost
+        self.host = host  # default localhost
         self.port = port
 
         # Create a socket object
