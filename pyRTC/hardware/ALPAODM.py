@@ -36,6 +36,10 @@ class ALPAODM(WavefrontCorrector):
         layout = self.generateLayout()
         self.setLayout(layout)
 
+        if conf["floatingActuatorsFile"][-4:] == '.npy':
+            floatActuatorInds = np.load(conf["floatingActuatorsFile"])
+            self.deactivateActuators(floatActuatorInds)
+
         #Read the flat from the specified flat file
         if "flatFile" in conf.keys():
             if '.txt' in conf["flatFile"]:

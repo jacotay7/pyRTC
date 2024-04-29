@@ -12,7 +12,7 @@ from sys import platform
 
 # @jit(nopython=True)
 def ModaltoZonalWithFlat(correction=np.array([],dtype=np.float32), 
-                       M2C=np.array([[]],dtype=np.float32), 
+                       M2C=np.array([[]],dtype=np.float32),
                        flat=np.array([],dtype=np.float32)):
     return M2C@correction + flat
 
@@ -37,6 +37,12 @@ class WavefrontCorrector:
         self.flatModal = np.zeros(self.numModes,  dtype=self.flat.dtype)
         self.currentShape = np.zeros_like(self.flat)
         
+        #Initialize Floating Actuator Matrix
+        self.actuatorStatus = np.array([True]*self.numActuators)
+        self.index_map = None
+        self.floatingInfluenceRadius = setFromConfig(conf, "floatingInfluenceRadius", 1)
+        self.floatMatrix = np.eye(self.numActuators, dtype=self.flat.dtype)
+
         self.setDelay(setFromConfig(conf, "frameDelay", 0))
 
         self.saveFile = setFromConfig(conf, "saveFile", "wfcShape.npy")
@@ -86,14 +92,66 @@ class WavefrontCorrector:
             self.correctionVector2D = ImageSHM("wfc2D", self.layout.shape, np.float32)
             self.correctionVector2D.write(np.zeros(self.layout.shape, dtype=np.float32))
             self.correctionVector2D_template = self.correctionVector2D.read_noblock_safe()
+
+            self.index_map = np.zeros(self.layout.shape, dtype = int)
+            self.index_map[self.layout > 0] = np.arange(np.sum(self.layout)).astype(int) + 1
+
         return
     
+    def deactivateActuators(self, actuators):
+
+        if len(actuators) == 0:
+            return
+        #Make sure that the layout has been set already
+        if isinstance(self.layout, np.ndarray):
+
+            #Make a boolean mask of the actuators we are deactivating
+            act_to_float_mask = np.zeros_like(self.index_map)
+            for act in actuators:
+                act_to_float_mask[np.where(self.index_map == act+1)] = 1
+                #Record that we deactivated this actuator.
+                self.actuatorStatus[act] = False
+
+            #For all of the actuators
+            for act in actuators:
+                #Get spatial location of the actuator
+                i,j = np.where(self.index_map == act+1)
+                #Get a gaussian region of influence
+                inlfluence_map = gaussian_2d_grid(i,j, self.floatingInfluenceRadius, self.layout.shape[0])
+                #Apply the DM layout mask excluding other floating actuators
+                inlfluence_map *= self.layout*(1-act_to_float_mask)
+                #Renormalize to sum to 1
+                inlfluence_map /= np.sum(inlfluence_map)
+                #Set a bound on the lowest influence to a tenth of the maximum
+                inlfluence_map[inlfluence_map < np.max(inlfluence_map)/10] = 0
+                #Vectorize and add to matrix
+                self.floatMatrix[act] = inlfluence_map[self.layout>0]
+
+            self.setM2C(self.M2C)
+
+        else:
+            print("No Layout Set for DM")
+
+        return
+    
+    def reactivateActuators(self, actuators):
+        #Set the status of each actuator back to True
+        for act in actuators:
+            self.actuatorStatus[act] = True
+        #Reset Floating Actuator Map
+        self.floatMatrix = np.eye(self.numActuators, dtype=self.flat.dtype)
+        #Deactivate all actuators that are still disabled
+        self.deactivateActuators([i for i in range(self.numActuators) if self.actuatorStatus[i] == False])
+        return
+
     def setM2C(self, M2C):
 
         if not isinstance(M2C, np.ndarray):
             self.M2C = np.eye(self.numActuators)[:,:self.numModes]
         else:
             self.M2C = M2C.astype(self.flat.dtype)
+
+        self.f_M2C = self.floatMatrix@self.M2C
 
         self.C2M = np.linalg.pinv(self.M2C)
         self.numModes = self.M2C.shape[1]
@@ -137,11 +195,16 @@ class WavefrontCorrector:
             #Roll back shape buffer by 1
             self.shapeBuffer[:-1] = self.shapeBuffer[1:]
             #Compute a new shape in zonal basis
-            self.shapeBuffer[-1] = ModaltoZonalWithFlat(self.currentCorrection, self.M2C, self.flat)
+            self.shapeBuffer[-1] = ModaltoZonalWithFlat(self.currentCorrection, 
+                                                        self.f_M2C,
+                                                        self.flat)
             #Set the current shape
             self.currentShape = self.shapeBuffer[0]
         else:
-            self.currentShape = ModaltoZonalWithFlat(self.currentCorrection, self.M2C, self.flat)
+            self.currentShape = ModaltoZonalWithFlat(self.currentCorrection, 
+                                                     self.f_M2C,
+                                                     self.flat)
+        
         #If we have a 2D SHM instance, update it 
         if isinstance(self.correctionVector2D, ImageSHM):
             self.correctionVector2D_template[self.layout] = self.currentShape - self.flat
