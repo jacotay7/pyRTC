@@ -1,10 +1,18 @@
+import os 
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["OPENBLAS_NUM_THREADS"] = "1" 
+os.environ["MKL_NUM_THREADS"] = "1" 
+os.environ["VECLIB_MAXIMUM_THREADS"] = "1" 
+os.environ["NUMEXPR_NUM_THREADS"] = "1" 
+os.environ['NUMBA_NUM_THREADS'] = '1'
+
 from pyRTC.WavefrontCorrector import *
 from pyRTC.Pipeline import *
 from pyRTC.utils import *
 import struct
 import argparse
 import sys
-import os 
+
 
 #Prevents camera output from messing with communication
 original_stdout = sys.stdout
@@ -64,8 +72,7 @@ class ALPAODM(WavefrontCorrector):
         #Do all of the normal updating of the super class
         super().sendToHardware()
         #Cap the Commands to reduce likelihood of DM failiure
-        self.currentShape[self.currentShape > self.CAP] = self.CAP
-        self.currentShape[self.currentShape < -self.CAP] = -self.CAP
+        self.currentShape = np.clip(self.currentShape, -self.CAP, self.CAP)
         #Send the correction to the actual mirror
         self.dm.Send(self.currentShape)
         return

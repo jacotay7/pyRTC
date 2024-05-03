@@ -101,12 +101,12 @@ psf:
   exposure: 800
   gain: 0
   bitDepth: 16
-  left: 920
-  top: 436
-  width: 128
-  height: 128
-  darkCount: 2000
-  darkFile: "/home/whetstone/pyRTC/SHARP_LAB/psfDark.npy"
+  left: 768 #920
+  top: 248 #436
+  width: 640 #128
+  height: 640 #128
+  darkCount: 200
+  darkFile: "" #"/home/whetstone/pyRTC/SHARP_LAB/psfDark.npy"
   modelFile: "/home/whetstone/pyRTC/SHARP_LAB/modelPSF.npy"
   integration: 1000
   affinity: 6

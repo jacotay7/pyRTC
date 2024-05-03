@@ -7,10 +7,10 @@ os.chdir("/home/whetstone/pyRTC/pyRTC")
 RECALIBRATE = False
 
 # %% Clear SHMs
-# from pyRTC.Pipeline import clear_shms
-# shm_names = ["signal"]
-# shm_names = ["wfs", "wfsRaw", "wfc", "wfc2D", "signal", "signal2D", "psfShort", "psfLong"] #list of SHMs to reset
-# clear_shms(shm_names)
+from pyRTC.Pipeline import clear_shms
+shm_names = ["signal"]
+shm_names = ["wfs", "wfsRaw", "wfc", "wfc2D", "signal", "signal2D", "psfShort", "psfLong"] #list of SHMs to reset
+clear_shms(shm_names)
 
 # %% IMPORTS
 config = '/home/whetstone/pyRTC/SHARP_LAB/config.yaml'
@@ -50,7 +50,7 @@ if RECALIBRATE == True:
     wfs.run("saveDark")
     time.sleep(1)
     psfCam.run("takeDark")
-    psfCam.setProperty("darkFile", "/home/whetstone/pyRTC/SHARP_LAB/psfDark.npy")
+    psfCam.setProperty("darkFile", "/home/whetstone/pyRTC/SHARP_LAB/fullPsfDark.npy")
     psfCam.run("saveDark")
     input("Sources On?")
     input("Is Atmosphere Out?")
@@ -91,14 +91,14 @@ if RECALIBRATE == True:
 
 
 # %% Adjust Loop
-loop.setProperty("IMFile", "/home/whetstone/pyRTC/SHARP_LAB/sprint_IM.npy")
+loop.setProperty("IMFile", "/home/whetstone/pyRTC/SHARP_LAB/IM.npy")
 loop.run("loadIM")
 time.sleep(0.5)
-loop.setProperty("numDroppedModes", 60)
+loop.setProperty("numDroppedModes", 30)
 loop.run("computeCM")
 time.sleep(0.5)
 loop.run("setGain",0.1)
-loop.setProperty("leakyGain", 0)
+loop.setProperty("leakyGain", 1e-3)
 # %%Launch Loop for 5 seconds
 wfc.run("flatten")
 loop.run("start")
@@ -214,3 +214,40 @@ psfCam.run("computeStrehl")
 print(psfCam.getProperty("strehl_ratio"))
 # %%
 
+# %%
+from tqdm import tqdm
+
+folder = "~/Downloads/robin-april-16/"
+
+# numModes = 10
+# startMode = 0
+# endMode = wfc.numModes - 1
+filelist = ['cnnx2_phase.npy', 'cnnx4_phase', 'linx2_phase.npy', 'linx4_phase.npy']
+N = 4
+numModes = 11
+RANGE = 2
+modelist = np.linspace(-RANGE, RANGE, numModes) #.astype(int)
+
+for ff in filelist:
+    psfs = np.empty((numModes, N, *psfCam.getProperty("imageShape")))
+    cmd = wfc.read()
+    cmds = np.empty((numModes, N, *cmd.getProperty("shape")), dtype=cmd.dtype)
+    wfc.flatten()
+    time.sleep(0.1)
+    d = np.read(f'{folder}/{ff}')
+    for i, mode in enumerate(modelist): #range(numModes):
+        correction = np.zeros_like(wfc.read())
+        for j in range(N):
+            correction[mode] = mode * d[j, :].flatten()
+            wfc.write(correction)
+            #Burn some images
+            psfCam.readLong()
+            #Save the next PSF in the dataset
+            psfs[i, j, :, :] = psfCam.readLong()
+            cmds[i,j,:] = correction
+            wfc.flatten()
+            time.sleep(0.1)
+    
+    np.save(f'{folder}/psfs_{ff}', psfs)
+    np.save(f'{folder}/cmds_{ff}', cmds)
+# %%
