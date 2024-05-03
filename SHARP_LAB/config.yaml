@@ -1,23 +1,32 @@
 loop:
-  gain: 0.0001
   leakyGain: 0.01
-  numDroppedModes: 30
   pokeAmp: 0.02
   numItersIM: 50
+  numDroppedModes: 93
   affinity: 2
-  delay: 2
-  method: push-pull
-  IMFile: "" #"/home/whetstone/pyRTC/SHARP_LAB/IM.npy"
-  AImodel: "shlong_10_default0m_SAM"
-  AIhalfPrecision: False
-  AIdevice: "cuda:0"
-  AIburnIn: 50000
-  AIresidualLength: 250000
+  IMMethod: push-pull
+  IMFile: "/home/whetstone/RLAO/pyRTC/SHARP_LAB/IM_zern.npy" #"/home/whetstone/RLAO/pyRTC/SHARP_LAB/IM.npy"
+  logdir: "/home/whetstone/RLAO/pyRTC/SHARP_LAB/PPO_MLP_LSTM_TIP_TILT/"
+  learningTimesteps: 1000000
+  actionNorm: 400
+  entropyCoef: 0.01
+  learningRate: 0.0003
+  linearActionNorm: 1
+  modelName: "2024_05_03_14_20_17"
   functions:
-  # - standardIntegrator
-  # - standardIntegratorPOL
-    - leakyIntegrator
+    - learn
 
+# loop:
+#   pokeAmp: 0.02
+#   gain: 0.005
+#   leakyGain: 0.000
+#   numDroppedModes: 30
+#   numItersIM: 50
+#   affinity: 2
+#   IMMethod: push-pull
+#   IMFile: "/home/whetstone/RLAO/pyRTC/SHARP_LAB/IM.npy"
+#   functions:
+#     - leakyIntegrator
 
 wfs:
   name: XIMEA
@@ -26,12 +35,12 @@ wfs:
   exposure: 2000
   gain: 0
   bitDepth: 10
-  left: 416 #208
+  left: 448 #208
   top: 280 #140
   width: 400 #192
   height: 400 #192
   darkCount: 2000
-  darkFile: "/home/whetstone/pyRTC/SHARP_LAB/dark.npy"
+  darkFile: "/home/whetstone/RLAO/pyRTC/SHARP_LAB/dark.npy"
   affinity: 3
   functions:
   - expose
@@ -39,54 +48,26 @@ wfs:
 slopes:
   type: SHWFS
   signalType: slopes
-  refSlopesFile: "/home/whetstone/pyRTC/SHARP_LAB/ref.npy"
-  validSubApsFile: "/home/whetstone/pyRTC/SHARP_LAB/validSubAps.npy"
+  refSlopesFile: "/home/whetstone/RLAO/pyRTC/SHARP_LAB/ref.npy"
+  validSubApsFile: "/home/whetstone/RLAO/pyRTC/SHARP_LAB/validSubAps.npy"
   subApSpacing: 15.54 #7.78
-  subApOffsetX: 13
-  subApOffsetY: 8
+  subApOffsetX: 8
+  subApOffsetY: 4
   imageNoise: 0.5
   contrast: 20
   affinity: 4
   functions:
   - computeSignal
 
-# wfs:
-#   name: XIMEA
-#   serial: "13056250"
-#   type: PYWFS
-#   signalType: slopes
-#   pupilsRadius: 32
-#   binning: 2
-#   exposure: 3333
-#   gain: 0
-#   bitDepth: 10
-#   left: 272
-#   top: 50
-#   width: 192
-#   height: 192
-#   darkCount: 1000
-#   darkFile: "/home/whetstone/pyRTC/SHARP_LAB/dark.npy"
-#   affinity: 12
-#   flatNorm: True
-#   pupils: 
-#   - 44,57
-#   - 45,138
-#   - 150,75
-#   - 130,138
-#   functions:
-#   - expose
-#   - computeSignal
-
 wfc:
   name: "ALPAO"
   serial: "BAX118"
   numActuators: 97
-  numModes: 94
-  flatFile: "/home/whetstone/pyRTC/SHARP_LAB/wfcShape.npy"
-  saveFile: "/home/whetstone/pyRTC/SHARP_LAB/wfcShape.npy"
-  m2cFile: "/home/whetstone/pyRTC/SHARP_LAB/m2c_kl.npy" 
-  # m2cFile: "/home/whetstone/pyRTC/SHARP_LAB/m2c_zern_manual.npy"
-  floatingActuatorsFile: "" #"/home/whetstone/pyRTC/SHARP_LAB/floating_actuators_indices.npy"
+  numModes: 95 #94
+  flatFile: "/home/whetstone/RLAO/pyRTC/SHARP_LAB/new_best_flat.npy"
+  saveFile: "/home/whetstone/RLAO/pyRTC/SHARP_LAB/wfcShape.npy"
+  m2cFile: "/home/whetstone/RLAO/pyRTC/SHARP_LAB/m2c_zern_manual.npy" #m2c_kl.npy" 
+  floatingActuatorsFile: "" #"/home/whetstone/RLAO/pyRTC/SHARP_LAB/floating_actuators_indices.npy"
   floatingInfluenceRadius: 1
   affinity: 5
   commandCap: 0.8
@@ -98,7 +79,7 @@ wfc:
 psf:
   name: "FLIR"
   index: 0
-  exposure: 800
+  exposure: 300
   gain: 0
   bitDepth: 16
   left: 920
@@ -106,9 +87,9 @@ psf:
   width: 128
   height: 128
   darkCount: 2000
-  darkFile: "/home/whetstone/pyRTC/SHARP_LAB/psfDark.npy"
-  modelFile: "/home/whetstone/pyRTC/SHARP_LAB/modelPSF.npy"
-  integration: 1000
+  darkFile: "/home/whetstone/RLAO/pyRTC/SHARP_LAB/psfDark.npy"
+  modelFile: "/home/whetstone/RLAO/pyRTC/SHARP_LAB/modelPSF.npy"
+  integration: 2
   affinity: 6
   functions:
   - expose
@@ -128,3 +109,13 @@ modulator:
   servosOn: True
   autoZero: True
 
+
+optimizer:
+  name: "NCPA"
+  logdir: "ncpa_optimizer_tensorboard"
+  numSteps: 100
+  startMode: 0
+  endMode: 20
+  correctionMag: 0.003
+  numReads: 10
+  affinity: 10

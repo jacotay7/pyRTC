@@ -10,22 +10,25 @@ import os
 import time
 
 
-class GenericComponent:
+class pyRTCComponent:
 
     def __init__(self, conf) -> None:
 
+        self.alive = True
+        self.running = False
         self.affinity = conf["affinity"]
 
-        functionsToRun = ["execute"]
+        functionsToRun = setFromConfig(conf, "functions", [])
         self.workThreads = []
-        for i, functionName in enumerate(functionsToRun):
-            # Launch a separate thread
-            workThread = threading.Thread(target=work, args = (self,functionName), daemon=True)
-            # Start the thread
-            workThread.start()
-            # Set CPU affinity for the thread
-            set_affinity((self.affinity+i)%os.cpu_count()) 
-            self.workThreads.append(workThread)
+        if isinstance(functionsToRun, list) and len(functionsToRun) > 0:
+            for i, functionName in enumerate(functionsToRun):
+                # Launch a separate thread
+                workThread = threading.Thread(target=work, args = (self,functionName), daemon=True)
+                # Start the thread
+                workThread.start()
+                # Set CPU affinity for the thread
+                set_affinity((self.affinity+i)%os.cpu_count()) 
+                self.workThreads.append(workThread)
 
         return
 
@@ -41,9 +44,7 @@ class GenericComponent:
     def stop(self):
         self.running = False
         return
-    
-    def execute(self):
-        return
+
 
 
 if __name__ == "__main__":
@@ -67,7 +68,7 @@ if __name__ == "__main__":
     set_affinity((conf["loop"]["affinity"])%os.cpu_count()) 
     decrease_nice(pid)
 
-    component = GenericComponent(conf=conf)
+    component = pyRTCComponent(conf=conf)
     component.start()
 
     # Go back to communicating with the main program through stdout

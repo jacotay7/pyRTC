@@ -3,15 +3,13 @@ Wavefront Sensor Superclass
 """
 from pyRTC.Pipeline import ImageSHM, work
 from pyRTC.utils import *
+from pyRTC.pyRTCComponent import *
 import numpy as np
 import matplotlib.pyplot as plt
-import threading
-import os
-import time
 from numba import jit
 from sys import platform
 
-class WavefrontSensor:
+class WavefrontSensor(pyRTCComponent):
 
     def __init__(self, conf) -> None:
 
@@ -32,35 +30,8 @@ class WavefrontSensor:
 
         self.loadDark()
 
-        self.alive = True
-        self.running = False
+        super().__init__(conf)
 
-        self.workThreads = []
-        functionsToRun = conf["functions"]
-        for i, functionName in enumerate(functionsToRun):
-            # Launch a separate thread
-            workThread = threading.Thread(target=work, args = (self,functionName), daemon=True)
-            # Start the thread
-            workThread.start()
-            # Set CPU affinity for the thread
-            set_affinity((self.affinity+i)%os.cpu_count())   
-            self.workThreads.append(workThread)
-
-        return
-    
-    def __del__(self):
-        self.stop()
-        self.alive = False
-        return
-
-    def start(self):
-
-        self.running = True
-        return
-    
-    def stop(self):
-
-        self.running = False
         return
     
     def setRoi(self, roi):
