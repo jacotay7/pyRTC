@@ -3,8 +3,7 @@
 from pyRTC.Pipeline import *
 from pyRTC.utils import *
 import os
-
-os.chdir("/home/revoltuser/pyRTC/pyRTC")
+os.chdir("/home/whetstone/pyRTC/SHARP_LAB")
 RECALIBRATE = False
 
 # %% Clear SHMs
@@ -12,31 +11,27 @@ RECALIBRATE = False
 # clear_shms(shm_names)
 
 # %% IMPORTS
-config = '../REVOLT/config.yaml'
-N = np.random.randint(3000,6000)
-# %% Launch DM
-wfc = hardwareLauncher("../pyRTC/hardware/ALPAODM.py", config, N)
+config = '/home/whetstone/pyRTC/SHARP_LAB/config_SR.yaml'
 wfc.launch()
-
 # %% Launch WFS
-wfs = hardwareLauncher("./hardware/fliCBlueOneWFS.py", config, N+1)
+wfs = hardwareLauncher("../pyRTC/hardware/ximeaWFS.py", config, N+1)
 wfs.launch()
 
 # %% Launch slopes
 slopes = hardwareLauncher("../pyRTC/SlopesProcess.py", config, N+2)
 slopes.launch()
 
+<<<<<<< HEAD:REVOLT/RTC.py
 # %% Launch Loop Class
 psf = hardwareLauncher("./hardware/alliedVisionScienceCam.py", config, 3142, remoteProcess=True)
 psf.host = "132.246.193.118"
-psf.launch()
-
 # %% Launch Loop Class
-loop = hardwareLauncher("./Loop.py", config, N+4)
+loop = hardwareLauncher("../pyRTC/Loop.py", config, N+4)
+# loop = hardwareLauncher("../pyRTC/hardware/predictLoop.py", config)
+>>>>>>> dev:SHARP_LAB/RTC.py
 loop.launch()
 
 # %% NCAP OPTIMIZER
-optim  = hardwareLauncher("../pyRTC/hardware/NCPAOptimizer.py", config, N+4)
 optim.launch()
 
 # %% Calibrate
@@ -49,36 +44,29 @@ if RECALIBRATE == True:
 
     input("Sources Off?")
     wfs.run("takeDark")
-    wfs.setProperty("darkFile", "/home/revoltuser/pyRTC/REVOLT/dark.npy")
+    wfs.setProperty("darkFile", "/home/whetstone/pyRTC/SHARP_LAB/calib/dark.npy")
     wfs.run("saveDark")
     time.sleep(1)
+    psfCam.run("takeDark")
+    psfCam.setProperty("darkFile", "/home/whetstone/pyRTC/SHARP_LAB/calib/psfDark.npy")
+    psfCam.run("saveDark")
     input("Sources On?")
     input("Is Atmosphere Out?")
 
     slopes.run("computeImageNoise")
     slopes.run("takeRefSlopes")
-    slopes.setProperty("refSlopesFile", "/home/revoltuser/pyRTC/REVOLT/ref.npy")
+    slopes.setProperty("refSlopesFile", "/home/whetstone/pyRTC/SHARP_LAB/calib/ref.npy")
     slopes.run("saveRefSlopes")
     wfc.run("flatten")
+    psfCam.run("takeModelPSF")
+    psfCam.setProperty("modelFile", "/home/whetstone/pyRTC/SHARP_LAB/calib/modelPSF.npy")
+    psfCam.run("saveModelPSF")
 
     #  STANDARD IM
     loop.setProperty("IMMethod", "push-pull")
     loop.setProperty("pokeAmp", 0.02)
     loop.setProperty("numItersIM", 100)
-    loop.setProperty("IMFile", "/home/revoltuser/pyRTC/REVOLT/IM.npy")
-    wfc.run("flatten")
-    loop.run("computeIM")
-    loop.run("saveIM")
-    wfc.run("flatten")
-    time.sleep(1)
-
-    input("Is Atmosphere In?")
-    #  DOCRIME OL
-    loop.setProperty("IMMethod", "docrime")
-    loop.setProperty("delay", 1)
-    loop.setProperty("pokeAmp", 8e-3)
-    loop.setProperty("numItersIM", 10000)
-    loop.setProperty("IMFile", "/home/revoltuser/pyRTC/REVOLT/docrime_IM.npy")
+    loop.setProperty("IMFile", "/home/whetstone/pyRTC/SHARP_LAB/calib/IM.npy")
     wfc.run("flatten")
     loop.run("computeIM")
     loop.run("saveIM")
@@ -98,15 +86,27 @@ if RECALIBRATE == True:
     # wfc.run("flatten")
     # time.sleep(1)
 
+#%% Optimize NCPA
+for i in range(10):
+    optim.run("optimize")
+    optim.run("applyOptimum")
+wfc.run("saveShape")
+slopes.run("takeRefSlopes")
+slopes.setProperty("refSlopesFile", "/home/whetstone/pyRTC/SHARP_LAB/calib/ref.npy")
+slopes.run("saveRefSlopes")
+psfCam.run("takeModelPSF")
+psfCam.setProperty("modelFile", "/home/whetstone/pyRTC/SHARP_LAB/calib/modelPSF.npy")
+psfCam.run("saveModelPSF")
+
 # %% Adjust Loop
-loop.setProperty("IMFile", "/home/revoltuser/pyRTC/REVOLT/IM.npy")
+loop.setProperty("IMFile", "/home/whetstone/pyRTC/SHARP_LAB/calib/IM.npy")
 loop.run("loadIM")
 time.sleep(0.5)
-loop.setProperty("numDroppedModes", 90)
+loop.setProperty("numDroppedModes", 30)
 loop.run("computeCM")
 time.sleep(0.5)
-loop.run("setGain",1e-2)
-loop.setProperty("leakyGain", 1e-2)
+loop.run("setGain",0.1)
+loop.setProperty("leakyGain", 1e-3)
 # %%Launch Loop for 5 seconds
 wfc.run("flatten")
 loop.run("start")
@@ -117,7 +117,7 @@ wfc.run("flatten")
 wfc.run("flatten")
 
 # %% Plots
-im = np.load("../REVOLT/docrime_IM.npy")
+im = np.load("../SHARP_LAB/calib/docrime_IM.npy")
 plt.imshow(im, aspect="auto")
 plt.show()
 
@@ -132,8 +132,8 @@ for i in range(85,90):
     plt.show()
 
 
-im_dc = np.load("../REVOLT/docrime_IM.npy")
-im = np.load("../REVOLT/IM.npy")
+im_dc = np.load("../SHARP_LAB/calib/docrime_IM.npy")
+im = np.load("../SHARP_LAB/calib/IM.npy")
 
 im_dc = im_dc.reshape(*slopes.getProperty("signalShape"), -1)
 im_dc = np.moveaxis(im_dc, 2, 0)
@@ -157,14 +157,14 @@ plt.colorbar()
 plt.show()
 # %% SVD
 
-im_dc = np.load("../REVOLT/docrime_IM.npy")
-im = np.load("../REVOLT/IM.npy")
-im_sprint = np.load("../REVOLT/sprint_IM.npy")
+im_dc = np.load("../SHARP_LAB/calib/docrime_IM.npy")
+im = np.load("../SHARP_LAB/calib/IM.npy")
+im_sprint = np.load("../SHARP_LAB/calib/sprint_IM.npy")
 
 #RESCALES SPRINT TO MATCH EMPIRICAL
 # for i in range(im_sprint.shape[1]):
 #     im_sprint[:,i] *= np.std(im[:,i])/np.std(im_sprint[:,i])
-# np.save("../REVOLT/sprint_IM.npy", im_sprint)
+# np.save("../SHARP_LAB/calib/sprint_IM.npy", im_sprint)
 
 u,s,v = np.linalg.svd(im)
 plt.plot(s/np.max(s), label = 'EMPIRICAL')

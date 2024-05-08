@@ -107,6 +107,13 @@ class ImageSHM:
         arr = np.copy(self.arr)
         return arr
     
+    def read_timeout(self, timeout):
+        start = time.time()
+        while not self.checkNew() and (time.time() - start) < timeout:
+            time.sleep(1e-5)
+        arr = np.copy(self.arr)
+        return arr
+    
     def read_noblock(self):
         arr = np.copy(self.arr)
         return arr
@@ -117,14 +124,19 @@ class ImageSHM:
     def checkNew(self):
         
         if self.areData:
-            metadata = np.copy(self.metadata)
-            if metadata[1] != self.lastReadTime:
-                self.lastReadTime = metadata[1]
+            # metadata = np.copy(self.metadata)
+            if self.metadata[1] != self.lastReadTime:
+                self.markSeen()
+                # self.lastReadTime = self.metadata[1]
                 return True
         else: #If we are just reading a meta data object directly
             return True
         return False
     
+    def markSeen(self):
+        self.lastReadTime = self.metadata[1]
+        return
+
     def updateMetadata(self):
         
         metadata = np.zeros_like(self.metadata)
@@ -149,7 +161,7 @@ def clear_shms(names):
 
 class hardwareLauncher:
 
-    def __init__(self, hardwareFile, configFile, port, remoteProcess=False) -> None:
+    def __init__(self, hardwareFile, configFile, port, remoteProcess=False, timeout=None) -> None:
         self.hardwareFile = hardwareFile
         self.command = ["python", hardwareFile, "-c", f"{configFile}", "-p", f"{port}"]
         self.running = False
@@ -157,6 +169,8 @@ class hardwareLauncher:
         self.host = '127.0.0.1'  # localhost
         self.port = port
         self.remoteProcess = remoteProcess
+        self.timeout = timeout
+
         return
     
     def launch(self):
@@ -169,7 +183,7 @@ class hardwareLauncher:
             self.processSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             print(f"Waiting for Process at {self.host}:{self.port}")
             connected = False
-            restTime = 1
+            restTime = 2
             while not connected:
                 time.sleep(restTime)
                 try:
@@ -181,6 +195,9 @@ class hardwareLauncher:
                     print("Retrying in {} seconds...".format(restTime))
 
             self.running = True
+            if isinstance(self.timeout,float) or isinstance(self.timeout,int):
+                self.processSocket.settimeout(self.timeout)
+
             print("Connected")
 
         return
@@ -197,7 +214,7 @@ class hardwareLauncher:
         message = {"type": "set", "property": property, "value": value}
         return self.writeAndRead(message)
 
-    def run(self, function, *args):
+    def run(self, function, *args, timeout = None):
         message = {"type": "run", "function": function}
         for i, arg in enumerate(args):
             message[f"arg_{i+1}"] = arg
@@ -230,8 +247,12 @@ class hardwareLauncher:
         return
     
     def read(self):
-        reply = self.processSocket.recv(4096).decode()
-        return json.loads(reply)
+        try:
+            reply = self.processSocket.recv(4096).decode()
+            return json.loads(reply)
+        except socket.timeout:
+            return -1
+        
     
 
 class Listener:
@@ -243,12 +264,16 @@ class Listener:
         self.host = host  # default localhost
         self.port = port
 
-        # Create a socket object
-        server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        server_socket = bind_socket(self.host, self.port)
 
-        print(f"{hardware.name}: Binding to {self.host}:{self.port}")
-        # Bind the socket to a specific address and port
-        server_socket.bind((self.host, self.port))
+        # # Create a socket object
+        # server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+
+        # try:
+        #     print(f"{hardware.name}: Binding to {self.host}:{self.port}")
+        #     # Bind the socket to a specific address and port
+        #     server_socket.bind((self.host, self.port))
+        # except OSError as
         # Listen for incoming connections
         server_socket.listen()
         print(f"{hardware.name}: Awaiting RTC connection")
@@ -320,3 +345,16 @@ class Listener:
     def read(self):
         reply = self.RTCsocket.recv(4096).decode()
         return json.loads(reply)
+    
+def initExistingShm(shmName):
+    #Read wfc metadata and open a stream to the shared memory
+    shmMeta = ImageSHM(shmName+"_meta", (ImageSHM.METADATA_SIZE,), np.float64).read_noblock_safe()
+    shmDType = float_to_dtype(shmMeta[3])
+    shmSize = int(shmMeta[2]//shmDType.itemsize)
+    shmDims = []
+    i = 0
+    while int(shmMeta[4+i]) > 0:
+        shmDims.append(int(shmMeta[4+i]))
+        i += 1
+    shm = ImageSHM(shmName, shmDims, shmDType)
+    return shm, shmDims, shmDType

@@ -1,17 +1,15 @@
 """
-Loop Superclass
+Slopes Superclass
 """
 from pyRTC.Pipeline import *
 from pyRTC.utils import *
-import threading
+from pyRTC.pyRTCComponent import *
 import argparse
-import sys
 import os 
 import numpy as np
 import matplotlib.pyplot as plt
 import time
 from numba import jit
-from sys import platform
 
 @jit(nopython=True)
 def computeSlopesPYWFS(p1=np.array([],dtype=np.float32), 
@@ -69,7 +67,7 @@ def computeSlopesSHWFS(image=np.array([],dtype=np.float32),
                     slopes[i+numRegions,j] = np.sum(xvals*sub_im.T)/norm
     return slopes - unaberratedSlopes
 
-class SlopesProcess:
+class SlopesProcess(pyRTCComponent):
 
     def __init__(self, conf) -> None:
 
@@ -143,34 +141,7 @@ class SlopesProcess:
             self.refSlopes = np.zeros(self.signal2DShape, dtype=self.signalDType)
             self.loadRefSlopes()
 
-        self.affinity = self.conf["affinity"]
-        self.alive = True
-        self.running = False
-        functionsToRun = self.conf["functions"]
-        self.workThreads = []
-        for i, functionName in enumerate(functionsToRun):
-            # Launch a separate thread
-            workThread = threading.Thread(target=work, args = (self,functionName), daemon=True)
-            # Start the thread
-            workThread.start()
-            # Set CPU affinity for the thread
-            set_affinity((self.affinity+i)%os.cpu_count())
-            self.workThreads.append(workThread)
-
-        return
-
-    def __del__(self):
-        self.stop()
-        self.alive=False
-        return
-
-    def start(self):
-        self.running = True
-        return
-
-    def stop(self):
-        self.running = False
-        return
+        super().__init__(self.conf)
     
     def read(self):
         return self.signal.read()

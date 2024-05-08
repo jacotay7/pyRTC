@@ -1,18 +1,13 @@
 """
-Wavefront Sensor Superclass
+Science Camera Superclass
 """
-from pyRTC.Pipeline import ImageSHM, work
+from pyRTC.Pipeline import ImageSHM
+from pyRTC.pyRTCComponent import *
 from pyRTC.utils import *
 import numpy as np
 import matplotlib.pyplot as plt
-import threading
-import os
-import time
-from numba import jit
-from sys import platform
 
-
-class ScienceCamera:
+class ScienceCamera(pyRTCComponent):
 
     def __init__(self, conf) -> None:
 
@@ -24,6 +19,9 @@ class ScienceCamera:
         
         self.psfShort = ImageSHM("psfShort", self.imageShape, self.imageDType)
         self.psfLong = ImageSHM("psfLong", self.imageShape, self.psfLongDtype)
+        self.strehlShm = ImageSHM("strehl", (1,), float)
+        self.tipTiltShm = ImageSHM("tiptilt", (1,), float)
+
         self.data = np.zeros(self.imageShape, dtype=self.imageRawDType)
         self.dark = np.zeros(self.imageShape, dtype=self.imageDType)
         self.darkCount = conf["darkCount"]
@@ -31,41 +29,13 @@ class ScienceCamera:
         self.model = np.zeros(self.imageShape, dtype=self.psfLongDtype)
         self.modelFile = setFromConfig(conf, "modelFile", "")
         self.strehl_ratio = 0
+        self.peak_dist = 0
 
         self.loadDark()
         self.loadModelPSF()
 
         self.integrationLength = conf["integration"]
-        self.affinity = conf["affinity"]
-
-        self.alive = True
-        self.running = False
-
-        functionsToRun = conf["functions"]
-        self.workThreads = []
-        for i, functionName in enumerate(functionsToRun):
-            # Launch a separate thread
-            workThread = threading.Thread(target=work, args = (self,functionName), daemon=True)
-            # Start the thread
-            workThread.start()
-            # Set CPU affinity for the thread
-            set_affinity((self.affinity+i)%os.cpu_count())
-            self.workThreads.append(workThread)
-
-        return
-    
-    def __del__(self):
-        self.stop()
-        self.alive = False
-        return
-
-    def start(self):
-        self.running = True
-        return
-    
-    def stop(self):
-        self.running = False
-        return
+        super().__init__(conf)
     
     def setRoi(self, roi):
         self.roiWidth = roi[0]
@@ -178,6 +148,10 @@ class ScienceCamera:
                                          gaussian_sigma = gaussian_sigma)
 
         self.strehl_ratio = np.max(current) / np.max(model)
+        self.peak_dist = np.linalg.norm(centroid(current) - np.array([current.shape[1]/2, current.shape[0]/2]))
+
+        self.strehlShm.write(np.array([self.strehl_ratio], dtype=float))
+        self.tipTiltShm.write(np.array([self.peak_dist], dtype=float))
 
         return self.strehl_ratio
 

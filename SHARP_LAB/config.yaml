@@ -1,37 +1,37 @@
 loop:
-  gain: 0.0001
-  leakyGain: 0.01
+  gain: 0.1
+  leakyGain: 0
   numDroppedModes: 30
   pokeAmp: 0.02
   numItersIM: 50
   affinity: 2
   delay: 2
   method: push-pull
-  IMFile: "" #"/home/whetstone/pyRTC/SHARP_LAB/IM.npy"
-  AImodel: "shlong_10_default0m_SAM"
-  AIhalfPrecision: False
-  AIdevice: "cuda:0"
-  AIburnIn: 50000
-  AIresidualLength: 250000
+  IMFile: "/home/whetstone/pyRTC/SHARP_LAB/calib/IM.npy"
+  # AImodel: "shlong_10_default0m_SAM"
+  # AIhalfPrecision: False
+  # AIdevice: "cuda:0"
+  # AIburnIn: 50000
+  # AIresidualLength: 250000
   functions:
   # - standardIntegrator
-  # - standardIntegratorPOL
-    - leakyIntegrator
+  - standardIntegratorPOL
+  # - leakyIntegrator
 
 
 wfs:
   name: XIMEA
   serial: "46052550"
-  binning: 1 #2
+  binning: 1 
   exposure: 2000
   gain: 0
   bitDepth: 10
-  left: 416 #208
-  top: 280 #140
-  width: 400 #192
-  height: 400 #192
+  left: 448 #416 
+  top: 280 
+  width: 400 
+  height: 400 
   darkCount: 2000
-  darkFile: "/home/whetstone/pyRTC/SHARP_LAB/dark.npy"
+  darkFile: "/home/whetstone/pyRTC/SHARP_LAB/calib/dark.npy"
   affinity: 3
   functions:
   - expose
@@ -39,11 +39,11 @@ wfs:
 slopes:
   type: SHWFS
   signalType: slopes
-  refSlopesFile: "/home/whetstone/pyRTC/SHARP_LAB/ref.npy"
-  validSubApsFile: "/home/whetstone/pyRTC/SHARP_LAB/validSubAps.npy"
+  refSlopesFile: "/home/whetstone/pyRTC/SHARP_LAB/calib/ref.npy"
+  validSubApsFile: "/home/whetstone/pyRTC/SHARP_LAB/calib/validSubAps.npy"
   subApSpacing: 15.54 #7.78
-  subApOffsetX: 13
-  subApOffsetY: 8
+  subApOffsetX: 8
+  subApOffsetY: 4
   imageNoise: 0.5
   contrast: 20
   affinity: 4
@@ -65,7 +65,7 @@ slopes:
 #   width: 192
 #   height: 192
 #   darkCount: 1000
-#   darkFile: "/home/whetstone/pyRTC/SHARP_LAB/dark.npy"
+#   darkFile: "/home/whetstone/pyRTC/SHARP_LAB/calib/dark.npy"
 #   affinity: 12
 #   flatNorm: True
 #   pupils: 
@@ -82,11 +82,10 @@ wfc:
   serial: "BAX118"
   numActuators: 97
   numModes: 94
-  flatFile: "/home/whetstone/pyRTC/SHARP_LAB/wfcShape.npy"
-  saveFile: "/home/whetstone/pyRTC/SHARP_LAB/wfcShape.npy"
-  m2cFile: "/home/whetstone/pyRTC/SHARP_LAB/m2c_kl.npy" 
-  # m2cFile: "/home/whetstone/pyRTC/SHARP_LAB/m2c_zern_manual.npy"
-  floatingActuatorsFile: "" #"/home/whetstone/pyRTC/SHARP_LAB/floating_actuators_indices.npy"
+  flatFile: "/home/whetstone/pyRTC/SHARP_LAB/calib/wfcShape.npy"
+  saveFile: "/home/whetstone/pyRTC/SHARP_LAB/calib/wfcShape.npy"
+  m2cFile: "/home/whetstone/pyRTC/SHARP_LAB/calib/m2c_kl.npy" 
+  floatingActuatorsFile: ""
   floatingInfluenceRadius: 1
   affinity: 5
   commandCap: 0.8
@@ -98,33 +97,43 @@ wfc:
 psf:
   name: "FLIR"
   index: 0
-  exposure: 800
+  exposure: 300
   gain: 0
   bitDepth: 16
-  left: 920
-  top: 436
-  width: 128
-  height: 128
+  left: 920 #768
+  top: 436 #248
+  width: 128 #640
+  height: 128 #640
   darkCount: 2000
-  darkFile: "/home/whetstone/pyRTC/SHARP_LAB/psfDark.npy"
-  modelFile: "/home/whetstone/pyRTC/SHARP_LAB/modelPSF.npy"
-  integration: 1000
+  darkFile: "/home/whetstone/pyRTC/SHARP_LAB/calib/psfDark.npy"
+  modelFile: "/home/whetstone/pyRTC/SHARP_LAB/calib/modelPSF.npy"
+  integration: 5
   affinity: 6
   functions:
   - expose
   - integrate
   - computeStrehl
 
-modulator:
-  name: 'E-727'
-  libFolder: '/opt/PI/lib64/'
-  digitalFreq: 20000 #Hz
-  frequency: 300 #Hz
-  amplitude: 1000
-  relativeAmplitude: 1
-  offsetX: 2500
-  offsetY: 2500
-  phaseOffset: 0
-  servosOn: True
-  autoZero: True
+optimizer:
+  name: "NCPA"
+  logdir: "ncpa_optimizer_tensorboard"
+  numSteps: 200
+  startMode: 0
+  endMode: 94
+  correctionMag: 0.003
+  numReads: 10
+  affinity: 10
+
+# modulator:
+#   name: 'E-727'
+#   libFolder: '/opt/PI/lib64/'
+#   digitalFreq: 20000 #Hz
+#   frequency: 300 #Hz
+#   amplitude: 1000
+#   relativeAmplitude: 1
+#   offsetX: 2500
+#   offsetY: 2500
+#   phaseOffset: 0
+#   servosOn: True
+#   autoZero: True
 

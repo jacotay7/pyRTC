@@ -12,7 +12,7 @@ from pyRTC.Loop import *
 # shms = ["wfs", "wfsRaw", "signal", "signal2D", "wfc", "wfc2D", "psfShort", "psfLong"]
 # clear_shms(shms)
 # %% Load Config
-conf = read_yaml_file("/home/whetstone/pyRTC/SHARP_LAB/config.yaml")
+conf = read_yaml_file("/home/whetstone/pyRTC/SHARP_LAB/config_SR.yaml")
 # %% Launch WFS
 confWFS = conf["wfs"]
 wfs = XIMEA_WFS(conf=confWFS)
@@ -32,7 +32,6 @@ confPSF = conf["psf"]
 psf = spinCam(conf=confPSF)
 time.sleep(0.5)
 psf.start()
-
 # %% Launch loop
 loop = Loop(conf=conf)
 time.sleep(1)
@@ -40,58 +39,58 @@ time.sleep(1)
 # %% Recalibrate
 
 # Darks
+if False:
+    input("Sources Off?")
+    wfs.takeDark()
+    wfs.darkFile = "/home/whetstone/pyRTC/SHARP_LAB/calib/dark.npy"
+    wfs.saveDark()
+    time.sleep(1)
+    psf.takeDark()
+    psf.darkFile = "/home/whetstone/pyRTC/SHARP_LAB/calib/psfDark_SR.npy"
+    psf.saveDark()
+    input("Sources On?")
+    input("Is Atmosphere Out?")
 
-input("Sources Off?")
-wfs.takeDark()
-wfs.darkFile = "/home/whetstone/pyRTC/SHARP_LAB/dark.npy"
-wfs.saveDark()
-time.sleep(1)
-psf.takeDark()
-psf.darkFile = "/home/whetstone/pyRTC/SHARP_LAB/psfDark.npy"
-psf.saveDark()
-input("Sources On?")
-input("Is Atmosphere Out?")
+    slopes.computeImageNoise()
+    slopes.refSlopesFile =  ""
+    slopes.loadRefSlopes()
+    slopes.takeRefSlopes()
+    slopes.refSlopesFile = "/home/whetstone/pyRTC/SHARP_LAB/calib/ref.npy"
+    slopes.saveRefSlopes()
 
-slopes.computeImageNoise()
-slopes.refSlopesFile =  ""
-slopes.loadRefSlopes()
-slopes.takeRefSlopes()
-slopes.refSlopesFile = "/home/whetstone/pyRTC/SHARP_LAB/ref.npy"
-slopes.saveRefSlopes()
+    wfc.flatten()
+    psf.takeModelPSF()
+    psf.modelFile = "/home/whetstone/pyRTC/SHARP_LAB/calib/modelPSF.npy"
+    psf.saveModelPSF()
 
-wfc.flatten()
-psf.takeModelPSF()
-psf.modelFile = "/home/whetstone/pyRTC/SHARP_LAB/modelPSF.npy"
-psf.saveModelPSF()
+    #  STANDARD IM
+    loop.IMMethod = "push-pull"
+    loop.pokeAmp = 0.03
+    loop.numItersIM = 100
+    loop.IMFile = "/home/whetstone/pyRTC/SHARP_LAB/calib/IM.npy"
+    wfc.flatten()
+    loop.computeIM()
+    loop.saveIM()
+    wfc.flatten()
+    time.sleep(1)
 
-#  STANDARD IM
-loop.IMMethod = "push-pull"
-loop.pokeAmp = 0.03
-loop.numItersIM = 100
-loop.IMFile = "/home/whetstone/pyRTC/SHARP_LAB/IM.npy"
-wfc.flatten()
-loop.computeIM()
-loop.saveIM()
-wfc.flatten()
-time.sleep(1)
-
-input("Is Atmosphere In?")
-#  DOCRIME OL
-loop.IMMethod = "docrime"
-loop.delay = 3
-loop.pokeAmp = 2e-2
-loop.numItersIM = 10000
-loop.IMFile = "/home/whetstone/pyRTC/SHARP_LAB/docrime_IM.npy"
-wfc.flatten()
-loop.computeIM()
-loop.saveIM()
-wfc.flatten()
-time.sleep(1)
+    # input("Is Atmosphere In?")
+    # #  DOCRIME OL
+    # loop.IMMethod = "docrime"
+    # loop.delay = 3
+    # loop.pokeAmp = 2e-2
+    # loop.numItersIM = 10000
+    # loop.IMFile = "/home/whetstone/pyRTC/SHARP_LAB/calib/docrime_IM.npy"
+    # wfc.flatten()
+    # loop.computeIM()
+    # loop.saveIM()
+    # wfc.flatten()
+    # time.sleep(1)
 
 
 
 # %% Compute CM
-loop.IMFile = "/home/whetstone/pyRTC/SHARP_LAB/IM.npy"
+loop.IMFile = "/home/whetstone/pyRTC/SHARP_LAB/calib/IM.npy"
 loop.loadIM()
 loop.numDroppedModes = 40
 loop.computeCM()
@@ -127,38 +126,65 @@ for g in gs:
 plt.plot(gs, metric)
 plt.show()
 
+# %% Bench Conversion
+# %% Compute CM
+# loop.IMFile = "/home/whetstone/pyRTC/SHARP_LAB/cIM.npy"
+loop.loadIM()
+loop.numDroppedModes = 20
+loop.computeCM()
+# %%
+SIM = np.load("/home/whetstone/pyRTC/SHARP_LAB/calib/sprint_IM_nomisreg_valid.npy").reshape(94, -1).T
+bench_converter_SL = np.linalg.pinv(SIM) @ loop.IM
+bench_converter_LS = loop.CM @ SIM
+
 # %% Tip-Tilt-Focus-Sweep
 from tqdm import tqdm
 
-numModes = 10
-startMode = 0
-endMode = wfc.numModes - 1
+folder = "/home/whetstone/Downloads/robin-april-16"
 
-N = 101
-RANGE = 0.05
-psfs = np.empty((numModes, N, *psf.imageShape))
-cmd = wfc.read()
-cmds = np.empty((numModes, N, *cmd.shape), dtype=cmd.dtype)
-wfc.flatten()
-time.sleep(0.1)
 
-modelist = np.linspace(startMode, endMode, numModes).astype(int)
+# numModes = 10
+# startMode = 0
+# endMode = wfc.numModes - 1
+# filelist = ['cnnx2_phase.npy', 'cnnx4_phase.npy', 'linx2_phase.npy', 'linx4_phase.npy']
+filelist = ['cnnx2_phase.npy', 'cnnx4_phase.npy','linx2_phase.npy', 'linx4_phase.npy']
+N = 4
+numModes = 11
+RANGE = 2
+modelist = [-10., -5, -2, -1, 0, 1., 2, 5, 10] #np.linspace(-RANGE, RANGE, numModes) #.astype(int)
+slopecorrect = 0.0021
 
-for i, mode in enumerate(modelist): #range(numModes):
-    correction = np.zeros_like(wfc.read())
-    for j, amp in enumerate(tqdm(np.linspace(-RANGE,RANGE,N))):
-        correction[mode] = amp
-        wfc.write(correction)
-        #Burn some images
-        psf.readLong()
-        #Save the next PSF in the dataset
-        psfs[i, j, :, :] = psf.readLong()
-        cmds[i,j,:] = correction
-wfc.flatten()
+for k, bench_converter in enumerate([bench_converter_SL, bench_converter_LS]):
+    bc = ["SL", "LS"][k]
+    for ff in filelist:
+        psfs = np.empty((numModes, N, *psf.imageShape))
+        cmd = wfc.read()
+        cmds = np.empty((numModes, N, *cmd.shape), dtype=cmd.dtype)
+        shps = np.empty((numModes, N, *wfc.layout.shape), dtype=cmd.dtype)
+        wfc.flatten()
+        time.sleep(0.1)
+        d = np.load(f'{folder}/{ff}')
+        for i, mode in enumerate(modelist): #range(numModes):
+            correction = np.zeros_like(wfc.read())
+            for j in tqdm(range(N)):
+                # correction[:21] = slopecorrect * mode * d[j, :].flatten()
+                correction = bench_converter[:,:21] @ (slopecorrect * mode * d[j, :].flatten())
+                wfc.write(correction)
+                #Burn some images
+                psf.readLong()
+                #Save the next PSF in the dataset
+                psfs[i, j, :, :] = psf.readLong()
+                cmds[i,j,:] = correction
+                shps[i,j,wfc.layout] = wfc.currentShape - wfc.flat
+                wfc.flatten()
+        
+        np.save(f'{folder}/fixed_full_psfs_{ff}_{bc}', psfs)
+        np.save(f'{folder}/fixed_full_cmds_{ff}_{bc}', cmds)
+        np.save(f'{folder}/fixed_full_shps_{ff}_{bc}', shps)
+
 
 # %%
-folder = "/media/whetstone/bc08ec4b-bb23-407e-92d4-5585e3dfe2d2/data/"
-run_name = "mode_sweep_apr_9_final"
+run_name = "psf_Sweep"
 folder += run_name
 filename = f"{folder}/psfs_{startMode}_{endMode}_{numModes}_{N}"
 np.save(filename, psfs)

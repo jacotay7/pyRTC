@@ -6,6 +6,77 @@ from subprocess import PIPE, Popen
 import numpy as np
 import psutil
 from scipy.ndimage import median_filter, gaussian_filter
+import socket
+
+NP_DATA_TYPES = [
+    np.int8, np.int16, np.int32, np.int64,
+    np.uint8, np.uint16, np.uint32, np.uint64,
+    np.float16, np.float32, np.float64, np.float128,  # np.float128 availability depends on the system
+    np.complex64, np.complex128, np.complex256,       # np.complex256 availability depends on the system
+    np.bool_,
+    np.object_,
+    np.string_, np.unicode_,
+    np.datetime64, np.timedelta64
+]
+
+def centroid(array):
+    # Each point contributes to the centroid proportionally to its value.
+    total = array.sum()
+    y_indices, x_indices = np.indices(array.shape)
+    x_centroid = (x_indices * array).sum() / total
+    y_centroid = (y_indices * array).sum() / total
+    return x_centroid, y_centroid
+
+def add_to_buffer(buffer, vec):
+    buffer[:-1] = buffer[1:]
+    buffer[-1] = vec
+    return
+
+def next_power_of_two(n):
+    # Handle case for non-positive input
+    if n <= 0:
+        return 1
+
+    power = 1
+    while power <= n:
+        power *= 2
+    return power
+
+
+def adjusted_cosine_similarity(a, b):
+    dot_product = np.dot(a, b)
+    norm_a = np.linalg.norm(a)
+    norm_b = np.linalg.norm(b)
+    if norm_a == 0 or norm_b == 0:
+        return 0
+    cosine_similarity = dot_product / (norm_a * norm_b)
+    magnitude_similarity = min(norm_a, norm_b) / max(norm_a, norm_b)
+    return cosine_similarity * magnitude_similarity
+
+
+def robust_variance(data):
+    median = np.median(data)
+    deviations = np.abs(data - median)
+    mad = np.median(deviations)
+    return (mad / 0.6745) ** 2
+
+def cosine_similarity(v1, v2):
+    # Calculate the magnitudes of the vectors
+    mag_v1 = np.linalg.norm(v1)
+    mag_v2 = np.linalg.norm(v2)
+
+    # Calculate the dot product of vectors
+    dot_product = np.dot(v1, v2)
+
+    if mag_v1 == 0 or mag_v2 == 0:
+        return 0
+
+    return dot_product / (mag_v1 * mag_v2)
+
+def angle_between_vectors(v1, v2):
+
+    # Calculate the cosine of the angle
+    return np.abs(np.arccos(cosine_similarity(v1, v2)))
 
 def compute_fwhm_dark_subtracted_image(image):
     # Filter to keep only negative values
@@ -83,10 +154,7 @@ def dtype_to_float(dtype):
     Returns:
     - float: Unique float representing the dtype
     """
-    dtypes = np.array(list(np.sctypeDict.values()))
-    dtypesNames = np.array([str(d) for d in dtypes], dtype=str)
-    dtypes = dtypes[np.argsort(dtypesNames)]
-    for i, d in enumerate(dtypes):
+    for i, d in enumerate(NP_DATA_TYPES):
         if dtype == d:
             return i
     return -1
@@ -101,10 +169,31 @@ def float_to_dtype(dtype_float):
     Returns:
     - np.dtype: NumPy dtype object
     """
-    dtypes = np.array(list(np.sctypeDict.values()))
-    dtypesNames = np.array([str(d) for d in dtypes], dtype=str)
-    dtypes = dtypes[np.argsort(dtypesNames)]
-    return np.dtype(dtypes[int(dtype_float)])
+    return np.dtype(NP_DATA_TYPES[int(dtype_float)])
+
+def bind_socket(host, start_port, max_attempts=5):
+    """Attempts to bind a socket on a range of ports, handling OSError exceptions."""
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)  # Allow reuse of socket addresses
+
+    for attempt in range(max_attempts):
+        try:
+            # Attempt to bind the socket
+            sock.bind((host, start_port + attempt))
+            print(f"Successfully bound to {host}:{start_port + attempt}")
+            return sock
+        except OSError as e:
+            print(f"Failed to bind to {host}:{start_port + attempt}: {e}")
+            if e.errno == socket.errno.EADDRINUSE:
+                print("Address already in use. Trying next port...")
+            else:
+                print("An unexpected error occurred. Stopping attempts.")
+                break
+    else:
+        # After all attempts, if no binding was successful, raise an exception
+        raise RuntimeError("Failed to bind socket after multiple attempts")
+
+    return -1
 
 def decrease_nice(pid):
     # Unsupported by MacOS

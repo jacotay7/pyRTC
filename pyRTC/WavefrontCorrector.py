@@ -12,13 +12,10 @@ os.environ['TBB_NUM_THREADS'] = '1'
 
 from pyRTC.Pipeline import ImageSHM, work
 from pyRTC.utils import *
+from pyRTC.pyRTCComponent import *
 import numpy as np
 import matplotlib.pyplot as plt
-import threading
-from numba import set_num_threads, jit
-from sys import platform
-
-# set_num_threads(1)
+from numba import jit
 
 @jit(nopython=True)
 def ModaltoZonalWithFlat(correction=np.array([],dtype=np.float32), 
@@ -26,7 +23,7 @@ def ModaltoZonalWithFlat(correction=np.array([],dtype=np.float32),
                        flat=np.array([],dtype=np.float32)):
     return M2C@correction + flat
 
-class WavefrontCorrector:
+class WavefrontCorrector(pyRTCComponent):
 
     def __init__(self, conf) -> None:
 
@@ -60,36 +57,8 @@ class WavefrontCorrector:
         #Initialize the basis for corrections
         self.readM2C()
 
-        self.alive = True
-        self.running = False
-
-        functionsToRun = conf["functions"]
-        self.workThreads = []
-        
-        for i, functionName in enumerate(functionsToRun):
-            # Launch a separate thread
-            workThread = threading.Thread(target=work, args = (self,functionName), daemon=True)
-            
-            # Start the thread
-            workThread.start()
-            
-            # Set CPU affinity for the thread
-            set_affinity((self.affinity+i)%os.cpu_count()) 
-            self.workThreads.append(workThread)
+        super().__init__(conf)
         return
-    
-    def __del__(self):
-        self.stop()
-        self.alive=False
-        return
-    
-    def start(self):
-        self.running = True
-        return
-
-    def stop(self):
-        self.running = False
-        return     
 
     def setFlat(self, flat):
         self.flat = flat
