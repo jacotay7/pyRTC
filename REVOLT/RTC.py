@@ -27,6 +27,11 @@ slopes = hardwareLauncher("./SlopesProcess.py", config, N+2)
 slopes.launch()
 
 # %% Launch Loop Class
+psf = hardwareLauncher("./hardware/alliedVisionScienceCam.py", config, 3142, remoteProcess=True)
+psf.host = "132.246.193.118"
+psf.launch()
+
+# %% Launch Loop Class
 loop = hardwareLauncher("./Loop.py", config, N+4)
 loop.launch()
 
