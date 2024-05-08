@@ -12,7 +12,7 @@ from pyRTC.Loop import *
 # shms = ["wfs", "wfsRaw", "signal", "signal2D", "wfc", "wfc2D", "psfShort", "psfLong"]
 # clear_shms(shms)
 # %% Load Config
-conf = read_yaml_file("/home/whetstone/pyRTC/SHARP_LAB/config.yaml")
+conf = read_yaml_file("/home/whetstone/pyRTC/SHARP_LAB/config_SR.yaml")
 # %% Launch WFS
 confWFS = conf["wfs"]
 wfs = XIMEA_WFS(conf=confWFS)
@@ -32,7 +32,6 @@ confPSF = conf["psf"]
 psf = spinCam(conf=confPSF)
 time.sleep(0.5)
 psf.start()
-
 # %% Launch loop
 loop = Loop(conf=conf)
 time.sleep(1)
@@ -43,11 +42,11 @@ time.sleep(1)
 if False:
     input("Sources Off?")
     wfs.takeDark()
-    wfs.darkFile = "/home/whetstone/pyRTC/SHARP_LAB/dark.npy"
+    wfs.darkFile = "/home/whetstone/pyRTC/SHARP_LAB/calib/dark.npy"
     wfs.saveDark()
     time.sleep(1)
     psf.takeDark()
-    psf.darkFile = "/home/whetstone/pyRTC/SHARP_LAB/psfDark.npy"
+    psf.darkFile = "/home/whetstone/pyRTC/SHARP_LAB/calib/psfDark_SR.npy"
     psf.saveDark()
     input("Sources On?")
     input("Is Atmosphere Out?")
@@ -56,42 +55,42 @@ if False:
     slopes.refSlopesFile =  ""
     slopes.loadRefSlopes()
     slopes.takeRefSlopes()
-    slopes.refSlopesFile = "/home/whetstone/pyRTC/SHARP_LAB/ref.npy"
+    slopes.refSlopesFile = "/home/whetstone/pyRTC/SHARP_LAB/calib/ref.npy"
     slopes.saveRefSlopes()
 
     wfc.flatten()
     psf.takeModelPSF()
-    psf.modelFile = "/home/whetstone/pyRTC/SHARP_LAB/modelPSF.npy"
+    psf.modelFile = "/home/whetstone/pyRTC/SHARP_LAB/calib/modelPSF.npy"
     psf.saveModelPSF()
 
     #  STANDARD IM
     loop.IMMethod = "push-pull"
     loop.pokeAmp = 0.03
     loop.numItersIM = 100
-    loop.IMFile = "/home/whetstone/pyRTC/SHARP_LAB/IM.npy"
+    loop.IMFile = "/home/whetstone/pyRTC/SHARP_LAB/calib/IM.npy"
     wfc.flatten()
     loop.computeIM()
     loop.saveIM()
     wfc.flatten()
     time.sleep(1)
 
-    input("Is Atmosphere In?")
-    #  DOCRIME OL
-    loop.IMMethod = "docrime"
-    loop.delay = 3
-    loop.pokeAmp = 2e-2
-    loop.numItersIM = 10000
-    loop.IMFile = "/home/whetstone/pyRTC/SHARP_LAB/docrime_IM.npy"
-    wfc.flatten()
-    loop.computeIM()
-    loop.saveIM()
-    wfc.flatten()
-    time.sleep(1)
+    # input("Is Atmosphere In?")
+    # #  DOCRIME OL
+    # loop.IMMethod = "docrime"
+    # loop.delay = 3
+    # loop.pokeAmp = 2e-2
+    # loop.numItersIM = 10000
+    # loop.IMFile = "/home/whetstone/pyRTC/SHARP_LAB/calib/docrime_IM.npy"
+    # wfc.flatten()
+    # loop.computeIM()
+    # loop.saveIM()
+    # wfc.flatten()
+    # time.sleep(1)
 
 
 
 # %% Compute CM
-loop.IMFile = "/home/whetstone/pyRTC/SHARP_LAB/IM.npy"
+loop.IMFile = "/home/whetstone/pyRTC/SHARP_LAB/calib/IM.npy"
 loop.loadIM()
 loop.numDroppedModes = 40
 loop.computeCM()
@@ -129,12 +128,12 @@ plt.show()
 
 # %% Bench Conversion
 # %% Compute CM
-loop.IMFile = "/home/whetstone/pyRTC/SHARP_LAB/IM.npy"
+# loop.IMFile = "/home/whetstone/pyRTC/SHARP_LAB/cIM.npy"
 loop.loadIM()
 loop.numDroppedModes = 20
 loop.computeCM()
-
-SIM = np.load("sprint_nomisreg_IM.npy")
+# %%
+SIM = np.load("/home/whetstone/pyRTC/SHARP_LAB/calib/sprint_IM_nomisreg_valid.npy").reshape(94, -1).T
 bench_converter_SL = np.linalg.pinv(SIM) @ loop.IM
 bench_converter_LS = loop.CM @ SIM
 
@@ -148,11 +147,11 @@ folder = "/home/whetstone/Downloads/robin-april-16"
 # startMode = 0
 # endMode = wfc.numModes - 1
 # filelist = ['cnnx2_phase.npy', 'cnnx4_phase.npy', 'linx2_phase.npy', 'linx4_phase.npy']
-filelist = ['cnnx2_phase.npy','cnnx4_phase.npy', 'linx2_phase.npy', 'linx4_phase.npy']
+filelist = ['cnnx2_phase.npy', 'cnnx4_phase.npy','linx2_phase.npy', 'linx4_phase.npy']
 N = 4
 numModes = 11
 RANGE = 2
-modelist = [-2., -1., -0.5, 0, 0.5, 1., 2] #np.linspace(-RANGE, RANGE, numModes) #.astype(int)
+modelist = [-10., -5, -2, -1, 0, 1., 2, 5, 10] #np.linspace(-RANGE, RANGE, numModes) #.astype(int)
 slopecorrect = 0.0021
 
 for k, bench_converter in enumerate([bench_converter_SL, bench_converter_LS]):

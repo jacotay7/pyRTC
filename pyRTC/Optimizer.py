@@ -4,7 +4,7 @@ A Superclass for Peformance Optimizer
 from pyRTC.Pipeline import *
 from pyRTC.utils import *
 from pyRTC.pyRTCComponent import *
-import threading
+
 import argparse
 import sys
 import os
@@ -14,8 +14,10 @@ import optuna
 class Optimizer(pyRTCComponent):
 
     def __init__(self, conf) -> None:
-
-        self.study = optuna.create_study(direction='maximize')
+        
+        self.name = "Optimizer"
+        self.study = optuna.create_study(direction='maximize', 
+                                         sampler=optuna.samplers.CmaEsSampler())
         self.numSteps = setFromConfig(conf, "numSteps", 100)
 
         super().__init__(conf)
@@ -90,6 +92,7 @@ if __name__ == "__main__":
 
     # Add command-line argument for the config file
     parser.add_argument("-c", "--config", required=True, help="Path to the config file")
+    parser.add_argument("-p", "--port", required=True, help="Port for communication")
 
     # Parse command-line arguments
     args = parser.parse_args()
@@ -106,8 +109,7 @@ if __name__ == "__main__":
     # Go back to communicating with the main program through stdout
     sys.stdout = original_stdout
 
-
-    l = Listener(component)
+    l = Listener(component, port = int(args.port))
     while l.running:
         l.listen()
         time.sleep(1e-3)

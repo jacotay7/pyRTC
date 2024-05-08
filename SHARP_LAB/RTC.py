@@ -3,38 +3,42 @@
 from pyRTC.Pipeline import *
 from pyRTC.utils import *
 import os
-os.chdir("/home/whetstone/pyRTC/pyRTC")
+os.chdir("/home/whetstone/pyRTC/SHARP_LAB")
 RECALIBRATE = False
 
 # %% Clear SHMs
-from pyRTC.Pipeline import clear_shms
-shm_names = ["signal"]
-shm_names = ["wfs", "wfsRaw", "wfc", "wfc2D", "signal", "signal2D", "psfShort", "psfLong"] #list of SHMs to reset
-clear_shms(shm_names)
+# from pyRTC.Pipeline import clear_shms
+# shm_names = ["signal"]
+# shm_names = ["wfs", "wfsRaw", "wfc", "wfc2D", "signal", "signal2D", "psfShort", "psfLong"] #list of SHMs to reset
+# clear_shms(shm_names)
 
 # %% IMPORTS
-config = '/home/whetstone/pyRTC/SHARP_LAB/config.yaml'
+config = '/home/whetstone/pyRTC/SHARP_LAB/config_SR.yaml'
 N = np.random.randint(3000,6000)
 # %% Launch DM
-wfc = hardwareLauncher("./hardware/ALPAODM.py", config, N)
+wfc = hardwareLauncher("../pyRTC/hardware/ALPAODM.py", config, N)
 wfc.launch()
 
 # %% Launch WFS
-wfs = hardwareLauncher("./hardware/ximeaWFS.py", config, N+1)
+wfs = hardwareLauncher("../pyRTC/hardware/ximeaWFS.py", config, N+1)
 wfs.launch()
 
 # %% Launch slopes
-slopes = hardwareLauncher("./SlopesProcess.py", config, N+2)
+slopes = hardwareLauncher("../pyRTC/SlopesProcess.py", config, N+2)
 slopes.launch()
 
 # %% Launch PSF Cam
-psfCam = hardwareLauncher("./hardware/SpinnakerScienceCam.py", config, N+10)
+psfCam = hardwareLauncher("../pyRTC/hardware/SpinnakerScienceCam.py", config, N+10)
 psfCam.launch()
 
 # %% Launch Loop Class
-loop = hardwareLauncher("./Loop.py", config, N+4)
-# loop = hardwareLauncher("./hardware/predictLoop.py", config)
+loop = hardwareLauncher("../pyRTC/Loop.py", config, N+4)
+# loop = hardwareLauncher("../pyRTC/hardware/predictLoop.py", config)
 loop.launch()
+
+# %% NCAP OPTIMIZER
+optim  = hardwareLauncher("../pyRTC/hardware/NCPAOptimizer.py", config, N+4)
+optim.launch()
 
 # %% Calibrate
 
@@ -46,52 +50,63 @@ if RECALIBRATE == True:
 
     input("Sources Off?")
     wfs.run("takeDark")
-    wfs.setProperty("darkFile", "/home/whetstone/pyRTC/SHARP_LAB/dark.npy")
+    wfs.setProperty("darkFile", "/home/whetstone/pyRTC/SHARP_LAB/calib/dark.npy")
     wfs.run("saveDark")
     time.sleep(1)
     psfCam.run("takeDark")
-    psfCam.setProperty("darkFile", "/home/whetstone/pyRTC/SHARP_LAB/fullPsfDark.npy")
+    psfCam.setProperty("darkFile", "/home/whetstone/pyRTC/SHARP_LAB/calib/psfDark.npy")
     psfCam.run("saveDark")
     input("Sources On?")
     input("Is Atmosphere Out?")
 
     slopes.run("computeImageNoise")
     slopes.run("takeRefSlopes")
-    slopes.setProperty("refSlopesFile", "/home/whetstone/pyRTC/SHARP_LAB/ref.npy")
+    slopes.setProperty("refSlopesFile", "/home/whetstone/pyRTC/SHARP_LAB/calib/ref.npy")
     slopes.run("saveRefSlopes")
 
     wfc.run("flatten")
     psfCam.run("takeModelPSF")
-    psfCam.setProperty("modelFile", "/home/whetstone/pyRTC/SHARP_LAB/modelPSF.npy")
+    psfCam.setProperty("modelFile", "/home/whetstone/pyRTC/SHARP_LAB/calib/modelPSF.npy")
     psfCam.run("saveModelPSF")
 
     #  STANDARD IM
     loop.setProperty("IMMethod", "push-pull")
     loop.setProperty("pokeAmp", 0.03)
     loop.setProperty("numItersIM", 100)
-    loop.setProperty("IMFile", "/home/whetstone/pyRTC/SHARP_LAB/IM.npy")
+    loop.setProperty("IMFile", "/home/whetstone/pyRTC/SHARP_LAB/calib/IM.npy")
     wfc.run("flatten")
     loop.run("computeIM")
     loop.run("saveIM")
     wfc.run("flatten")
     time.sleep(1)
 
-    input("Is Atmosphere In?")
-    #  DOCRIME OL
-    loop.setProperty("IMMethod", "docrime")
-    loop.setProperty("delay", 1)
-    loop.setProperty("pokeAmp", 2e-2)
-    loop.setProperty("numItersIM", 30000)
-    loop.setProperty("IMFile", "/home/whetstone/pyRTC/SHARP_LAB/docrime_IM.npy")
-    wfc.run("flatten")
-    loop.run("computeIM")
-    loop.run("saveIM")
-    wfc.run("flatten")
-    time.sleep(1)
+    # input("Is Atmosphere In?")
+    # #  DOCRIME OL
+    # loop.setProperty("IMMethod", "docrime")
+    # loop.setProperty("delay", 1)
+    # loop.setProperty("pokeAmp", 2e-2)
+    # loop.setProperty("numItersIM", 30000)
+    # loop.setProperty("IMFile", "/home/whetstone/pyRTC/SHARP_LAB/calib/docrime_IM.npy")
+    # wfc.run("flatten")
+    # loop.run("computeIM")
+    # loop.run("saveIM")
+    # wfc.run("flatten")
+    # time.sleep(1)
 
+#%% Optimize NCPA
+for i in range(10):
+    optim.run("optimize")
+    optim.run("applyOptimum")
+wfc.run("saveShape")
+slopes.run("takeRefSlopes")
+slopes.setProperty("refSlopesFile", "/home/whetstone/pyRTC/SHARP_LAB/calib/ref.npy")
+slopes.run("saveRefSlopes")
+psfCam.run("takeModelPSF")
+psfCam.setProperty("modelFile", "/home/whetstone/pyRTC/SHARP_LAB/calib/modelPSF.npy")
+psfCam.run("saveModelPSF")
 
 # %% Adjust Loop
-loop.setProperty("IMFile", "/home/whetstone/pyRTC/SHARP_LAB/IM.npy")
+loop.setProperty("IMFile", "/home/whetstone/pyRTC/SHARP_LAB/calib/IM.npy")
 loop.run("loadIM")
 time.sleep(0.5)
 loop.setProperty("numDroppedModes", 30)
@@ -109,7 +124,7 @@ wfc.run("flatten")
 wfc.run("flatten")
 
 # %% Plots
-im = np.load("../SHARP_LAB/docrime_IM.npy")
+im = np.load("../SHARP_LAB/calib/docrime_IM.npy")
 plt.imshow(im, aspect="auto")
 plt.show()
 
@@ -124,8 +139,8 @@ for i in range(85,90):
     plt.show()
 
 
-im_dc = np.load("../SHARP_LAB/docrime_IM.npy")
-im = np.load("../SHARP_LAB/IM.npy")
+im_dc = np.load("../SHARP_LAB/calib/docrime_IM.npy")
+im = np.load("../SHARP_LAB/calib/IM.npy")
 
 im_dc = im_dc.reshape(*slopes.getProperty("signalShape"), -1)
 im_dc = np.moveaxis(im_dc, 2, 0)
@@ -149,14 +164,14 @@ plt.colorbar()
 plt.show()
 # %% SVD
 
-im_dc = np.load("../SHARP_LAB/docrime_IM.npy")
-im = np.load("../SHARP_LAB/IM.npy")
-im_sprint = np.load("../SHARP_LAB/sprint_IM.npy")
+im_dc = np.load("../SHARP_LAB/calib/docrime_IM.npy")
+im = np.load("../SHARP_LAB/calib/IM.npy")
+im_sprint = np.load("../SHARP_LAB/calib/sprint_IM.npy")
 
 #RESCALES SPRINT TO MATCH EMPIRICAL
 # for i in range(im_sprint.shape[1]):
 #     im_sprint[:,i] *= np.std(im[:,i])/np.std(im_sprint[:,i])
-# np.save("../SHARP_LAB/sprint_IM.npy", im_sprint)
+# np.save("../SHARP_LAB/calib/sprint_IM.npy", im_sprint)
 
 u,s,v = np.linalg.svd(im)
 plt.plot(s/np.max(s), label = 'EMPIRICAL')
@@ -251,3 +266,31 @@ for ff in filelist:
     np.save(f'{folder}/psfs_{ff}', psfs)
     np.save(f'{folder}/cmds_{ff}', cmds)
 # %%
+# %% CODE TO UPDATE FLAKY SUB APERTURES
+
+# subApFile = slopes.getProperty("validSubApsFile")
+# print(subApFile)
+# vsubAp = np.load(subApFile)
+# plt.imshow(vsubAp)
+# plt.show()
+
+# from pyRTC.Pipeline import initExistingShm
+# shm, _, _ = initExistingShm("signal2D")
+
+# x = shm.read_noblock()
+# N = 1000
+# data = np.zeros((N, *x.shape))
+# for i in range(N):
+#     data[i] = shm.read_noblock()
+#     time.sleep(3e-3)
+
+# arr = np.std(data,axis =0)
+# aps_to_remove = arr > np.percentile(arr, 99)
+# aps_to_remove[:aps_to_remove.shape[0]//2] |= aps_to_remove[aps_to_remove.shape[0]//2:]
+# aps_to_remove[aps_to_remove.shape[0]//2:] |= aps_to_remove[:aps_to_remove.shape[0]//2]
+# # aps_to_remove |= vsubAp
+# plt.imshow(aps_to_remove)
+# plt.show()
+# new_valid = np.copy(vsubAp)
+# new_valid[aps_to_remove] = False
+### np.save(subApFile, new_valid)
