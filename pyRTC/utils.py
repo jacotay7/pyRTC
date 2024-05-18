@@ -19,6 +19,27 @@ NP_DATA_TYPES = [
     np.datetime64, np.timedelta64
 ]
 
+def get_tmp_filepath(file_path):
+    """
+    Append '_tmp' to the filename part of the given file path, before the file extension.
+
+    :param file_path: str, the original file path
+    :return: str, modified file path with '_tmp' before the extension
+    """
+    # Split the file path into directory path and filename
+    dir_path, filename = os.path.split(file_path)
+
+    # Split the filename into name and extension
+    file_name, file_ext = os.path.splitext(filename)
+
+    # Add '_tmp' to the filename
+    new_filename = f"{file_name}_tmp{file_ext}"
+
+    # Construct the new full path
+    new_file_path = os.path.join(dir_path, new_filename)
+
+    return new_file_path
+
 def centroid(array):
     # Each point contributes to the centroid proportionally to its value.
     total = array.sum()
