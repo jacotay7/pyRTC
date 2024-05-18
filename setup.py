@@ -16,8 +16,21 @@ setup(
                       'scipy',
                       'pyqt5',
                       'argparse',
-                      'psutil'             
+                      'psutil',
+                      'optuna',
+                      'cmaes'             
                       ],
+    extras_require={
+        "docs": [
+                "sphinx",
+                "sphinx-autobuild",
+                "sphinx-rtd-theme",
+                # For spelling
+                "sphinxcontrib.spelling",
+                # Copy button for code snippets
+                "sphinx_copybutton",
+            ],
+    },
 
     classifiers=[
         'Development Status :: 2 - Pre-Alpha',
