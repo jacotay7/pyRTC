@@ -92,7 +92,13 @@ class Loop(pyRTCComponent):
         self.delay = setFromConfig(self.confLoop, "delay", 0)
         self.IMMethod = setFromConfig(self.confLoop, "IMMethod", "push-pull") 
         self.IMFile = setFromConfig(self.confLoop, "IMFile", "")
-        
+        self.clDocrime = False        
+        #Have a history of corrections
+        self.docrimeBuffer = np.zeros((1+self.delay, self.numModes), 
+                                      dtype=self.wfcDType)
+        self.docrimeCross = np.zeros_like(self.nullSignal@self.docrimeBuffer[0].T)
+        self.docrimeAuto = np.zeros_like(self.docrimeBuffer[0]@self.docrimeBuffer[0].T)
+
 
         """
         Terms for PID integrator
@@ -132,7 +138,7 @@ class Loop(pyRTCComponent):
             #Plus amplitude
             correction[i] = self.pokeAmp
             #Post a new shape to be made
-            self.wfcShm.write(correction)
+            self.sendToWfc(correction)
             #Add some delay to ensure one-to-one
             time.sleep(self.hardwareDelay)
             #Burn the first new image since we were moving the DM during the exposure
@@ -146,7 +152,7 @@ class Loop(pyRTCComponent):
             #Minus amplitude
             correction[i] = -self.pokeAmp
             #Post a new shape to be made
-            self.wfcShm.write(correction)
+            self.sendToWfc(correction)
             #Add some delay to ensure one-to-one
             time.sleep(self.hardwareDelay)
             #Burn the first new image since we were moving the DM during the exposure
@@ -178,8 +184,8 @@ class Loop(pyRTCComponent):
         #Get an initial slope reading to set shapes
         slopes = self.nullSignal.copy()
         slopes = slopes.reshape(slopes.size,1)
-        cross = np.zeros_like(slopes@correction.T)
-        auto = np.zeros_like(correction@correction.T)
+        self.docrimeCross = np.zeros_like(slopes@correction.T)
+        self.docrimeAuto = np.zeros_like(correction@correction.T)
 
         for i in range(self.numItersIM):
             #Compute new random shape
@@ -190,7 +196,7 @@ class Loop(pyRTCComponent):
                 correction = self.wfcShm.read_noblock() + correction
 
             #Send our new pertubation to the WFC
-            self.wfcShm.write(correction.reshape(corrShapeWFC))
+            self.sendToWfc(correction.reshape(corrShapeWFC))
             #Move old shapes back in history
             corrections[:-1] = corrections[1:]
             #Add new correction
@@ -200,12 +206,11 @@ class Loop(pyRTCComponent):
             slopes = self.signalShm.read().reshape(slopes.shape)
         
             #Correlate Current response with old correction by delay time
-            cross += slopes@corrections[0].T
-            auto += corrections[0]@corrections[0].T
+            self.docrimeCross += slopes@corrections[0].T
+            self.docrimeAuto += corrections[0]@corrections[0].T
 
-        cross /= self.numItersIM 
-        auto /= self.numItersIM
-        self.IM = cross@np.linalg.inv(auto) 
+        self.solveDocrime()
+
         return
 
     def computeIM(self):
@@ -233,7 +238,7 @@ class Loop(pyRTCComponent):
         self.computeCM()
 
     def flatten(self):
-        self.wfcShm.write(self.flat)
+        self.sendToWfc(self.flat)
         return
     
     def computeCM(self):
@@ -267,10 +272,9 @@ class Loop(pyRTCComponent):
         newCorrection = self.updateCorrectionPOL(correction=currentCorrection, 
                                                  slopes=residual_slopes)
         newCorrection[self.numActiveModes:] = 0
-        self.wfcShm.write(newCorrection)
+        self.sendToWfc(newCorrection)
 
         return
-
     
     def standardIntegrator(self):
 
@@ -280,9 +284,8 @@ class Loop(pyRTCComponent):
                                         gCM=self.gCM, 
                                         slopes=slopes)
         newCorrection[self.numActiveModes:] = 0
-        self.wfcShm.write(newCorrection)
-        return
-    
+        self.sendToWfc(newCorrection)
+        return  
     
     def leakyIntegrator(self):
 
@@ -292,14 +295,15 @@ class Loop(pyRTCComponent):
                                         gCM=self.gCM, 
                                         slopes=slopes)
         newCorrection[self.numActiveModes:] = 0
-        self.wfcShm.write(newCorrection)
+        self.sendToWfc(newCorrection)
         return
 
     def pidIntegrator(self):
 
+        slopes = self.signalShm.read()
         #Compute raw error term (numba accelerated)
         wfError = compCorrection(CM=self.CM, 
-                                    slopes=self.signalShm.read())
+                                    slopes=slopes)
         derivative = (wfError - self.previousWfError) 
         
         # Apply low-pass filter to the derivative to reduce noise
@@ -318,7 +322,7 @@ class Loop(pyRTCComponent):
         # Calculate PID output
         controlOutput = self.pGain * wfError + self.iGain * self.integral + self.dGain * derivative
         #Get new correction vector from the control output
-        newCorrection = self.wfcShm.read() - controlOutput #Negative control direction is convention for pyRTC
+        newCorrection = self.wfcShm.read()*(1-self.leakyGain) - controlOutput #Negative control direction is convention for pyRTC
 
         #Remove anything in non-corrected modes (might be redundant)
         newCorrection[self.numActiveModes:] = 0
@@ -327,13 +331,45 @@ class Loop(pyRTCComponent):
         newCorrection = np.clip(newCorrection, *self.controlLimits)
         
         #Apply new correction to mirror
-        self.wfcShm.write(newCorrection)
+        self.sendToWfc(newCorrection, slopes=slopes)
 
         # Save state for next iteration
         self.previousWfError = wfError
         self.previousDerivative = derivative
         self.controlOutput = controlOutput
         
+        return
+
+    def sendToWfc(self, correction, slopes=None):
+        #Get an initial slope reading to set shapes
+
+        if self.clDocrime and slopes is not None:
+
+            #Compute new random shape
+            randShape = np.random.uniform(-self.pokeAmp,
+                                          self.pokeAmp,
+                                          correction.size).astype(correction.dtype).reshape(correction.shape)
+
+            #Adds to end of buffer (i.e. pos -1)
+            add_to_buffer(self.docrimeBuffer, randShape)
+
+            #Send our new pertubation to the WFC
+            self.sendToWfc(correction + randShape)
+
+            #Correlate Current response with old correction by delay time
+            self.docrimeCross += slopes@self.docrimeBuffer[0].T
+            self.docrimeAuto += self.docrimeBuffer[0]@self.docrimeBuffer[0].T
+
+        else:
+            self.sendToWfc(correction)
+        return
+
+    def solveDocrime(self):
+
+        self.docrimeCross /= self.numItersIM 
+        self.docrimeAuto /= self.numItersIM
+        self.IM = self.docrimeCross@np.linalg.inv(self.docrimeAuto)
+
         return
 
     def plotIM(self, row=None):
@@ -343,7 +379,7 @@ class Loop(pyRTCComponent):
         #     plt.colorbar()
         #     plt.show()
         # else:
-        plt.imshow(self.IM, cmap = 'inferno', aspect='auto')
+        plt.imshow(self.IM, cmap = 'inferno', aspect='self.docrimeAuto')
         plt.show()
 
 if __name__ == "__main__":

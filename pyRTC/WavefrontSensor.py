@@ -93,7 +93,8 @@ class WavefrontSensor(pyRTCComponent):
         if filename == '':
             self.dark = np.zeros_like(self.dark)
         else: #If we have a filename
-            self.dark = np.load(filename)
+            self.dark = load_data(self.filename,
+                                   dtype=self.imageDType)
         return
     
     def plot(self):

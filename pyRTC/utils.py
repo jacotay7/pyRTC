@@ -2,6 +2,7 @@ import yaml
 import sys
 import select
 import os 
+from astropy.io import fits
 from subprocess import PIPE, Popen
 import numpy as np
 import psutil
@@ -18,6 +19,40 @@ NP_DATA_TYPES = [
     np.string_, np.unicode_,
     np.datetime64, np.timedelta64
 ]
+
+def generate_circular_aperture_mask(N, R, ratio):
+    """
+    Generates a binary mask of size NxN with a circular aperture of radius R and a central obscuration of radius r.
+    
+    Parameters:
+    N (int): The size of the mask (NxN).
+    R (float): The radius of the outer circular aperture.
+    ratio (float): The ratio of the inner obscuration radius to the outer radius (r/R).
+
+    Returns:
+    numpy.ndarray: Binary mask with the circular aperture.
+    """
+    r = R * ratio
+    x = np.linspace(-N/2, N/2, N)
+    xx, yy = np.meshgrid(x,x)
+    mask = (xx**2 + yy**2 <= R**2) 
+    if r > 0:
+        mask &= (xx**2 + yy**2 >= r**2)
+    return mask.astype(bool)
+
+def load_data(filename, dtype=None):
+    if filename.endswith('.npy'):
+        data = np.load(filename)
+    elif filename.endswith('.fits'):
+        with fits.open(filename) as hdul:
+            data = hdul[0].data
+    else:
+        raise ValueError("Unsupported file format. Please provide a .npy or .fits file.")
+    
+    if dtype is not None:
+        return data.astype(dtype)
+    return data
+
 
 def get_tmp_filepath(file_path):
     """
