@@ -13,7 +13,8 @@ RECALIBRATE = False
 # clear_shms(shm_names)
 
 # %% IMPORTS
-config = '/home/whetstone/pyRTC/SHARP_LAB/config_SR.yaml'
+# config = '/home/whetstone/pyRTC/SHARP_LAB/config_SR.yaml'
+config = '/home/whetstone/pyRTC/SHARP_LAB/config.yaml'
 N = np.random.randint(3000,6000)
 # %% Launch DM
 wfc = hardwareLauncher("../pyRTC/hardware/ALPAODM.py", config, N)
@@ -36,9 +37,12 @@ loop = hardwareLauncher("../pyRTC/Loop.py", config, N+4)
 # loop = hardwareLauncher("../pyRTC/hardware/predictLoop.py", config)
 loop.launch()
 
-# %% NCAP OPTIMIZER
-optim  = hardwareLauncher("../pyRTC/hardware/NCPAOptimizer.py", config, N+4)
-optim.launch()
+# %% OPTIMIZERS
+from pyRTC.hardware.PIDOptimizer import PIDOptimizer
+pidOptim = PIDOptimizer(read_yaml_file(config)["optimizer"]["pid"], loop)
+
+from pyRTC.hardware.NCPAOptimizer import NCPAOptimizer
+ncpaOptim = NCPAOptimizer(read_yaml_file(config)["optimizer"]["ncpa"], loop, slopes)
 
 # %% Calibrate
 
@@ -93,27 +97,23 @@ if RECALIBRATE == True:
     # wfc.run("flatten")
     # time.sleep(1)
 
-#%% Optimize NCPA
-for i in range(10):
-    optim.run("optimize")
-    optim.run("applyOptimum")
-wfc.run("saveShape")
-slopes.run("takeRefSlopes")
-slopes.setProperty("refSlopesFile", "/home/whetstone/pyRTC/SHARP_LAB/calib/ref.npy")
-slopes.run("saveRefSlopes")
-psfCam.run("takeModelPSF")
-psfCam.setProperty("modelFile", "/home/whetstone/pyRTC/SHARP_LAB/calib/modelPSF.npy")
-psfCam.run("saveModelPSF")
 
-# %% Adjust Loop
+
+# %% Compute CM
 loop.setProperty("IMFile", "/home/whetstone/pyRTC/SHARP_LAB/calib/IM.npy")
 loop.run("loadIM")
 time.sleep(0.5)
-loop.setProperty("numDroppedModes", 30)
+loop.setProperty("numDroppedModes", 15)
 loop.run("computeCM")
 time.sleep(0.5)
+# %% Adjust Gains
 loop.run("setGain",0.1)
 loop.setProperty("leakyGain", 1e-3)
+#PID GAINS (only for PID integrator)
+# loop.setProperty("pGain", 0.3)
+# loop.setProperty("iGain", 0.01)
+# loop.setProperty("dGain", 0.01)
+
 # %%Launch Loop for 5 seconds
 wfc.run("flatten")
 loop.run("start")
@@ -122,6 +122,27 @@ time.sleep(1)
 loop.run("stop")
 wfc.run("flatten")
 wfc.run("flatten")
+
+#%% Optimize PID
+pidOptim.numReads = 2
+pidOptim.optimize()
+pidOptim.applyOptimum()
+#%% Optimize NCPA
+ncpaOptim.numReads = 5
+ncpaOptim.startMode = 2
+ncpaOptim.endMode = 30
+ncpaOptim.optimize()
+# ncpaOptim.applyOptimum()
+# wfc.run("saveShape")
+# slopes.run("takeRefSlopes")
+# slopes.setProperty("refSlopesFile", "/home/whetstone/pyRTC/SHARP_LAB/calib/ref.npy")
+# slopes.run("saveRefSlopes")
+# psfCam.run("takeModelPSF")
+# psfCam.setProperty("modelFile", "/home/whetstone/pyRTC/SHARP_LAB/calib/modelPSF.npy")
+# psfCam.run("saveModelPSF")
+
+
+
 
 # %% Plots
 im = np.load("../SHARP_LAB/calib/docrime_IM.npy")
@@ -294,3 +315,17 @@ for ff in filelist:
 # new_valid = np.copy(vsubAp)
 # new_valid[aps_to_remove] = False
 ### np.save(subApFile, new_valid)
+
+
+#%%
+shm, a, b = initExistingShm("wfc")
+
+data = np.empty((10000, *a))
+for i in range(data.shape[0]):
+    data[i] = shm.read()
+plt.imshow(data, aspect='auto')
+plt.colorbar()
+# %%
+for trial in pidOptim.study.trials:
+    print(trial)
+    break

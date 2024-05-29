@@ -22,7 +22,10 @@ import time
 from numba import jit
 from sys import platform
 
-
+@jit(nopython=True)
+def compCorrection(CM=np.array([[]], dtype=np.float32),  
+                    slopes=np.array([], dtype=np.float32)):
+    return np.dot(CM,slopes)
 
 @jit(nopython=True)
 def updateCorrection(correction=np.array([], dtype=np.float32), 
@@ -90,6 +93,22 @@ class Loop(pyRTCComponent):
         self.IMMethod = setFromConfig(self.confLoop, "IMMethod", "push-pull") 
         self.IMFile = setFromConfig(self.confLoop, "IMFile", "")
         
+
+        """
+        Terms for PID integrator
+        """
+        self.pGain = setFromConfig(self.confLoop, "pGain", 0.1)
+        self.iGain = setFromConfig(self.confLoop, "iGain", 0)
+        self.dGain = setFromConfig(self.confLoop, "dGain", 0)
+        self.controlLimits = setFromConfig(self.confLoop, "controlLimits", [-np.inf, np.inf])
+        self.integralLimits = setFromConfig(self.confLoop, "integralLimits", [-np.inf, np.inf])
+        self.derivativeFilter = setFromConfig(self.confLoop, "derivativeFilter", 0.1)
+        self.integral = 0
+
+        self.previousWfError = np.zeros_like(self.wfcShm.read_noblock())
+        self.previousDerivative = np.zeros_like(self.previousWfError)
+        self.controlOutput = np.zeros_like(self.previousWfError)
+
         self.loadIM()
 
         super().__init__(self.confLoop)        
@@ -274,6 +293,47 @@ class Loop(pyRTCComponent):
                                         slopes=slopes)
         newCorrection[self.numActiveModes:] = 0
         self.wfcShm.write(newCorrection)
+        return
+
+    def pidIntegrator(self):
+
+        #Compute raw error term (numba accelerated)
+        wfError = compCorrection(CM=self.CM, 
+                                    slopes=self.signalShm.read())
+        derivative = (wfError - self.previousWfError) 
+        
+        # Apply low-pass filter to the derivative to reduce noise
+        derivative = self.derivativeFilter * derivative + (1 - self.derivativeFilter) * self.previousDerivative
+        
+        # Update integral (anti-windup: conditional integration)
+        # notOutputLimiting = self.controlLimits[0] is None or self.controlLimits[1] is None
+        isClipped = np.any(self.controlOutput == self.controlLimits[0]) or np.any(self.controlOutput == self.controlLimits[1])
+        #Check to make sure we aren't actively clipping the correction
+        if not isClipped:
+            #Add to integral
+            self.integral += wfError 
+            #Clip integral term
+            self.integral = np.clip(self.integral, *self.integralLimits)
+
+        # Calculate PID output
+        controlOutput = self.pGain * wfError + self.iGain * self.integral + self.dGain * derivative
+        #Get new correction vector from the control output
+        newCorrection = self.wfcShm.read() - controlOutput #Negative control direction is convention for pyRTC
+
+        #Remove anything in non-corrected modes (might be redundant)
+        newCorrection[self.numActiveModes:] = 0
+        
+        # Clip correction (force the loop to not over correct a mode)
+        newCorrection = np.clip(newCorrection, *self.controlLimits)
+        
+        #Apply new correction to mirror
+        self.wfcShm.write(newCorrection)
+
+        # Save state for next iteration
+        self.previousWfError = wfError
+        self.previousDerivative = derivative
+        self.controlOutput = controlOutput
+        
         return
 
     def plotIM(self, row=None):

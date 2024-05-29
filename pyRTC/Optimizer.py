@@ -27,13 +27,20 @@ class Optimizer(pyRTCComponent):
     def objective(self):
         return
 
-    def optimize(self,numSteps = 100):
+    def optimize(self):
         self.study.optimize(self.objective, 
-                            n_trials=numSteps)
+                            n_trials=self.numSteps)
         self.applyOptimum()
         return
     
     def applyOptimum(self):
+        return
+    
+    def applyTrial(self, trial):
+        return
+    
+    def applyNext(self):
+        self.applyTrial(self.study.ask())
         return
 
     def gradientDescent(self, numSteps, eps, rate):

@@ -134,43 +134,50 @@ loop.numDroppedModes = 20
 loop.computeCM()
 # %%
 SIM = np.load("/home/whetstone/pyRTC/SHARP_LAB/calib/sprint_IM_nomisreg_valid.npy").reshape(94, -1).T
-bench_converter_SL = np.linalg.pinv(SIM) @ loop.IM
-bench_converter_LS = loop.CM @ SIM
-
+bench_converter_SL = (np.linalg.pinv(SIM) @ loop.IM)[:,:21]
+bench_converter_LS = (loop.CM @ SIM)[:,:21]
+bench_converter_NP = np.eye(94)[:,:21]
 # %% Tip-Tilt-Focus-Sweep
 from tqdm import tqdm
 
-folder = "/home/whetstone/Downloads/robin-april-16"
+folder = "/home/whetstone/Downloads/robin-may-10"
 
 
 # numModes = 10
 # startMode = 0
 # endMode = wfc.numModes - 1
 # filelist = ['cnnx2_phase.npy', 'cnnx4_phase.npy', 'linx2_phase.npy', 'linx4_phase.npy']
-filelist = ['cnnx2_phase.npy', 'cnnx4_phase.npy','linx2_phase.npy', 'linx4_phase.npy']
-N = 4
+
+filelist = ['cnnx2_phase', 'cnnx4_phase','linx2_phase', 'linx4_phase', 'cnnx8n3_phase','linx8n3_phase']
+# N = 3
+
 numModes = 11
-RANGE = 2
-modelist = [-10., -5, -2, -1, 0, 1., 2, 5, 10] #np.linspace(-RANGE, RANGE, numModes) #.astype(int)
+modelist = [0, 0.25, 0.5, 1., 1.5] #np.linspace(-RANGE, RANGE, numModes) #.astype(int)
 slopecorrect = 0.0021
 
-for k, bench_converter in enumerate([bench_converter_SL, bench_converter_LS]):
-    bc = ["SL", "LS"][k]
+for k, bench_converter in enumerate([bench_converter_SL, bench_converter_LS, bench_converter_NP]):
+    bc = ["SL", "LS", "NP"][k]
     for ff in filelist:
+        cmd = wfc.read()
+        wfc.flatten()
+        time.sleep(0.1)
+        
+        d = np.load(f'{folder}/{ff}.npy')
+        N = d.shape[0]
+
         psfs = np.empty((numModes, N, *psf.imageShape))
         cmd = wfc.read()
         cmds = np.empty((numModes, N, *cmd.shape), dtype=cmd.dtype)
         shps = np.empty((numModes, N, *wfc.layout.shape), dtype=cmd.dtype)
-        wfc.flatten()
-        time.sleep(0.1)
-        d = np.load(f'{folder}/{ff}')
+
         for i, mode in enumerate(modelist): #range(numModes):
             correction = np.zeros_like(wfc.read())
             for j in tqdm(range(N)):
                 # correction[:21] = slopecorrect * mode * d[j, :].flatten()
-                correction = bench_converter[:,:21] @ (slopecorrect * mode * d[j, :].flatten())
+                correction = bench_converter @ (slopecorrect * mode * d[j, :].flatten())
                 wfc.write(correction)
                 #Burn some images
+                psf.readLong()
                 psf.readLong()
                 #Save the next PSF in the dataset
                 psfs[i, j, :, :] = psf.readLong()
@@ -178,9 +185,9 @@ for k, bench_converter in enumerate([bench_converter_SL, bench_converter_LS]):
                 shps[i,j,wfc.layout] = wfc.currentShape - wfc.flat
                 wfc.flatten()
         
-        np.save(f'{folder}/fixed_full_psfs_{ff}_{bc}', psfs)
-        np.save(f'{folder}/fixed_full_cmds_{ff}_{bc}', cmds)
-        np.save(f'{folder}/fixed_full_shps_{ff}_{bc}', shps)
+        np.save(f'{folder}/atm_usaf_psfs_{ff}_{bc}', psfs)
+        np.save(f'{folder}/atm_usaf_cmds_{ff}_{bc}', cmds)
+        np.save(f'{folder}/atm_usaf_shps_{ff}_{bc}', shps)
 
 
 # %%
