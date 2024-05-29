@@ -1,5 +1,5 @@
 """
-Loop Superclass
+pyRTC Component Superclass
 """
 from pyRTC.Pipeline import *
 from pyRTC.utils import *
@@ -11,12 +11,57 @@ import time
 
 
 class pyRTCComponent:
+    """
+    A base class for real-time control components.
 
+    This class provides a framework for real-time control components, allowing for the 
+    management of threads and CPU affinity settings. You can register a function to the 
+    real-time pipeline in the config by including their name under the key "functions". These
+    function will then be spawned into their own thread and controlled by the start and stop
+    functions. Note: any return value from registered functions is not used or stored.
+
+    For examples:
+
+    psf:
+        functions:
+        - expose
+        - integrate
+
+    Config Parameters
+    -----------------
+    affinity : int
+        The CPU affinity for the component. Default is 0.
+    functions : list
+        A list of functions to run in separate threads. Default is an empty list.
+
+    Attributes
+    ----------
+    alive : bool
+        Indicates whether the component is alive.
+    running : bool
+        Indicates whether the component is currently running.
+
+    Methods
+    -------
+    start():
+        Start the registered real-time functions.
+    stop():
+        Stop the registered real-time functions.
+    """
     def __init__(self, conf) -> None:
+        """
+        Constructs all the necessary attributes for the real-time control component object.
 
+        Parameters
+        ----------
+        conf : dict
+            Configuration dictionary for the component. The following keys are used:
+            - affinity (int, optional): The CPU affinity for the component. Default 0.
+            - functions (list, optional): A list of functions to run in separate threads. Default is an empty list.
+        """
         self.alive = True
         self.running = False
-        self.affinity = conf["affinity"]
+        self.affinity = setFromConfig("affinity", 0)
 
         functionsToRun = setFromConfig(conf, "functions", [])
         self.workThreads = []
@@ -33,25 +78,28 @@ class pyRTCComponent:
         return
 
     def __del__(self):
+        """
+        Destructor to clean up the component.
+        """
         self.stop()
-        self.alive=False
+        self.alive = False
         return
 
     def start(self):
+        """
+        Start the registered real-time functions.
+        """
         self.running = True
         return
 
     def stop(self):
+        """
+        Stops the registered real-time functions.
+        """
         self.running = False
         return
 
-
-
 if __name__ == "__main__":
-
-    #Prevents camera output from messing with communication
-    original_stdout = sys.stdout
-    sys.stdout = open(os.devnull, 'w')
 
     # Create argument parser
     parser = argparse.ArgumentParser(description="Read a config file from the command line.")
@@ -65,16 +113,11 @@ if __name__ == "__main__":
     conf = read_yaml_file(args.config)
 
     pid = os.getpid()
-    set_affinity((conf["loop"]["affinity"])%os.cpu_count()) 
+    set_affinity(0) 
     decrease_nice(pid)
 
     component = pyRTCComponent(conf=conf)
     component.start()
-
-    # Go back to communicating with the main program through stdout
-    sys.stdout = original_stdout
-
-    # input()
 
     l = Listener(component)
     while l.running:

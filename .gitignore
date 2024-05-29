@@ -1,0 +1,2 @@
+# Ignore the Sphinx build directory
+docs/source/_build/
