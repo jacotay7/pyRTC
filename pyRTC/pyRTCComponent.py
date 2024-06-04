@@ -61,7 +61,7 @@ class pyRTCComponent:
         """
         self.alive = True
         self.running = False
-        self.affinity = setFromConfig("affinity", 0)
+        self.affinity = setFromConfig(conf, "affinity", 0)
 
         functionsToRun = setFromConfig(conf, "functions", [])
         self.workThreads = []
