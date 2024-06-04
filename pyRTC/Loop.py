@@ -84,9 +84,9 @@ class Loop(pyRTCComponent):
         self.IM = np.zeros((self.signalSize, self.numModes),dtype=self.signalDType)
         self.CM = np.zeros((self.numModes, self.signalSize),dtype=self.signalDType)
         self.gain = setFromConfig(self.confLoop, "gain", 0.1)
-        self.leakyGain = setFromConfig(self.confLoop, "leakyGain", 0)
+        self.leakyGain = setFromConfig(self.confLoop, "leakyGain", 0.0)
         self.perturbAmp = 0
-        self.hardwareDelay = setFromConfig(self.confWFC, "hardwareDelay", 0)
+        self.hardwareDelay = setFromConfig(self.confWFC, "hardwareDelay", 0.0)
         self.pokeAmp = setFromConfig(self.confLoop, "pokeAmp", 1e-2)
         self.numItersIM = setFromConfig(self.confLoop, "numItersIM", 100) 
         self.delay = setFromConfig(self.confLoop, "delay", 0)
@@ -98,10 +98,11 @@ class Loop(pyRTCComponent):
         Terms for PID integrator
         """
         self.pGain = setFromConfig(self.confLoop, "pGain", 0.1)
-        self.iGain = setFromConfig(self.confLoop, "iGain", 0)
-        self.dGain = setFromConfig(self.confLoop, "dGain", 0)
+        self.iGain = setFromConfig(self.confLoop, "iGain", 0.0)
+        self.dGain = setFromConfig(self.confLoop, "dGain", 0.0)
         self.controlLimits = setFromConfig(self.confLoop, "controlLimits", [-np.inf, np.inf])
         self.integralLimits = setFromConfig(self.confLoop, "integralLimits", [-np.inf, np.inf])
+        self.absoluteLimits = setFromConfig(self.confLoop, "absoluteLimits", [-np.inf, np.inf])
         self.derivativeFilter = setFromConfig(self.confLoop, "derivativeFilter", 0.1)
         self.integral = 0
 
@@ -295,11 +296,22 @@ class Loop(pyRTCComponent):
         self.wfcShm.write(newCorrection)
         return
 
-    def pidIntegrator(self):
+    def pidIntegratorPOL(self):
+        slopes = self.signalShm.read()
+        correction = self.wfcShm.read()
+        polSlopes = slopes - self.fIM@correction
+        return self.pidIntegrator(slopes=polSlopes, correction=correction)
+
+    def pidIntegrator(self, slopes = None, correction = None):
+
+        if slopes is None:
+            slopes = self.signalShm.read()
+        if correction is None:
+            correction = self.wfcShm.read()
 
         #Compute raw error term (numba accelerated)
         wfError = compCorrection(CM=self.CM, 
-                                    slopes=self.signalShm.read())
+                                    slopes=slopes)
         derivative = (wfError - self.previousWfError) 
         
         # Apply low-pass filter to the derivative to reduce noise
@@ -317,14 +329,17 @@ class Loop(pyRTCComponent):
 
         # Calculate PID output
         controlOutput = self.pGain * wfError + self.iGain * self.integral + self.dGain * derivative
+
+        controlOutput = np.clip(controlOutput, *self.controlLimits)
+
         #Get new correction vector from the control output
-        newCorrection = self.wfcShm.read() - controlOutput #Negative control direction is convention for pyRTC
+        newCorrection = (1-self.leakyGain)*correction - controlOutput #Negative control direction is convention for pyRTC
 
         #Remove anything in non-corrected modes (might be redundant)
         newCorrection[self.numActiveModes:] = 0
         
         # Clip correction (force the loop to not over correct a mode)
-        newCorrection = np.clip(newCorrection, *self.controlLimits)
+        newCorrection = np.clip(newCorrection, *self.absoluteLimits)
         
         #Apply new correction to mirror
         self.wfcShm.write(newCorrection)

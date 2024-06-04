@@ -84,7 +84,7 @@ class SlopesProcess(pyRTCComponent):
 
         self.signalDType = np.float32
         # self.signal = ImageSHM("signal", self.imageShape, self.signalDType)
-        self.imageNoise = setFromConfig(self.conf,"imageNoise", 0)
+        self.imageNoise = setFromConfig(self.conf,"imageNoise", 0.0)
 
         self.wfsType = self.conf["type"] 
         self.signalType = self.conf["signalType"] 
