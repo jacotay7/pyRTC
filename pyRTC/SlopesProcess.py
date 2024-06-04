@@ -295,9 +295,9 @@ class SlopesProcess(pyRTCComponent):
             return -1
         curSignal2D = np.zeros(validSubAps.shape)
         if self.wfsType.lower() == "pywfs":
-            slopemask = validSubAps[:,:validSubAps.shape[1]//2]
-            curSignal2D[:,:validSubAps.shape[1]//2][slopemask] = signal[:signal.size//2]
-            curSignal2D[:,validSubAps.shape[1]//2:][slopemask] = signal[signal.size//2:]
+            slopemask = validSubAps[:,:validSubAps.shape[1]//2].astype(int)
+            curSignal2D[:,:validSubAps.shape[1]//2] = np.where(slopemask, curSignal2D[:,:validSubAps.shape[1]//2], 0)
+            curSignal2D[:,validSubAps.shape[1]//2:] = np.where(slopemask, curSignal2D[:,validSubAps.shape[1]//2:], 0)
         else:
             curSignal2D[validSubAps] = signal
         return curSignal2D

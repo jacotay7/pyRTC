@@ -25,3 +25,5 @@ Parameters
 .. autoclass:: WavefrontSensor
   :members:
   :inherited-members:
+  :undoc-members:
+  :show-inheritance:
