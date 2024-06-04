@@ -153,7 +153,13 @@ class ScienceCamera(pyRTCComponent):
         self.strehlShm.write(np.array([self.strehl_ratio], dtype=float))
         self.tipTiltShm.write(np.array([self.peak_dist], dtype=float))
 
-        return self.strehl_ratio
+        return
+
+    def readStrehl(self):
+        return self.strehlShm.read()
+    
+    def readTipTilt(self):
+        return self.strehlShm.read()
 
     def plot(self):
         arr = self.read()

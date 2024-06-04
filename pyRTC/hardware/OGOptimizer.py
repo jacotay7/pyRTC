@@ -4,7 +4,7 @@ from pyRTC.Optimizer import *
 
 import numpy as np
 
-class PIDOptimizer(Optimizer):
+class OGOptimizer(Optimizer):
 
     def __init__(self, conf, loop, psf) -> None:
         
@@ -13,15 +13,14 @@ class PIDOptimizer(Optimizer):
 
         self.strehlShm, _, _ = initExistingShm("strehl")
         self.tipTiltShm, _, _ = initExistingShm("tiptilt")
-        self.maxPGain = setFromConfig(conf, "maxPGain", 0.5)
-        self.maxIGain = setFromConfig(conf, "maxIGain", 0.05)
-        self.maxDGain = setFromConfig(conf, "maxDGain", 0.05)
-        self.numReads = setFromConfig(conf, "numReads", 5)
-        self.maxCLim =   setFromConfig(conf, "maxCLim", 0.5)
+        self.opticalGainShm, self.opticalGainShmDims, _ = initExistingShm("og")
+
+        self.mode = 'exponent'
 
         self.metric = 'strehl'
 
-        self.optimControlLimit = True
+        self.startMode = 0
+        self.endMode = self.opticalGainShm.read_noblock().size
 
         super().__init__(conf)
 
@@ -52,31 +51,32 @@ class PIDOptimizer(Optimizer):
     
     def applyTrial(self, trial):
 
-        # Suggest values for Kp, Ki, Kd
-        self.loop.setProperty("pGain", trial.suggest_float('pGain', 0, self.maxPGain))
-        self.loop.setProperty("iGain", trial.suggest_float('iGain', 0, self.maxIGain))
-        self.loop.setProperty("dGain", trial.suggest_float('dGain', 0, self.maxDGain))
-
-        if self.optimControlLimit:
-            
-            clim = trial.suggest_float('cLim', 0, self.maxCLim)
-            self.loop.setProperty("controlLimits", [-clim,clim])
+        if self.mode == 'exponent':
+            self.opticalGainShm.write(powerLawOG(self.opticalGainShmDims[0], 
+                                                 trial.suggest_float('k', 0, 1)))
+        elif self.mode == 'relative':
+            ogVec = self.ogVec
+            for i in range(self.startMode, self.endMode):
+                ogVec[i] *= trial.suggest_float(f'{i}', 0.5, 2)
+            self.opticalGainShm.write(ogVec)
 
         return super().applyTrial(trial)
 
     def applyOptimum(self):
         super().applyOptimum()
-        
-        self.loop.setProperty("pGain", self.study.best_params["pGain"])
-        self.loop.setProperty("iGain", self.study.best_params["iGain"])
-        self.loop.setProperty("dGain", self.study.best_params["dGain"])
-
-        if self.optimControlLimit:
-            
-            clim = self.study.best_params['cLim']
-            self.loop.setProperty("controlLimits", [-clim,clim])
-        
+        if self.mode == 'exponent':
+            self.opticalGainShm.write(powerLawOG(self.opticalGainShmDims[0], 
+                                                 self.study.best_params["k"]))
+        elif self.mode == 'relative':
+            ogVec = self.ogVec
+            for i in range(ogVec.size):
+                ogVec[i] *= self.study.best_params[f'{i}']
+            self.opticalGainShm.write(ogVec)
         return 
+    
+    def optimize(self):
+        self.ogVec = self.opticalGainShm.read_noblock()
+        return super().optimize()
     
 
 if __name__ == "__main__":
@@ -101,7 +101,7 @@ if __name__ == "__main__":
     set_affinity((conf["affinity"])%os.cpu_count()) 
     decrease_nice(pid)
 
-    component = PIDOptimizer(conf=conf)
+    component = OGOptimizer(conf=conf)
     component.start()
 
     # Go back to communicating with the main program through stdout

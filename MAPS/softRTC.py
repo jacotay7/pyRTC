@@ -5,6 +5,7 @@ from pyRTC.hardware.ImageStreamIOWfs import *
 from pyRTC.hardware.ImageStreamIOWfc import *
 from pyRTC.utils import *
 from pyRTC.SlopesProcess import *
+from pyRTC.hardware.mapsSlopes import *
 from pyRTC.Loop import *
 #%% CLEAR SHMs
 # shms = ["wfs", "wfsRaw", "signal", "signal2D", "wfc", "wfc2D", "psfShort", "psfLong"]
@@ -17,7 +18,9 @@ wfs = ISIOWfs(conf=confWFS)
 time.sleep(0.5)
 wfs.start()
 # %% Launch slopes
-slopes = SlopesProcess(conf=conf)
+# slopes = SlopesProcess(conf=conf)
+slopes = mapsSlopes(conf=conf)
+
 slopes.start()
 time.sleep(0.5)
 # %% Launch WFC
@@ -25,6 +28,8 @@ confWFC = conf["wfc"]
 wfc = ISIOWfc(conf=confWFC)
 time.sleep(0.5)
 wfc.start()
+# edgeActuators = np.arange(275,335).astype(int)
+
 
 # %% Launch loop
 loop = Loop(conf=conf)
@@ -56,10 +61,11 @@ if False:
 # %% Compute CM
 loop.IMFile = "/home/jtaylor/pyRTC/MAPS/calib/docrime_IM.npy"
 loop.loadIM()
-loop.numDroppedModes = 40
+loop.numDroppedModes = 30
 loop.computeCM()
-loop.setGain(0.01)
+loop.pgain = 1e-3
 loop.leakyGain = 1e-2
+loop.controlLimits = [-0.5, 0.5]
 
 # %% Start Loop
 wfc.flatten()

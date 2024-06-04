@@ -1,0 +1,3 @@
+python pyRTCView.py wfc2D &
+python pyRTCView.py signal2D &
+python pyRTCView.py wfs &

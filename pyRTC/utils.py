@@ -8,6 +8,7 @@ import numpy as np
 import psutil
 from scipy.ndimage import median_filter, gaussian_filter
 import socket
+from datetime import datetime
 
 NP_DATA_TYPES = [
     np.int8, np.int16, np.int32, np.int64,
@@ -19,6 +20,31 @@ NP_DATA_TYPES = [
     np.string_, np.unicode_,
     np.datetime64, np.timedelta64
 ]
+
+def powerLawOG(numModes, k):
+    return (1- (np.arange(numModes)/numModes)**k)
+
+
+def append_to_file(filename, data, dtype=np.float32):
+    """
+    Append a numpy array to a binary file on disk.
+
+    Parameters:
+    filename : str
+        The name of the file to which data will be appended.
+    data : numpy array
+        The numpy array to append to the file.
+    dtype : data-type, optional
+        The desired data-type for the array. Default is np.float32.
+    """
+    if os.path.exists(filename):
+        # If the file exists, append to it
+        with open(filename, 'ab') as f:
+            data.tofile(f)
+    else:
+        # If the file does not exist, create it and write the initial data
+        with open(filename, 'wb') as f:
+            data.tofile(f)
 
 def generate_circular_aperture_mask(N, R, ratio):
     """
@@ -53,6 +79,35 @@ def load_data(filename, dtype=None):
         return data.astype(dtype)
     return data
 
+def generate_filepath(base_dir='.', prefix='file', extension='.dat'):
+    """
+    Generate a file path based on the current date and time.
+
+    Parameters:
+    base_dir : str
+        The base directory where the file will be saved.
+    prefix : str
+        The prefix for the file name.
+    extension : str
+        The file extension.
+
+    Returns:
+    str
+        The generated file path.
+    """
+    # Get the current date and time
+    current_time = datetime.now()
+
+    # Format the date and time
+    timestamp = current_time.strftime('%Y%m%d_%H%M%S')
+
+    # Construct the file name
+    filename = f"{prefix}_{timestamp}{extension}"
+
+    # Construct the full file path
+    filepath = os.path.join(base_dir, filename)
+
+    return filepath
 
 def get_tmp_filepath(file_path):
     """

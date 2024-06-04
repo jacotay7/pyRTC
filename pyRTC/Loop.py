@@ -77,6 +77,12 @@ class Loop(pyRTCComponent):
         self.wfc2D_width, self.wfc2D_height = int(self.wfc2DMeta[4]),  int(self.wfc2DMeta[5])
         self.wfc2DShm = ImageSHM("wfc2D", (self.wfc2D_width, self.wfc2D_height), self.wfc2DDType)
 
+        self.opticalGainShm = ImageSHM("og", (self.numModes,), self.wfcDType)
+        self.ogPowerLawCoef = setFromConfig(self.confLoop, "ogPowerLawCoef", 0.1)
+        self.opticalGainShm.write(powerLawOG(self.numModes, self.ogPowerLawCoef))
+        self.stabilityLimit = setFromConfig(self.confLoop, "stabilityLimit", 0.01)
+
+
         self.numDroppedModes = setFromConfig(self.confLoop, "numDroppedModes", 0)
         self.numActiveModes = self.numModes - self.numDroppedModes
         self.flat = np.zeros(self.numModes, dtype=self.wfcDType)
@@ -92,13 +98,18 @@ class Loop(pyRTCComponent):
         self.delay = setFromConfig(self.confLoop, "delay", 0)
         self.IMMethod = setFromConfig(self.confLoop, "IMMethod", "push-pull") 
         self.IMFile = setFromConfig(self.confLoop, "IMFile", "")
-        self.clDocrime = False        
+        self.clDocrime = False     
+        self.numItersDC = 0   
         #Have a history of corrections
-        self.docrimeBuffer = np.zeros((1+self.delay, self.numModes), 
-                                      dtype=self.wfcDType)
-        self.docrimeCross = np.zeros_like(self.nullSignal@self.docrimeBuffer[0].T)
-        self.docrimeAuto = np.zeros_like(self.docrimeBuffer[0]@self.docrimeBuffer[0].T)
-
+        
+        tmp2 = self.flat.copy()
+        tmp2 = tmp2.reshape(tmp2.size,1) 
+        tmp = self.nullSignal.copy()
+        tmp = tmp.reshape(tmp.size,1)
+        self.docrimeCross = np.zeros_like(tmp@tmp2.T)
+        self.docrimeAuto = np.zeros_like(tmp2@tmp2.T)
+        self.docrimeBuffer = np.zeros((1+self.delay, *tmp2.shape), 
+                                dtype=self.wfcDType)
 
         """
         Terms for PID integrator
@@ -109,6 +120,7 @@ class Loop(pyRTCComponent):
         self.controlLimits = setFromConfig(self.confLoop, "controlLimits", [-np.inf, np.inf])
         self.integralLimits = setFromConfig(self.confLoop, "integralLimits", [-np.inf, np.inf])
         self.derivativeFilter = setFromConfig(self.confLoop, "derivativeFilter", 0.1)
+        self.controlClipModeStart = setFromConfig(self.confLoop, "controlClipModeStart", 0)
         self.integral = 0
 
         self.previousWfError = np.zeros_like(self.wfcShm.read_noblock())
@@ -179,37 +191,33 @@ class Loop(pyRTCComponent):
         correction = correction.reshape(correction.size,1)
 
         #Have a history of corrections
-        corrections = np.zeros((1+self.delay, *correction.shape), dtype=correction.dtype)
+        # corrections = np.zeros((1+self.delay, *correction.shape), dtype=correction.dtype)
 
         #Get an initial slope reading to set shapes
         slopes = self.nullSignal.copy()
         slopes = slopes.reshape(slopes.size,1)
-        self.docrimeCross = np.zeros_like(slopes@correction.T)
-        self.docrimeAuto = np.zeros_like(correction@correction.T)
+        self.docrimeCross = np.zeros_like(self.docrimeCross)
+        self.docrimeAuto = np.zeros_like(self.docrimeAuto)
 
         for i in range(self.numItersIM):
             #Compute new random shape
             correction = np.random.uniform(-self.pokeAmp,self.pokeAmp,correction.size).astype(correction.dtype).reshape(correction.shape)
-            #If we are in Closed Loop
-            if self.running:
-                #Read the current shape of the WFC and add our perturbation ontop
-                correction = self.wfcShm.read_noblock() + correction
 
             #Send our new pertubation to the WFC
             self.sendToWfc(correction.reshape(corrShapeWFC))
-            #Move old shapes back in history
-            corrections[:-1] = corrections[1:]
-            #Add new correction
-            corrections[-1] = correction
+
+            add_to_buffer(self.docrimeBuffer, correction)
 
             #Get current WFS response
             slopes = self.signalShm.read().reshape(slopes.shape)
         
             #Correlate Current response with old correction by delay time
-            self.docrimeCross += slopes@corrections[0].T
-            self.docrimeAuto += corrections[0]@corrections[0].T
+            self.docrimeCross += slopes@self.docrimeBuffer[0].T
+            self.docrimeAuto += self.docrimeBuffer[0]@self.docrimeBuffer[0].T
 
-        self.solveDocrime()
+        self.docrimeCross /= self.numItersIM 
+        self.docrimeAuto /= self.numItersIM
+        self.IM = self.docrimeCross @np.linalg.inv(self.docrimeAuto) 
 
         return
 
@@ -252,8 +260,7 @@ class Loop(pyRTCComponent):
         self.fIM = np.copy(self.IM)
         self.fIM[:,self.numActiveModes:] = 0
         return 
-        
-    # @jit(nopython=True)
+
     def updateCorrectionPOL(self, correction=np.array([], dtype=np.float32), slopes=np.array([], dtype=np.float32)):
             
         # Compute POL Slopes s_{POL} = s_{RES} + IM*c_{n-1}
@@ -289,14 +296,63 @@ class Loop(pyRTCComponent):
     
     def leakyIntegrator(self):
 
+        #Get WFS response
         slopes = self.signalShm.read()
-        currentCorrection = (1-self.leakyGain)*self.wfcShm.read()
-        newCorrection = updateCorrection(correction=currentCorrection, 
-                                        gCM=self.gCM, 
+    
+        #Compute WFC adjustment (HAS GAIN)
+        adjust = self.gain*compCorrection(CM=self.CM, 
                                         slopes=slopes)
-        newCorrection[self.numActiveModes:] = 0
-        self.sendToWfc(newCorrection)
+        
+        #Add optical gains
+        ogVec = self.opticalGainShm.read_noblock()
+        adjust *= ogVec
+        adjust = np.clip(adjust, 
+                         -self.stabilityLimit*ogVec, 
+                         self.stabilityLimit*ogVec)
+
+        #Get current command
+        currentCorrection = self.wfcShm.read_noblock()
+        #Leak the current command
+        currentCorrection *= (1-self.leakyGain)
+        #Adjust the correction
+        currentCorrection[:self.numActiveModes] -= adjust[:self.numActiveModes]
+
+        #Send to WFC
+        self.sendToWfc(currentCorrection, slopes = slopes)
+
         return
+
+    def mapsIntegrator(self):
+
+        #Get WFS response
+        slopes = self.signalShm.read()
+    
+        #Compute WFC adjustment
+        adjust = self.gain*compCorrection(CM=self.CM, 
+                                        slopes=slopes)
+        
+        #Add optical gains
+        ogVec = self.opticalGainShm.read_noblock()
+        adjust *= ogVec
+        adjust = np.clip(adjust, 
+                         -self.stabilityLimit*ogVec, 
+                         self.stabilityLimit*ogVec)
+
+        #Get current command
+        currentCorrection = self.wfcShm.read_noblock()
+        #Leak the current command
+        currentCorrection *= (1-self.leakyGain)
+        #Adjust the correction
+        currentCorrection[:self.numActiveModes] -= adjust[:self.numActiveModes]
+
+        self.currentCorrection = np.clip(currentCorrection, *self.controlLimits)
+
+        #Send to WFC
+        self.sendToWfc(currentCorrection, slopes = slopes)
+
+        return
+
+
 
     def pidIntegrator(self):
 
@@ -304,6 +360,10 @@ class Loop(pyRTCComponent):
         #Compute raw error term (numba accelerated)
         wfError = compCorrection(CM=self.CM, 
                                     slopes=slopes)
+        
+        #Apply Optical Gains
+        wfError *= self.opticalGainShm.read_noblock()
+
         derivative = (wfError - self.previousWfError) 
         
         # Apply low-pass filter to the derivative to reduce noise
@@ -321,14 +381,15 @@ class Loop(pyRTCComponent):
 
         # Calculate PID output
         controlOutput = self.pGain * wfError + self.iGain * self.integral + self.dGain * derivative
+
+        # Clip correction (force the loop to not over correct a mode)
+        controlOutput[self.controlClipModeStart:] = np.clip(controlOutput[self.controlClipModeStart:], *self.controlLimits)
+
         #Get new correction vector from the control output
         newCorrection = self.wfcShm.read()*(1-self.leakyGain) - controlOutput #Negative control direction is convention for pyRTC
 
         #Remove anything in non-corrected modes (might be redundant)
         newCorrection[self.numActiveModes:] = 0
-        
-        # Clip correction (force the loop to not over correct a mode)
-        newCorrection = np.clip(newCorrection, *self.controlLimits)
         
         #Apply new correction to mirror
         self.sendToWfc(newCorrection, slopes=slopes)
@@ -345,30 +406,43 @@ class Loop(pyRTCComponent):
 
         if self.clDocrime and slopes is not None:
 
+            slopes = slopes.reshape(slopes.size, 1)
             #Compute new random shape
             randShape = np.random.uniform(-self.pokeAmp,
                                           self.pokeAmp,
-                                          correction.size).astype(correction.dtype).reshape(correction.shape)
+                                          correction.size).astype(self.docrimeBuffer[0].dtype).reshape(self.docrimeBuffer[0].shape)
 
             #Adds to end of buffer (i.e. pos -1)
-            add_to_buffer(self.docrimeBuffer, randShape)
+            add_to_buffer(self.docrimeBuffer,randShape)
+
+            randShape = randShape.astype(correction.dtype).reshape(correction.shape)
+
+            #Only add randomness to active modes, otherwise it will build up
+            if self.numActiveModes > 0:
+                correction[:self.numActiveModes] += randShape[:self.numActiveModes]
+                correction[self.numActiveModes:] = randShape[self.numActiveModes:]
+            else:
+                correction = randShape
 
             #Send our new pertubation to the WFC
-            self.sendToWfc(correction + randShape)
+            self.wfcShm.write(correction)
 
             #Correlate Current response with old correction by delay time
             self.docrimeCross += slopes@self.docrimeBuffer[0].T
             self.docrimeAuto += self.docrimeBuffer[0]@self.docrimeBuffer[0].T
 
+            self.numItersDC += 1
+
         else:
-            self.sendToWfc(correction)
+            self.wfcShm.write(correction)
         return
 
     def solveDocrime(self):
 
-        self.docrimeCross /= self.numItersIM 
-        self.docrimeAuto /= self.numItersIM
-        self.IM = self.docrimeCross@np.linalg.inv(self.docrimeAuto)
+        self.docrimeCross /= self.numItersDC 
+        self.docrimeAuto /= self.numItersDC
+        self.clDCIM = self.docrimeCross@np.linalg.inv(self.docrimeAuto)
+        np.save("/home/jtaylor/pyRTC/MAPS/calib/cl_dc_tmp_IM.npy", self.clDCIM)
 
         return
 

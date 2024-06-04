@@ -29,6 +29,8 @@ class ISIOWfc(WavefrontCorrector):
 
         self.layoutSize = 21
 
+        self.count = 0
+
         #Generate the ALPAO actuator layout for the number of actuators
         layout = self.generateLayout()
         self.setLayout(layout)
@@ -74,36 +76,41 @@ class ISIOWfc(WavefrontCorrector):
     def sendToHardware(self):
         #Read a new modal correction in M2C basis
         self.currentCorrection = self.correctionVector.read()
-        #If we added a frame delay
-        if self.frameDelay > 0:
-            #Roll back shape buffer by 1
-            self.shapeBuffer[:-1] = self.shapeBuffer[1:]
-            #Compute a new shape in zonal basis
-            self.shapeBuffer[-1] = ModaltoZonalWithFlat(self.currentCorrection, 
-                                                        self.f_M2C,
-                                                        self.flat)
-            #Set the current shape
-            self.currentShape = self.shapeBuffer[0]
-        else:
-            self.currentShape = ModaltoZonalWithFlat(self.currentCorrection, 
-                                                     self.f_M2C,
-                                                     self.flat)
+
+        self.currentShape = ModaltoZonalWithFlat(self.currentCorrection, 
+                                                    self.f_M2C,
+                                                    self.flat)
         
         #If we have a 2D SHM instance, update it 
-        if isinstance(self.correctionVector2D, ImageSHM):
+        if isinstance(self.correctionVector2D, ImageSHM) and self.count % 10 == 0:
             # Interpolate the data
             grid_z = griddata((self.x_act_pos, self.y_act_pos), 
                               self.currentShape, 
                               (self.grid_x, self.grid_y), method='nearest')
             self.correctionVector2D.write(grid_z*self.layout)
 
-
+        self.count += 1
         #Send to ISIO
         self.isioShm.write(self.currentShape.reshape(self.numActuators,1))
 
         return
 
-    def floatActuators(self):
+    def deactivateActuators(self,actuators):
+
+        #For all of the actuators
+        for act in actuators:
+            self.actuatorStatus[act] = False
+            #Get spatial location of the actuator
+            x, y = self.x_act_pos[act], self.y_act_pos[act]
+            #Get a gaussian region of influence
+            inlfluence_map = np.exp(-((x - self.x_act_pos)**2 + (y - self.x_act_pos)**2) / (2 * self.floatingInfluenceRadius**2))
+            inlfluence_map[act] = 0
+            inlfluence_map /= np.sum(inlfluence_map)
+            #Set a bound on the lowest influence to a tenth of the maximum
+            inlfluence_map[inlfluence_map < np.max(inlfluence_map)/10] = 0
+            self.floatMatrix[act] = inlfluence_map
+
+        self.setM2C(self.M2C)
 
         return
 

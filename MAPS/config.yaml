@@ -1,21 +1,55 @@
 loop:
-  gain: 0.1
-  leakyGain: 0
+  gain: 0.001
+  leakyGain: 0.01
   numDroppedModes: 0
   pokeAmp: 0.02
   numItersIM: 50
   affinity: 18
   delay: 1 #delay for docrime
-  method: docrime
-  IMFile: "" #"/home/jtaylor/pyRTC/MAPS/calib/IM.npy"
-  pGain: 0.316
-  iGain: 0.0612
-  dGain: 0.0481
-  controlLimits: [-0.1, 0.1]
-  integralLimits: [-0.1, 0.1]
+  IMMethod: docrime
+  IMFile: "" #"/home/jtaylor/pyRTC/MAPS/calib/docrime_IM.npy"
+  pGain: 0.001
+  iGain: 0
+  dGain: 0
+  controlLimits: [-0.01, 0.01]
+  integralLimits: [-0.5, 0.5]
+  controlClipModeStart: 0
   derivativeFilter: 0.1
+  ogPowerLawCoef: 0.1
+  stabilityLimit: 0.1
   functions:
   - pidIntegrator
+  # - mapsIntegrator
+
+# wfs:
+#   name: VISWFS
+#   isioShmName: viswfs_raw
+#   left: 0 
+#   top: 0 
+#   width: 160 #VISWFS
+#   height: 128 #VISWFS
+#   # width: 80 #IRWFS
+#   # height: 80 #IRWFS
+#   darkCount: 2000
+#   darkFile: "/etc/chai/viswfs_dark.fits"
+#   affinity: 19
+#   functions:
+#   - expose
+
+# slopes:
+#   type: PYWFS
+#   signalType: slopes
+#   flatNorm: True
+#   centralObscurationRatio: 0.2
+#   pupilsRadius: 17 #VISWFS
+#   affinity: 20
+#   pupils: 
+#   - 71,78
+#   - 109, 77
+#   - 71, 37
+#   - 111, 37,
+#   functions:
+#   - computeSignal
 
 wfs:
   name: IRWFS
@@ -27,7 +61,7 @@ wfs:
   width: 80 #IRWFS
   height: 80 #IRWFS
   darkCount: 2000
-  darkFile: "/etc/chai/dark.fits"
+  darkFile: "/etc/chai/irwfs_dark.fits"
   affinity: 19
   functions:
   - expose
@@ -37,19 +71,21 @@ slopes:
   signalType: slopes
   flatNorm: True
   centralObscurationRatio: 0.25
-  pupilsRadius: 14 #IRWFS
-  # pupilsRadius: 18 #VISWFS
+  pupilsRadius: 13 #IRWFS
   affinity: 20
-  # pupils: #VISWFS
-  # - 45,56
-  # - 45,97
-  # - 87,56
-  # - 87,96
+  # slopeMaskFile: "/home/jtaylor/pyRTC/MAPS/calib/slopeMask.npy"
+  slopeMaskFile: "/home/jtaylor/pyRTC/MAPS/calib/slopeMaskImproved.npy"
+
+  # pupils: #IRWFS
+  # - 17,18
+  # - 17,62
+  # - 62,18
+  # - 62,63
   pupils: #IRWFS
-  - 17,18
-  - 17,61
-  - 62,18
-  - 62,61
+  - 15,17
+  - 16,62
+  - 60,17
+  - 60,62
   functions:
   - computeSignal
 
@@ -57,13 +93,13 @@ wfc:
   name: "MAPS"
   isioShmName: dm00disp
   numActuators: 336
-  numModes: 20
+  numModes: 100
   flatFile: "" #"/home/jtaylor/pyRTC/MAPS/calib/wfcShape.npy"
   saveFile: "/home/jtaylor/pyRTC/MAPS/calib/wfcShape.npy"
-  m2cFile: "/home/jtaylor/pyRTC/MAPS/calib/m2c_zern_20.npy" 
+  m2cFile: "/home/jtaylor/pyRTC/MAPS/calib/m2c_zern_100.npy" 
   actMap: "/home/jtaylor/pyRTC/MAPS/calib/maps_act_mapping.json"
   floatingActuatorsFile: ""
-  floatingInfluenceRadius: 1
+  floatingInfluenceRadius: 0.05
   affinity: 21
   hardwareDelay: 0.002 #seconds
   frameDelay: 0
@@ -82,10 +118,21 @@ optimizer:
     affinity: 10
   pid:
     name: "PID"
-    numSteps: 100
-    maxPGain: 0.5
-    maxIGain: 0.1
-    maxDGain: 0.1
-    numReads: 1
+    numSteps: 10
+    maxPGain: 0.05
+    maxIGain: 0.05
+    maxDGain: 0.05
+    numReads: 3
     affinity: 10
+  og:
+    name: "OG"
+    numSteps: 100
 
+    numReads: 3
+    affinity: 10
+  
+
+telemetry:
+  name: "telemetry"
+  affinity: 22
+  dataDir: "/home/jtaylor/pyRTC/MAPS/data/"
