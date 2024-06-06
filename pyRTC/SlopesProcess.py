@@ -84,7 +84,8 @@ class SlopesProcess(pyRTCComponent):
 
         self.signalDType = np.float32
         # self.signal = ImageSHM("signal", self.imageShape, self.signalDType)
-        self.imageNoise = setFromConfig(self.conf,"imageNoise", 0.0)
+        self.imageNoise = setFromConfig(self.conf,"imageNoise", 0)
+        self.centralObscurationRatio = setFromConfig(self.conf,"centralObscurationRatio", 0.0)
 
         self.wfsType = self.conf["type"] 
         self.signalType = self.conf["signalType"] 
@@ -150,7 +151,7 @@ class SlopesProcess(pyRTCComponent):
         return self.wfsShm.read()
 
     def setValidSubAps(self, validSubAps):
-        self.validSubAps = validSubAps.astype(self.validSubAps)
+        self.validSubAps = validSubAps.astype(bool)
         return
     
     def saveValidSubAps(self,filename=''):
@@ -256,14 +257,32 @@ class SlopesProcess(pyRTCComponent):
         return
 
     def computePupilsMask(self):
-        pupils = []
+
         self.pupilMask = np.zeros(self.imageShape)
-        xx,yy = np.meshgrid(np.arange(self.pupilMask.shape[0]),np.arange(self.pupilMask.shape[1]))
+
+        pupilTemplate = generate_circular_aperture_mask(int(np.ceil(2*self.pupilRadius)),
+                                                        self.pupilRadius, 
+                                                        self.centralObscurationRatio)        
+        N = self.pupilMask .shape[0]
+        n = pupilTemplate.shape[0]
+        # Calculate the half size of the template
+        half_n = n // 2
+
         for i, pupil_loc in enumerate(self.pupilLocs):
             px, py = pupil_loc
-            zz = np.sqrt((xx-px)**2 + (yy-py)**2)
-            pupils.append(zz < self.pupilRadius)
-            self.pupilMask += pupils[-1]*(i+1)
+
+            # Determine the bounds of the subimage
+            x_start = px - half_n
+            x_end = px + half_n + (n % 2)
+            y_start = py - half_n
+            y_end = py + half_n + (n % 2)
+            
+            # Ensure the subimage bounds are within the bounds of the larger array
+            if x_start < 0 or y_start < 0 or x_end > N or y_end > N:
+                raise ValueError("The subimage exceeds the bounds of the larger array.")
+
+            self.pupilMask[y_start:y_end, x_start:x_end] += pupilTemplate*(i+1)
+
         self.p1mask = self.pupilMask == 1
         self.p2mask = self.pupilMask == 2
         self.p3mask = self.pupilMask == 3
@@ -295,9 +314,9 @@ class SlopesProcess(pyRTCComponent):
             return -1
         curSignal2D = np.zeros(validSubAps.shape)
         if self.wfsType.lower() == "pywfs":
-            slopemask = validSubAps[:,:validSubAps.shape[1]//2].astype(int)
-            curSignal2D[:,:validSubAps.shape[1]//2] = np.where(slopemask, curSignal2D[:,:validSubAps.shape[1]//2], 0)
-            curSignal2D[:,validSubAps.shape[1]//2:] = np.where(slopemask, curSignal2D[:,validSubAps.shape[1]//2:], 0)
+            slopemask = validSubAps[:,:validSubAps.shape[1]//2]
+            curSignal2D[:,:validSubAps.shape[1]//2][slopemask] = signal[:signal.size//2]
+            curSignal2D[:,validSubAps.shape[1]//2:][slopemask] = signal[signal.size//2:]
         else:
             curSignal2D[validSubAps] = signal
         return curSignal2D
