@@ -1,17 +1,15 @@
 """
-Loop Superclass
+Slopes Superclass
 """
 from pyRTC.Pipeline import *
 from pyRTC.utils import *
-import threading
+from pyRTC.pyRTCComponent import *
 import argparse
-import sys
 import os 
 import numpy as np
 import matplotlib.pyplot as plt
 import time
 from numba import jit
-from sys import platform
 
 @jit(nopython=True)
 def computeSlopesPYWFS(p1=np.array([],dtype=np.float32), 
@@ -69,7 +67,7 @@ def computeSlopesSHWFS(image=np.array([],dtype=np.float32),
                     slopes[i+numRegions,j] = np.sum(xvals*sub_im.T)/norm
     return slopes - unaberratedSlopes
 
-class SlopesProcess:
+class SlopesProcess(pyRTCComponent):
 
     def __init__(self, conf) -> None:
 
@@ -86,7 +84,8 @@ class SlopesProcess:
 
         self.signalDType = np.float32
         # self.signal = ImageSHM("signal", self.imageShape, self.signalDType)
-        self.imageNoise = setFromConfig(self.conf,"imageNoise", 0)
+        self.imageNoise = setFromConfig(self.conf,"imageNoise", 0.0)
+        self.centralObscurationRatio = setFromConfig(self.conf,"centralObscurationRatio", 0.0)
 
         self.wfsType = self.conf["type"] 
         self.signalType = self.conf["signalType"] 
@@ -143,34 +142,7 @@ class SlopesProcess:
             self.refSlopes = np.zeros(self.signal2DShape, dtype=self.signalDType)
             self.loadRefSlopes()
 
-        self.affinity = self.conf["affinity"]
-        self.alive = True
-        self.running = False
-        functionsToRun = self.conf["functions"]
-        self.workThreads = []
-        for i, functionName in enumerate(functionsToRun):
-            # Launch a separate thread
-            workThread = threading.Thread(target=work, args = (self,functionName), daemon=True)
-            # Start the thread
-            workThread.start()
-            # Set CPU affinity for the thread
-            set_affinity((self.affinity+i)%os.cpu_count())
-            self.workThreads.append(workThread)
-
-        return
-
-    def __del__(self):
-        self.stop()
-        self.alive=False
-        return
-
-    def start(self):
-        self.running = True
-        return
-
-    def stop(self):
-        self.running = False
-        return
+        super().__init__(self.conf)
     
     def read(self):
         return self.signal.read()
@@ -179,7 +151,7 @@ class SlopesProcess:
         return self.wfsShm.read()
 
     def setValidSubAps(self, validSubAps):
-        self.validSubAps = validSubAps.astype(self.validSubAps)
+        self.validSubAps = validSubAps.astype(bool)
         return
     
     def saveValidSubAps(self,filename=''):
@@ -285,14 +257,32 @@ class SlopesProcess:
         return
 
     def computePupilsMask(self):
-        pupils = []
+
         self.pupilMask = np.zeros(self.imageShape)
-        xx,yy = np.meshgrid(np.arange(self.pupilMask.shape[0]),np.arange(self.pupilMask.shape[1]))
+
+        pupilTemplate = generate_circular_aperture_mask(int(np.ceil(2*self.pupilRadius)),
+                                                        self.pupilRadius, 
+                                                        self.centralObscurationRatio)        
+        N = self.pupilMask .shape[0]
+        n = pupilTemplate.shape[0]
+        # Calculate the half size of the template
+        half_n = n // 2
+
         for i, pupil_loc in enumerate(self.pupilLocs):
             px, py = pupil_loc
-            zz = np.sqrt((xx-px)**2 + (yy-py)**2)
-            pupils.append(zz < self.pupilRadius)
-            self.pupilMask += pupils[-1]*(i+1)
+
+            # Determine the bounds of the subimage
+            x_start = px - half_n
+            x_end = px + half_n + (n % 2)
+            y_start = py - half_n
+            y_end = py + half_n + (n % 2)
+            
+            # Ensure the subimage bounds are within the bounds of the larger array
+            if x_start < 0 or y_start < 0 or x_end > N or y_end > N:
+                raise ValueError("The subimage exceeds the bounds of the larger array.")
+
+            self.pupilMask[y_start:y_end, x_start:x_end] += pupilTemplate*(i+1)
+
         self.p1mask = self.pupilMask == 1
         self.p2mask = self.pupilMask == 2
         self.p3mask = self.pupilMask == 3

@@ -2,10 +2,192 @@ import yaml
 import sys
 import select
 import os 
+from astropy.io import fits
 from subprocess import PIPE, Popen
 import numpy as np
 import psutil
 from scipy.ndimage import median_filter, gaussian_filter
+import socket
+from datetime import datetime
+
+NP_DATA_TYPES = [
+    np.int8, np.int16, np.int32, np.int64,
+    np.uint8, np.uint16, np.uint32, np.uint64,
+    np.float16, np.float32, np.float64, np.float128,  # np.float128 availability depends on the system
+    np.complex64, np.complex128, np.complex256,       # np.complex256 availability depends on the system
+    np.bool_,
+    np.object_,
+    np.string_, np.unicode_,
+    np.datetime64, np.timedelta64
+]
+
+def powerLawOG(numModes, k):
+    return (1- (np.arange(numModes)/numModes)**k)
+
+
+def append_to_file(filename, data, dtype=np.float32):
+    """
+    Append a numpy array to a binary file on disk.
+
+    Parameters:
+    filename : str
+        The name of the file to which data will be appended.
+    data : numpy array
+        The numpy array to append to the file.
+    dtype : data-type, optional
+        The desired data-type for the array. Default is np.float32.
+    """
+    if os.path.exists(filename):
+        # If the file exists, append to it
+        with open(filename, 'ab') as f:
+            data.tofile(f)
+    else:
+        # If the file does not exist, create it and write the initial data
+        with open(filename, 'wb') as f:
+            data.tofile(f)
+
+def generate_circular_aperture_mask(N, R, ratio):
+    """
+    Generates a binary mask of size NxN with a circular aperture of radius R and a central obscuration of radius r.
+    
+    Parameters:
+    N (int): The size of the mask (NxN).
+    R (float): The radius of the outer circular aperture.
+    ratio (float): The ratio of the inner obscuration radius to the outer radius (r/R).
+
+    Returns:
+    numpy.ndarray: Binary mask with the circular aperture.
+    """
+    r = R * ratio
+    x = np.linspace(-N/2, N/2, N)
+    xx, yy = np.meshgrid(x,x)
+    mask = (xx**2 + yy**2 <= R**2) 
+    if r > 0:
+        mask &= (xx**2 + yy**2 >= r**2)
+    return mask.astype(bool)
+
+def load_data(filename, dtype=None):
+    if filename.endswith('.npy'):
+        data = np.load(filename)
+    elif filename.endswith('.fits'):
+        with fits.open(filename) as hdul:
+            data = hdul[0].data
+    else:
+        raise ValueError("Unsupported file format. Please provide a .npy or .fits file.")
+    
+    if dtype is not None:
+        return data.astype(dtype)
+    return data
+
+def generate_filepath(base_dir='.', prefix='file', extension='.dat'):
+    """
+    Generate a file path based on the current date and time.
+
+    Parameters:
+    base_dir : str
+        The base directory where the file will be saved.
+    prefix : str
+        The prefix for the file name.
+    extension : str
+        The file extension.
+
+    Returns:
+    str
+        The generated file path.
+    """
+    # Get the current date and time
+    current_time = datetime.now()
+
+    # Format the date and time
+    timestamp = current_time.strftime('%Y%m%d_%H%M%S')
+
+    # Construct the file name
+    filename = f"{prefix}_{timestamp}{extension}"
+
+    # Construct the full file path
+    filepath = os.path.join(base_dir, filename)
+
+    return filepath
+
+def get_tmp_filepath(file_path):
+    """
+    Append '_tmp' to the filename part of the given file path, before the file extension.
+
+    :param file_path: str, the original file path
+    :return: str, modified file path with '_tmp' before the extension
+    """
+    # Split the file path into directory path and filename
+    dir_path, filename = os.path.split(file_path)
+
+    # Split the filename into name and extension
+    file_name, file_ext = os.path.splitext(filename)
+
+    # Add '_tmp' to the filename
+    new_filename = f"{file_name}_tmp{file_ext}"
+
+    # Construct the new full path
+    new_file_path = os.path.join(dir_path, new_filename)
+
+    return new_file_path
+
+def centroid(array):
+    # Each point contributes to the centroid proportionally to its value.
+    total = array.sum()
+    y_indices, x_indices = np.indices(array.shape)
+    x_centroid = (x_indices * array).sum() / total
+    y_centroid = (y_indices * array).sum() / total
+    return np.array([x_centroid, y_centroid])
+
+def add_to_buffer(buffer, vec):
+    buffer[:-1] = buffer[1:]
+    buffer[-1] = vec
+    return
+
+def next_power_of_two(n):
+    # Handle case for non-positive input
+    if n <= 0:
+        return 1
+
+    power = 1
+    while power <= n:
+        power *= 2
+    return power
+
+
+def adjusted_cosine_similarity(a, b):
+    dot_product = np.dot(a, b)
+    norm_a = np.linalg.norm(a)
+    norm_b = np.linalg.norm(b)
+    if norm_a == 0 or norm_b == 0:
+        return 0
+    cosine_similarity = dot_product / (norm_a * norm_b)
+    magnitude_similarity = min(norm_a, norm_b) / max(norm_a, norm_b)
+    return cosine_similarity * magnitude_similarity
+
+
+def robust_variance(data):
+    median = np.median(data)
+    deviations = np.abs(data - median)
+    mad = np.median(deviations)
+    return (mad / 0.6745) ** 2
+
+def cosine_similarity(v1, v2):
+    # Calculate the magnitudes of the vectors
+    mag_v1 = np.linalg.norm(v1)
+    mag_v2 = np.linalg.norm(v2)
+
+    # Calculate the dot product of vectors
+    dot_product = np.dot(v1, v2)
+
+    if mag_v1 == 0 or mag_v2 == 0:
+        return 0
+
+    return dot_product / (mag_v1 * mag_v2)
+
+def angle_between_vectors(v1, v2):
+
+    # Calculate the cosine of the angle
+    return np.abs(np.arccos(cosine_similarity(v1, v2)))
 
 def compute_fwhm_dark_subtracted_image(image):
     # Filter to keep only negative values
@@ -61,10 +243,19 @@ def set_affinity(affinity):
         psutil.Process(os.getpid()).cpu_affinity([affinity,])
     return
 
+
+
 def setFromConfig(conf, name, default):
     if name in conf.keys():
-        return conf[name]
-    return default
+        val = conf[name]
+    else:
+        val = default
+
+    debugStr = f"There is a type mismatch between the default value for config variable {name} and the given value: {type(val).__name__} != {type(default).__name__}"
+
+    assert type(val) == type(default), debugStr
+
+    return val
 
 def signal2D(signal, layout):
     curSignal2D = np.zeros(layout.shape)
@@ -83,10 +274,7 @@ def dtype_to_float(dtype):
     Returns:
     - float: Unique float representing the dtype
     """
-    dtypes = np.array(list(np.sctypeDict.values()))
-    dtypesNames = np.array([str(d) for d in dtypes], dtype=str)
-    dtypes = dtypes[np.argsort(dtypesNames)]
-    for i, d in enumerate(dtypes):
+    for i, d in enumerate(NP_DATA_TYPES):
         if dtype == d:
             return i
     return -1
@@ -101,10 +289,31 @@ def float_to_dtype(dtype_float):
     Returns:
     - np.dtype: NumPy dtype object
     """
-    dtypes = np.array(list(np.sctypeDict.values()))
-    dtypesNames = np.array([str(d) for d in dtypes], dtype=str)
-    dtypes = dtypes[np.argsort(dtypesNames)]
-    return np.dtype(dtypes[int(dtype_float)])
+    return np.dtype(NP_DATA_TYPES[int(dtype_float)])
+
+def bind_socket(host, start_port, max_attempts=5):
+    """Attempts to bind a socket on a range of ports, handling OSError exceptions."""
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)  # Allow reuse of socket addresses
+
+    for attempt in range(max_attempts):
+        try:
+            # Attempt to bind the socket
+            sock.bind((host, start_port + attempt))
+            print(f"Successfully bound to {host}:{start_port + attempt}")
+            return sock
+        except OSError as e:
+            print(f"Failed to bind to {host}:{start_port + attempt}: {e}")
+            if e.errno == socket.errno.EADDRINUSE:
+                print("Address already in use. Trying next port...")
+            else:
+                print("An unexpected error occurred. Stopping attempts.")
+                break
+    else:
+        # After all attempts, if no binding was successful, raise an exception
+        raise RuntimeError("Failed to bind socket after multiple attempts")
+
+    return -1
 
 def decrease_nice(pid):
     # Unsupported by MacOS
