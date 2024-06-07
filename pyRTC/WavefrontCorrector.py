@@ -29,9 +29,8 @@ class WavefrontCorrector(pyRTCComponent):
 
         self.name = conf["name"]
         self.numActuators = conf["numActuators"]
-        self.numModes = conf["numModes"]
-        self.affinity = conf["affinity"]
-        self.m2cFile = conf["m2cFile"]
+        self.numModes = setFromConfig(conf, "numModes", self.numActuators)
+        self.m2cFile = setFromConfig(conf,"m2cFile", "")
         
         self.correctionVector = ImageSHM("wfc", (self.numModes,), np.float32)
         self.correctionVector2D = None
@@ -126,7 +125,7 @@ class WavefrontCorrector(pyRTCComponent):
     def setM2C(self, M2C):
 
         if not isinstance(M2C, np.ndarray):
-            self.M2C = np.eye(self.numActuators)[:,:self.numModes]
+            self.M2C = np.eye(self.numActuators)[:,:self.numModes].astype(self.flat.dtype)
         else:
             self.M2C = M2C.astype(self.flat.dtype)
 

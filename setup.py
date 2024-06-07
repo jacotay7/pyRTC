@@ -18,7 +18,8 @@ setup(
                       'argparse',
                       'psutil',
                       'optuna',
-                      'cmaes'             
+                      'cmaes',
+                      'astropy'             
                       ],
     extras_require={
         "docs": [

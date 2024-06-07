@@ -1,17 +1,33 @@
 # Import specific functions or classes from submodules
-from .ALPAODM import *
+__all__ = []
+
+try:
+    from .ALPAODM import *
+    __all__.append('ALPAODM')
+except:
+    print("ALPAO python SDK installation not found")
+try:
+    from .SpinnakerScienceCam import *
+    __all__.append('spinCam')
+except:
+    print("Spinnaker python SDK installation not found")
+try:
+    from .ximeaWFS import *
+    __all__.append('XIMEA_WFS')
+except:
+    print("ximea python SDK installation not found")
+try:
+    from .PIModulator import *
+    __all__.append('PIModulator')
+except:
+    print("PI python SDK installation not found")
+
+from .SUPERPAOWER import *
 from .NCPAOptimizer import *
 from .PIDOptimizer import *
-from .PIModulator import *
-from .SpinnakerScienceCam import *
-from .ximeaWFS import *
 
-# Make them available when using 'from package import *'
-__all__ = ['ALPAODM', 
-           'NCPAOptimizer', 
-           'Optimizer', 
+__all__.extend([
+            'NCPAOptimizer', 
            'PIDOptimizer', 
-           'PIModulator', 
-           'spinCam',
-           'XIMEA_WFS',
-           ]
+           'SUPERPAOWER'
+           ])
