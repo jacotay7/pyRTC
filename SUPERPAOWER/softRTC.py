@@ -13,11 +13,12 @@ conf = read_yaml_file("./config.yaml")
 # %%
 wfc = SUPERPAOWER(conf["wfc"])
 wfc.start()
-
-# %%
-# np.save( "./calib/flat.npy", wfc.flat +2)
 # %%
 wfc.push(0,1)
 # %%
 wfc.flatten()
+# %%
+# for i in range(16): 
+#     wfc.push(i,1)
+#     time.sleep(1)
 # %%

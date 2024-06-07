@@ -60,12 +60,24 @@ class SUPERPAOWER(WavefrontCorrector):
         return layout
     
     def connectToChip(self):
-        self.device = serial.Serial(self.serialPort, self.baudRate)
+        # self.device = serial.Serial(self.serialPort, self.baudRate)
+        # Open the serial port with the same settings as MATLAB defaults
+        self.device = serial.Serial(
+            port=self.serialPort,       # Specify the port name
+            baudrate=self.baudRate,    # Set the baud rate
+            bytesize=serial.EIGHTBITS,  # Data bits (8)
+            parity=serial.PARITY_NONE,  # Parity (none)
+            stopbits=serial.STOPBITS_ONE,  # Stop bits (1)
+            timeout=10,         # Timeout for read operations (10 seconds)
+            xonxoff=False,      # Disable software flow control
+            rtscts=False,       # Disable hardware (RTS/CTS) flow control
+            dsrdtr=False        # Disable hardware (DSR/DTR) flow control
+        )
         return
 
     def setMapping(self):
         self.channelMapping = [
-                            (0,0),
+                            (5, 'k'),
                             (0,0),
                             (0,0),
                             (0,0),
@@ -95,7 +107,6 @@ class SUPERPAOWER(WavefrontCorrector):
             pmod, chan = self.channelMapping[i]
             #Set the value by communicating with FPGA
             self.setSingleDAC(pmod, chan, val)
-
 
         return
 
