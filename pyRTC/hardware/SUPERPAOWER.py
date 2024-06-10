@@ -10,7 +10,7 @@ from pyRTC.WavefrontCorrector import *
 from pyRTC.Pipeline import *
 from pyRTC.utils import *
 import argparse
-
+import struct
 import time
 import serial
 
@@ -77,7 +77,7 @@ class SUPERPAOWER(WavefrontCorrector):
 
     def setMapping(self):
         self.channelMapping = [
-                            (5, 'k'),
+                            (5, 19),
                             (0,0),
                             (0,0),
                             (0,0),
@@ -111,14 +111,21 @@ class SUPERPAOWER(WavefrontCorrector):
         return
 
     def setSingleDAC(self, pmod, chan, volt):
-        pmod = str(pmod)
-        chan = str(chan)
-        volt = str(volt)
+        # pmod = str(pmod)
+        # chan = str(chan)
+        # volt = str(volt)
 
-        intstructions = [b'e', b'e', pmod.encode(), chan.encode(), volt.encode(), b'\r']
-        for instruct in intstructions:
-            self.device.write(instruct)  # Send 'e' character
-            time.sleep(self.communicationPause)
+        pmod = int(pmod)
+        chan = int(chan)
+        volt = float(volt)
+
+        data = struct.pack('iif', pmod, chan, volt)
+        self.device.write(data)
+
+        # intstructions = [b'e', b'e', pmod.encode(), chan.encode(), volt.encode(), b'\r']
+        # for instruct in intstructions:
+        #     self.device.write(instruct)  # Send 'e' character
+        #     time.sleep(self.communicationPause)
 
         return
 
