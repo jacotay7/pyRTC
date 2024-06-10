@@ -13,8 +13,8 @@ from datetime import datetime
 NP_DATA_TYPES = [
     np.int8, np.int16, np.int32, np.int64,
     np.uint8, np.uint16, np.uint32, np.uint64,
-    np.float16, np.float32, np.float64, np.float128,  # np.float128 availability depends on the system
-    np.complex64, np.complex128, np.complex256,       # np.complex256 availability depends on the system
+    np.float16, np.float32, np.float64, # np.float128,  # np.float128 availability depends on the system
+    np.complex64, np.complex128, #np.complex256,       # np.complex256 availability depends on the system
     np.bool_,
     np.object_,
     np.string_, np.unicode_,

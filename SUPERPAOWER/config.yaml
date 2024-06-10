@@ -1,12 +1,12 @@
 wfc:
   name: "SUPERPAOWER"
-  serialPort: "/dev/ttyUSB0"
+  serialPort: "COM10"
   baudRate: 115200
   numActuators: 16
   numModes: 16
   voltRange: [0.0, 4.1]
   communicationPause: 0.05
-  flatFile: "./calib/flat.npy"
+  # flatFile: "./calib/flat.npy"
   saveFile: "./calib/wfcShape.npy"
   # m2cFile:  "./calib/m2c.npy"
   affinity: 2

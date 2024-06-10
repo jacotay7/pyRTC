@@ -50,6 +50,10 @@ class SUPERPAOWER(WavefrontCorrector):
 
         self.setMapping()
 
+        self.device.write('\r'.encode())
+        time.sleep(0.5)
+        self.device.write('\r'.encode())
+
         return
 
     def generateLayout(self):
@@ -77,7 +81,7 @@ class SUPERPAOWER(WavefrontCorrector):
 
     def setMapping(self):
         self.channelMapping = [
-                            (5, 19),
+                            (4, 19),
                             (0,0),
                             (0,0),
                             (0,0),
@@ -107,6 +111,7 @@ class SUPERPAOWER(WavefrontCorrector):
             pmod, chan = self.channelMapping[i]
             #Set the value by communicating with FPGA
             self.setSingleDAC(pmod, chan, val)
+            time.sleep(self.communicationPause)
 
         return
 
@@ -114,6 +119,7 @@ class SUPERPAOWER(WavefrontCorrector):
         # pmod = str(pmod)
         # chan = str(chan)
         # volt = str(volt)
+        print("Sending CMD -- PMOD:{pmod} CHAN: {chan} VOLT: {volt}")
 
         pmod = int(pmod)
         chan = int(chan)
