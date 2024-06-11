@@ -136,7 +136,7 @@ def centroid(array):
     y_indices, x_indices = np.indices(array.shape)
     x_centroid = (x_indices * array).sum() / total
     y_centroid = (y_indices * array).sum() / total
-    return x_centroid, y_centroid
+    return np.array([x_centroid, y_centroid])
 
 def add_to_buffer(buffer, vec):
     buffer[:-1] = buffer[1:]
@@ -243,10 +243,19 @@ def set_affinity(affinity):
         psutil.Process(os.getpid()).cpu_affinity([affinity,])
     return
 
+
+
 def setFromConfig(conf, name, default):
     if name in conf.keys():
-        return conf[name]
-    return default
+        val = conf[name]
+    else:
+        val = default
+
+    debugStr = f"There is a type mismatch between the default value for config variable {name} and the given value: {type(val).__name__} != {type(default).__name__}"
+
+    assert type(val) == type(default), debugStr
+
+    return val
 
 def signal2D(signal, layout):
     curSignal2D = np.zeros(layout.shape)

@@ -1,6 +1,6 @@
 loop:
   gain: 0.1
-  leakyGain: 0
+  leakyGain: 0.0
   numDroppedModes: 30
   pokeAmp: 0.02
   numItersIM: 50
@@ -16,13 +16,15 @@ loop:
   pGain: 0.316
   iGain: 0.0612
   dGain: 0.0481
-  controlLimits: [-0.1, 0.1]
+  controlLimits: [-0.01, 0.01]
+  absoluteLimits: [-0.2, 0.2]
   integralLimits: [-0.1, 0.1]
   derivativeFilter: 0.1
   functions:
   # - standardIntegrator
   # - standardIntegratorPOL
   # - leakyIntegrator
+  # - pidIntegratorPOL
   - pidIntegrator
 
 
@@ -114,7 +116,7 @@ psf:
   darkCount: 2000
   darkFile: "/home/whetstone/pyRTC/SHARP_LAB/calib/psfDark.npy"
   modelFile: "/home/whetstone/pyRTC/SHARP_LAB/calib/modelPSF.npy"
-  integration: 1000
+  integration: 100
   affinity: 6
   functions:
   - expose

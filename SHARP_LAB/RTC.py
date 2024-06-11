@@ -50,7 +50,6 @@ if RECALIBRATE == True:
 
     slopes.setProperty("refSlopesFile", "")
     slopes.run("loadRefSlopes")
-    ##### slopes.setProperty("offsetY", 3)
 
     input("Sources Off?")
     wfs.run("takeDark")
@@ -107,13 +106,16 @@ loop.setProperty("numDroppedModes", 15)
 loop.run("computeCM")
 time.sleep(0.5)
 # %% Adjust Gains
-loop.run("setGain",0.1)
-loop.setProperty("leakyGain", 1e-3)
+# loop.run("setGain",1e-2)
+# loop.setProperty("leakyGain", 0.3)
+loop.setProperty("leakyGain", 1e-2)
 #PID GAINS (only for PID integrator)
-# loop.setProperty("pGain", 0.3)
-# loop.setProperty("iGain", 0.01)
-# loop.setProperty("dGain", 0.01)
-
+loop.setProperty("pGain", 0.3)
+loop.setProperty("iGain", 5e-2)
+loop.setProperty("dGain", 5e-2)
+loop.setProperty("controlLimits", [-0.05, 0.05])
+loop.setProperty("absoluteLimits", [-1.0, 1.0])
+loop.setProperty("integralLimits", [-1.0, 1.0])
 # %%Launch Loop for 5 seconds
 wfc.run("flatten")
 loop.run("start")
@@ -124,11 +126,18 @@ wfc.run("flatten")
 wfc.run("flatten")
 
 #%% Optimize PID
-pidOptim.numReads = 2
-pidOptim.optimize()
+pidOptim.numReads = 10
+pidOptim.numSteps = 50
+pidOptim.isPOL = False
+pidOptim.mode = "tiptilt"
+pidOptim.maxPGain = 0.4
+pidOptim.maxDGain = 1e-1
+pidOptim.maxIGain = 1e-1
+for i in range(1):
+    pidOptim.optimize()
 pidOptim.applyOptimum()
 #%% Optimize NCPA
-ncpaOptim.numReads = 5
+ncpaOptim.numReads = 2
 ncpaOptim.startMode = 2
 ncpaOptim.endMode = 30
 ncpaOptim.optimize()
