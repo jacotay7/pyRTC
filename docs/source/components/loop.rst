@@ -25,3 +25,5 @@ Parameters
 .. autoclass:: Loop
   :members:
   :inherited-members:
+  :undoc-members:
+  :show-inheritance:

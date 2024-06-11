@@ -16,7 +16,7 @@ class WavefrontSensor(pyRTCComponent):
     class should be used by defining a child class held in pyRTC.hardware, which overwrites
     the relevant functions which actual hardware connectivity code. The child class can call its parent
     implementations in order to make use of the code which sets the relevant parameters, write to shared
-    memory, etc... or they can overwrite them completely.
+    memory, etc... or they can overwrite them completely. See hardware/ximeaWFS.py for an example.
 
     Config
     ------

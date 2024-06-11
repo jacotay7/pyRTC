@@ -1,7 +1,3 @@
-"""
-Loop Superclass
-"""
-
 import os 
 os.environ["OMP_NUM_THREADS"] = "1"
 os.environ["OPENBLAS_NUM_THREADS"] = "1" 
@@ -13,14 +9,12 @@ os.environ['NUMBA_NUM_THREADS'] = '1'
 from pyRTC.Pipeline import *
 from pyRTC.utils import *
 from pyRTC.pyRTCComponent import *
-import threading
 import argparse
 
 import numpy as np
 import matplotlib.pyplot as plt
 import time
 from numba import jit
-from sys import platform
 
 @jit(nopython=True)
 def compCorrection(CM=np.array([[]], dtype=np.float32),  
@@ -41,9 +35,194 @@ def updateCorrection(correction=np.array([], dtype=np.float32),
 #     return correction - np.dot(gCM,slopes) + pertub
 
 class Loop(pyRTCComponent):
+    """
+    A pyRTCComponent which controls the AO loop.
 
+    Config
+    ------
+    numDroppedModes : int, optional
+        Number of modes to drop. Default is 0.
+    gain : float, optional
+        Gain for the integrator. Default is 0.1.
+    leakyGain : float, optional
+        Leaky integrator gain. Default is 0.0.
+    hardwareDelay : float, optional
+        Delay for the hardware. Default is 0.0.
+    pokeAmp : float, optional
+        Amplitude for poking. Default is 0.01.
+    numItersIM : int, optional
+        Number of iterations for interaction matrix computation. Default is 100.
+    delay : int, optional
+        Delay for corrections. Default is 0.
+    IMMethod : str, optional
+        Method for interaction matrix computation. Default is "push-pull".
+    IMFile : str, optional
+        File to save the interaction matrix. Default is "".
+    pGain : float, optional
+        Proportional gain for PID integrator. Default is 0.1.
+    iGain : float, optional
+        Integral gain for PID integrator. Default is 0.0.
+    dGain : float, optional
+        Derivative gain for PID integrator. Default is 0.0.
+    controlLimits : list, optional
+        Control limits for PID integrator. Default is [-inf, inf].
+    integralLimits : list, optional
+        Integral limits for PID integrator. Default is [-inf, inf].
+    absoluteLimits : list, optional
+        Absolute limits for corrections. Default is [-inf, inf].
+    derivativeFilter : float, optional
+        Filter for the derivative term. Default is 0.1.
+
+    Attributes
+    ----------
+    confWFS : dict
+        Wavefront sensor configuration.
+    confWFC : dict
+        Wavefront corrector configuration.
+    confLoop : dict
+        Loop configuration.
+    name : str
+        Name of the loop.
+    signalMeta : numpy.ndarray
+        Metadata of the wavefront sensor signal.
+    signalDType : type
+        Data type of the wavefront sensor signal.
+    signalSize : int
+        Size of the wavefront sensor signal.
+    signalShm : ImageSHM
+        Shared memory object for the wavefront sensor signal.
+    nullSignal : numpy.ndarray
+        Null signal.
+    signal2DMeta : numpy.ndarray
+        Metadata of the 2D wavefront sensor signal.
+    signal2DDType : type
+        Data type of the 2D wavefront sensor signal.
+    signal2DSize : int
+        Size of the 2D wavefront sensor signal.
+    signal2D_width : int
+        Width of the 2D wavefront sensor signal.
+    signal2D_height : int
+        Height of the 2D wavefront sensor signal.
+    signal2DShm : ImageSHM
+        Shared memory object for the 2D wavefront sensor signal.
+    wfcMeta : numpy.ndarray
+        Metadata of the wavefront corrector.
+    wfcDType : type
+        Data type of the wavefront corrector.
+    numModes : int
+        Number of modes in the wavefront corrector.
+    wfcShm : ImageSHM
+        Shared memory object for the wavefront corrector.
+    wfc2DMeta : numpy.ndarray
+        Metadata of the 2D wavefront corrector.
+    wfc2DDType : type
+        Data type of the 2D wavefront corrector.
+    wfc2DSize : int
+        Size of the 2D wavefront corrector signal.
+    wfc2D_width : int
+        Width of the 2D wavefront corrector signal.
+    wfc2D_height : int
+        Height of the 2D wavefront corrector signal.
+    wfc2DShm : ImageSHM
+        Shared memory object for the 2D wavefront corrector.
+    numDroppedModes : int
+        Number of dropped modes.
+    numActiveModes : int
+        Number of active modes.
+    flat : numpy.ndarray
+        Flat correction vector.
+    IM : numpy.ndarray
+        Interaction matrix.
+    CM : numpy.ndarray
+        Control matrix.
+    gain : float
+        Gain for the integrator.
+    leakyGain : float
+        Leaky integrator gain.
+    perturbAmp : float
+        Perturbation amplitude.
+    hardwareDelay : float
+        Delay for the hardware.
+    pokeAmp : float
+        Amplitude for poking.
+    numItersIM : int
+        Number of iterations for interaction matrix computation.
+    delay : int
+        Delay for corrections.
+    IMMethod : str
+        Method for interaction matrix computation.
+    IMFile : str
+        File to save the interaction matrix.
+    pGain : float
+        Proportional gain for PID integrator.
+    iGain : float
+        Integral gain for PID integrator.
+    dGain : float
+        Derivative gain for PID integrator.
+    controlLimits : list
+        Control limits for PID integrator.
+    integralLimits : list
+        Integral limits for PID integrator.
+    absoluteLimits : list
+        Absolute limits for corrections.
+    derivativeFilter : float
+        Filter for the derivative term.
+    integral : numpy.ndarray
+        Integral term for PID integrator.
+    previousWfError : numpy.ndarray
+        Previous wavefront error.
+    previousDerivative : numpy.ndarray
+        Previous derivative term.
+    controlOutput : numpy.ndarray
+        Control output.
+    """
     def __init__(self, conf) -> None:
+        """
+        Constructs all the necessary attributes for the Loop object.
 
+        Parameters
+        ----------
+        conf : dict
+            Configuration dictionary with the following keys
+            wfs : dict
+                Wavefront sensor configuration.
+            wfc : dict
+                Wavefront corrector configuration.
+            loop : dict
+                Loop configuration containing
+                numDroppedModes : int, optional
+                    Number of modes to drop. Default is 0.
+                gain : float, optional
+                    Gain for the integrator. Default is 0.1.
+                leakyGain : float, optional
+                    Leaky integrator gain. Default is 0.0.
+                hardwareDelay : float, optional
+                    Delay for the hardware. Default is 0.0.
+                pokeAmp : float, optional
+                    Amplitude for poking. Default is 0.01.
+                numItersIM : int, optional
+                    Number of iterations for interaction matrix computation. Default is 100.
+                delay : int, optional
+                    Delay for corrections. Default is 0.
+                IMMethod : str, optional
+                    Method for interaction matrix computation. Default is "push-pull".
+                IMFile : str, optional
+                    File to save the interaction matrix. Default is "".
+                pGain : float, optional
+                    Proportional gain for PID integrator. Default is 0.1.
+                iGain : float, optional
+                    Integral gain for PID integrator. Default is 0.0.
+                dGain : float, optional
+                    Derivative gain for PID integrator. Default is 0.0.
+                controlLimits : list, optional
+                    Control limits for PID integrator. Default is [-inf, inf].
+                integralLimits : list, optional
+                    Integral limits for PID integrator. Default is [-inf, inf].
+                absoluteLimits : list, optional
+                    Absolute limits for corrections. Default is [-inf, inf].
+                derivativeFilter : float, optional
+                    Filter for the derivative term. Default is 0.1.
+        """
         self.confWFS = conf["wfs"]
         self.confWFC = conf["wfc"]
         self.confLoop = conf["loop"]
@@ -116,16 +295,34 @@ class Loop(pyRTCComponent):
         return
 
     def setGain(self, gain):
+        """
+        Set the integrator gain. Only needed for certain integrators.
+
+        Parameters
+        ----------
+        gain : float
+            Gain to set.
+        """
         self.gain = gain
         self.gCM = self.gain*self.CM
         return
 
     def setPeturbAmp(self, amp):
+        """
+        Set the perturbation amplitude.
+
+        Parameters
+        ----------
+        amp : float
+            Amplitude to set.
+        """
         self.perturbAmp = amp
         return
 
     def pushPullIM(self):
-        
+        """
+        Compute the interaction matrix using the push-pull method.
+        """
         #For each mode
         for i in range(self.numModes):
             #Reset the correction
@@ -163,8 +360,10 @@ class Loop(pyRTCComponent):
 
         return
     
-    def docrimeIM(self, flagInd=1):
-        
+    def docrimeIM(self):
+        """
+        Compute the interaction matrix using the DOCRIME method.
+        """        
         #Send the flat command to the WFC
         self.flatten()
 
@@ -210,7 +409,9 @@ class Loop(pyRTCComponent):
         return
 
     def computeIM(self):
-
+        """
+        Compute the interaction matrix using the specified method. Method specified using IMMethod, default is push-pull.
+        """
         if self.IMMethod == 'docrime':
             self.docrimeIM()
         else:
@@ -220,11 +421,27 @@ class Loop(pyRTCComponent):
         return
     
     def saveIM(self,filename=''):
+        """
+        Save the interaction matrix to a file.
+
+        Parameters
+        ----------
+        filename : str, optional
+            File to save the interaction matrix to. If not specified, uses the configured IMFile.
+        """
         if filename == '':
             filename = self.IMFile
         np.save(filename, self.IM)
 
     def loadIM(self,filename=''):
+        """
+        Load the interaction matrix from a file.
+
+        Parameters
+        ----------
+        filename : str, optional
+            File to load the interaction matrix from. If not specified, uses the configured IMFile.
+        """
         if filename == '':
             filename = self.IMFile
         if filename == '':
@@ -234,10 +451,16 @@ class Loop(pyRTCComponent):
         self.computeCM()
 
     def flatten(self):
+        """
+        Send the flat correction to the wavefront corrector.
+        """
         self.wfcShm.write(self.flat)
         return
     
     def computeCM(self):
+        """
+        Compute the control matrix from the interaction matrix.
+        """
         self.numActiveModes = self.numModes-self.numDroppedModes
         if self.numActiveModes < 0:
             print("Invalid Number of Modes used in CM. Check numDroppedModes")
@@ -251,7 +474,21 @@ class Loop(pyRTCComponent):
         
     # @jit(nopython=True)
     def updateCorrectionPOL(self, correction=np.array([], dtype=np.float32), slopes=np.array([], dtype=np.float32)):
-            
+        """
+        Update the correction using pseudo open loop slopes.
+
+        Parameters
+        ----------
+        correction : numpy.ndarray
+            Current correction vector.
+        slopes : numpy.ndarray
+            Current slopes vector.
+
+        Returns
+        -------
+        numpy.ndarray
+            Updated correction vector.
+        """   
         # Compute POL Slopes s_{POL} = s_{RES} + IM*c_{n-1}
         # print(f'slopes: {slopes.shape}, IM: {self.IM.shape}, corr: {correction.shape}')
         s_pol = slopes - self.fIM@correction
@@ -260,7 +497,9 @@ class Loop(pyRTCComponent):
         return (1-self.gain)*correction - np.dot(self.gCM,s_pol)
 
     def standardIntegratorPOL(self):
-
+        """
+        Standard integrator using the pseudo open loop slopes.
+        """
         residual_slopes = self.signalShm.read()
         currentCorrection = self.wfcShm.read()
         # print(f'slopes: {residual_slopes.shape}, IM: {self.IM.shape}, corr: {currentCorrection.shape}')
@@ -274,7 +513,9 @@ class Loop(pyRTCComponent):
 
     
     def standardIntegrator(self):
-
+        """
+        Standard integrator.
+        """
         slopes = self.signalShm.read()
         currentCorrection = self.wfcShm.read()
         newCorrection = updateCorrection(correction=currentCorrection, 
@@ -286,7 +527,9 @@ class Loop(pyRTCComponent):
     
     
     def leakyIntegrator(self):
-
+        """
+        Leaky integrator.
+        """
         slopes = self.signalShm.read()
         currentCorrection = (1-self.leakyGain)*self.wfcShm.read()
         newCorrection = updateCorrection(correction=currentCorrection, 
@@ -297,13 +540,25 @@ class Loop(pyRTCComponent):
         return
 
     def pidIntegratorPOL(self):
+        """
+        PID integrator using the pseudo-open loop slopes.
+        """
         slopes = self.signalShm.read()
         correction = self.wfcShm.read()
         polSlopes = slopes - self.fIM@correction
         return self.pidIntegrator(slopes=polSlopes, correction=correction)
 
     def pidIntegrator(self, slopes = None, correction = None):
+        """
+        PID integrator.
 
+        Parameters
+        ----------
+        slopes : numpy.ndarray, optional
+            Current slopes vector. If not provided, reads from shared memory.
+        correction : numpy.ndarray, optional
+            Current correction vector. If not provided, reads from shared memory.
+        """
         if slopes is None:
             slopes = self.signalShm.read()
         if correction is None:
@@ -351,13 +606,10 @@ class Loop(pyRTCComponent):
         
         return
 
-    def plotIM(self, row=None):
-        # if not (row is None):
-        #     row2D = signal2D(self.IM[:,row], )
-        #     plt.imshow(row2D, cmap = 'inferno')
-        #     plt.colorbar()
-        #     plt.show()
-        # else:
+    def plotIM(self):
+        """
+        Plot the interaction matrix.
+        """
         plt.imshow(self.IM, cmap = 'inferno', aspect='auto')
         plt.show()
 

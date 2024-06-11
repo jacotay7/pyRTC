@@ -25,3 +25,5 @@ Parameters
 .. autoclass:: SlopesProcess
   :members:
   :inherited-members:
+  :undoc-members:
+  :show-inheritance:

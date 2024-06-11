@@ -25,3 +25,5 @@ Parameters
 .. autoclass:: WavefrontCorrector
   :members:
   :inherited-members:
+  :undoc-members:
+  :show-inheritance:

@@ -25,3 +25,5 @@ Parameters
 .. autoclass:: ScienceCamera
   :members:
   :inherited-members:
+  :undoc-members:
+  :show-inheritance:
