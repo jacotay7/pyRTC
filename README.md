@@ -34,7 +34,48 @@ cd pyRTC
 pip install .
 ```
 
+Optionally, install with docs libraries:
+
+```
+cd pyRTC
+pip install .[docs]
+```
+
 # Getting Started 
+
+
+## Documentation
+
+You can build the docs locally by following these steps:
+
+First, install the required packages, this can be done by:
+
+```
+cd pyRTC
+pip install .[docs]
+```
+
+See Installation Instructions for more info.
+
+Next, navigate to the pyRTC folder and build the docs:
+
+```
+cd ~/pyRTC/docs/source
+make html
+```
+
+The docs will be built in the `docs/source/_build/html` folder. You can run them locally with:
+
+```
+sphinx-autobuild . _build/html
+```
+
+This process can also be done using the including `build_and_run.sh` script located in the `docs/source` folder.
+
+```
+cd ~/pyRTC/docs/source
+./build_and_run.sh
+```
 
 ## Hardware
 
@@ -51,7 +92,6 @@ For our examples we will be using the open-source AO simulation software OOPAO d
 ## Examples
 
 We have provided an example of how to set up a single conjugate AO (SCAO) system using a Pyramid Wavefront Sensor. This example uses the OOPAO simulation software to simulate the hardware components of an AO system so that pyRTC can be tested without the need of real AO hardware. All examples can be found under the `examples` folder.
-
 
 # Contributing
 

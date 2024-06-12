@@ -241,7 +241,9 @@ class WavefrontCorrector(pyRTCComponent):
         if not isinstance(M2C, np.ndarray):
             self.M2C = np.eye(self.numActuators)[:,:self.numModes]
         else:
-            self.M2C = M2C.astype(self.flat.dtype)
+            self.M2C = M2C
+
+        self.M2C = self.M2C.astype(self.flat.dtype)
 
         self.f_M2C = self.floatMatrix@self.M2C
 
@@ -358,7 +360,7 @@ class WavefrontCorrector(pyRTCComponent):
         """
         #Sending a zero correction will be the flat since the correction
         #is always assumed to be on top of the flat.
-        self.write(0*self.currentCorrection)
+        self.write(np.zeros_like(self.currentCorrection))
         return
 
     def push(self, mode, amp):

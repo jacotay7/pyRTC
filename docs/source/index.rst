@@ -39,7 +39,6 @@ pyRTC is an open-source, community-driven Python package for real-time control o
   components/loop
   components/optimizer
   components/scicam
-  components/modulator
 
 .. toctree::
   :maxdepth: 1
