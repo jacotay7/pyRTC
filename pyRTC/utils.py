@@ -109,7 +109,7 @@ def generate_filepath(base_dir='.', prefix='file', extension='.dat'):
 
     return filepath
 
-def get_tmp_filepath(file_path):
+def get_tmp_filepath(file_path, uniqueStr = 'tmp'):
     """
     Append '_tmp' to the filename part of the given file path, before the file extension.
 
@@ -123,7 +123,7 @@ def get_tmp_filepath(file_path):
     file_name, file_ext = os.path.splitext(filename)
 
     # Add '_tmp' to the filename
-    new_filename = f"{file_name}_tmp{file_ext}"
+    new_filename = f"{file_name}_{uniqueStr}{file_ext}"
 
     # Construct the new full path
     new_file_path = os.path.join(dir_path, new_filename)
