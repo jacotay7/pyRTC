@@ -68,7 +68,115 @@ def computeSlopesSHWFS(image=np.array([],dtype=np.float32),
     return slopes - unaberratedSlopes
 
 class SlopesProcess(pyRTCComponent):
+    """
+    A class to handle real-time slope computation for wavefront sensors.
 
+    Config
+    ------
+    type : str
+        Type of the WFS ("PYWFS" or "SHWFS").
+    signalType : str
+        Type of signal ("slopes").
+    imageNoise : float, optional
+        Image noise. Default is 0.0.
+    centralObscurationRatio : float, optional
+        Central obscuration ratio. Default is 0.0.
+    flatNorm : float, optional
+        Normalization factor for the flat. Required for "PYWFS" with "slopes" signalType.
+    pupils : list of str, optional
+        List of pupil locations in "x,y" format. Required for "PYWFS".
+    pupilsRadius : int, optional
+        Radius of the pupils. Required for "PYWFS".
+    contrast : float, optional
+        Contrast for "SHWFS". Default is 0.
+    subApSpacing : float, optional
+        Sub-aperture spacing for "SHWFS".
+    subApOffsetX : float, optional
+        Sub-aperture offset in X direction for "SHWFS".
+    subApOffsetY : float, optional
+        Sub-aperture offset in Y direction for "SHWFS".
+    refSlopeCount : int, optional
+        Number of reference slopes for averaging. Default is 1000.
+    validSubApsFile : str, optional
+        File containing valid sub-aperture mask. Default is "".
+    refSlopesFile : str, optional
+        File containing reference slopes. Default is "".
+
+    Attributes
+    ----------
+    confWFS : dict
+        Wavefront sensor configuration.
+    name : str
+        Name of the process.
+    imageShape : tuple
+        Shape of the WFS image.
+    conf : dict
+        Slopes configuration.
+    wfsMeta : numpy.ndarray
+        Metadata of the WFS image.
+    imageDType : type
+        Data type of the WFS image.
+    wfsShm : ImageSHM
+        Shared memory object for the WFS image.
+    signalDType : type
+        Data type of the signal.
+    imageNoise : float
+        Image noise.
+    centralObscurationRatio : float
+        Central obscuration ratio.
+    wfsType : str
+        Type of the WFS.
+    signalType : str
+        Type of signal.
+    validSubAps : numpy.ndarray or None
+        Valid sub-aperture mask.
+    shwfsContrast : float
+        Contrast for "SHWFS".
+    subApSpacing : float
+        Sub-aperture spacing for "SHWFS".
+    numRegions : int
+        Number of regions for "SHWFS".
+    offsetX : float
+        Sub-aperture offset in X direction for "SHWFS".
+    offsetY : float
+        Sub-aperture offset in Y direction for "SHWFS".
+    refSlopeCount : int
+        Number of reference slopes for averaging.
+    signal2DSize : int
+        Size of the 2D signal.
+    signal2DShape : tuple
+        Shape of the 2D signal.
+    validSubApsFile : str
+        File containing valid sub-aperture mask.
+    signalSize : int
+        Size of the signal.
+    signalShape : tuple
+        Shape of the signal.
+    signal : ImageSHM
+        Shared memory object for the signal.
+    signal2D : ImageSHM
+        Shared memory object for the 2D signal.
+    refSlopesFile : str
+        File containing reference slopes.
+    refSlopes : numpy.ndarray
+        Reference slopes.
+    flatNorm : float
+        Normalization factor for the flat.
+    pupilLocs : list of tuple
+        List of pupil locations.
+    pupilRadius : int
+        Radius of the pupils.
+    pupilMask : numpy.ndarray
+        Mask of the pupils.
+    p1mask : numpy.ndarray
+        Mask for pupil 1.
+    p2mask : numpy.ndarray
+        Mask for pupil 2.
+    p3mask : numpy.ndarray
+        Mask for pupil 3.
+    p4mask : numpy.ndarray
+        Mask for pupil 4.
+    """
     def __init__(self, conf) -> None:
 
         self.confWFS = conf["wfs"]
@@ -87,11 +195,11 @@ class SlopesProcess(pyRTCComponent):
         self.imageNoise = setFromConfig(self.conf,"imageNoise", 0.0)
         self.centralObscurationRatio = setFromConfig(self.conf,"centralObscurationRatio", 0.0)
 
-        self.wfsType = self.conf["type"] 
+        self.wfsType = self.conf["type"].lower() 
         self.signalType = self.conf["signalType"] 
         self.validSubAps = None
 
-        if self.wfsType.lower() == "pywfs":
+        if self.wfsType == "pywfs":
             #Check if we have specified a pupil validSubAps
             # self.signal = ImageSHM("signal", self.imageShape, self.signalDType)
 
@@ -107,7 +215,7 @@ class SlopesProcess(pyRTCComponent):
                 #Set normalization
                 self.flatNorm = self.conf["flatNorm"]
 
-        elif self.wfsType.lower() == "shwfs":
+        elif self.wfsType == "shwfs":
 
             self.shwfsContrast = setFromConfig(self.conf, "contrast", 0)
             self.subApSpacing = self.conf["subApSpacing"]
@@ -144,23 +252,67 @@ class SlopesProcess(pyRTCComponent):
 
         super().__init__(self.conf)
     
-    def read(self):
-        return self.signal.read()
+    def read(self, block = True):
+        """
+        Read the current signal.
+
+        Returns
+        -------
+        numpy.ndarray
+            Current signal.
+        """
+        if block:
+            return self.signal.read()
+        return self.signal.read_noblock()
     
-    def readImage(self):
-        return self.wfsShm.read()
+    def readImage(self, block=True):
+        """
+        Read the current WFS image.
+
+        Returns
+        -------
+        numpy.ndarray
+            Current WFS image.
+        """
+        if block:
+            return self.wfsShm.read()
+        return self.wfsShm.read_noblock()
 
     def setValidSubAps(self, validSubAps):
+        """
+        Set the valid sub-aperture mask. Converts to boolean if not already
+
+        Parameters
+        ----------
+        validSubAps : numpy.ndarray
+            Valid sub-aperture mask.
+        """
         self.validSubAps = validSubAps.astype(bool)
         return
     
     def saveValidSubAps(self,filename=''):
+        """
+        Save the valid sub-aperture mask to a file.
+
+        Parameters
+        ----------
+        filename : str, optional
+            File to save the valid sub-aperture mask to. If not specified, uses the configured validSubApsFile.
+        """
         if filename == '':
             filename = self.validSubApsFile
         np.save(filename, self.validSubAps)
         return
 
     def loadValidSubAps(self,filename=''):
+        """
+        Load the valid sub-aperture mask from a file.
+
+        Parameters
+        ----------
+        filename : str, optional
+            File to load the valid sub-aperture mask from. If not specified, uses the configured validSubApsFile.
+        """
         #If no file given, first try reference slopes file
         if filename == '':
             filename = self.validSubApsFile
@@ -173,6 +325,10 @@ class SlopesProcess(pyRTCComponent):
 
 
     def takeRefSlopes(self):
+        """
+        Take reference slopes by averaging multiple slope measurements. Number of measurements
+        set by refSlopeCount variable.
+        """
         #Reset reference slopes to zero
         self.setRefSlopes(np.zeros_like(self.refSlopes))
         refSlopes = np.zeros_like(self.refSlopes)
@@ -185,16 +341,40 @@ class SlopesProcess(pyRTCComponent):
         return 
 
     def setRefSlopes(self, refSlopes):
+        """
+        Set the reference slopes.
+
+        Parameters
+        ----------
+        refSlopes : numpy.ndarray
+            Reference slopes.
+        """
         self.refSlopes = refSlopes.astype(self.signalDType)
         return
     
     def saveRefSlopes(self,filename=''):
+        """
+        Save the reference slopes to a file.
+
+        Parameters
+        ----------
+        filename : str, optional
+            File to save the reference slopes to. If not specified, uses the configured refSlopesFile.
+        """
         if filename == '':
             filename = self.refSlopesFile
         np.save(filename, self.refSlopes)
         return
 
     def loadRefSlopes(self,filename=''):
+        """
+        Load the reference slopes from a file.
+
+        Parameters
+        ----------
+        filename : str, optional
+            File to load the reference slopes from. If not specified, uses the configured refSlopesFile.
+        """
         #If no file given, first try reference slopes file
         if filename == '':
             filename = self.refSlopesFile
@@ -206,9 +386,12 @@ class SlopesProcess(pyRTCComponent):
         return
     
     def computeSignal(self):
+        """
+        Compute the signal from the WFS image.
+        """
         image = self.readImage().astype(self.signalDType)
         if self.signalType == "slopes":
-            if self.wfsType == "PYWFS":
+            if self.wfsType == "pywfs":
                 p1,p2,p3,p4 = image[self.p1mask], image[self.p2mask], image[self.p3mask], image[self.p4mask]
                 slope_signal = computeSlopesPYWFS(p1=p1,
                                                     p2=p2,
@@ -218,7 +401,7 @@ class SlopesProcess(pyRTCComponent):
                 
                 
                     
-            elif self.wfsType == "SHWFS":
+            elif self.wfsType == "shwfs":
                 
                 # threshold = np.std(image[image < np.mean(image)])*self.shwfsContrast
                 threshold = self.imageNoise*self.shwfsContrast
@@ -235,6 +418,9 @@ class SlopesProcess(pyRTCComponent):
         return
     
     def computeImageNoise(self):
+        """
+        Compute the image noise. Useful to set a good SNR cutoff for SHWFS
+        """
         img = self.readImage()
         if img[img < 0].size > 0:
             self.imageNoise = compute_fwhm_dark_subtracted_image(img)/2
@@ -243,6 +429,17 @@ class SlopesProcess(pyRTCComponent):
         return
 
     def setPupils(self, pupilLocs, pupilRadius):
+        """
+        Set the pupils' locations and radius. First computes a Pupil Mask, then generates slope mask 
+        and sets up SHMS of the correct sizes.
+
+        Parameters
+        ----------
+        pupilLocs : list of tuple
+            List of pupil locations.
+        pupilRadius : int
+            Radius of the pupils.
+        """
         self.pupilLocs = pupilLocs
         self.pupilRadius = pupilRadius
         self.computePupilsMask()
@@ -257,7 +454,10 @@ class SlopesProcess(pyRTCComponent):
         return
 
     def computePupilsMask(self):
-
+        """
+        Compute the mask for the pupils. Assumes circular aperture with obstruction ratio 
+        set by the centralObscurationRatio parameter.
+        """
         self.pupilMask = np.zeros(self.imageShape)
 
         pupilTemplate = generate_circular_aperture_mask(int(np.ceil(2*self.pupilRadius)),
@@ -290,6 +490,9 @@ class SlopesProcess(pyRTCComponent):
         return
 
     def plotPupils(self):
+        """
+        Plot the pupil mask to see if its right.
+        """
         # plt.figure(figsize=(10,8))
         plt.imshow(self.pupilMask, cmap = 'inferno',origin='lower',aspect ='auto')
         plt.colorbar()
@@ -308,12 +511,27 @@ class SlopesProcess(pyRTCComponent):
         return
 
     def computeSignal2D(self, signal, validSubAps=None):
+        """
+        Compute the 2D signal from the valid sub-aperture mask.
+
+        Parameters
+        ----------
+        signal : numpy.ndarray
+            Signal to process.
+        validSubAps : numpy.ndarray, optional
+            Valid sub-aperture mask. If not provided, uses the current valid sub-aperture mask.
+
+        Returns
+        -------
+        numpy.ndarray
+            2D signal.
+        """
         if validSubAps is None and isinstance(self.validSubAps, np.ndarray):
             validSubAps = self.validSubAps
         else:
             return -1
         curSignal2D = np.zeros(validSubAps.shape)
-        if self.wfsType.lower() == "pywfs":
+        if self.wfsType == "pywfs":
             slopemask = validSubAps[:,:validSubAps.shape[1]//2]
             curSignal2D[:,:validSubAps.shape[1]//2][slopemask] = signal[:signal.size//2]
             curSignal2D[:,validSubAps.shape[1]//2:][slopemask] = signal[signal.size//2:]
