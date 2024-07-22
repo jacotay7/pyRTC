@@ -13,8 +13,12 @@ class ScienceCamera(pyRTCComponent):
 
         self.name = conf["name"]
         self.imageShape = (conf["width"], conf["height"])
-        self.imageRawDType = np.uint16
-        self.imageDType = np.int32
+        imageDtypeConfig = setFromConfig(conf, "imageDType", 'int16')
+        self.imageRawDType = dtype_from_str(imageDtypeConfig) # np.uint16
+        if 'int' in imageDtypeConfig:
+            self.imageDType = np.int32
+        else:
+            self.imageDType = np.float32
         self.psfLongDtype = np.float64
         
         self.psfShort = ImageSHM("psfShort", self.imageShape, self.imageDType)
@@ -24,7 +28,7 @@ class ScienceCamera(pyRTCComponent):
 
         self.data = np.zeros(self.imageShape, dtype=self.imageRawDType)
         self.dark = np.zeros(self.imageShape, dtype=self.imageDType)
-        self.darkCount = conf["darkCount"]
+        self.darkCount = setFromConfig(conf, "darkCount", 1000)
         self.darkFile = setFromConfig(conf, "darkFile", "")
         self.model = np.zeros(self.imageShape, dtype=self.psfLongDtype)
         self.modelFile = setFromConfig(conf, "modelFile", "")

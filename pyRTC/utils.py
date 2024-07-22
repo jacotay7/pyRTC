@@ -10,16 +10,41 @@ from scipy.ndimage import median_filter, gaussian_filter
 import socket
 from datetime import datetime
 
+NP_DATA_TYPE_DICT = {
+    "int8": np.int8,
+    "int16": np.int16,
+    "int32": np.int32,
+    "int64": np.int64,
+    "uint8": np.uint8,
+    "uint16": np.uint16,
+    "uint32": np.uint32,
+    "uint64": np.uint64,
+    "float16": np.float16,
+    "float32": np.float32,
+    "float64": np.float64,
+    "complex64": np.complex64,
+    "complex128": np.complex128,
+    "bool": np.bool_,
+}
+
 NP_DATA_TYPES = [
     np.int8, np.int16, np.int32, np.int64,
     np.uint8, np.uint16, np.uint32, np.uint64,
     np.float16, np.float32, np.float64, # np.float128,  # np.float128 availability depends on the system
     np.complex64, np.complex128, #np.complex256,       # np.complex256 availability depends on the system
     np.bool_,
-    np.object_,
-    np.string_, np.unicode_,
-    np.datetime64, np.timedelta64
 ]
+
+def calculate_checksum(data):
+    return sum(data) % 256
+
+def dtype_from_str(string):
+    return NP_DATA_TYPE_DICT[string]
+
+def dtype_to_str(dtype):
+    for key, value in NP_DATA_TYPE_DICT.items():
+        if value == dtype:
+            return key
 
 def powerLawOG(numModes, k):
     return (1- (np.arange(numModes)/numModes)**k)

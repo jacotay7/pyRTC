@@ -21,13 +21,24 @@ try:
     __all__.append('PIModulator')
 except:
     print("PI python SDK installation not found")
+try:
+    from .SUPERPAOWER import *
+    __all__.append('SUPERPAOWER')
+except:
+    print("SUPERPAOWER modules not found. Likely pyserial needed.")
+try:
+    from .thorLabsPowerMeter import *
+    __all__.append('powerMeter')
+except:
+    print("Power meter modules not found. Likely pyvisa-py & pysub needed.")
 
-from .SUPERPAOWER import *
 from .NCPAOptimizer import *
 from .PIDOptimizer import *
 
 __all__.extend([
-            'NCPAOptimizer', 
-           'PIDOptimizer', 
-           'SUPERPAOWER'
+           'NCPAOptimizer', 
+           'PIDOptimizer'
            ])
+
+#Remove Any duplicates
+__all__ = list(set(__all__))

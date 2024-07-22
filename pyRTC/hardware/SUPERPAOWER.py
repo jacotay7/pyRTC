@@ -81,22 +81,22 @@ class SUPERPAOWER(WavefrontCorrector):
 
     def setMapping(self):
         self.channelMapping = [
-                            (4, 19),
-                            (0,0),
-                            (0,0),
-                            (0,0),
-                            (0,0),
-                            (0,0),
-                            (0,0),
-                            (0,0),
-                            (0,0),
-                            (0,0),
-                            (0,0),
-                            (0,0),
-                            (0,0),
-                            (0,0),
-                            (0,0),
-                            (0,0),                               
+                            (4, 7),
+                            (4, 6),
+                            (4, 5),
+                            (4, 4),
+                            (4, 3),
+                            (4, 2),
+                            (4, 1),
+                            (4, 0),
+                            (4, 8),
+                            (4, 9),
+                            (4, 10),
+                            (4, 11),
+                            (4, 12),
+                            (4, 13),
+                            (4, 14),
+                            (4, 15),                               
                                ]
 
     def sendToHardware(self):
@@ -113,13 +113,40 @@ class SUPERPAOWER(WavefrontCorrector):
             self.setSingleDAC(pmod, chan, val)
             time.sleep(self.communicationPause)
 
+            """
+            Need to implement the other side of this on FPGA
+            """
+            # pkt = self.correctionToPacket(self.currentShape)
+            # self.device.write(pkt)
+
         return
+
+    def correctionToPacket(self, correction):
+
+        header = b'\xAA\xBB'  # Example header
+        num_commands = self.numActuators
+        
+        # Start with the header and the number of commands
+        packet = header + struct.pack('B', num_commands)
+        
+        # Append each command in 'iif' format
+        for i, val in enumerate(correction):
+            pmod, chan = self.channelMapping[i]
+            packet += struct.pack('BBf', int(pmod), int(chan), float(val))
+        
+        # Calculate checksum
+        checksum = calculate_checksum(packet)
+        
+        # Append checksum
+        packet += struct.pack('B', checksum)
+        
+        return packet
 
     def setSingleDAC(self, pmod, chan, volt):
         # pmod = str(pmod)
         # chan = str(chan)
         # volt = str(volt)
-        print("Sending CMD -- PMOD:{pmod} CHAN: {chan} VOLT: {volt}")
+        # print("Sending CMD -- PMOD:{pmod} CHAN: {chan} VOLT: {volt}")
 
         pmod = int(pmod)
         chan = int(chan)

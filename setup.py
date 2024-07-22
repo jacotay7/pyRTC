@@ -19,7 +19,12 @@ setup(
                       'psutil',
                       'optuna',
                       'cmaes',
-                      'astropy'             
+                      'astropy',
+                      'ipykernel',
+                      #For SUPERPAOWER
+                      'pyserial',
+                      'pyvisa-py',
+                      'pyusb',             
                       ],
     extras_require={
         "docs": [
