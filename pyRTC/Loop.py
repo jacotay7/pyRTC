@@ -1,7 +1,3 @@
-"""
-Loop Superclass
-"""
-
 import os 
 os.environ["OMP_NUM_THREADS"] = "1"
 os.environ["OPENBLAS_NUM_THREADS"] = "1" 
@@ -13,14 +9,12 @@ os.environ['NUMBA_NUM_THREADS'] = '1'
 from pyRTC.Pipeline import *
 from pyRTC.utils import *
 from pyRTC.pyRTCComponent import *
-import threading
 import argparse
 
 import numpy as np
 import matplotlib.pyplot as plt
 import time
 from numba import jit
-from sys import platform
 
 @jit(nopython=True)
 def compCorrection(CM=np.array([[]], dtype=np.float32),  
@@ -41,9 +35,194 @@ def updateCorrection(correction=np.array([], dtype=np.float32),
 #     return correction - np.dot(gCM,slopes) + pertub
 
 class Loop(pyRTCComponent):
+    """
+    A pyRTCComponent which controls the AO loop.
 
+    Config
+    ------
+    numDroppedModes : int, optional
+        Number of modes to drop. Default is 0.
+    gain : float, optional
+        Gain for the integrator. Default is 0.1.
+    leakyGain : float, optional
+        Leaky integrator gain. Default is 0.0.
+    hardwareDelay : float, optional
+        Delay for the hardware. Default is 0.0.
+    pokeAmp : float, optional
+        Amplitude for poking. Default is 0.01.
+    numItersIM : int, optional
+        Number of iterations for interaction matrix computation. Default is 100.
+    delay : int, optional
+        Delay for corrections. Default is 0.
+    IMMethod : str, optional
+        Method for interaction matrix computation. Default is "push-pull".
+    IMFile : str, optional
+        File to save the interaction matrix. Default is "".
+    pGain : float, optional
+        Proportional gain for PID integrator. Default is 0.1.
+    iGain : float, optional
+        Integral gain for PID integrator. Default is 0.0.
+    dGain : float, optional
+        Derivative gain for PID integrator. Default is 0.0.
+    controlLimits : list, optional
+        Control limits for PID integrator. Default is [-inf, inf].
+    integralLimits : list, optional
+        Integral limits for PID integrator. Default is [-inf, inf].
+    absoluteLimits : list, optional
+        Absolute limits for corrections. Default is [-inf, inf].
+    derivativeFilter : float, optional
+        Filter for the derivative term. Default is 0.1.
+
+    Attributes
+    ----------
+    confWFS : dict
+        Wavefront sensor configuration.
+    confWFC : dict
+        Wavefront corrector configuration.
+    confLoop : dict
+        Loop configuration.
+    name : str
+        Name of the loop.
+    signalMeta : numpy.ndarray
+        Metadata of the wavefront sensor signal.
+    signalDType : type
+        Data type of the wavefront sensor signal.
+    signalSize : int
+        Size of the wavefront sensor signal.
+    signalShm : ImageSHM
+        Shared memory object for the wavefront sensor signal.
+    nullSignal : numpy.ndarray
+        Null signal.
+    signal2DMeta : numpy.ndarray
+        Metadata of the 2D wavefront sensor signal.
+    signal2DDType : type
+        Data type of the 2D wavefront sensor signal.
+    signal2DSize : int
+        Size of the 2D wavefront sensor signal.
+    signal2D_width : int
+        Width of the 2D wavefront sensor signal.
+    signal2D_height : int
+        Height of the 2D wavefront sensor signal.
+    signal2DShm : ImageSHM
+        Shared memory object for the 2D wavefront sensor signal.
+    wfcMeta : numpy.ndarray
+        Metadata of the wavefront corrector.
+    wfcDType : type
+        Data type of the wavefront corrector.
+    numModes : int
+        Number of modes in the wavefront corrector.
+    wfcShm : ImageSHM
+        Shared memory object for the wavefront corrector.
+    wfc2DMeta : numpy.ndarray
+        Metadata of the 2D wavefront corrector.
+    wfc2DDType : type
+        Data type of the 2D wavefront corrector.
+    wfc2DSize : int
+        Size of the 2D wavefront corrector signal.
+    wfc2D_width : int
+        Width of the 2D wavefront corrector signal.
+    wfc2D_height : int
+        Height of the 2D wavefront corrector signal.
+    wfc2DShm : ImageSHM
+        Shared memory object for the 2D wavefront corrector.
+    numDroppedModes : int
+        Number of dropped modes.
+    numActiveModes : int
+        Number of active modes.
+    flat : numpy.ndarray
+        Flat correction vector.
+    IM : numpy.ndarray
+        Interaction matrix.
+    CM : numpy.ndarray
+        Control matrix.
+    gain : float
+        Gain for the integrator.
+    leakyGain : float
+        Leaky integrator gain.
+    perturbAmp : float
+        Perturbation amplitude.
+    hardwareDelay : float
+        Delay for the hardware.
+    pokeAmp : float
+        Amplitude for poking.
+    numItersIM : int
+        Number of iterations for interaction matrix computation.
+    delay : int
+        Delay for corrections.
+    IMMethod : str
+        Method for interaction matrix computation.
+    IMFile : str
+        File to save the interaction matrix.
+    pGain : float
+        Proportional gain for PID integrator.
+    iGain : float
+        Integral gain for PID integrator.
+    dGain : float
+        Derivative gain for PID integrator.
+    controlLimits : list
+        Control limits for PID integrator.
+    integralLimits : list
+        Integral limits for PID integrator.
+    absoluteLimits : list
+        Absolute limits for corrections.
+    derivativeFilter : float
+        Filter for the derivative term.
+    integral : numpy.ndarray
+        Integral term for PID integrator.
+    previousWfError : numpy.ndarray
+        Previous wavefront error.
+    previousDerivative : numpy.ndarray
+        Previous derivative term.
+    controlOutput : numpy.ndarray
+        Control output.
+    """
     def __init__(self, conf) -> None:
+        """
+        Constructs all the necessary attributes for the Loop object.
 
+        Parameters
+        ----------
+        conf : dict
+            Configuration dictionary with the following keys
+            wfs : dict
+                Wavefront sensor configuration.
+            wfc : dict
+                Wavefront corrector configuration.
+            loop : dict
+                Loop configuration containing
+                numDroppedModes : int, optional
+                    Number of modes to drop. Default is 0.
+                gain : float, optional
+                    Gain for the integrator. Default is 0.1.
+                leakyGain : float, optional
+                    Leaky integrator gain. Default is 0.0.
+                hardwareDelay : float, optional
+                    Delay for the hardware. Default is 0.0.
+                pokeAmp : float, optional
+                    Amplitude for poking. Default is 0.01.
+                numItersIM : int, optional
+                    Number of iterations for interaction matrix computation. Default is 100.
+                delay : int, optional
+                    Delay for corrections. Default is 0.
+                IMMethod : str, optional
+                    Method for interaction matrix computation. Default is "push-pull".
+                IMFile : str, optional
+                    File to save the interaction matrix. Default is "".
+                pGain : float, optional
+                    Proportional gain for PID integrator. Default is 0.1.
+                iGain : float, optional
+                    Integral gain for PID integrator. Default is 0.0.
+                dGain : float, optional
+                    Derivative gain for PID integrator. Default is 0.0.
+                controlLimits : list, optional
+                    Control limits for PID integrator. Default is [-inf, inf].
+                integralLimits : list, optional
+                    Integral limits for PID integrator. Default is [-inf, inf].
+                absoluteLimits : list, optional
+                    Absolute limits for corrections. Default is [-inf, inf].
+                derivativeFilter : float, optional
+                    Filter for the derivative term. Default is 0.1.
+        """
         self.confWFS = conf["wfs"]
         self.confWFC = conf["wfc"]
         self.confLoop = conf["loop"]
@@ -84,21 +263,37 @@ class Loop(pyRTCComponent):
         self.IM = np.zeros((self.signalSize, self.numModes),dtype=self.signalDType)
         self.CM = np.zeros((self.numModes, self.signalSize),dtype=self.signalDType)
         self.gain = setFromConfig(self.confLoop, "gain", 0.1)
-        self.leakyGain = setFromConfig(self.confLoop, "leakyGain", 0)
+        self.leakyGain = setFromConfig(self.confLoop, "leakyGain", 0.0)
         self.perturbAmp = 0
-        self.hardwareDelay = setFromConfig(self.confWFC, "hardwareDelay", 0)
+        self.hardwareDelay = setFromConfig(self.confWFC, "hardwareDelay", 0.0)
         self.pokeAmp = setFromConfig(self.confLoop, "pokeAmp", 1e-2)
         self.numItersIM = setFromConfig(self.confLoop, "numItersIM", 100) 
         self.delay = setFromConfig(self.confLoop, "delay", 0)
         self.IMMethod = setFromConfig(self.confLoop, "IMMethod", "push-pull") 
         self.IMFile = setFromConfig(self.confLoop, "IMFile", "")
         
+        self.clDocrime = False     
+        self.numItersDC = 0   
+        tmp2 = self.flat.copy()
+        tmp2 = tmp2.reshape(tmp2.size,1) 
+        tmp = self.nullSignal.copy()
+        tmp = tmp.reshape(tmp.size,1)
+        self.docrimeCross = np.zeros_like(tmp@tmp2.T)
+        self.docrimeAuto = np.zeros_like(tmp2@tmp2.T)
+        self.docrimeBuffer = np.zeros((1+self.delay, *tmp2.shape), 
+                                dtype=self.wfcDType)
+        
+        """
+        Terms for PID integrator
+        """
         self.pGain = setFromConfig(self.confLoop, "pGain", 0.1)
-        self.iGain = setFromConfig(self.confLoop, "iGain", 0)
-        self.dGain = setFromConfig(self.confLoop, "dGain", 0)
-        self.controlLimits = (-np.inf, np.inf)
-        self.integralLimits = (-np.inf, np.inf)
+        self.iGain = setFromConfig(self.confLoop, "iGain", 0.0)
+        self.dGain = setFromConfig(self.confLoop, "dGain", 0.0)
+        self.controlLimits = setFromConfig(self.confLoop, "controlLimits", [-np.inf, np.inf])
+        self.integralLimits = setFromConfig(self.confLoop, "integralLimits", [-np.inf, np.inf])
+        self.absoluteLimits = setFromConfig(self.confLoop, "absoluteLimits", [-np.inf, np.inf])
         self.derivativeFilter = setFromConfig(self.confLoop, "derivativeFilter", 0.1)
+        self.integral = 0
 
         self.previousWfError = np.zeros_like(self.wfcShm.read_noblock())
         self.previousDerivative = np.zeros_like(self.previousWfError)
@@ -110,16 +305,34 @@ class Loop(pyRTCComponent):
         return
 
     def setGain(self, gain):
+        """
+        Set the integrator gain. Only needed for certain integrators.
+
+        Parameters
+        ----------
+        gain : float
+            Gain to set.
+        """
         self.gain = gain
         self.gCM = self.gain*self.CM
         return
 
     def setPeturbAmp(self, amp):
+        """
+        Set the perturbation amplitude.
+
+        Parameters
+        ----------
+        amp : float
+            Amplitude to set.
+        """
         self.perturbAmp = amp
         return
 
     def pushPullIM(self):
-        
+        """
+        Compute the interaction matrix using the push-pull method.
+        """
         #For each mode
         for i in range(self.numModes):
             #Reset the correction
@@ -127,7 +340,7 @@ class Loop(pyRTCComponent):
             #Plus amplitude
             correction[i] = self.pokeAmp
             #Post a new shape to be made
-            self.wfcShm.write(correction)
+            self.sendToWfc(correction)
             #Add some delay to ensure one-to-one
             time.sleep(self.hardwareDelay)
             #Burn the first new image since we were moving the DM during the exposure
@@ -141,7 +354,7 @@ class Loop(pyRTCComponent):
             #Minus amplitude
             correction[i] = -self.pokeAmp
             #Post a new shape to be made
-            self.wfcShm.write(correction)
+            self.sendToWfc(correction)
             #Add some delay to ensure one-to-one
             time.sleep(self.hardwareDelay)
             #Burn the first new image since we were moving the DM during the exposure
@@ -157,8 +370,10 @@ class Loop(pyRTCComponent):
 
         return
     
-    def docrimeIM(self, flagInd=1):
-        
+    def docrimeIM(self):
+        """
+        Compute the interaction matrix using the DOCRIME method.
+        """        
         #Send the flat command to the WFC
         self.flatten()
 
@@ -168,43 +383,45 @@ class Loop(pyRTCComponent):
         correction = correction.reshape(correction.size,1)
 
         #Have a history of corrections
-        corrections = np.zeros((1+self.delay, *correction.shape), dtype=correction.dtype)
+        # corrections = np.zeros((1+self.delay, *correction.shape), dtype=correction.dtype)
 
         #Get an initial slope reading to set shapes
         slopes = self.nullSignal.copy()
         slopes = slopes.reshape(slopes.size,1)
-        cross = np.zeros_like(slopes@correction.T)
-        auto = np.zeros_like(correction@correction.T)
+        self.docrimeCross = np.zeros_like(self.docrimeCross)
+        self.docrimeAuto = np.zeros_like(self.docrimeAuto)
+
 
         for i in range(self.numItersIM):
             #Compute new random shape
             correction = np.random.uniform(-self.pokeAmp,self.pokeAmp,correction.size).astype(correction.dtype).reshape(correction.shape)
-            #If we are in Closed Loop
-            if self.running:
-                #Read the current shape of the WFC and add our perturbation ontop
-                correction = self.wfcShm.read_noblock() + correction
-
-            #Send our new pertubation to the WFC
-            self.wfcShm.write(correction.reshape(corrShapeWFC))
-            #Move old shapes back in history
-            corrections[:-1] = corrections[1:]
-            #Add new correction
-            corrections[-1] = correction
-
+            
             #Get current WFS response
+            #I put this first to match CL case
             slopes = self.signalShm.read().reshape(slopes.shape)
-        
-            #Correlate Current response with old correction by delay time
-            cross += slopes@corrections[0].T
-            auto += corrections[0]@corrections[0].T
 
-        cross /= self.numItersIM 
-        auto /= self.numItersIM
-        self.IM = cross@np.linalg.inv(auto) 
+            #Send random shape to mirror
+            self.sendToWfc(correction.reshape(corrShapeWFC))
+
+            add_to_buffer(self.docrimeBuffer, correction)
+
+            #Correlate Current response with old correction by delay time
+            self.docrimeCross += slopes@self.docrimeBuffer[0].T
+            self.docrimeAuto += self.docrimeBuffer[0]@self.docrimeBuffer[0].T
+
+        self.docrimeCross /= self.numItersIM 
+        self.docrimeAuto /= self.numItersIM
+        self.IM = self.docrimeCross @np.linalg.inv(self.docrimeAuto)
+
+        self.docrimeCross = np.zeros_like(self.docrimeCross)
+        self.docrimeAuto = np.zeros_like(self.docrimeAuto)
+
         return
 
     def computeIM(self):
-
+        """
+        Compute the interaction matrix using the specified method. Method specified using IMMethod, default is push-pull.
+        """
         if self.IMMethod == 'docrime':
             self.docrimeIM()
         else:
@@ -214,11 +431,27 @@ class Loop(pyRTCComponent):
         return
     
     def saveIM(self,filename=''):
+        """
+        Save the interaction matrix to a file.
+
+        Parameters
+        ----------
+        filename : str, optional
+            File to save the interaction matrix to. If not specified, uses the configured IMFile.
+        """
         if filename == '':
             filename = self.IMFile
         np.save(filename, self.IM)
 
     def loadIM(self,filename=''):
+        """
+        Load the interaction matrix from a file.
+
+        Parameters
+        ----------
+        filename : str, optional
+            File to load the interaction matrix from. If not specified, uses the configured IMFile.
+        """
         if filename == '':
             filename = self.IMFile
         if filename == '':
@@ -228,10 +461,16 @@ class Loop(pyRTCComponent):
         self.computeCM()
 
     def flatten(self):
-        self.wfcShm.write(self.flat)
+        """
+        Send the flat correction to the wavefront corrector.
+        """
+        self.sendToWfc(self.flat)
         return
     
     def computeCM(self):
+        """
+        Compute the control matrix from the interaction matrix.
+        """
         self.numActiveModes = self.numModes-self.numDroppedModes
         if self.numActiveModes < 0:
             print("Invalid Number of Modes used in CM. Check numDroppedModes")
@@ -245,7 +484,21 @@ class Loop(pyRTCComponent):
         
     # @jit(nopython=True)
     def updateCorrectionPOL(self, correction=np.array([], dtype=np.float32), slopes=np.array([], dtype=np.float32)):
-            
+        """
+        Update the correction using pseudo open loop slopes.
+
+        Parameters
+        ----------
+        correction : numpy.ndarray
+            Current correction vector.
+        slopes : numpy.ndarray
+            Current slopes vector.
+
+        Returns
+        -------
+        numpy.ndarray
+            Updated correction vector.
+        """   
         # Compute POL Slopes s_{POL} = s_{RES} + IM*c_{n-1}
         # print(f'slopes: {slopes.shape}, IM: {self.IM.shape}, corr: {correction.shape}')
         s_pol = slopes - self.fIM@correction
@@ -254,7 +507,9 @@ class Loop(pyRTCComponent):
         return (1-self.gain)*correction - np.dot(self.gCM,s_pol)
 
     def standardIntegratorPOL(self):
-
+        """
+        Standard integrator using the pseudo open loop slopes.
+        """
         residual_slopes = self.signalShm.read()
         currentCorrection = self.wfcShm.read()
         # print(f'slopes: {residual_slopes.shape}, IM: {self.IM.shape}, corr: {currentCorrection.shape}')
@@ -262,47 +517,76 @@ class Loop(pyRTCComponent):
         newCorrection = self.updateCorrectionPOL(correction=currentCorrection, 
                                                  slopes=residual_slopes)
         newCorrection[self.numActiveModes:] = 0
-        self.wfcShm.write(newCorrection)
+        self.sendToWfc(newCorrection)
 
         return
 
     
     def standardIntegrator(self):
-
+        """
+        Standard integrator.
+        """
         slopes = self.signalShm.read()
         currentCorrection = self.wfcShm.read()
         newCorrection = updateCorrection(correction=currentCorrection, 
                                         gCM=self.gCM, 
                                         slopes=slopes)
         newCorrection[self.numActiveModes:] = 0
-        self.wfcShm.write(newCorrection)
+        self.sendToWfc(newCorrection, slopes = slopes)
         return
     
     
     def leakyIntegrator(self):
-
+        """
+        Leaky integrator.
+        """
         slopes = self.signalShm.read()
         currentCorrection = (1-self.leakyGain)*self.wfcShm.read()
         newCorrection = updateCorrection(correction=currentCorrection, 
                                         gCM=self.gCM, 
                                         slopes=slopes)
         newCorrection[self.numActiveModes:] = 0
-        self.wfcShm.write(newCorrection)
+        self.sendToWfc(newCorrection, slopes=slopes)
         return
 
-    def pidIntegrator(self):
+    def pidIntegratorPOL(self):
+        """
+        PID integrator using the pseudo-open loop slopes.
+        """
+        slopes = self.signalShm.read()
+        correction = self.wfcShm.read()
+        polSlopes = slopes - self.fIM@correction
+        return self.pidIntegrator(slopes=polSlopes, correction=correction)
 
+    def pidIntegrator(self, slopes = None, correction = None):
+        """
+        PID integrator.
+
+        Parameters
+        ----------
+        slopes : numpy.ndarray, optional
+            Current slopes vector. If not provided, reads from shared memory.
+        correction : numpy.ndarray, optional
+            Current correction vector. If not provided, reads from shared memory.
+        """
+        if slopes is None:
+            slopes = self.signalShm.read()
+        if correction is None:
+            correction = self.wfcShm.read()
+
+        #Compute raw error term (numba accelerated)
         wfError = compCorrection(CM=self.CM, 
-                                    slopes=self.signalShm.read())
+                                    slopes=slopes)
         derivative = (wfError - self.previousWfError) 
         
         # Apply low-pass filter to the derivative to reduce noise
         derivative = self.derivativeFilter * derivative + (1 - self.derivativeFilter) * self.previousDerivative
         
         # Update integral (anti-windup: conditional integration)
-        notOutputLimiting = self.controlLimits[0] is None or self.controlLimits[1] is None
+        # notOutputLimiting = self.controlLimits[0] is None or self.controlLimits[1] is None
         isClipped = np.any(self.controlOutput == self.controlLimits[0]) or np.any(self.controlOutput == self.controlLimits[1])
-        if notOutputLimiting or not isClipped:
+        #Check to make sure we aren't actively clipping the correction
+        if not isClipped:
             #Add to integral
             self.integral += wfError 
             #Clip integral term
@@ -310,17 +594,20 @@ class Loop(pyRTCComponent):
 
         # Calculate PID output
         controlOutput = self.pGain * wfError + self.iGain * self.integral + self.dGain * derivative
-        #Get new correction vector from the control output
-        newCorrection = self.wfcShm.read() - controlOutput #Negative control direction is convention for pyRTC
 
-        #Remove anything in non-corrected modes
+        controlOutput = np.clip(controlOutput, *self.controlLimits)
+
+        #Get new correction vector from the control output
+        newCorrection = (1-self.leakyGain)*correction - controlOutput #Negative control direction is convention for pyRTC
+
+        #Remove anything in non-corrected modes (might be redundant)
         newCorrection[self.numActiveModes:] = 0
         
-        # Clip correction 
-        newCorrection = np.clip(newCorrection, *self.controlLimits)
+        # Clip correction (force the loop to not over correct a mode)
+        newCorrection = np.clip(newCorrection, *self.absoluteLimits)
         
         #Apply new correction to mirror
-        self.wfcShm.write(newCorrection)
+        self.sendToWfc(newCorrection, slopes = slopes)
 
         # Save state for next iteration
         self.previousWfError = wfError
@@ -329,43 +616,50 @@ class Loop(pyRTCComponent):
         
         return
 
+    def sendToWfc(self, correction, slopes=None):
+        #Get an initial slope reading to set shapes
 
-    def pidComputer(self, blocking=True):
+        if self.clDocrime and slopes is not None:
 
+            slopes = slopes.reshape(slopes.size, 1)
+            #Compute new random shape
+            randShape = np.random.uniform(-self.pokeAmp,
+                                          self.pokeAmp,
+                                          correction.size).astype(self.docrimeBuffer[0].dtype).reshape(self.docrimeBuffer[0].shape)
 
-        if blocking:
-            signalObs = self.signalShm.read_timeout(1)
+            #Adds to end of buffer (i.e. pos -1)
+            add_to_buffer(self.docrimeBuffer,randShape)
+
+            randShape = randShape.astype(correction.dtype).reshape(correction.shape)
+
+            #Only add randomness to active modes, otherwise it will build up
+            if self.numActiveModes > 0:
+                correction[:self.numActiveModes] += randShape[:self.numActiveModes]
+                correction[self.numActiveModes:] = randShape[self.numActiveModes:]
+            else:
+                correction = randShape
+
+            #Send our new pertubation to the WFC
+            self.wfcShm.write(correction)
+
+            #Correlate Current response with old correction by delay time
+            self.docrimeCross += slopes@self.docrimeBuffer[0].T
+            self.docrimeAuto += self.docrimeBuffer[0]@self.docrimeBuffer[0].T
+
+            self.numItersDC += 1
+
         else:
-            signalObs = self.signalShm.read_noblock()
+            self.wfcShm.write(correction)
+        return
 
+    def solveDocrime(self):
 
+        self.clDCIM = (self.docrimeCross/self.numItersDC)@np.linalg.inv(self.docrimeAuto/self.numItersDC)
+        tmpFilePath = get_tmp_filepath(self.IMFile,uniqueStr="CL_docrime")
+        print(f"Saving DOCRIME matrix to: {tmpFilePath}")
+        np.save(tmpFilePath, self.clDCIM)
 
-        wfError = compCorrection(CM=self.CM, 
-                                    slopes=signalObs)
-        derivative = (wfError - self.previousWfError) 
-        
-        # Apply low-pass filter to the derivative to reduce noise
-        derivative = self.derivativeFilter * derivative + (1 - self.derivativeFilter) * self.previousDerivative
-        
-        # Update integral (anti-windup: conditional integration)
-        notOutputLimiting = self.controlLimits[0] is None or self.controlLimits[1] is None
-        isClipped = np.any(self.controlOutput == self.controlLimits[0]) or np.any(self.controlOutput == self.controlLimits[1])
-        if notOutputLimiting or not isClipped:
-            #Add to integral
-            self.integral += wfError 
-            #Clip integral term
-            self.integral = np.clip(self.integral, *self.integralLimits)
-
-        # Calculate PID output
-        controlOutput = self.pGain * wfError + self.iGain * self.integral + self.dGain * derivative
-        #Get new correction vector from the control output
-
-        # Save state for next iteration
-        self.previousWfError = wfError
-        self.previousDerivative = derivative
-        self.controlOutput = controlOutput
-        
-        return np.cat((wfError, derivative, self.integral), axis=1)
+        return
 
 
     def plotIM(self, row=None):

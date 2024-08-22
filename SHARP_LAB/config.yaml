@@ -1,6 +1,7 @@
 loop:
-  leakyGain: 0.01
-  gain: 0.25
+  gain: 0.425
+  leakyGain: 0.026
+  numDroppedModes: 14
   pokeAmp: 0.02
   numItersIM: 50
   numDroppedModes: 0
@@ -36,8 +37,8 @@ loop:
 wfs:
   name: XIMEA
   serial: "46052550"
-  binning: 1 #2
-  exposure: 2000
+  binning: 1 
+  exposure: 2500
   gain: 0
   bitDepth: 10
   left: 432 #448 #416 #
@@ -46,7 +47,6 @@ wfs:
   height: 400 
   darkCount: 2000
   darkFile: "/home/whetstone/RLAO/pyRTC/SHARP_LAB/calib/dark.npy"
-  dm_mask: "" #Please save the dm mask for valid actuators here (bool)
   affinity: 3
   functions:
   - expose
@@ -89,7 +89,7 @@ psf:
   gain: 0
   bitDepth: 16
   left: 920
-  top: 436
+  top: 464
   width: 128
   height: 128
   darkCount: 2000
@@ -102,18 +102,45 @@ psf:
   - integrate
   - computeStrehl
 
-modulator:
-  name: 'E-727'
-  libFolder: '/opt/PI/lib64/'
-  digitalFreq: 20000 #Hz
-  frequency: 300 #Hz
-  amplitude: 1000
-  relativeAmplitude: 1
-  offsetX: 2500
-  offsetY: 2500
-  phaseOffset: 0
-  servosOn: True
-  autoZero: True
+optimizer:
+  ncpa:
+    name: "NCPA"
+    numSteps: 100
+    startMode: 0
+    endMode: 40
+    correctionMag: 0.003
+    numReads: 1
+    affinity: 10
+  pid:
+    name: "PID"
+    numSteps: 100
+    maxPGain: 0.5
+    maxIGain: 0.1
+    maxDGain: 0.1
+    numReads: 1
+    affinity: 10
+  loop:
+    name: "hyper"
+    numSteps: 100
+    minGain: 0.3
+    maxGain: 0.6
+    maxLeak: 0.05
+    maxDroppedModes: 30
+    numReads: 1
+    affinity: 10
+
+# modulator:
+#   name: 'E-727'
+#   libFolder: '/opt/PI/lib64/'
+#   digitalFreq: 20000 #Hz
+#   frequency: 300 #Hz
+#   amplitude: 1000
+#   relativeAmplitude: 1
+#   offsetX: 2500
+#   offsetY: 2500
+#   phaseOffset: 0
+#   servosOn: True
+#   autoZero: True
 
 
 optimizer:

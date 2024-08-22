@@ -1,0 +1,5 @@
+# Ignore the Sphinx build directory
+docs/source/_build/
+pyRTC/__pycache__
+build/
+pyRTC.egg-info/

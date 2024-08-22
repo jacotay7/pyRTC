@@ -1,24 +1,13 @@
 from pyRTC.Pipeline import *
 from pyRTC.utils import *
+from pyRTC.pyRTCComponent import *
 
-class Modulator:
-
+class Modulator(pyRTCComponent):
+    """
+    A placeholder class for any modulator specific logic. See hardware/PIModulator for an 
+    implementation.
+    """
     def __init__(self, conf) -> None:
-
-        self.alive = True
-        self.running = False
-
+        self.name = setFromConfig(conf, "name", 'modulator')
         return
-
-    def __del__(self):
-        self.stop()
-        self.alive=False
-        return
-
-    def start(self):
-        self.running = True
-        return
-
-    def stop(self):
-        self.running = False
-        return     
+ 
