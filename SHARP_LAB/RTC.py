@@ -7,8 +7,6 @@ os.chdir("/home/whetstone/RLAO/pyRTC/SHARP_LAB")
 RECALIBRATE = False
 
 # %% Clear SHMs
-# from pyRTC.Pipeline import clear_shms
-# shm_names = ["signal"]
 # shm_names = ["wfs", "wfsRaw", "wfc", "wfc2D", "signal", "signal2D", "psfShort", "psfLong"] #list of SHMs to reset
 # clear_shms(shm_names)
 
@@ -32,11 +30,42 @@ slopes.launch()
 psfCam = hardwareLauncher("../pyRTC/hardware/SpinnakerScienceCam.py", config, N+10)
 psfCam.launch()
 # %% Launch Loop Class
-loop = hardwareLauncher("../pyRTC/hardware/RLLoop.py", config, N+4, timeout = 6*60)
+# loop = hardwareLauncher("../pyRTC/hardware/RLLoop.py", config, N+4, timeout = 6*60)
 # loop = hardwareLauncher("../pyRTC/Loop.py", config, N+4, timeout = 6*60)
-loop.launch()
+# loop.launch()
+import gymnasium as gym
+from gymnasium import spaces
+from stable_baselines3.common.preprocessing import  is_image_space
+from sb3_contrib import RecurrentPPO
 
+gym.register(
+    id='pyRTCEnvPID-v0',
+    entry_point='pyRTC.hardware.AOEnv:pyRTCEnvPID'
+)
 
+env = gym.make("pyRTCEnvPID-v0")
+model = RecurrentPPO("MlpLstmPolicy", env=env)
+
+env.reset()
+for i in range(100):
+    obs, rw, a,b,c = env.step(env.action_space.sample())
+print(obs)
+
+# features_extractor_kwargs = dict(
+#     normalized_image = True
+# )
+# policy_kwargs = dict(
+#     normalize_images = False
+#     # features_extractor_kwargs = features_extractor_kwargs,
+# )
+
+# env = gym.make("pyRTCEnvGain-v0")
+# is_image_space(env.observation_space, check_channels=False, normalized_image=True)
+# model = RecurrentPPO("CnnLstmPolicy",env, policy_kwargs=policy_kwargs)
+
+# %% NCPA OPTIMIZER
+optim  = hardwareLauncher("../pyRTC/hardware/NCPAOptimizer.py", config, N+4)
+optim.launch()
 # %% Calibrate
 
 if RECALIBRATE:
@@ -72,22 +101,23 @@ if RECALIBRATE:
     loop.run("saveIM")
 
 # %%
-loop.setProperty("IMFile", "/home/whetstone/pyRTC/SHARP_LAB/IM_zern.npy")
-loop.run("loadIM")
-loop.setProperty("numDroppedModes", 93)
-loop.run("computeCM")
-loop.run("setGain", 0.3)
-loop.setProperty("learningTimesteps", int(2**18))
-print(loop.getProperty("modelName"))
+# loop.setProperty("IMFile", "/home/whetstone/pyRTC/SHARP_LAB/IM_zern.npy")
+# loop.run("loadIM")
+# loop.setProperty("numDroppedModes", 60)
+# loop.run("computeCM")
+# loop.run("setGain", 0.1)
+# loop.setProperty("learningTimesteps", int(2**18))
+# print(loop.getProperty("modelName"))
 wfc.run("flatten")
 time.sleep(1)
 loop.run("start")
-time.sleep(60*5)
-for i in range(1, 30):
-    loop.setProperty("numDroppedModes", 93-i)
-    loop.run("computeCM")
-    loop.run("setGain", 0.3)
-    time.sleep(60*5)
+# mins_per_mode = 30
+# time.sleep(60*mins_per_mode)
+# for i in range(1, 60):
+#     loop.setProperty("numDroppedModes", 93-i)
+#     loop.run("computeCM")
+#     loop.run("setGain", 0.3)
+#     time.sleep(60*mins_per_mode)
 
 # %%
 loop.run("reset")
@@ -100,6 +130,20 @@ loop.run("stop")
 for i in range(100):
     loop.run("learn")
 
+
+#%% NCPAs
+
+#%% Optimize NCPA
+optim.setProperty("endMode", 30)
+for i in range(10):
+    optim.run("optimize")
+    slopes.run("takeRefSlopes")
+    slopes.setProperty("refSlopesFile", "/home/whetstone/RLAO/pyRTC/SHARP_LAB/ref.npy")
+    slopes.run("saveRefSlopes")
+optim.run("applyOptimum")
+slopes.run("takeRefSlopes")
+slopes.setProperty("refSlopesFile", "/home/whetstone/RLAO/pyRTC/SHARP_LAB/ref.npy")
+slopes.run("saveRefSlopes")
 # %% CODE TO UPDATE FLAKY SUB APERTURES
 
 # subApFile = slopes.getProperty("validSubApsFile")

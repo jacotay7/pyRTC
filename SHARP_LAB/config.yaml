@@ -1,20 +1,25 @@
 loop:
   leakyGain: 0.01
+  gain: 0.25
   pokeAmp: 0.02
   numItersIM: 50
-  numDroppedModes: 93
+  numDroppedModes: 0
+  nLoop: 10000
   affinity: 2
   IMMethod: push-pull
-  IMFile: "/home/whetstone/RLAO/pyRTC/SHARP_LAB/IM_zern.npy" #"/home/whetstone/RLAO/pyRTC/SHARP_LAB/IM.npy"
-  logdir: "/home/whetstone/RLAO/pyRTC/SHARP_LAB/PPO_MLP_LSTM_TIP_TILT/"
+  IMFile: "/home/whetstone/RLAO/pyRTC/SHARP_LAB/calib/IM.npy" #"/home/whetstone/RLAO/pyRTC/SHARP_LAB/calib/IM.npy"
+  m2cFile: "/home/whetstone/RLAO/pyRTC/SHARP_LAB/calib/m2c_kl.npy"
+  logdir: "/home/whetstone/RLAO/pyRTC/SHARP_LAB/calib/PPO_MLP_LSTM_ALL_MODES/"
   learningTimesteps: 1000000
-  actionNorm: 400
-  entropyCoef: 0.01
+  actionNorm: 1200
+  entropyCoef: 0.00
   learningRate: 0.0003
   linearActionNorm: 1
-  modelName: "2024_05_03_14_20_17"
+  modelName: ""
+  isTraining: False
+  justLinReward: True
   functions:
-    - learn
+    - leakyIntegrator
 
 # loop:
 #   pokeAmp: 0.02
@@ -24,7 +29,7 @@ loop:
 #   numItersIM: 50
 #   affinity: 2
 #   IMMethod: push-pull
-#   IMFile: "/home/whetstone/RLAO/pyRTC/SHARP_LAB/IM.npy"
+#   IMFile: "/home/whetstone/RLAO/pyRTC/SHARP_LAB/calib/IM.npy"
 #   functions:
 #     - leakyIntegrator
 
@@ -35,12 +40,13 @@ wfs:
   exposure: 2000
   gain: 0
   bitDepth: 10
-  left: 448 #208
-  top: 280 #140
-  width: 400 #192
-  height: 400 #192
+  left: 432 #448 #416 #
+  top: 280 
+  width: 400 
+  height: 400 
   darkCount: 2000
-  darkFile: "/home/whetstone/RLAO/pyRTC/SHARP_LAB/dark.npy"
+  darkFile: "/home/whetstone/RLAO/pyRTC/SHARP_LAB/calib/dark.npy"
+  dm_mask: "" #Please save the dm mask for valid actuators here (bool)
   affinity: 3
   functions:
   - expose
@@ -48,11 +54,11 @@ wfs:
 slopes:
   type: SHWFS
   signalType: slopes
-  refSlopesFile: "/home/whetstone/RLAO/pyRTC/SHARP_LAB/ref.npy"
-  validSubApsFile: "/home/whetstone/RLAO/pyRTC/SHARP_LAB/validSubAps.npy"
+  refSlopesFile: "/home/whetstone/RLAO/pyRTC/SHARP_LAB/calib/ref.npy"
+  validSubApsFile: "/home/whetstone/RLAO/pyRTC/SHARP_LAB/calib/validSubAps.npy"
   subApSpacing: 15.54 #7.78
-  subApOffsetX: 8
-  subApOffsetY: 4
+  subApOffsetX: 4
+  subApOffsetY: 8
   imageNoise: 0.5
   contrast: 20
   affinity: 4
@@ -63,11 +69,11 @@ wfc:
   name: "ALPAO"
   serial: "BAX118"
   numActuators: 97
-  numModes: 95 #94
-  flatFile: "/home/whetstone/RLAO/pyRTC/SHARP_LAB/new_best_flat.npy"
-  saveFile: "/home/whetstone/RLAO/pyRTC/SHARP_LAB/wfcShape.npy"
-  m2cFile: "/home/whetstone/RLAO/pyRTC/SHARP_LAB/m2c_zern_manual.npy" #m2c_kl.npy" 
-  floatingActuatorsFile: "" #"/home/whetstone/RLAO/pyRTC/SHARP_LAB/floating_actuators_indices.npy"
+  numModes: 94
+  flatFile: "/home/whetstone/RLAO/pyRTC/SHARP_LAB/calib/wfcShape.npy"
+  saveFile: "/home/whetstone/RLAO/pyRTC/SHARP_LAB/calib/wfcShape.npy"
+  m2cFile: "/home/whetstone/RLAO/pyRTC/SHARP_LAB/calib/m2c_kl.npy" #.npy" 
+  floatingActuatorsFile: "" #"/home/whetstone/RLAO/pyRTC/SHARP_LAB/calib/floating_actuators_indices.npy"
   floatingInfluenceRadius: 1
   affinity: 5
   commandCap: 0.8
@@ -87,8 +93,8 @@ psf:
   width: 128
   height: 128
   darkCount: 2000
-  darkFile: "/home/whetstone/RLAO/pyRTC/SHARP_LAB/psfDark.npy"
-  modelFile: "/home/whetstone/RLAO/pyRTC/SHARP_LAB/modelPSF.npy"
+  darkFile: "/home/whetstone/RLAO/pyRTC/SHARP_LAB/calib/psfDark.npy"
+  modelFile: "/home/whetstone/RLAO/pyRTC/SHARP_LAB/calib/modelPSF.npy"
   integration: 2
   affinity: 6
   functions:

@@ -6,6 +6,7 @@ loop:
   affinity: 2
   method: push-pull
   IMFile: "simpleIM.npy"
+  buffer: False
   functions:
   - standardIntegrator
 

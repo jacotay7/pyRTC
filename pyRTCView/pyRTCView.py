@@ -109,13 +109,13 @@ class RealTimeView(QMainWindow):
     def updateVminVmax(self, frame):
 
         vmin, vmax = np.min(frame), np.max(frame)
-        if self.log:
-            vmin, vmax = max(vmin,vmax/1e3), max(1e-2, vmax)
         self.vmin, self.vmax = vmin, vmax
         if self.static_vmax is not None:
             self.vmax = self.static_vmax
         if self.static_vmin is not None:
             self.vmin = self.static_vmin
+        if self.log:
+           self.vmin, self.vmax = max(self.vmin,self.vmax/1e3), max(1e-2, self.vmax)
 
     def toggleLog(self):
         self.log = not self.log

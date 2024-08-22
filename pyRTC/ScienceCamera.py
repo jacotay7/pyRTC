@@ -148,8 +148,7 @@ class ScienceCamera(pyRTCComponent):
                                          gaussian_sigma = gaussian_sigma)
 
         self.strehl_ratio = np.max(current) / np.max(model)
-        self.peak_dist = np.linalg.norm(centroid(current) - np.array([current.shape[1]/2, current.shape[0]/2]))
-
+        self.peak_dist = np.linalg.norm(centroid(current) - centroid(model))
         self.strehlShm.write(np.array([self.strehl_ratio], dtype=float))
         self.tipTiltShm.write(np.array([self.peak_dist], dtype=float))
 

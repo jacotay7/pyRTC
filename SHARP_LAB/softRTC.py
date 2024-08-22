@@ -165,3 +165,6 @@ for offsetX in range(0,int(slopes.subApSpacing)):
 vals = np.array(vals)
 print(vals[vals[:,2] == np.nanmin(vals[:,2])])
 # %%
+import rl_zoo3
+gym.make("pyRTCEnvPID-v0")
+# %%
