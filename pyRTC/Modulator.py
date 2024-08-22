@@ -8,5 +8,6 @@ class Modulator(pyRTCComponent):
     implementation.
     """
     def __init__(self, conf) -> None:
+        self.name = setFromConfig(conf, "name", 'modulator')
         return
  

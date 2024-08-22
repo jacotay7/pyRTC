@@ -38,7 +38,11 @@ class PIModulator(Modulator):
         if conf["autoZero"]:
             self.mod.ATZ()
 
-        self.defineCircle()
+        try:
+            self.defineCircle()
+        except:
+            self.stop()
+            self.defineCircle()
 
         return
 
@@ -74,13 +78,14 @@ class PIModulator(Modulator):
 
     def start(self):
         super().start()
+
         #Move axes to their start positions
         startpos = (self.offsetX, self.offsetY + self.amplitudeY // 2)
         self.goTo(startpos)
-        
+
         #Start wave generators {}'.format(self.wavegens))
         self.mod.WGO(self.wavegens, mode=[1] * len(self.wavegens))
-
+        return
 
     def stop(self):
         super().stop()
@@ -98,16 +103,12 @@ class PIModulator(Modulator):
 
 if __name__ == "__main__":
 
-
-    #Prevents camera output from messing with communication
-    # original_stdout = sys.stdout
-    # sys.stdout = open(os.devnull, 'w')
-
     # Create argument parser
     parser = argparse.ArgumentParser(description="Read a config file from the command line.")
 
     # Add command-line argument for the config file
     parser.add_argument("-c", "--config", required=True, help="Path to the config file")
+    parser.add_argument("-p", "--port", required=True, help="Port for communication")
 
     # Parse command-line arguments
     args = parser.parse_args()
@@ -115,18 +116,13 @@ if __name__ == "__main__":
     conf = read_yaml_file(args.config)
 
     pid = os.getpid()
-    set_affinity((conf["wfc"]["affinity"])%os.cpu_count()) 
+    set_affinity((conf["modulator"]["affinity"])%os.cpu_count()) 
     decrease_nice(pid)
 
-    confMod = conf["modulator"]
-    mod = PIModulator(conf=confMod)
+    mod = PIModulator(conf=conf["modulator"])
     mod.start()
-    
-    time.sleep(5)
-    #Go back to communicating with the main program through stdout
-    # sys.stdout = original_stdout
 
-    # l = Listener(wfc)
-    # while l.running:
-    #     l.listen()
-    #     time.sleep(1e-3)
+    l = Listener(mod, port = int(args.port))
+    while l.running:
+        l.listen()
+        time.sleep(1e-3)

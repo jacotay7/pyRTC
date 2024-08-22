@@ -24,8 +24,10 @@ except:
 
 from .NCPAOptimizer import *
 from .PIDOptimizer import *
+from .loopHyperparamsOptimizer import *
 
 __all__.extend([
             'NCPAOptimizer', 
             'PIDOptimizer',
+            'loopOptimizer'
            ])

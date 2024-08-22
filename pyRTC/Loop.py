@@ -411,7 +411,11 @@ class Loop(pyRTCComponent):
 
         self.docrimeCross /= self.numItersIM 
         self.docrimeAuto /= self.numItersIM
-        self.IM = self.docrimeCross @np.linalg.inv(self.docrimeAuto) 
+        self.IM = self.docrimeCross @np.linalg.inv(self.docrimeAuto)
+
+        self.docrimeCross = np.zeros_like(self.docrimeCross)
+        self.docrimeAuto = np.zeros_like(self.docrimeAuto)
+
         return
 
     def computeIM(self):
@@ -542,7 +546,7 @@ class Loop(pyRTCComponent):
                                         gCM=self.gCM, 
                                         slopes=slopes)
         newCorrection[self.numActiveModes:] = 0
-        self.sendToWfc(newCorrection)
+        self.sendToWfc(newCorrection, slopes=slopes)
         return
 
     def pidIntegratorPOL(self):
@@ -650,9 +654,7 @@ class Loop(pyRTCComponent):
 
     def solveDocrime(self):
 
-        self.docrimeCross /= self.numItersDC 
-        self.docrimeAuto /= self.numItersDC
-        self.clDCIM = self.docrimeCross@np.linalg.inv(self.docrimeAuto)
+        self.clDCIM = (self.docrimeCross/self.numItersDC)@np.linalg.inv(self.docrimeAuto/self.numItersDC)
         tmpFilePath = get_tmp_filepath(self.IMFile,uniqueStr="CL_docrime")
         print(f"Saving DOCRIME matrix to: {tmpFilePath}")
         np.save(tmpFilePath, self.clDCIM)

@@ -21,6 +21,36 @@ NP_DATA_TYPES = [
     np.datetime64, np.timedelta64
 ]
 
+
+def change_directory(directory):
+    try:
+        os.chdir(directory)
+        print(f"Successfully changed the current directory to: {os.getcwd()}")
+    except FileNotFoundError:
+        print(f"Error: The directory '{directory}' does not exist.")
+    except PermissionError:
+        print(f"Error: Permission denied to access the directory '{directory}'.")
+    except Exception as e:
+        print(f"An unexpected error occurred: {e}")
+    return
+
+def add_to_path(directory):
+    # Check if the directory exists
+    if not os.path.isdir(directory):
+        print(f"Error: The directory '{directory}' does not exist.")
+        return
+
+    # Add the directory to the PATH environment variable
+    current_path = os.environ.get('PATH', '')
+    if directory not in current_path:
+        new_path = f"{directory}:{current_path}"
+        os.environ['PATH'] = new_path
+        print(f"Directory '{directory}' added to PATH.")
+    else:
+        print(f"Directory '{directory}' is already in PATH.")
+
+    return
+
 def powerLawOG(numModes, k):
     return (1- (np.arange(numModes)/numModes)**k)
 
@@ -132,7 +162,7 @@ def get_tmp_filepath(file_path, uniqueStr = 'tmp'):
 
 def centroid(array):
     # Each point contributes to the centroid proportionally to its value.
-    total = array.sum()
+    total = array.sum() + 1e-4
     y_indices, x_indices = np.indices(array.shape)
     x_centroid = (x_indices * array).sum() / total
     y_centroid = (y_indices * array).sum() / total

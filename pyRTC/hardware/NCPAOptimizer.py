@@ -91,7 +91,8 @@ class NCPAOptimizer(Optimizer):
         return 
     
     def optimize(self):
-
+        #Load the original reference slopes
+        self.refSlopesFile = self.slopes.getProperty("refSlopesFile")
         #Are we in closed loop or open loop
         self.isCL = self.loop.getProperty("running")
         if self.isCL:
@@ -99,8 +100,7 @@ class NCPAOptimizer(Optimizer):
             self.validSubAps = np.load(self.slopes.getProperty("validSubApsFile"))
             #Compute current IM
             self.IM =np.load(self.loop.getProperty("IMFile"))
-            #Load the original reference slopes
-            self.refSlopesFile = self.slopes.getProperty("refSlopesFile")
+
             self.origRefSlopes = np.load(self.refSlopesFile)
             #Set-up the slopes to read from new slopes file on load
             self.newRefSlopesFile = get_tmp_filepath(self.refSlopesFile)

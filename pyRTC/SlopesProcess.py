@@ -15,7 +15,8 @@ from numba import jit
 def computeSlopesPYWFS(p1=np.array([],dtype=np.float32), 
                        p2=np.array([],dtype=np.float32),
                        p3=np.array([],dtype=np.float32), 
-                       p4=np.array([],dtype=np.float32), 
+                       p4=np.array([],dtype=np.float32),
+                       refSlopes=np.array([],dtype=np.float32), 
                        flatNorm=True):
     # p1 = image[p1mask]
     # p2 = image[p2mask]
@@ -32,8 +33,10 @@ def computeSlopesPYWFS(p1=np.array([],dtype=np.float32),
     x_slopes = np.divide(x_slopes,norm)
     y_slopes = np.divide(y_slopes,norm)
 
-    return np.concatenate((x_slopes,
+    slopes = np.concatenate((x_slopes,
                            y_slopes))
+    
+    return slopes - refSlopes
 
 @jit(nopython=True)
 def computeSlopesSHWFS(image=np.array([],dtype=np.float32), 
@@ -198,6 +201,11 @@ class SlopesProcess(pyRTCComponent):
         self.wfsType = self.conf["type"].lower() 
         self.signalType = self.conf["signalType"] 
         self.validSubAps = None
+        self.validSubApsFile = setFromConfig(self.conf, "validSubApsFile", "")
+
+        #Initialize the reference slopes
+        self.refSlopesFile = setFromConfig(self.conf, "refSlopesFile", "")
+        self.refSlopeCount = setFromConfig(self.conf, "refSlopeCount", 1000)
 
         if self.wfsType == "pywfs":
             #Check if we have specified a pupil validSubAps
@@ -213,7 +221,10 @@ class SlopesProcess(pyRTCComponent):
                 self.setPupils([(a,c), (a,d), (b,c), (b,d)], r)
             if self.signalType == 'slopes':
                 #Set normalization
-                self.flatNorm = self.conf["flatNorm"]
+                self.flatNorm = setFromConfig(self.conf, "flatNorm", True)
+
+            self.refSlopes = np.zeros(self.signal2DShape, dtype=self.signalDType)
+            self.refSlopes1D = np.zeros_like(self.signal.read_noblock())
 
         elif self.wfsType == "shwfs":
 
@@ -222,12 +233,11 @@ class SlopesProcess(pyRTCComponent):
             self.numRegions = self.imageShape[0]//int(np.round(self.subApSpacing,0))
             self.offsetX = self.conf["subApOffsetX"]
             self.offsetY = self.conf["subApOffsetY"]
-            self.refSlopeCount = setFromConfig(self.conf, "refSlopeCount", 1000)
+            
             self.signal2DSize = int(2*self.numRegions**2)
             self.signal2DShape = (2*self.numRegions,self.numRegions)
 
             #Initialize Valid Subaperture Mask
-            self.validSubApsFile = setFromConfig(self.conf, "validSubApsFile", "")
             self.validSubAps = np.ones(self.signal2DShape, dtype=bool)
             self.loadValidSubAps()
 
@@ -245,10 +255,9 @@ class SlopesProcess(pyRTCComponent):
             self.signal = ImageSHM("signal", self.signalShape, self.signalDType)
             self.signal2D = ImageSHM("signal2D", self.signal2DShape, self.signalDType)
             
-            #Initialize the reference slopes
-            self.refSlopesFile = setFromConfig(self.conf, "refSlopesFile", "")
             self.refSlopes = np.zeros(self.signal2DShape, dtype=self.signalDType)
-            self.loadRefSlopes()
+        
+        self.loadRefSlopes()
 
         super().__init__(self.conf)
     
@@ -350,6 +359,12 @@ class SlopesProcess(pyRTCComponent):
             Reference slopes.
         """
         self.refSlopes = refSlopes.astype(self.signalDType)
+        if self.wfsType == 'pywfs':
+            slopemask = self.validSubAps[:,:self.validSubAps.shape[1]//2]
+            self.refSlopes1D = np.zeros_like(self.signal.read_noblock())
+            self.refSlopes1D[:self.refSlopes1D.size//2] = self.refSlopes[:,:self.refSlopes.shape[1]//2][slopemask]
+            self.refSlopes1D[self.refSlopes1D.size//2:] = self.refSlopes[:,self.refSlopes.shape[1]//2:][slopemask]
+            
         return
     
     def saveRefSlopes(self,filename=''):
@@ -380,9 +395,11 @@ class SlopesProcess(pyRTCComponent):
             filename = self.refSlopesFile
         #If we are still without a file, set zeros
         if filename == '':
-            self.refSlopes = np.zeros_like(self.refSlopes)
+            refSlopes = np.zeros_like(self.refSlopes)
         else: #If we have a filename
-            self.refSlopes = np.load(filename)
+            refSlopes = np.load(filename)
+        
+        self.setRefSlopes(refSlopes)
         return
     
     def computeSignal(self):
@@ -397,6 +414,7 @@ class SlopesProcess(pyRTCComponent):
                                                     p2=p2,
                                                     p3=p3,
                                                     p4=p4,
+                                                    refSlopes=self.refSlopes1D,
                                                     flatNorm=self.flatNorm)
                 
                 
@@ -445,11 +463,14 @@ class SlopesProcess(pyRTCComponent):
         self.computePupilsMask()
         if self.signalType == "slopes":
             self.signalSize = np.count_nonzero(self.pupilMask)//2
-            slopemask =  self.pupilMask[self.pupilLocs[0][1]-self.pupilRadius+1:self.pupilLocs[0][1]+self.pupilRadius, 
-                                        self.pupilLocs[0][0]-self.pupilRadius+1:self.pupilLocs[0][0]+self.pupilRadius] > 0
+            slopemask =  self.pupilMask[self.pupilLocs[0][1]-self.pupilRadius:self.pupilLocs[0][1]+self.pupilRadius, 
+                                        self.pupilLocs[0][0]-self.pupilRadius:self.pupilLocs[0][0]+self.pupilRadius] > 0
             self.setValidSubAps(np.concatenate([slopemask, slopemask], axis=1))
+            if self.validSubApsFile != "":
+                self.saveValidSubAps()
+            self.signal2DShape = (self.validSubAps.shape[0], self.validSubAps.shape[1])
             self.signal = ImageSHM("signal", (self.signalSize,), self.signalDType)
-            self.signal2D = ImageSHM("signal2D", (self.validSubAps.shape[0], self.validSubAps.shape[1]), self.signalDType)
+            self.signal2D = ImageSHM("signal2D", self.signal2DShape, self.signalDType)
             
         return
 
@@ -463,7 +484,7 @@ class SlopesProcess(pyRTCComponent):
         pupilTemplate = generate_circular_aperture_mask(int(np.ceil(2*self.pupilRadius)),
                                                         self.pupilRadius, 
                                                         self.centralObscurationRatio)        
-        N = self.pupilMask .shape[0]
+        N = self.pupilMask.shape[0]
         n = pupilTemplate.shape[0]
         # Calculate the half size of the template
         half_n = n // 2
