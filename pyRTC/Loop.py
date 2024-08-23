@@ -229,14 +229,14 @@ class Loop(pyRTCComponent):
         self.name = "Loop"
         
         #Read wfs signal's metadata and open a stream to the shared memory
-        self.signalMeta = ImageSHM("signal_meta", (ImageSHM.METADATA_SIZE,), np.float64).read_noblock_safe()
+        self.signalMeta = ImageSHM("signal_meta", (ImageSHM.METADATA_SIZE,), np.float64).read_noblock()
         self.signalDType = float_to_dtype(self.signalMeta[3])
         self.signalSize = int(self.signalMeta[2]//self.signalDType.itemsize)
         self.signalShm = ImageSHM("signal", (self.signalSize,), self.signalDType)
         self.nullSignal = np.zeros(self.signalSize, dtype=self.signalDType)
 
         #Read wfs SLOPES metadata and open a stream to the shared memory
-        self.signal2DMeta = ImageSHM("signal2D_meta", (ImageSHM.METADATA_SIZE,), np.float64).read_noblock_safe()
+        self.signal2DMeta = ImageSHM("signal2D_meta", (ImageSHM.METADATA_SIZE,), np.float64).read_noblock()
         self.signal2DDType = float_to_dtype(self.signal2DMeta[3])
         self.signal2DSize = int(self.signal2DMeta[2]//self.signal2DDType.itemsize)
         self.signal2D_width, self.signal2D_height = int(self.signal2DMeta[4]),  int(self.signal2DMeta[5])
@@ -244,13 +244,13 @@ class Loop(pyRTCComponent):
         self.signal2DShm = ImageSHM("signal2D", (self.signal2D_width, self.signal2D_height), self.signal2DDType)
 
         #Read wfc metadata and open a stream to the shared memory
-        self.wfcMeta = ImageSHM("wfc_meta", (ImageSHM.METADATA_SIZE,), np.float64).read_noblock_safe()
+        self.wfcMeta = ImageSHM("wfc_meta", (ImageSHM.METADATA_SIZE,), np.float64).read_noblock()
         self.wfcDType = float_to_dtype(self.wfcMeta[3])
         self.numModes = int(self.wfcMeta[2]//self.wfcDType.itemsize)
         self.wfcShm = ImageSHM("wfc", (self.numModes,), self.wfcDType)
 
         #Read the wfc2D metadata and open a stream to the shared memory
-        self.wfc2DMeta = ImageSHM("wfc2D_meta", (ImageSHM.METADATA_SIZE,), np.float64).read_noblock_safe()
+        self.wfc2DMeta = ImageSHM("wfc2D_meta", (ImageSHM.METADATA_SIZE,), np.float64).read_noblock()
         self.wfc2DDType = float_to_dtype(self.wfc2DMeta[3])
         self.wfc2DSize = int(self.wfc2DMeta[2]//self.wfc2DDType.itemsize)
         self.wfc2D_width, self.wfc2D_height = int(self.wfc2DMeta[4]),  int(self.wfc2DMeta[5])

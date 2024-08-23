@@ -189,7 +189,7 @@ class SlopesProcess(pyRTCComponent):
         self.conf = conf["slopes"]
 
         #Read wfs images's metadata and open a stream to the shared memory
-        self.wfsMeta = ImageSHM("wfs_meta", (ImageSHM.METADATA_SIZE,), np.float64).read_noblock_safe()
+        self.wfsMeta = ImageSHM("wfs_meta", (ImageSHM.METADATA_SIZE,), np.float64).read_noblock()
         self.imageDType = float_to_dtype(self.wfsMeta[3])
         self.wfsShm = ImageSHM("wfs", self.imageShape, self.imageDType)
 

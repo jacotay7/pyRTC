@@ -13,6 +13,11 @@ from pyRTC.utils import *
 import socket
 import json 
 
+try:
+    import torch
+except:
+    pass
+
 def work(obj, functionName):
     """
     The main working thread for the any Pipeline object
@@ -42,7 +47,7 @@ def work(obj, functionName):
 class ImageSHM:
 
     METADATA_SIZE = 10
-    def __init__(self, name, shape, dtype) -> None:
+    def __init__(self, name, shape, dtype, gpuDevice=None) -> None:
 
         self.name = name
         self.arr = np.empty(shape, dtype=dtype)
@@ -52,6 +57,7 @@ class ImageSHM:
         self.lastWriteTime = 0
         self.lastReadTime = 0
         self.areData = not ("meta" in name)
+        self.gpuDevice = gpuDevice
 
         try:
             self.shm = shared_memory.SharedMemory(name= name, create=True, size=self.arr.nbytes)
@@ -79,6 +85,10 @@ class ImageSHM:
             self.metadata = np.ndarray(self.metadata.shape, dtype=self.metadata.dtype, buffer=self.metadataShm.buf)
             self.updateMetadata()
 
+
+        if self.gpuDevice is not None:
+            self.shmGPU = torch.empty(shape, dtype=dtype, device=self.gpuDevice).share_memory_()
+
         return
 
     def __del__(self):
@@ -92,34 +102,72 @@ class ImageSHM:
 
     def write(self, arr):
 
-        if not isinstance(arr, np.ndarray) or arr.shape != self.arr.shape:
-            return -1
-        np.copyto(self.arr, arr)
+        #Check if we are a GPU shm
+        if self.gpuDevice is not None:
+            #If you didn't write a numpy array or tensor
+            if not isinstance(arr, np.ndarray) and not isinstance(arr, torch.Tensor): 
+                return -1
+            #If you wrote the wrong shape
+            if arr.shape != self.arr.shape:
+                return -1
+            #If you passed a tensor
+            if isinstance(arr, torch.Tensor):
+                #copy the tensor to the GPU shm
+                self.shmGPU.copy_(arr)
+                #copy a CPU numpy version to the CPU shm
+                np.copyto(self.arr, arr.cpu().numpy())
+            elif isinstance(arr, np.ndarray):
+                #copy a CPU numpy version to the CPU shm
+                np.copyto(self.arr, arr)
+                #copy the tensor to the GPU shm
+                self.shmGPU.copy_(torch.from_numpy(arr))
+        else:
+            #If you didn't write a numpy array
+            if not isinstance(arr, np.ndarray): 
+                return -1
+            #If you wrote the wrong shape
+            if arr.shape != self.arr.shape:
+                return -1
+            np.copyto(self.arr, arr)
+
+        #Update metadata
         self.count += 1
         self.lastWriteTime = time.time()
         if self.areData:
             self.updateMetadata()
+
+        #Return Success
         return 1
     
-    def read(self):
-        while not self.checkNew():
-            time.sleep(1e-5)
-        arr = np.copy(self.arr)
-        return arr
-    
-    def read_timeout(self, timeout):
-        start = time.time()
-        while not self.checkNew() and (time.time() - start) < timeout:
-            time.sleep(1e-5)
-        arr = np.copy(self.arr)
-        return arr
-    
-    def read_noblock(self):
-        arr = np.copy(self.arr)
-        return arr
+    def hold(self, timeout=None):
+        if timeout is None:
+            while not self.checkNew():
+                time.sleep(1e-5)
+        elif isinstance(timeout, float) or isinstance(timeout,int):
+            start = time.time()
+            while not self.checkNew() and (time.time() - start) < timeout:
+                time.sleep(1e-5)
+        return
 
-    def read_noblock_safe(self):
-        return self.read_noblock()
+    def read(self, GPU = False):
+        self.hold()
+        return self.read_noblock(GPU=GPU)    
+    
+    def read_timeout(self, timeout, GPU = False):
+        self.hold(timeout=timeout)
+        return self.read_noblock(GPU=GPU)
+    
+    def read_noblock(self, GPU=False):
+
+        #Mark that we have seen the shm before
+        self.markSeen()
+        #If the user asks to read the GPU shm
+        if GPU and self.gpuDevice is not None:
+            return self.shmGPU.clone()
+        
+        #Otherwise return the CPU shm
+        arr = np.copy(self.arr)
+        return arr
     
     def checkNew(self):
         
@@ -127,7 +175,6 @@ class ImageSHM:
             # metadata = np.copy(self.metadata)
             if self.metadata[1] != self.lastReadTime:
                 self.markSeen()
-                # self.lastReadTime = self.metadata[1]
                 return True
         else: #If we are just reading a meta data object directly
             return True

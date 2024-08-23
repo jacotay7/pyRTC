@@ -33,7 +33,9 @@ class spinCam(ScienceCamera):
             self.setRoi(roi)
         if "gain" in conf:
             self.setGain(conf["gain"])
-        
+        if "gamma" in conf:
+            self.setGamma(conf["gamma"])
+
         self.camera.begin_acquisition()
 
         return
@@ -64,7 +66,13 @@ class spinCam(ScienceCamera):
         super().setGain(gain)
         self.camera.camera_nodes.Gain.set_node_value(self.gain)
         return
-    
+
+    def setGamma(self, gamma):
+        super().setGamma(gamma)
+        self.gamma = np.clip(self.gamma, 0.5, 3.9)
+        self.camera.camera_nodes.Gamma.set_node_value(self.gamma)
+        return
+
     def setBitDepth(self, bitDepth):
         super().setBitDepth(bitDepth)
         if self.bitDepth == 8:

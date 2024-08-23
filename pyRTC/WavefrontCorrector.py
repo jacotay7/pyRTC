@@ -161,7 +161,7 @@ class WavefrontCorrector(pyRTCComponent):
             self.layout = self.layout > 0
             self.correctionVector2D = ImageSHM("wfc2D", self.layout.shape, np.float32)
             self.correctionVector2D.write(np.zeros(self.layout.shape, dtype=np.float32))
-            self.correctionVector2D_template = self.correctionVector2D.read_noblock_safe()
+            self.correctionVector2D_template = self.correctionVector2D.read_noblock()
 
             self.index_map = np.zeros(self.layout.shape, dtype = int)
             self.index_map[self.layout > 0] = np.arange(np.sum(self.layout)).astype(int) + 1

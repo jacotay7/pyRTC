@@ -14,8 +14,8 @@ RECALIBRATE = False
 # clear_shms(shm_names)
 
 # %% IMPORTS
-# config = '/home/whetstone/pyRTC/SHARP_LAB/config_SR.yaml'
-config = '/home/whetstone/pyRTC/SHARP_LAB/config.yaml'
+config = '/home/whetstone/pyRTC/SHARP_LAB/config_SR.yaml'
+# config = '/home/whetstone/pyRTC/SHARP_LAB/config.yaml'
 N = np.random.randint(3000,6000)
 # %% Launch DM
 wfc = hardwareLauncher("../pyRTC/hardware/ALPAODM.py", config, N)

@@ -167,6 +167,18 @@ class ScienceCamera(pyRTCComponent):
         self.gain = gain
         return
     
+    def setGamma(self, gamma):
+        """
+        Set the gamma.
+
+        Parameters
+        ----------
+        gamma : float
+            Gamma to set.
+        """
+        self.gamma = gamma
+        return
+    
     def setBitDepth(self, bitDepth):
         """
         Set the bit depth.
