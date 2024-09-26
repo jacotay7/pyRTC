@@ -21,6 +21,11 @@ try:
     __all__.append('PIModulator')
 except:
     print("PI python SDK installation not found")
+# try:
+#     from .OOPAOInterface import OOPAOInterface
+#     __all__.append('OOPAOInterface')
+# except:
+#     print("OOPAO installation not found")
 
 from .NCPAOptimizer import *
 from .PIDOptimizer import *
