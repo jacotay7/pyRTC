@@ -1,29 +1,21 @@
 # %% IMPORTS
 #Import pyRTC classes
+import matplotlib.pyplot as plt
 from pyRTC.Pipeline import *
 from pyRTC.utils import *
+from pyRTC.hardware import *
 import os
 os.chdir("/home/whetstone/pyRTC/SHARP_LAB")
 RECALIBRATE = False
-
+CLEAR_SHMS =  False
 # %% Clear SHMs
-# from pyRTC.Pipeline import clear_shms
-# shm_names = ["signal"]
-# shm_names = ["wfs", "wfsRaw", "wfc", "wfc2D", "signal", "signal2D", "psfShort", "psfLong"] #list of SHMs to reset
-# clear_shms(shm_names)
-
+if CLEAR_SHMS:
+    shm_names = ["wfs", "wfsRaw", "wfc", "wfc2D", "signal", "signal2D", "psfShort", "psfLong"] #list of SHMs to reset
+    clear_shms(shm_names)
 # %% IMPORTS
 config = '/home/whetstone/pyRTC/SHARP_LAB/config_pywfs.yaml'
 N = np.random.randint(3000,6000)
 folder = "/home/whetstone/pyRTC/SHARP_LAB/calib/"
-
-# %% Launch Modulator
-modulator = hardwareLauncher("../pyRTC/hardware/PIModulator.py", config, N+100)
-modulator.launch()
-
-# %% Launch DM
-wfc = hardwareLauncher("../pyRTC/hardware/ALPAODM.py", config, N)
-wfc.launch()
 
 # %% Launch WFS
 wfs = hardwareLauncher("../pyRTC/hardware/ximeaWFS.py", config, N+1)
@@ -37,6 +29,14 @@ slopes.launch()
 psfCam = hardwareLauncher("../pyRTC/hardware/SpinnakerScienceCam.py", config, N+10)
 psfCam.launch()
 
+# %% Launch DM
+wfc = hardwareLauncher("../pyRTC/hardware/ALPAODM.py", config, N)
+wfc.launch()
+
+# %% Launch Modulator
+modulator = hardwareLauncher("../pyRTC/hardware/PIModulator.py", config, N+100)
+modulator.launch()
+
 # %% Launch Loop Class
 loop = hardwareLauncher("../pyRTC/Loop.py", config, N+4)
 loop.launch()
@@ -47,6 +47,9 @@ pidOptim = PIDOptimizer(read_yaml_file(config)["optimizer"]["pid"], loop)
 # %%
 from pyRTC.hardware.NCPAOptimizer import NCPAOptimizer
 ncpaOptim = NCPAOptimizer(read_yaml_file(config)["optimizer"]["ncpa"], loop, slopes)
+
+
+loopOptim = loopOptimizer(read_yaml_file(config)["optimizer"]["loop"], loop)
 
 # %% Calibrate
 if RECALIBRATE == True:
@@ -77,6 +80,7 @@ if RECALIBRATE == True:
     loop.setProperty("numItersIM", 100)
     loop.setProperty("IMFile", folder + "IM_PYWFS.npy")
     wfc.run("flatten")
+    time.sleep(1)
     loop.run("computeIM")
     loop.run("saveIM")
     wfc.run("flatten")
@@ -90,28 +94,35 @@ if RECALIBRATE == True:
     loop.setProperty("numItersIM", 50000)
     loop.setProperty("IMFile", folder + "IM_PYWFS_OL_docrime.npy")
     wfc.run("flatten")
+    time.sleep(1)
     loop.run("computeIM")
     loop.run("saveIM")
     wfc.run("flatten")
     time.sleep(1)
 
-
+#%% Test GPU SHM
+import matplotlib.pyplot as plt
+wfsShm = initExistingShm("wfs",gpuDevice=0)[0]
+img = wfsShm.read(GPU=True)
+plt.imshow(img.cpu().numpy())
+plt.show()
 
 # %% Compute CM
 #WITH OG 0.15
 #NO OG, BASELINE 0.7, OL 0.05
-
-# loop.setProperty("IMFile", folder + "IM_PYWFS.npy")
+# slopes.setProperty("refSlopesFile", "")
+# slopes.run("loadRefSlopes")
+loop.setProperty("IMFile", folder + "IM_PYWFS.npy")
 # loop.setProperty("IMFile", folder + "IM_PYWFS_OL_docrime.npy")
 # loop.setProperty("IMFile", folder + "IM_PYWFS_OL_docrime_CL_docrime.npy")
-dataFolder = "/home/whetstone/pyRTC/SHARP_LAB/data/PYWFS_ESCAPE_DATA/"
+# dataFolder = "/home/whetstone/pyRTC/SHARP_LAB/data/PYWFS_ESCAPE_DATA/"
 # loop.setProperty("IMFile", dataFolder + "BASELINE_NO_OG.npy")
-loop.setProperty("IMFile", dataFolder + "ESCAPE.npy")
+# loop.setProperty("IMFile", dataFolder + "ESCAPE.npy")
 # loop.setProperty("IMFile", dataFolder + "DOCRIME_NO_OG.npy")
 
-loop.setProperty("numDroppedModes", 0)
-loop.setProperty("gain",0.5)
-loop.setProperty("leakyGain", 0.01)
+loop.setProperty("numDroppedModes", 20)
+loop.setProperty("gain",0.7)
+loop.setProperty("leakyGain", 0.02)
 loop.run("loadIM")
 time.sleep(0.5)
 
@@ -133,7 +144,18 @@ loop.run("solveDocrime")
 
 # %% CL DOCRIME Stop
 loop.setProperty("clDocrime", False)
-
+#%%
+psfCam.setProperty("integrationLength", 100)
+time.sleep(1)
+loopOptim.resetStudy()
+loopOptim.numReads = 10
+loopOptim.maxGain = 1.0
+loopOptim.maxLeak = 0.1
+loopOptim.maxDroppedModes = 40
+loopOptim.numSteps = 100
+for i in range(1):
+    loopOptim.optimize()
+loopOptim.applyNext()
 #%% Optimize PID
 pidOptim.numReads = 20
 pidOptim.numSteps = 50
@@ -146,13 +168,36 @@ for i in range(1):
     pidOptim.optimize()
 pidOptim.applyOptimum()
 #%% Optimize NCPA
-ncpaOptim.numReads = 2
-ncpaOptim.startMode = 2
-ncpaOptim.endMode = 80
-ncpaOptim.numSteps = 1000
-for i in range(1):
-    ncpaOptim.optimize()
-ncpaOptim.applyOptimum()
+import optuna
+optuna.logging.set_verbosity(optuna.logging.WARNING)
+numOptim = 3
+maxAMP = 0.005
+amps = np.linspace(maxAMP, maxAMP/5, numOptim)
+for i in range(numOptim):
+    ncpaOptim.resetStudy()
+    psfCam.setProperty("integrationLength", 5)
+    time.sleep(2)
+    ncpaOptim.numReads = 3
+    ncpaOptim.startMode = 0
+    ncpaOptim.endMode = 15 #wfc.getProperty("numModes")
+    ncpaOptim.numSteps = 1000
+    ncpaOptim.correctionMag = amps[i]
+    ncpaOptim.isCL = False
+    for i in range(1):
+        ncpaOptim.optimize()
+    ncpaOptim.applyNext()
+
+    wfc.run("saveShape")
+    # slopes.run("takeRefSlopes")
+    # slopes.setProperty("refSlopesFile", "/home/whetstone/pyRTC/SHARP_LAB/calib/refPyWFS.npy")
+    # slopes.run("saveRefSlopes")
+    psfCam.setProperty("integrationLength", 2000)
+    time.sleep(2)
+    psfCam.run("takeModelPSF")
+    psfCam.setProperty("modelFile", "/home/whetstone/pyRTC/SHARP_LAB/calib/modelPSF_PyWFS.npy")
+    psfCam.run("saveModelPSF")
+    wfc.run("loadFlat")
+    
 # %%
 """
 Update FLAT/REF/MODEL after NCPA
@@ -168,13 +213,13 @@ Update FLAT/REF/MODEL after NCPA
 # slopes.setProperty("refSlopesFile", folder + "refPyWFS.npy")
 # slopes.run("saveRefSlopes")
 # %%
-loop.run("solveDocrime")
+# loop.run("solveDocrime")
 baseline = np.load(folder + "IM_PYWFS.npy")
 OLDOCRIME = np.load(folder + "IM_PYWFS_OL_docrime.npy")
 CLDOCRIME = np.load(folder + "IM_PYWFS_OL_docrime_CL_docrime.npy")
 # CLDOCRIME = np.load(dataFolder + "ESCAPE_CL_docrime.npy")
 ESCAPE = np.load(folder + "ESCAPE_PYWFS.npy")
-im = CLDOCRIME
+im = OLDOCRIME
 plt.imshow(im, aspect="auto")
 plt.show()
 
@@ -209,14 +254,14 @@ def im_col_to_mode(col, vsa):
 for i in range(imFull.shape[0]):
     imFull[i] = im_col_to_mode(im[:,i], vsa)
 
-N = 89
+N = 0
 for i in range(N,N + 5):
     plt.imshow(imFull[i])
     plt.colorbar()
     plt.show()
 # %%
 
-dataFolder = "/home/whetstone/pyRTC/SHARP_LAB/data/PYWFS_ESCAPE_DATA/"
+dataFolder =  "/home/whetstone/pyRTC/SHARP_LAB/calib/" # "/home/whetstone/pyRTC/SHARP_LAB/data/PYWFS_ESCAPE_DATA/"
 loop.run("solveDocrime")
 time.sleep(0.1)
 
@@ -470,5 +515,45 @@ plt.grid(True, which='both', linestyle='--', linewidth=0.5)
 plt.legend()
 plt.tight_layout()
 plt.savefig("jitter_pywfs.png")
+plt.show()
+# %%
+wfcShm = initExistingShm("wfc")[0]
+slopesShm = initExistingShm("signal")[0]
+IM = np.load(loop.getProperty("IMFile"))
+CM = np.linalg.pinv(IM)
+N = 10000
+OL_shapes = np.empty((N,*wfcShm.read_noblock().shape))
+CL_shapes = np.zeros_like(OL_shapes)
+loop.run("stop")
+loop.run("flatten")
+time.sleep(1)
+for i in range(N):
+    # OL_shapes[i] = wfcShm.read()
+    # CL_shapes[i] = CM@slopesShm.read()
+    OL_shapes[i] = CM@slopesShm.read()
+
+loop.run("start")
+time.sleep(1)
+for i in range(N):
+    # OL_shapes[i] = wfcShm.read()
+    CL_shapes[i] = CM@slopesShm.read()
+    # OL_shapes[i] = CM@slopesShm.read()
+# %%
+plt.plot(np.mean(OL_shapes**2,axis = 0), label = 'CM@Slopes^2 (OL)')
+plt.plot(np.mean(CL_shapes**2,axis = 0), label = 'CM@Slopes^2 (CL)')
+plt.yscale('log')
+plt.xscale('log')
+# plt.ylim(1e-5,1e-2)
+plt.plot(5e-4*np.arange(95)**(-11/8))
+plt.plot(8e-6*np.arange(95)**(-11/8))
+plt.legend()
+plt.show()
+
+
+plt.plot( 10*np.log10(np.mean(CL_shapes**2,axis = 0) / np.mean(OL_shapes**2,axis = 0)))
+# plt.yscale('log')
+plt.xscale('log')
+plt.ylabel("Attenuation (dB)")
+plt.legend()
 plt.show()
 # %%

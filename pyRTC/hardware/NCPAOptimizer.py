@@ -28,6 +28,7 @@ class NCPAOptimizer(Optimizer):
         self.applyTrial(trial)
 
         result = np.empty(self.numReads)
+        self.strehlShm.read() #burn last read
         for i in range(self.numReads):
             result[i] = self.strehlShm.read()
         return np.mean(result)

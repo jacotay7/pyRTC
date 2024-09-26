@@ -9,6 +9,7 @@ import psutil
 from scipy.ndimage import median_filter, gaussian_filter
 import socket
 from datetime import datetime
+import time 
 
 NP_DATA_TYPES = [
     np.int8, np.int16, np.int32, np.int64,
@@ -21,6 +22,31 @@ NP_DATA_TYPES = [
     np.datetime64, np.timedelta64
 ]
 
+def precise_delay(microseconds):
+    target_time = time.perf_counter() + microseconds / 1_000_000
+    while np.float64(time.perf_counter()) < target_time:
+        pass
+
+# Function to measure execution time
+def measure_execution_time(f, args, numIters=10):
+   
+    #init once
+    f(*args)
+
+    # Measure time
+    exTimes = np.empty(numIters)
+    for i in range(numIters):
+        start_time = time.time()
+        f(*args)
+        end_time = time.time()
+        exTimes[i] = (end_time - start_time)
+    
+    median = np.median(exTimes)
+    iqr = np.percentile(exTimes, 75)-np.percentile(exTimes, 25)
+    CI_1 = np.percentile(exTimes, 0.5)
+    CI_99 = np.percentile(exTimes, 99.5)
+
+    return median, iqr, CI_1, CI_99
 
 def change_directory(directory):
     try:
@@ -255,6 +281,8 @@ def clean_image_for_strehl(img, median_filter_size = 3, gaussian_sigma = 1):
 
 def gaussian_2d_grid(i, j, sigma, grid_size):
     grid = np.zeros((grid_size, grid_size))
+    if sigma == 0:
+        return grid
     for x in range(grid_size):
         for y in range(grid_size):
             if x == i and y == j:
@@ -269,8 +297,14 @@ def gaussian_2d_grid(i, j, sigma, grid_size):
 
 def set_affinity(affinity):
     # Unsupported by MacOS
+    if isinstance(affinity, int) or isinstance(affinity, float):
+        affinity = [int(affinity),]
+    elif isinstance(affinity, np.ndarray):
+        affinity = list(affinity)
+    else:
+        return -1
     if sys.platform != 'darwin':
-        psutil.Process(os.getpid()).cpu_affinity([affinity,])
+        psutil.Process(os.getpid()).cpu_affinity(affinity)
     return
 
 
@@ -283,7 +317,8 @@ def setFromConfig(conf, name, default):
 
     debugStr = f"There is a type mismatch between the default value for config variable {name} and the given value: {type(val).__name__} != {type(default).__name__}"
 
-    assert type(val) == type(default), debugStr
+    if default is not None:
+        assert type(val) == type(default), debugStr
 
     return val
 
@@ -345,12 +380,18 @@ def bind_socket(host, start_port, max_attempts=5):
 
     return -1
 
-def decrease_nice(pid):
-    # Unsupported by MacOS
-    if sys.platform != 'darwin':
-        cmd = ["sudo","renice","-n","-19","-p",str(pid)]
-        Popen(cmd,stdin=open(os.devnull, 'w'),stdout=open(os.devnull, 'w'))
+def decrease_nice():
+    # Unsupported by MacOS or Windows
+    if sys.platform != 'darwin' and sys.platform != 'win32':
+        p = psutil.Process(os.getpid())
+        p.nice(-20)  # Unix uses a numeric value (lower means higher priority)
     return
+
+# Set CPU affinity and priority for a thread
+def set_affinity_and_priority(thread_id, cpu_cores):
+    set_affinity(cpu_cores)
+    decrease_nice()
+    print(f"Thread {thread_id}: Priority set to REALTIME")
 
 def read_yaml_file(file_path):
     with open(file_path, 'r') as file:

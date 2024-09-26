@@ -75,7 +75,7 @@ def update_plot():
     ydata = rolling_average(past_values, WINDOW_SIZE)
     xdata = list(range(len(ydata)))
     line.set_data(xdata, ydata)
-    ax.set_ylim(min(ydata), max(ydata))
+    ax.set_ylim(np.percentile(ydata, 5), np.percentile(ydata, 95))
     fig.canvas.draw()
     fig.canvas.flush_events()
 

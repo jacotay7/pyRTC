@@ -230,7 +230,7 @@ class ScienceCamera(pyRTCComponent):
             Current short exposure PSF.
         """
         if block:
-            return self.psfShort.read()
+            return self.psfShort.read(RELEASE_GIL = True)
         return self.psfShort.read_noblock()
     
     def readLong(self):
@@ -242,7 +242,7 @@ class ScienceCamera(pyRTCComponent):
         numpy.ndarray
             Current long exposure PSF.
         """
-        return self.psfLong.read()
+        return self.psfLong.read(RELEASE_GIL = True)
     
     def takeDark(self):
         """
@@ -398,3 +398,7 @@ class ScienceCamera(pyRTCComponent):
         plt.colorbar()
         plt.show()
         return
+
+if __name__ == "__main__":
+
+    launchComponent(ScienceCamera, "psf", start = True)

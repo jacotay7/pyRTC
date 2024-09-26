@@ -14,12 +14,15 @@ class PIModulator(Modulator):
         super().__init__(conf)
 
         self.amplitudeX = conf["amplitude"]
+        self.relativeAmp = setFromConfig(conf, "relativeAmplitude", 1.0)
         self.frequency = conf["frequency"]
-        self.amplitudeY = conf["amplitude"]*conf["relativeAmplitude"]
+        self.amplitudeY = conf["amplitude"]*self.relativeAmp
         self.offsetX = conf["offsetX"]
         self.offsetY = conf["offsetX"]
         self.phaseOffset = conf["phaseOffset"]
         self.sampling = 1/conf["digitalFreq"]
+
+
 
         self.wavegens = (1, 2)
         self.wavetables = (1, 2)
@@ -100,29 +103,19 @@ class PIModulator(Modulator):
             self.mod.MOV(ax,int(x[i]))
         pitools.waitontarget(self.mod, self.mod.axes[:2])
         return 1
+    
+    def adjustAmp(self, amp, restart=True):
+        self.amplitudeX = amp
+        self.amplitudeY = amp*self.relativeAmp
+        if restart:
+            self.restart()
+        return
+    
+    def restart(self):
+        self.stop()
+        self.defineCircle()
+        self.start()
 
 if __name__ == "__main__":
 
-    # Create argument parser
-    parser = argparse.ArgumentParser(description="Read a config file from the command line.")
-
-    # Add command-line argument for the config file
-    parser.add_argument("-c", "--config", required=True, help="Path to the config file")
-    parser.add_argument("-p", "--port", required=True, help="Port for communication")
-
-    # Parse command-line arguments
-    args = parser.parse_args()
-
-    conf = read_yaml_file(args.config)
-
-    pid = os.getpid()
-    set_affinity((conf["modulator"]["affinity"])%os.cpu_count()) 
-    decrease_nice(pid)
-
-    mod = PIModulator(conf=conf["modulator"])
-    mod.start()
-
-    l = Listener(mod, port = int(args.port))
-    while l.running:
-        l.listen()
-        time.sleep(1e-3)
+    launchComponent(PIModulator, "modulator", start = True)

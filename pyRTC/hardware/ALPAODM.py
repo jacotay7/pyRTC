@@ -48,14 +48,6 @@ class ALPAODM(WavefrontCorrector):
             floatActuatorInds = np.load(conf["floatingActuatorsFile"])
             self.deactivateActuators(floatActuatorInds)
 
-        #Read the flat from the specified flat file
-        if "flatFile" in conf.keys():
-            if '.txt' in conf["flatFile"]:
-                flat = np.genfromtxt(conf["flatFile"])
-            elif '.npy' in conf["flatFile"]:
-                flat = np.load(conf["flatFile"])
-            self.setFlat(flat.astype(self.flat.dtype))
-        
         #flatten the mirror
         self.flatten()
 
@@ -85,27 +77,4 @@ class ALPAODM(WavefrontCorrector):
 
 if __name__ == "__main__":
 
-    # Create argument parser
-    parser = argparse.ArgumentParser(description="Read a config file from the command line.")
-
-    # Add command-line argument for the config file
-    parser.add_argument("-c", "--config", required=True, help="Path to the config file")
-    parser.add_argument("-p", "--port", required=True, help="Port for communication")
-
-    # Parse command-line arguments
-    args = parser.parse_args()
-
-    conf = read_yaml_file(args.config)
-
-    pid = os.getpid()
-    set_affinity((conf["wfc"]["affinity"])%os.cpu_count()) 
-    decrease_nice(pid)
-
-    confWFC = conf["wfc"]
-    wfc = ALPAODM(conf=confWFC)
-    wfc.start()
-
-    l = Listener(wfc, port = int(args.port))
-    while l.running:
-        l.listen()
-        time.sleep(1e-3)
+    launchComponent(ALPAODM, "wfc", start = True)

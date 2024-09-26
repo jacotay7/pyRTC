@@ -15,6 +15,7 @@ loop:
   absoluteLimits: [-0.3, 0.3]
   integralLimits: [-0.1, 0.1]
   derivativeFilter: 0.1
+  # gpuDevice: 0
   functions:
   - leakyIntegrator
 
@@ -30,13 +31,14 @@ wfs:
   exposure: 3333
   gain: 0
   bitDepth: 10
-  left: 272
+  left: 240
   top: 50 
   width: 192 
   height: 192 
   darkCount: 2000
   darkFile: "/home/whetstone/pyRTC/SHARP_LAB/calib/darkPyWFS.npy"
   affinity: 3
+  # gpuDevice: 0
   functions:
   - expose
 
@@ -53,11 +55,12 @@ slopes:
   refSlopesFile: "/home/whetstone/pyRTC/SHARP_LAB/calib/refPyWFS.npy"
   flatNorm: True
   pupilsRadius: 32 #64
+  # gpuDevice: 0
   pupils: 
-  - 45,55
-  - 46,135
-  - 150,72
-  - 130,135
+  - 45,48
+  - 46,128
+  - 152,65 #140, 60
+  - 130,128
   affinity: 4
   functions:
   - computeSignal
@@ -67,14 +70,15 @@ wfc:
   serial: "BAX118"
   numActuators: 97
   numModes: 94
-  flatFile: "/home/whetstone/pyRTC/SHARP_LAB/calib/wfcShape.npy"
-  saveFile: "/home/whetstone/pyRTC/SHARP_LAB/calib/wfcShape.npy"
+  flatFile: "/home/whetstone/pyRTC/SHARP_LAB/calib/wfcShapePyWFS.npy"
+  saveFile: "/home/whetstone/pyRTC/SHARP_LAB/calib/wfcShapePyWFS.npy"
   m2cFile: "/home/whetstone/pyRTC/SHARP_LAB/calib/m2c_kl.npy" 
   floatingActuatorsFile: ""
   floatingInfluenceRadius: 1
   affinity: 5
   commandCap: 0.8
   hardwareDelay: 0.001 #seconds
+  # gpuDevice: 0
   frameDelay: 0
   functions:
   - sendToHardware
@@ -85,8 +89,8 @@ psf:
   exposure: 800
   gain: 0
   bitDepth: 16
-  left: 920
-  top: 468
+  left: 936
+  top: 448
   width: 128
   height: 128
   darkCount: 2000
@@ -116,14 +120,22 @@ optimizer:
     maxDGain: 0.1
     numReads: 1
     affinity: 10
-
+  loop:
+    name: "hyper"
+    numSteps: 100
+    minGain: 0.3
+    maxGain: 0.8
+    maxLeak: 0.05
+    maxDroppedModes: 30
+    numReads: 1
+    affinity: 10
 modulator:
   name: 'E-727'
   libFolder: '/opt/PI/lib64/'
   digitalFreq: 20000 #Hz
   frequency: 300 #Hz
-  amplitude: 2000
-  relativeAmplitude: 1
+  amplitude: 600
+  relativeAmplitude: 1.0
   offsetX: 2500 #2800
   offsetY: 2500 #1100
   phaseOffset: 0

@@ -10,7 +10,7 @@ os.environ["NUMEXPR_NUM_THREADS"] = "1"
 os.environ['NUMBA_NUM_THREADS'] = '1'
 os.environ['TBB_NUM_THREADS'] = '1'
 
-from pyRTC.Pipeline import ImageSHM, work
+from pyRTC.Pipeline import *
 from pyRTC.utils import *
 from pyRTC.pyRTCComponent import *
 import numpy as np
@@ -102,13 +102,14 @@ class WavefrontCorrector(pyRTCComponent):
     """
     def __init__(self, conf) -> None:
 
+        super().__init__(conf)
+
         self.name = conf["name"]
         self.numActuators = conf["numActuators"]
         self.numModes = conf["numModes"]
-        self.affinity = conf["affinity"]
-        self.m2cFile = conf["m2cFile"]
-        
-        self.correctionVector = ImageSHM("wfc", (self.numModes,), np.float32)
+        self.m2cFile = setFromConfig(conf, "m2cFile", "")
+
+        self.correctionVector = ImageSHM("wfc", (self.numModes,), np.float32, gpuDevice = self.gpuDevice, consumer=False)
         self.correctionVector2D = None
         
         #If its an array it will initialize a 2D correction ImageSHM for display
@@ -118,6 +119,8 @@ class WavefrontCorrector(pyRTCComponent):
         self.flat = np.zeros(self.numActuators, dtype=np.float32)
         self.flatModal = np.zeros(self.numModes,  dtype=self.flat.dtype)
         self.currentShape = np.zeros_like(self.flat)
+        self.flatFile = setFromConfig(conf, "flatFile", "")
+        self.loadFlat()
         
         #Initialize Floating Actuator Matrix
         self.actuatorStatus = np.array([True]*self.numActuators)
@@ -132,7 +135,7 @@ class WavefrontCorrector(pyRTCComponent):
         #Initialize the basis for corrections
         self.readM2C()
 
-        super().__init__(conf)
+        
         return
 
     def setFlat(self, flat):
@@ -144,9 +147,31 @@ class WavefrontCorrector(pyRTCComponent):
         flat : numpy.ndarray
             Flat shape to set.
         """
-        self.flat = flat
+        self.flat = flat.astype(self.flat.dtype)
         return
 
+    def loadFlat(self,filename=''):
+        """
+        Loads the Flat from a file.
+
+        Parameters
+        ----------
+        filename : str, optional
+            Filename to load the dark frame from. If not specified, uses the dark file path from the configuration.
+        """
+        #If no file given, first try dark file
+        if filename == '':
+            filename = self.flatFile
+        #If we are still without a file, set zeros
+        if filename == '':
+            flat = np.zeros_like(self.flat)
+        else: #If we have a filename
+            if '.txt' in filename:
+                flat = np.genfromtxt(filename)
+            elif '.npy' in filename:
+                flat = np.load(filename)
+        self.setFlat(flat)
+        return
     def setLayout(self, layout):
         """
         Set the layout of the actuators.
@@ -159,7 +184,7 @@ class WavefrontCorrector(pyRTCComponent):
         self.layout = layout
         if isinstance(self.layout, np.ndarray):
             self.layout = self.layout > 0
-            self.correctionVector2D = ImageSHM("wfc2D", self.layout.shape, np.float32)
+            self.correctionVector2D = ImageSHM("wfc2D", self.layout.shape, np.float32, gpuDevice = self.gpuDevice, consumer=False)
             self.correctionVector2D.write(np.zeros(self.layout.shape, dtype=np.float32))
             self.correctionVector2D_template = self.correctionVector2D.read_noblock()
 
@@ -177,11 +202,18 @@ class WavefrontCorrector(pyRTCComponent):
         actuators : list of int
             List of actuator indices to deactivate.
         """
-        if len(actuators) == 0:
-            return
+
+        if hasattr(actuators, '__len__') and len(actuators) < 1:
+            raise Exception("You have provided no actuators")
+        if not hasattr(actuators, '__len__'):
+            raise Exception("Actuators given as wrong type, please provide array or list")
+        
         #Make sure that the layout has been set already
         if isinstance(self.layout, np.ndarray):
-
+            if len(self.layout.shape) != 2:
+                raise Exception("Layout must be 2 dimensions to float actuators. \
+                                To remove dead actuators, remove them from the M2C. \
+                                OR set the layout to be 2D and the floatingInfluenceRadius to a 0")
             #Make a boolean mask of the actuators we are deactivating
             act_to_float_mask = np.zeros_like(self.index_map)
             for act in actuators:
@@ -226,7 +258,9 @@ class WavefrontCorrector(pyRTCComponent):
         #Reset Floating Actuator Map
         self.floatMatrix = np.eye(self.numActuators, dtype=self.flat.dtype)
         #Deactivate all actuators that are still disabled
-        self.deactivateActuators([i for i in range(self.numActuators) if self.actuatorStatus[i] == False])
+        actsToDeactivate = [i for i in range(self.numActuators) if self.actuatorStatus[i] == False]
+        if len(actsToDeactivate) > 0:
+            self.deactivateActuators(actsToDeactivate)
         return
 
     def setM2C(self, M2C):
@@ -250,8 +284,6 @@ class WavefrontCorrector(pyRTCComponent):
         self.C2M = np.linalg.pinv(self.M2C)
         self.numModes = self.M2C.shape[1]
         self.currentCorrection = np.zeros(self.numModes, dtype=self.flat.dtype)
-        del self.correctionVector
-        self.correctionVector = ImageSHM("wfc", (self.numModes,), np.float32)
         self.flatModal = self.C2M@self.flat
 
     def setDelay(self,delay):
@@ -292,8 +324,8 @@ class WavefrontCorrector(pyRTCComponent):
             return
         
         #Normalize each mode
-        for i in range(M2C.shape[1]):
-            M2C[:,i] /= np.std(M2C[:,i])
+        # for i in range(M2C.shape[1]):
+        #     M2C[:,i] /= np.std(M2C[:,i])
         self.setM2C(M2C)
         return 
     
@@ -393,7 +425,7 @@ class WavefrontCorrector(pyRTCComponent):
         np.save(filename, self.currentShape)
         return
 
-    def plot(self, removeFlat=False):
+    def plot(self, addFlat=False):
         """
         Plot the current correction.
 
@@ -403,12 +435,12 @@ class WavefrontCorrector(pyRTCComponent):
             If True, removes the flat shape from the current correction before plotting. Default is False.
         """
         curCorrection = self.read()
-        if removeFlat:
-            curCorrection -= self.flat
+        if addFlat:
+            curCorrection += self.flatModal
 
         if isinstance(self.layout, np.ndarray):
             newShape = np.zeros(self.layout.shape)
-            newShape[self.layout] = curCorrection
+            newShape[self.layout] = self.M2C@curCorrection
         else:
             newShape = curCorrection
             
@@ -423,3 +455,7 @@ class WavefrontCorrector(pyRTCComponent):
             plt.show()
 
         return
+
+if __name__ == "__main__":
+
+    launchComponent(WavefrontCorrector, "wfc", start = True)

@@ -16,12 +16,44 @@ import matplotlib.pyplot as plt
 import time
 from numba import jit
 
-@jit(nopython=True)
+@jit(nopython=True, nogil=True, cache=True, fastmath=True)
+def leakyIntegratorNumba(slopes: np.ndarray, 
+                         resconstructionMatrix: np.ndarray, 
+                         oldCorrection: np.ndarray,
+                         correction: np.ndarray,
+                         leak: np.float32,
+                         numActiveModes: int) -> np.ndarray:
+    
+    # Perform the matrix-vector multiplication using np.dot
+    correction = np.dot(resconstructionMatrix, slopes)
+    
+    # Apply the leaky integrator formula with an unrolled loop
+    for i in range(numActiveModes + 1):
+        correction[i] = (1 - leak) * oldCorrection[i] - correction[i]
+    
+    # Zero out the rest of the correction vector
+    for i in range(numActiveModes + 1, correction.size):
+        correction[i] = 0.0
+    
+    return correction
+
+def leakIntegratorGPU(slopes:np.ndarray, 
+                                resconstructionMatrix:torch.tensor, 
+                                oldCorrection:np.ndarray,
+                                leak:float,
+                                numActiveModes:int
+                                ):
+    slopes_GPU = torch.tensor(slopes, device='cuda')
+    correctionGPU = torch.matmul(resconstructionMatrix, slopes_GPU) 
+    correctionGPU[numActiveModes:] = 0
+    return np.subtract((1-leak)*oldCorrection, correctionGPU.cpu().numpy())
+
+@jit(nopython=True, nogil=True, cache=True, fastmath=True)
 def compCorrection(CM=np.array([[]], dtype=np.float32),  
                     slopes=np.array([], dtype=np.float32)):
     return np.dot(CM,slopes)
 
-@jit(nopython=True)
+@jit(nopython=True, nogil=True, cache=True, fastmath=True)
 def updateCorrection(correction=np.array([], dtype=np.float32), 
                      gCM=np.array([[]], dtype=np.float32),  
                      slopes=np.array([], dtype=np.float32)):
@@ -75,16 +107,10 @@ class Loop(pyRTCComponent):
 
     Attributes
     ----------
-    confWFS : dict
-        Wavefront sensor configuration.
-    confWFC : dict
-        Wavefront corrector configuration.
-    confLoop : dict
+    conf : dict
         Loop configuration.
     name : str
         Name of the loop.
-    signalMeta : numpy.ndarray
-        Metadata of the wavefront sensor signal.
     signalDType : type
         Data type of the wavefront sensor signal.
     signalSize : int
@@ -93,8 +119,6 @@ class Loop(pyRTCComponent):
         Shared memory object for the wavefront sensor signal.
     nullSignal : numpy.ndarray
         Null signal.
-    signal2DMeta : numpy.ndarray
-        Metadata of the 2D wavefront sensor signal.
     signal2DDType : type
         Data type of the 2D wavefront sensor signal.
     signal2DSize : int
@@ -103,28 +127,12 @@ class Loop(pyRTCComponent):
         Width of the 2D wavefront sensor signal.
     signal2D_height : int
         Height of the 2D wavefront sensor signal.
-    signal2DShm : ImageSHM
-        Shared memory object for the 2D wavefront sensor signal.
-    wfcMeta : numpy.ndarray
-        Metadata of the wavefront corrector.
     wfcDType : type
         Data type of the wavefront corrector.
     numModes : int
         Number of modes in the wavefront corrector.
     wfcShm : ImageSHM
         Shared memory object for the wavefront corrector.
-    wfc2DMeta : numpy.ndarray
-        Metadata of the 2D wavefront corrector.
-    wfc2DDType : type
-        Data type of the 2D wavefront corrector.
-    wfc2DSize : int
-        Size of the 2D wavefront corrector signal.
-    wfc2D_width : int
-        Width of the 2D wavefront corrector signal.
-    wfc2D_height : int
-        Height of the 2D wavefront corrector signal.
-    wfc2DShm : ImageSHM
-        Shared memory object for the 2D wavefront corrector.
     numDroppedModes : int
         Number of dropped modes.
     numActiveModes : int
@@ -223,54 +231,36 @@ class Loop(pyRTCComponent):
                 derivativeFilter : float, optional
                     Filter for the derivative term. Default is 0.1.
         """
-        self.confWFS = conf["wfs"]
-        self.confWFC = conf["wfc"]
-        self.confLoop = conf["loop"]
+
+        super().__init__(conf) 
         self.name = "Loop"
+        self.conf = conf
         
         #Read wfs signal's metadata and open a stream to the shared memory
-        self.signalMeta = ImageSHM("signal_meta", (ImageSHM.METADATA_SIZE,), np.float64).read_noblock()
-        self.signalDType = float_to_dtype(self.signalMeta[3])
-        self.signalSize = int(self.signalMeta[2]//self.signalDType.itemsize)
-        self.signalShm = ImageSHM("signal", (self.signalSize,), self.signalDType)
-        self.nullSignal = np.zeros(self.signalSize, dtype=self.signalDType)
-
-        #Read wfs SLOPES metadata and open a stream to the shared memory
-        self.signal2DMeta = ImageSHM("signal2D_meta", (ImageSHM.METADATA_SIZE,), np.float64).read_noblock()
-        self.signal2DDType = float_to_dtype(self.signal2DMeta[3])
-        self.signal2DSize = int(self.signal2DMeta[2]//self.signal2DDType.itemsize)
-        self.signal2D_width, self.signal2D_height = int(self.signal2DMeta[4]),  int(self.signal2DMeta[5])
-        print(self.signal2DMeta[3], (self.signal2D_width, self.signal2D_height), self.signal2DDType)
-        self.signal2DShm = ImageSHM("signal2D", (self.signal2D_width, self.signal2D_height), self.signal2DDType)
+        self.signalShm, self.signalShape, self.signalDType = initExistingShm("signal", gpuDevice = self.gpuDevice)
+        self.signalSize = int(np.prod(self.signalShape))
+        self.nullSignal = np.zeros(self.signalShape, dtype=self.signalDType)
 
         #Read wfc metadata and open a stream to the shared memory
-        self.wfcMeta = ImageSHM("wfc_meta", (ImageSHM.METADATA_SIZE,), np.float64).read_noblock()
-        self.wfcDType = float_to_dtype(self.wfcMeta[3])
-        self.numModes = int(self.wfcMeta[2]//self.wfcDType.itemsize)
-        self.wfcShm = ImageSHM("wfc", (self.numModes,), self.wfcDType)
+        self.wfcShm, self.wfcShape, self.wfcDType = initExistingShm("wfc", gpuDevice = self.gpuDevice)
+        self.numModes = int(np.prod(self.wfcShape))
 
-        #Read the wfc2D metadata and open a stream to the shared memory
-        self.wfc2DMeta = ImageSHM("wfc2D_meta", (ImageSHM.METADATA_SIZE,), np.float64).read_noblock()
-        self.wfc2DDType = float_to_dtype(self.wfc2DMeta[3])
-        self.wfc2DSize = int(self.wfc2DMeta[2]//self.wfc2DDType.itemsize)
-        self.wfc2D_width, self.wfc2D_height = int(self.wfc2DMeta[4]),  int(self.wfc2DMeta[5])
-        self.wfc2DShm = ImageSHM("wfc2D", (self.wfc2D_width, self.wfc2D_height), self.wfc2DDType)
-
-        self.numDroppedModes = setFromConfig(self.confLoop, "numDroppedModes", 0)
+        self.numDroppedModes = setFromConfig(self.conf, "numDroppedModes", 0)
         self.numActiveModes = self.numModes - self.numDroppedModes
         self.flat = np.zeros(self.numModes, dtype=self.wfcDType)
+        self.nullCorrection = np.zeros_like(self.flat)
 
         self.IM = np.zeros((self.signalSize, self.numModes),dtype=self.signalDType)
         self.CM = np.zeros((self.numModes, self.signalSize),dtype=self.signalDType)
-        self.gain = setFromConfig(self.confLoop, "gain", 0.1)
-        self.leakyGain = setFromConfig(self.confLoop, "leakyGain", 0.0)
+        self.gain = setFromConfig(self.conf, "gain", 0.1)
+        self.leakyGain = setFromConfig(self.conf, "leakyGain", 0.0)
         self.perturbAmp = 0
-        self.hardwareDelay = setFromConfig(self.confWFC, "hardwareDelay", 0.0)
-        self.pokeAmp = setFromConfig(self.confLoop, "pokeAmp", 1e-2)
-        self.numItersIM = setFromConfig(self.confLoop, "numItersIM", 100) 
-        self.delay = setFromConfig(self.confLoop, "delay", 0)
-        self.IMMethod = setFromConfig(self.confLoop, "IMMethod", "push-pull") 
-        self.IMFile = setFromConfig(self.confLoop, "IMFile", "")
+        self.hardwareDelay = setFromConfig(self.conf, "hardwareDelay", 0.0)
+        self.pokeAmp = setFromConfig(self.conf, "pokeAmp", 1e-2)
+        self.numItersIM = setFromConfig(self.conf, "numItersIM", 100) 
+        self.delay = setFromConfig(self.conf, "delay", 0)
+        self.IMMethod = setFromConfig(self.conf, "IMMethod", "push-pull") 
+        self.IMFile = setFromConfig(self.conf, "IMFile", "")
         
         self.clDocrime = False     
         self.numItersDC = 0   
@@ -286,13 +276,13 @@ class Loop(pyRTCComponent):
         """
         Terms for PID integrator
         """
-        self.pGain = setFromConfig(self.confLoop, "pGain", 0.1)
-        self.iGain = setFromConfig(self.confLoop, "iGain", 0.0)
-        self.dGain = setFromConfig(self.confLoop, "dGain", 0.0)
-        self.controlLimits = setFromConfig(self.confLoop, "controlLimits", [-np.inf, np.inf])
-        self.integralLimits = setFromConfig(self.confLoop, "integralLimits", [-np.inf, np.inf])
-        self.absoluteLimits = setFromConfig(self.confLoop, "absoluteLimits", [-np.inf, np.inf])
-        self.derivativeFilter = setFromConfig(self.confLoop, "derivativeFilter", 0.1)
+        self.pGain = setFromConfig(self.conf, "pGain", 0.1)
+        self.iGain = setFromConfig(self.conf, "iGain", 0.0)
+        self.dGain = setFromConfig(self.conf, "dGain", 0.0)
+        self.controlLimits = setFromConfig(self.conf, "controlLimits", [-np.inf, np.inf])
+        self.integralLimits = setFromConfig(self.conf, "integralLimits", [-np.inf, np.inf])
+        self.absoluteLimits = setFromConfig(self.conf, "absoluteLimits", [-np.inf, np.inf])
+        self.derivativeFilter = setFromConfig(self.conf, "derivativeFilter", 0.1)
         self.integral = 0
 
         self.previousWfError = np.zeros_like(self.wfcShm.read_noblock())
@@ -301,7 +291,6 @@ class Loop(pyRTCComponent):
 
         self.loadIM()
 
-        super().__init__(self.confLoop)        
         return
 
     def setGain(self, gain):
@@ -344,11 +333,11 @@ class Loop(pyRTCComponent):
             #Add some delay to ensure one-to-one
             time.sleep(self.hardwareDelay)
             #Burn the first new image since we were moving the DM during the exposure
-            self.signalShm.read()
+            self.signalShm.read(RELEASE_GIL = True)
             #Average out N new WFS frames
             tmp_plus = np.zeros_like(self.IM[:,i])
             for n in range(self.numItersIM):
-                tmp_plus += self.signalShm.read()
+                tmp_plus += self.signalShm.read(RELEASE_GIL = True)
             tmp_plus /= self.numItersIM
 
             #Minus amplitude
@@ -358,11 +347,11 @@ class Loop(pyRTCComponent):
             #Add some delay to ensure one-to-one
             time.sleep(self.hardwareDelay)
             #Burn the first new image since we were moving the DM during the exposure
-            self.signalShm.read()
+            self.signalShm.read(RELEASE_GIL = True)
             #Average out N new WFS frames
             tmp_minus = np.zeros_like(self.IM[:,i])
             for n in range(self.numItersIM):
-                tmp_minus += self.signalShm.read()
+                tmp_minus += self.signalShm.read(RELEASE_GIL = True)
             tmp_minus /= self.numItersIM
 
             #Compute the normalized difference
@@ -398,10 +387,10 @@ class Loop(pyRTCComponent):
             
             #Get current WFS response
             #I put this first to match CL case
-            slopes = self.signalShm.read().reshape(slopes.shape)
+            slopes = self.signalShm.read(RELEASE_GIL = True).reshape(slopes.shape)
 
             #Send random shape to mirror
-            self.sendToWfc(correction.reshape(corrShapeWFC))
+            self.sendToWfc(correction)
 
             add_to_buffer(self.docrimeBuffer, correction)
 
@@ -510,8 +499,8 @@ class Loop(pyRTCComponent):
         """
         Standard integrator using the pseudo open loop slopes.
         """
-        residual_slopes = self.signalShm.read()
-        currentCorrection = self.wfcShm.read()
+        residual_slopes = self.signalShm.read(RELEASE_GIL = self.RELEASE_GIL)
+        currentCorrection = self.wfcShm.read(RELEASE_GIL = self.RELEASE_GIL)
         # print(f'slopes: {residual_slopes.shape}, IM: {self.IM.shape}, corr: {currentCorrection.shape}')
 
         newCorrection = self.updateCorrectionPOL(correction=currentCorrection, 
@@ -526,26 +515,27 @@ class Loop(pyRTCComponent):
         """
         Standard integrator.
         """
-        slopes = self.signalShm.read()
-        currentCorrection = self.wfcShm.read()
-        newCorrection = updateCorrection(correction=currentCorrection, 
-                                        gCM=self.gCM, 
-                                        slopes=slopes)
-        newCorrection[self.numActiveModes:] = 0
-        self.sendToWfc(newCorrection, slopes = slopes)
+        slopes = self.signalShm.read(SAFE=False, RELEASE_GIL = self.RELEASE_GIL)
+        newCorrection = leakyIntegratorNumba(slopes, 
+                         self.gCM, 
+                         self.wfcShm.read(SAFE=False).squeeze(),
+                         self.nullCorrection,
+                         np.float32(0),#No leak
+                         self.numActiveModes)
+        self.sendToWfc(newCorrection, slopes=slopes)
         return
-    
     
     def leakyIntegrator(self):
         """
         Leaky integrator.
         """
-        slopes = self.signalShm.read()
-        currentCorrection = (1-self.leakyGain)*self.wfcShm.read()
-        newCorrection = updateCorrection(correction=currentCorrection, 
-                                        gCM=self.gCM, 
-                                        slopes=slopes)
-        newCorrection[self.numActiveModes:] = 0
+        slopes = self.signalShm.read(SAFE=False, RELEASE_GIL = self.RELEASE_GIL)
+        newCorrection = leakyIntegratorNumba(slopes, 
+                         self.gCM, 
+                         self.wfcShm.read_noblock(SAFE=False).squeeze(),
+                         self.nullCorrection,
+                         np.float32(self.leakyGain),
+                         self.numActiveModes)
         self.sendToWfc(newCorrection, slopes=slopes)
         return
 
@@ -553,8 +543,8 @@ class Loop(pyRTCComponent):
         """
         PID integrator using the pseudo-open loop slopes.
         """
-        slopes = self.signalShm.read()
-        correction = self.wfcShm.read()
+        slopes = self.signalShm.read(RELEASE_GIL = self.RELEASE_GIL)
+        correction = self.wfcShm.read(RELEASE_GIL = self.RELEASE_GIL)
         polSlopes = slopes - self.fIM@correction
         return self.pidIntegrator(slopes=polSlopes, correction=correction)
 
@@ -570,9 +560,9 @@ class Loop(pyRTCComponent):
             Current correction vector. If not provided, reads from shared memory.
         """
         if slopes is None:
-            slopes = self.signalShm.read()
+            slopes = self.signalShm.read(RELEASE_GIL = self.RELEASE_GIL)
         if correction is None:
-            correction = self.wfcShm.read()
+            correction = self.wfcShm.read(RELEASE_GIL = self.RELEASE_GIL)
 
         #Compute raw error term (numba accelerated)
         wfError = compCorrection(CM=self.CM, 
@@ -618,8 +608,8 @@ class Loop(pyRTCComponent):
 
     def sendToWfc(self, correction, slopes=None):
         #Get an initial slope reading to set shapes
-
-        if self.clDocrime and slopes is not None:
+        correction = correction.reshape(self.flat.shape)
+        if self.clDocrime and isinstance(slopes, np.ndarray):
 
             slopes = slopes.reshape(slopes.size, 1)
             #Compute new random shape
@@ -663,36 +653,10 @@ class Loop(pyRTCComponent):
 
 
     def plotIM(self, row=None):
-        # if not (row is None):
-        #     row2D = signal2D(self.IM[:,row], )
-        #     plt.imshow(row2D, cmap = 'inferno')
-        #     plt.colorbar()
-        #     plt.show()
-        # else:
+
         plt.imshow(self.IM, cmap = 'inferno', aspect='auto')
         plt.show()
 
 if __name__ == "__main__":
 
-    # Create argument parser
-    parser = argparse.ArgumentParser(description="Read a config file from the command line.")
-
-    # Add command-line argument for the config file
-    parser.add_argument("-c", "--config", required=True, help="Path to the config file")
-    parser.add_argument("-p", "--port", required=True, help="Port for communication")
-
-    # Parse command-line arguments
-    args = parser.parse_args()
-
-    conf = read_yaml_file(args.config)
-
-    pid = os.getpid()
-    set_affinity((conf["loop"]["affinity"])%os.cpu_count()) 
-    decrease_nice(pid)
-
-    loop = Loop(conf=conf)
-    
-    l = Listener(loop, port= int(args.port))
-    while l.running:
-        l.listen()
-        time.sleep(1e-3)
+    launchComponent(Loop, "loop", start = False)

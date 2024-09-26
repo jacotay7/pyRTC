@@ -118,6 +118,13 @@ class Optimizer(pyRTCComponent):
         self.applyTrial(self.study.ask())
         return
 
+    def resetStudy(self):
+
+        self.study = optuna.create_study(direction='maximize', 
+                                         sampler=optuna.samplers.CmaEsSampler())
+
+        return
+
 
 if __name__ == "__main__":
 
