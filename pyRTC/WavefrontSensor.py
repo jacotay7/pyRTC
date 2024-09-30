@@ -16,7 +16,7 @@ class WavefrontSensor(pyRTCComponent):
     class should be used by defining a child class held in pyRTC.hardware, which overwrites
     the relevant functions which actual hardware connectivity code. The child class can call its parent
     implementations in order to make use of the code which sets the relevant parameters, write to shared
-    memory, etc... or they can overwrite them completely.
+    memory, etc... or they can overwrite them completely. See hardware/ximeaWFS.py for an example.
 
     Config
     ------
@@ -105,9 +105,11 @@ class WavefrontSensor(pyRTCComponent):
             the "wfs" section of a pyRTC config.
         """
 
+        super().__init__(conf)
+
         self.name = setFromConfig(conf, "name", "wavefrontSensor")
-        self.width = conf["width"]
-        self.height = conf["height"]
+        self.width = setFromConfig(conf, "width", 1)
+        self.height = setFromConfig(conf, "height", 1)
         self.darkCount = setFromConfig(conf, "darkCount", 1000)
         self.darkFile = setFromConfig(conf, "darkFile", "")
 
@@ -115,15 +117,13 @@ class WavefrontSensor(pyRTCComponent):
         self.imageRawDType = np.uint16
         self.imageDType = np.int32
 
-        self.imageRaw = ImageSHM("wfsRaw", self.imageShape, self.imageRawDType)
-        self.image = ImageSHM("wfs", self.imageShape, self.imageDType)
+        self.imageRaw = ImageSHM("wfsRaw", self.imageShape, self.imageRawDType, gpuDevice = self.gpuDevice, consumer=False)
+        self.image = ImageSHM("wfs", self.imageShape, self.imageDType, gpuDevice = self.gpuDevice, consumer=False)
 
         self.data = np.zeros(self.imageShape, dtype=self.imageRawDType)
         self.dark = np.zeros(self.imageShape, dtype=self.imageDType)
 
         self.loadDark()
-
-        super().__init__(conf)
 
         return
     
@@ -212,7 +212,7 @@ class WavefrontSensor(pyRTCComponent):
             Processed image data.
         """
         if block:
-            return self.image.read()
+            return self.image.read(RELEASE_GIL = self.RELEASE_GIL)
         else:
             return self.image.read_noblock()
     
@@ -286,28 +286,4 @@ class WavefrontSensor(pyRTCComponent):
     
 if __name__ == "__main__":
 
-    # Create argument parser
-    parser = argparse.ArgumentParser(description="Read a config file from the command line.")
-
-    # Add command-line argument for the config file
-    parser.add_argument("-c", "--config", required=True, help="Path to the config file")
-    parser.add_argument("-p", "--port", required=True, help="Port for communication")
-
-    # Parse command-line arguments
-    args = parser.parse_args()
-
-    conf = read_yaml_file(args.config)
-
-    pid = os.getpid()
-    set_affinity((conf["wfs"]["affinity"])%os.cpu_count()) 
-    decrease_nice(pid)
-
-    confWFS = conf["wfs"]
-    wfs = WavefrontSensor(conf=confWFS)
-
-    wfs.start()
-    
-    l = Listener(wfs, port= int(args.port))
-    while l.running:
-        l.listen()
-        time.sleep(1e-3)
+    launchComponent(WavefrontSensor, "wfs", start = True)

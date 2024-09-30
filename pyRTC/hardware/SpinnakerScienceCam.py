@@ -33,7 +33,9 @@ class spinCam(ScienceCamera):
             self.setRoi(roi)
         if "gain" in conf:
             self.setGain(conf["gain"])
-        
+        if "gamma" in conf:
+            self.setGamma(conf["gamma"])
+
         self.camera.begin_acquisition()
 
         return
@@ -64,7 +66,13 @@ class spinCam(ScienceCamera):
         super().setGain(gain)
         self.camera.camera_nodes.Gain.set_node_value(self.gain)
         return
-    
+
+    def setGamma(self, gamma):
+        super().setGamma(gamma)
+        self.gamma = np.clip(self.gamma, 0.5, 3.9)
+        self.camera.camera_nodes.Gamma.set_node_value(self.gamma)
+        return
+
     def setBitDepth(self, bitDepth):
         super().setBitDepth(bitDepth)
         if self.bitDepth == 8:
@@ -94,27 +102,5 @@ class spinCam(ScienceCamera):
 
 if __name__ == "__main__":
 
-    # Create argument parser
-    parser = argparse.ArgumentParser(description="Read a config file from the command line.")
-
-    # Add command-line argument for the config file
-    parser.add_argument("-c", "--config", required=True, help="Path to the config file")
-    parser.add_argument("-p", "--port", required=True, help="Port for communication")
-
-    # Parse command-line arguments
-    args = parser.parse_args()
-
-    conf = read_yaml_file(args.config)
-
-    pid = os.getpid()
-    set_affinity((conf["psf"]["affinity"])%os.cpu_count()) 
-    decrease_nice(pid)
-
-    psf = spinCam(conf=conf["psf"])
-    psf.start()
-
-    l = Listener(psf, port = int(args.port))
-    while l.running:
-        l.listen()
-        time.sleep(1e-3)
+    launchComponent(spinCam, "psf", start = True)
         

@@ -1,25 +1,40 @@
 # %% Imports
 import numpy as np
 import matplotlib.pyplot as plt
-from pyRTC.hardware.ximeaWFS import *
-# from pyRTC.WavefrontSensor import *
-from pyRTC.hardware.ALPAODM import *
+import time
+from pyRTC import *
+from pyRTC.hardware import *
 from pyRTC.utils import *
-from pyRTC.hardware.SpinnakerScienceCam import *
-from pyRTC.SlopesProcess import *
-from pyRTC.Loop import *
+from pyRTC.Pipeline import *
+# from pyRTC.hardware.ximeaWFS import *
+# # from pyRTC.WavefrontSensor import *
+# from pyRTC.hardware.ALPAODM import *
+
+# from pyRTC.hardware.SpinnakerScienceCam import *
+# from pyRTC.SlopesProcess import *
+# from pyRTC.Loop import *
 #%% CLEAR SHMs
+# from pyRTC.Pipeline import clear_shms
 # shms = ["wfs", "wfsRaw", "signal", "signal2D", "wfc", "wfc2D", "psfShort", "psfLong"]
 # clear_shms(shms)
 # %% Load Config
-conf = read_yaml_file("/home/whetstone/pyRTC/SHARP_LAB/config.yaml")
+cfile = "/home/whetstone/pyRTC/SHARP_LAB/config_SR.yaml"
+cfile = "/home/whetstone/pyRTC/SHARP_LAB/config.yaml"
+conf = read_yaml_file(cfile)
+
+# %% Launch Modulator (PyWFS)
+# confMod = conf["modulator"]
+# mod = PIModulator(conf=confMod)
+# time.sleep(0.5)
+# mod.start()
 # %% Launch WFS
 confWFS = conf["wfs"]
 wfs = XIMEA_WFS(conf=confWFS)
 time.sleep(0.5)
 wfs.start()
 # %% Launch slopes
-slopes = SlopesProcess(conf=conf)
+confSlopes = conf["slopes"]
+slopes = SlopesProcess(conf=confSlopes)
 slopes.start()
 time.sleep(0.5)
 # %% Launch WFC
@@ -33,7 +48,8 @@ psf = spinCam(conf=confPSF)
 time.sleep(0.5)
 psf.start()
 # %% Launch loop
-loop = Loop(conf=conf)
+confLoop = conf["loop"]
+loop = Loop(conf=confLoop)
 time.sleep(1)
 
 # %% Recalibrate
@@ -88,16 +104,14 @@ if False:
     # time.sleep(1)
 
 
-
 # %% Compute CM
 loop.IMFile = "/home/whetstone/pyRTC/SHARP_LAB/calib/IM.npy"
+loop.numDroppedModes = 15
+loop.gain = 0.1
+loop.leakyGain = 0.02
 loop.loadIM()
-loop.numDroppedModes = 40
-loop.computeCM()
-loop.setGain(0.1)
-loop.leakyGain = 1e-2
 
-# %% Start Loop
+# %% Start Loop %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 wfc.flatten()
 time.sleep(0.3)
 loop.start()
@@ -107,6 +121,28 @@ loop.stop()
 wfc.flatten()
 time.sleep(0.3)
 wfc.flatten()
+
+#%% NCPA
+ncpaOptim = NCPAOptimizer(read_yaml_file('/home/whetstone/pyRTC/SHARP_LAB/config.yaml'
+)["optimizer"]["ncpa"], loop, slopes)
+psf.integrationLength = 1
+ncpaOptim.numReads = 10
+ncpaOptim.startMode = 0
+ncpaOptim.endMode = 60
+ncpaOptim.numSteps = 1500
+ncpaOptim.isCL = False
+for i in range(1):
+    ncpaOptim.optimize()
+ncpaOptim.applyOptimum()
+wfc.saveShape()
+slopes.takeRefSlopes()
+slopes.refSlopesFile = "/home/whetstone/pyRTC/SHARP_LAB/calib/ref.npy"
+slopes.saveRefSlopes()
+psf.integrationLength = 10000
+psf.takeModelPSF()
+psf.modelFile = "/home/whetstone/pyRTC/SHARP_LAB/calib/modelPSF.npy"
+psf.saveModelPSF()
+
 
 #%% Float Actuators
 wfc.floatingInfluenceRadius = 1
@@ -139,55 +175,80 @@ bench_converter_LS = (loop.CM @ SIM) #[:,:21]
 bench_converter_NP = np.eye(94) #[:,:21]
 # %% Tip-Tilt-Focus-Sweep
 from tqdm import tqdm
+import glob
 
-folder = "/home/whetstone/Downloads/robin-may-23"
-
+folder_out = "/media/whetstone/storage2/data/robin-aug"
+folder_in = "/home/whetstone/Downloads/torch/torch/phases"
 # filelist = ['cnnx2_phase', 'cnnx4_phase','linx2_phase', 'linx4_phase', 'cnnx8n3_phase','linx8n3_phase']
 # filelist = ['_zern_cnn_x2_n4_phase', '_zern_cnn_x4_n4_phase', '_zern_cnn_x8_n4_phase', '_fixzern_lin_x2_n4_phase', '_fixzern_lin_x4_n4_phase', '_fixzern_lin_x8_n4_phase']
 # N = 3
-
+filelist = glob.glob(f"{folder_in}/*.npy")
 # numModes = 11
 # powerlist = [0, 0.25, 0.5, 1., 2., 4., 8., 16] #np.linspace(-RANGE, RANGE, numModes) #.astype(int)
-powerlist = np.linspace(-10, 10, 101)
-numModes = len(powerlist)
+powerlist = np.linspace(-3, 3, 13)
+numPokePowers = len(powerlist)
 slopecorrect = 0.0021
+psf.integrationLength = 1000
+psf.setGamma(4)
 
-for k, bench_converter in enumerate([bench_converter_NP]): #bench_converter_SL, bench_converter_LS, bench_converter_NP]):
-    bc = "NP" #["SL", "LS", "NP"][k]
-    for ff in range(21): #filelist:
-        cmd = wfc.read()
-        wfc.flatten()
-        time.sleep(0.01)
-        
-        # d = np.load(f'{folder}/{ff}.npy')
-        d = np.zeros((1, *cmd.shape))
-        d[:, ff] = 1
-        N = d.shape[0]
+# for k, bench_converter in enumerate([bench_converter_NP]): #bench_converter_SL, bench_converter_LS, bench_converter_NP]):
+#     bc = "NP" #["SL", "LS", "NP"][k]
+modelist = [1, 2, 10, 20]
+modelength = len(modelist)
 
-        psfs = np.empty((numModes, 21, *psf.imageShape))
-        # cmd = wfc.read()
-        cmds = np.empty((numModes, 21, *cmd.shape), dtype=cmd.dtype)
-        shps = np.empty((numModes, 21, *wfc.layout.shape), dtype=cmd.dtype)
+original_flat = wfc.flat
 
-        for i, mode in enumerate(powerlist): #range(numModes):
-            correction = np.zeros_like(wfc.read())
-            for j in tqdm(range(N)):
-                # correction[:21] = slopecorrect * mode * d[j, :].flatten()
-                correction = bench_converter @ (slopecorrect * mode * d[j, :].flatten())
-                wfc.write(correction)
-                #Burn some images
-                psf.readLong()
-                psf.readLong()
-                #Save the next PSF in the dataset
-                psfs[i, ff, :, :] = psf.readLong()
-                cmds[i, ff, :] = correction
-                shps[i, ff, wfc.layout] = wfc.currentShape - wfc.flat
-                wfc.flatten()
-                psf.readLong()
-        
-        np.save(f'{folder}/pinhole_psfs_{bc}', psfs)
-        np.save(f'{folder}/pinhole_cmds_{bc}', cmds)
-        np.save(f'{folder}/pinhole_shps_{bc}', shps)
+# for ff, ffn in enumerate(tqdm(modelist)): #filelist:
+for ff, ffn in enumerate(tqdm(filelist[39:]), start=39):
+    cmd = wfc.read()
+    wfc.flatten()
+    time.sleep(0.01)
+    
+    d = np.load(ffn) #f'{folder_in}/{ff}.npy')
+    # d = np.zeros((2, *cmd.shape))
+    # d[:, ffn] = 1
+
+    N = d.shape[0]
+
+    psfs = np.empty((numPokePowers, N, *psf.imageShape))
+    # cmd = wfc.read()
+    cmds = np.empty((numPokePowers, N, *cmd.shape), dtype=cmd.dtype)
+    shps = np.empty((numPokePowers, N, *wfc.layout.shape), dtype=cmd.dtype)
+
+    for i, poke_power in enumerate(powerlist): #range(numModes):
+        correction = np.zeros_like(wfc.read())
+        for j in range(N):
+
+            # if j == 0:
+            #     psf.setGamma(1)
+            # elif j == 1:
+            #     psf.setGamma(4)
+
+            #calib only
+            # correction = (slopecorrect * poke_power * d[j, :].flatten()) #bench_converter @
+            #actual testing only:
+            correction = (slopecorrect * poke_power * d[j, wfc.layout].flatten()) #@wfc.M2C #bench_converter @
+            
+            wfc.flat = original_flat + correction
+            # wfc.write(correction)
+
+            #Burn some images
+            psf.readLong()
+            # psf.readLong()
+            # psf.readLong()
+            # time.sleep(0.5)
+
+            #Save the next PSF in the dataset
+            psfs[i, j, :, :] = psf.readLong()
+            # cmds[i, j, :] = correction
+            # shps[i, j, wfc.layout] = wfc.currentShape - wfc.flat
+            wfc.flatten()
+            psf.readLong()
+    
+    np.savez(f'{folder_out}/LandR_allfiles_take4_{ff}.npz', psf_out=psfs, file_name=ffn, power_list=powerlist)
+    time.sleep(10)
+        # np.save(f'{folder}/pinhole_cmds_{bc}', cmds)
+        # np.save(f'{folder}/pinhole_shps_{bc}', shps)
 
 # %%
 # take flat image
@@ -230,12 +291,13 @@ plt.hist(1/speeds, bins = 'sturges')
 plt.show()
 # %% Generate Valid SubAps for SHWFS
 #First make an IM with all valid subAps
-IM = np.load("../SHARP_LAB/IM.npy")
+import matplotlib.pyplot as plt
+IM = np.load("/home/whetstone/pyRTC/SHARP_LAB/calib/IM.npy")
 IM = np.moveaxis(IM, 0 ,1)
 pdiam = int(np.sqrt(IM.shape[1]/2))
 IM = IM.reshape(IM.shape[0], 2*pdiam, pdiam)
 mean_IM = np.std(IM,axis = 0)#np.mean(np.abs(IM), axis = 0)
-min_threshold = 6
+min_threshold = 3
 max_threshold = 20
 valid_sub_aps = (mean_IM > min_threshold) & (mean_IM < max_threshold)
 combineXY = valid_sub_aps[:valid_sub_aps.shape[0]//2,:] & valid_sub_aps[valid_sub_aps.shape[0]//2:,:]
@@ -299,9 +361,9 @@ plt.show()
 
 # %% Reset SHWFS
 slopes.setRefSlopes(np.zeros_like(slopes.refSlopes))
-slopes.shwfsContrast = 20
-slopes.offsetX = 0
-slopes.offsetY = 0
+slopes.shwfsContrast = 10
+slopes.offsetX = 13
+slopes.offsetY = 3
 
 # %% Find SHWFS Offsets
 # slopes.subApSpacing = 15.54
@@ -399,3 +461,26 @@ plt.show()
 
 
 # %%
+# %%Scan Tip Tilts
+wfcShm = initExistingShm("wfc")[0]
+amp = 0.1
+N = 50
+tips = np.linspace(-amp,amp, N)
+tilts = np.copy(tips)
+res = np.empty((tips.size, tilts.size))
+for i, tip in enumerate(tips):
+    for j, tilt in enumerate(tilts):
+        x = np.zeros_like(wfcShm.read_noblock())
+        x[0] = tip
+        x[1] = tilt
+        wfcShm.write(x)
+        time.sleep(0.01)
+        res[i,j] = np.std(wfc.currentShape)
+plt.imshow(res)
+plt.show()
+
+a,b = np.where(res==np.min(res))
+x = np.zeros_like(wfcShm.read_noblock())
+x[0] = tips[a]
+x[1] = tilts[b]
+wfcShm.write(x)

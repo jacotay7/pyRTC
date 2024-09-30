@@ -10,8 +10,8 @@ loop:
 
 wfs:
   name: OOPAOWFS
-  width: 48
-  height: 48
+  width: 28
+  height: 28
   darkCount: 1000
   affinity: 3
   functions:
@@ -23,19 +23,19 @@ slopes:
   affinity: 4
   flatNorm: True
   #Specify where the pupils are and how large for a PYWFS
-  pupilsRadius: 12
-  pupils:  
-  - 12,12
-  - 36,12
-  - 12,36
-  - 36,36
+  # pupilsRadius: 12
+  # pupils:  
+  # - 12,12
+  # - 36,12
+  # - 12,36
+  # - 36,36
   functions:
   - computeSignal
 
 wfc:
   name: "OOPAOWFC"
-  numActuators: 356
-  numModes: 100
+  numActuators: 100
+  numModes: 80
   flatFile: ""
   saveFile: "flat.npy"
   m2cFile:  ""
@@ -49,10 +49,10 @@ wfc:
 psf:
   name: "OOPAOPSF"
   index: 0
-  width: 128
-  height: 128
-  darkCount: 1000
-  integration: 100
+  width: 200
+  height: 200
+  darkCount: 10
+  integration: 5
   affinity: 3
   functions:
   - expose

@@ -18,7 +18,9 @@ setup(
                       'argparse',
                       'psutil',
                       'optuna',
-                      'cmaes'             
+                      'cmaes',
+                      'torch',
+                      'numexpr'             
                       ],
     extras_require={
         "docs": [

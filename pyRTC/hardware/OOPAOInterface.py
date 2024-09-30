@@ -102,9 +102,11 @@ class _OOPAOScienceCamera(ScienceCamera):
         # #Add current dm state to the telescope
         self.src*self.tel#*self.dm
         #Compute PSF
-        self.tel.computePSF(zeroPaddingFactor=5, N_crop=136)
+        self.tel.computePSF(zeroPaddingFactor=5)#, N_crop=136)
         #Check that we still have the right source coupled
-        self.data = (255.*self.tel.PSF_norma_zoom).astype(np.uint16)
+        psfImg = self.tel.PSF_norma.copy()
+        psfImg[psfImg > 65536] = 65536
+        self.data = (psfImg).astype(np.uint16)
         
         super().expose()
 
@@ -223,7 +225,7 @@ def _initializeDummyParameterFile():
     ###%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% M1 PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     
     param['diameter'             ] = 8                                              # diameter in [m]
-    param['nSubaperture'         ] = 20                                             # number of PWFS subaperture along the telescope diameter
+    param['nSubaperture'         ] = 10                                             # number of PWFS subaperture along the telescope diameter
     param['nPixelPerSubap'       ] = 4                                              # sampling of the PWFS subapertures
     param['resolution'           ] = param['nSubaperture']*param['nPixelPerSubap']  # resolution of the telescope driven by the PWFS
     param['sizeSubaperture'      ] = param['diameter']/param['nSubaperture']        # size of a sub-aperture projected in the M1 space
