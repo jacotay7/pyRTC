@@ -55,6 +55,8 @@ past_values = [compute_next_value()]*WINDOW_SIZE
 
 # Set the plot limits
 ax.set_xlim(0, MAX_SIZE)
+ax.set_ylabel(shmName, size = 16)
+ax.set_xlabel("Time [arb]", size = 16)
 ax.grid()
 
 # Enable interactive mode

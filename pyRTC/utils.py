@@ -22,6 +22,7 @@ NP_DATA_TYPES = [
     np.datetime64, np.timedelta64
 ]
 
+
 def precise_delay(microseconds):
     target_time = time.perf_counter() + microseconds / 1_000_000
     while np.float64(time.perf_counter()) < target_time:
