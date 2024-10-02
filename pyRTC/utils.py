@@ -10,6 +10,7 @@ from scipy.ndimage import median_filter, gaussian_filter
 import socket
 from datetime import datetime
 import time 
+import logging
 
 NP_DATA_TYPES = [
     np.int8, np.int16, np.int32, np.int64,
@@ -384,8 +385,12 @@ def bind_socket(host, start_port, max_attempts=5):
 def decrease_nice():
     # Unsupported by MacOS or Windows
     if sys.platform != 'darwin' and sys.platform != 'win32':
-        p = psutil.Process(os.getpid())
-        p.nice(-20)  # Unix uses a numeric value (lower means higher priority)
+        try:
+            p = psutil.Process(os.getpid())
+            p.nice(-20)  # Unix uses a numeric value (lower means higher priority)
+        except:
+            logging.log(level=logging.WARNING, msg="Unable to adjust nice level.\
+                         Give your user sudo privledges without passowrd to use this feature.")
     return
 
 # Set CPU affinity and priority for a thread
