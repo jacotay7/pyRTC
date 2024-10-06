@@ -3,7 +3,6 @@ import sys
 import select
 import os 
 from astropy.io import fits
-from subprocess import PIPE, Popen
 import numpy as np
 import psutil
 from scipy.ndimage import median_filter, gaussian_filter

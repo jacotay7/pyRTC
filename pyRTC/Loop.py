@@ -247,7 +247,7 @@ class Loop(pyRTCComponent):
 
         self.numDroppedModes = setFromConfig(self.conf, "numDroppedModes", 0)
         self.numActiveModes = self.numModes - self.numDroppedModes
-        self.flat = np.zeros(self.numModes, dtype=self.wfcDType)
+        self.flat = np.zeros(self.wfcShape, dtype=self.wfcDType)
         self.nullCorrection = np.zeros_like(self.flat)
 
         self.IM = np.zeros((self.signalSize, self.numModes),dtype=self.signalDType)
