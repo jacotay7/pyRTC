@@ -77,7 +77,7 @@ if RECALIBRATE == True:
     loop.setProperty("IMMethod", "push-pull")
     loop.setProperty("pokeAmp", 0.03)
     loop.setProperty("numItersIM", 100)
-    loop.setProperty("IMFile", "/home/whetstone/pyRTC/SHARP_LAB/calib/IM.npy")
+    loop.setProperty("IMFile", "/home/whetstone/pyRTC/SHARP_LAB/calib/IM_SH.npy")
     wfc.run("flatten")
     loop.run("computeIM")
     loop.run("saveIM")
@@ -100,11 +100,11 @@ if RECALIBRATE == True:
 
 
 # %% Compute CM
-loop.setProperty("IMFile", "/home/whetstone/pyRTC/SHARP_LAB/calib/IM.npy")
+loop.setProperty("IMFile", "/home/whetstone/pyRTC/SHARP_LAB/calib/IM_SH.npy")
 # loop.setProperty("IMFile", "/home/whetstone/pyRTC/SHARP_LAB/calib/OL_DOCRIME.npy")
 # loop.setProperty("IMFile", "/home/whetstone/pyRTC/SHARP_LAB/calib/OL_DOCRIME_CL_docrime.npy")
 # loop.setProperty("IMFile", "/home/whetstone/pyRTC/SHARP_LAB/calib/ESCAPE.npy")
-loop.setProperty("numDroppedModes", 0)
+loop.setProperty("numDroppedModes", 10)
 loop.setProperty("gain",0.40)
 loop.setProperty("leakyGain", 0.021)
 loop.run("loadIM")
@@ -193,7 +193,7 @@ pidOptim.applyOptimum()
 #%% Optimize NCPA
 #%
 import optuna
-optuna.logging.set_verbosity(optuna.logging.WARNING)
+optuna.logging.set_verbosity(optuna.logging.DEBUG)
 numOptim = 3
 maxAMP = 0.02
 amps = np.linspace(maxAMP, maxAMP/5, numOptim)
@@ -203,7 +203,7 @@ for i in range(numOptim):
     time.sleep(2)
     ncpaOptim.numReads = 3
     ncpaOptim.startMode = 0
-    ncpaOptim.endMode = 20 #wfc.getProperty("numModes")
+    ncpaOptim.endMode = 50 #wfc.getProperty("numModes")
     ncpaOptim.numSteps = 1500
     ncpaOptim.correctionMag = amps[i]
     ncpaOptim.isCL = False
@@ -212,28 +212,30 @@ for i in range(numOptim):
     ncpaOptim.applyNext()
 
     wfc.run("saveShape")
-    # slopes.run("takeRefSlopes")
-    # slopes.setProperty("refSlopesFile", "/home/whetstone/pyRTC/SHARP_LAB/calib/ref.npy")
-    # slopes.run("saveRefSlopes")
+    slopes.run("takeRefSlopes")
+    slopes.setProperty("refSlopesFile", "/home/whetstone/pyRTC/SHARP_LAB/calib/ref_SH.npy")
+    slopes.run("saveRefSlopes")
     psfCam.setProperty("integrationLength", 2000)
     time.sleep(2)
     psfCam.run("takeModelPSF")
-    psfCam.setProperty("modelFile", "/home/whetstone/pyRTC/SHARP_LAB/calib/modelPSF_PyWFS.npy")
+    psfCam.setProperty("modelFile", "/home/whetstone/pyRTC/SHARP_LAB/calib/modelPSF_SH.npy")
     psfCam.run("saveModelPSF")
     wfc.run("loadFlat")
     
 
 #%% Loop Optimizer
-psfCam.setProperty("integrationLength", 100)
+from tqdm import trange
+psfCam.setProperty("integrationLength", 1000)
 time.sleep(1)
-loopOptim.numReads = 10
+loopOptim.numReads = 100
 # loopOptim.maxGain = 0.6
 # loopOptim.maxLeak = 0.1
 # loopOptim.maxDroppedModes = 40
-loopOptim.numSteps = 300
-for i in range(1):
+loopOptim.numSteps = 1
+for i in trange(20):
     loopOptim.optimize()
-loopOptim.applyOptimum()
+    loopOptim.applyOptimum()
+    
 
 
 # %% Plots

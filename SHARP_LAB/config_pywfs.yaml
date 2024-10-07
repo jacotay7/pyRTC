@@ -27,7 +27,8 @@ loop:
 wfs:
   name: XIMEA
   serial: "13056250"
-  binning: 2 
+  binning: 2
+  downsampleFactor: 4
   exposure: 3333
   gain: 0
   bitDepth: 10
@@ -51,17 +52,23 @@ wfs:
 slopes:
   type: PYWFS
   signalType: slopes
-  validSubApsFile: "/home/whetstone/pyRTC/SHARP_LAB/calib/validSubApsPyWFS.npy"
+  # validSubApsFile: "/home/whetstone/pyRTC/SHARP_LAB/calib/validSubApsPyWFS.npy"
   refSlopesFile: "/home/whetstone/pyRTC/SHARP_LAB/calib/refPyWFS.npy"
   flatNorm: True
-  pupilsRadius: 32 #64
-  # gpuDevice: 0
+  pupilsRadius: 8 #8 #64
   pupils: 
-  - 45,48
-  - 46,128
-  - 152,65 #140, 60
-  - 130,128
+  - 11,12
+  - 11,32
+  - 38,16 
+  - 32,32
+  # pupilsRadius: 32
+  # pupils: 
+  # - 46,48
+  # - 44,128
+  # - 150,65 #140, 60
+  # - 128,128
   affinity: 4
+  # gpuDevice: 0
   functions:
   - computeSignal
 
@@ -86,11 +93,11 @@ wfc:
 psf:
   name: "FLIR"
   index: 0
-  exposure: 800
+  exposure: 3333
   gain: 0
   bitDepth: 16
   left: 936
-  top: 448
+  top: 432
   width: 128
   height: 128
   darkCount: 2000

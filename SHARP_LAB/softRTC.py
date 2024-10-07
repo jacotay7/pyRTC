@@ -18,7 +18,7 @@ from pyRTC.Pipeline import *
 # shms = ["wfs", "wfsRaw", "signal", "signal2D", "wfc", "wfc2D", "psfShort", "psfLong"]
 # clear_shms(shms)
 # %% Load Config
-cfile = "/home/whetstone/pyRTC/SHARP_LAB/config_SR.yaml"
+# cfile = "/home/whetstone/pyRTC/SHARP_LAB/config_SR.yaml"
 cfile = "/home/whetstone/pyRTC/SHARP_LAB/config.yaml"
 conf = read_yaml_file(cfile)
 

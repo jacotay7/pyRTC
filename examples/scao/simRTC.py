@@ -1,6 +1,7 @@
 # %% Imports
 import matplotlib.pyplot as plt
 import time
+from tqdm import tqdm
 #%%
 import sys
 tmp = sys.stdout
@@ -9,6 +10,10 @@ from pyRTC.hardware.OOPAOInterface import OOPAOInterface
 from OOPAO.calibration.compute_KL_modal_basis import compute_KL_basis
 RECALIBRATE = False
 sys.stdout = tmp
+import logging
+import matplotlib
+
+logging.getLogger('matplotlib').setLevel(logging.WARNING)
 #%% Read Config
 conf = utils.read_yaml_file("pywfs_OOPAO_config.yaml")
 
@@ -29,8 +34,6 @@ the config will begin.
 dm.start()
 dm.flatten()
 wfs.start()
-
-
 
 #Comment out if not made yet
 psf.loadModelPSF("./calib/modelPSF.npy")
@@ -64,7 +67,7 @@ confLoop["hidden_size"] = 512
 confLoop["num_layers"] = 2
 confLoop["learning_rate"] = 1e-3
 confLoop["num_epochs"] = 100
-confLoop["batch_size"] = 8
+confLoop["batch_size"] = 64
 confLoop["functions"] = ["predictiveIntegrator"]
 
 from pyRTC.hardware.basicPredictLoop import basicPredictLoop
@@ -93,7 +96,6 @@ if RECALIBRATE:
 #Add the atmosphere back to the simulation
 sim.addAtmosphere()
 
-
 #%%Adjust frame delay
 dm.setDelay(confLoop["T"])
 dm.flatten()
@@ -101,22 +103,90 @@ loop.setGain(0.3)
 time.sleep(1)
 loop.start()
 # %%
-loop.listen(int(2**13))
+# loop.listen(int(2**14))
+loop.slopesBuffer = np.load("./calib/slopesBuffer.npy")
 loop.stop()
 # %%
 # loop.num_epochs = 1
 # loop.train()
-loop.loadModels()
+# loop.loadModels()
 
-# loop.num_epochs = 5
-# loop.train()
+loop.num_epochs = 100
+loop.train()
 # %%
 loop.start()
-loop.setGain(0.3)
+loop.setGain(0.2)
 loop.predict=False
 time.sleep(5)
-loop.gamma = 0.0
+loop.gamma = 0.6
 loop.predict=True
+#%%
+def recordStrehl(strehlShm, N=10):
+    val = 0
+    for j in range(N):
+        val += np.mean(strehlShm.read())
+    return val/N
+
+def resetLoop():
+    loop.stop()
+    loop.flatten()
+    dm.flatten()
+    time.sleep(0.5)
+    loop.start()
+    time.sleep(0.5)
+    return
+strehlShm = initExistingShm("strehl")[0]
+
+#%% Find best gain
+# loop.gamma = 0
+gains = np.linspace(0.1,1,10)
+strehls = np.zeros_like(gains)
+N = 100
+
+for i in tqdm(range(gains.size), desc="Optimal Gain"):
+    g = gains[i]
+    loop.setGain(g)
+    resetLoop()
+    strehls[i] = recordStrehl(strehlShm, N=N)
+
+plt.plot(gains, strehls)
+plt.show()
+#%% Find best gamma
+loop.gamma = 0
+loop.predict=True
+loop.setGain(0.2)
+gammas = np.linspace(0,1,10)
+strehls = np.zeros_like(gammas)
+N = 100
+
+for i in tqdm(range(gammas.size), desc="Optimal Gamma"):
+    g = gammas[i]
+    loop.gamma = g
+    resetLoop()
+    strehls[i] = recordStrehl(strehlShm, N=N)
+    
+plt.plot(gammas, strehls)
+plt.show()
+# %% Find best gamma/gain
+loop.gamma = 0
+loop.predict=True
+loop.setGain(0.0)
+loop.start()
+N = 300
+gammas = np.linspace(0,1,10)
+gains = np.linspace(0.1,1,10)
+strehls = np.zeros((gammas.size,gains.size))
+for i in tqdm(range(gammas.size), desc="Optimal Gamma"):
+    gamma = gammas[i]
+    for j in range(gains.size):
+        gain = gains[j]
+        loop.gamma = gamma
+        loop.setGain(gain)
+        resetLoop()
+        strehls[i,j] = recordStrehl(strehlShm, N=N)
+np.save("./calib/performance.npy",strehls )
+plt.imshow(strehls)
+plt.show()
 #%%
 pred = loop.runInference(loop.history)
 x = np.arange(loop.history.shape[0]+2)

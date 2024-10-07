@@ -100,12 +100,6 @@ if RECALIBRATE == True:
     wfc.run("flatten")
     time.sleep(1)
 
-#%% Test GPU SHM
-import matplotlib.pyplot as plt
-wfsShm = initExistingShm("wfs",gpuDevice=0)[0]
-img = wfsShm.read(GPU=True)
-plt.imshow(img.cpu().numpy())
-plt.show()
 
 # %% Compute CM
 #WITH OG 0.15
@@ -120,9 +114,9 @@ loop.setProperty("IMFile", folder + "IM_PYWFS.npy")
 # loop.setProperty("IMFile", dataFolder + "ESCAPE.npy")
 # loop.setProperty("IMFile", dataFolder + "DOCRIME_NO_OG.npy")
 
-loop.setProperty("numDroppedModes", 20)
-loop.setProperty("gain",0.7)
-loop.setProperty("leakyGain", 0.02)
+loop.setProperty("numDroppedModes", 0)
+loop.setProperty("gain",0.9)
+loop.setProperty("leakyGain", 0.04)
 loop.run("loadIM")
 time.sleep(0.5)
 
@@ -145,13 +139,14 @@ loop.run("solveDocrime")
 # %% CL DOCRIME Stop
 loop.setProperty("clDocrime", False)
 #%%
-psfCam.setProperty("integrationLength", 100)
+psfCam.setProperty("integrationLength", 300)
 time.sleep(1)
 loopOptim.resetStudy()
-loopOptim.numReads = 10
-loopOptim.maxGain = 1.0
+time.sleep(5)
+loopOptim.numReads = 5
+loopOptim.maxGain = 1.3
 loopOptim.maxLeak = 0.1
-loopOptim.maxDroppedModes = 40
+loopOptim.maxDroppedModes = 20
 loopOptim.numSteps = 100
 for i in range(1):
     loopOptim.optimize()
@@ -171,16 +166,16 @@ pidOptim.applyOptimum()
 import optuna
 optuna.logging.set_verbosity(optuna.logging.WARNING)
 numOptim = 3
-maxAMP = 0.005
+maxAMP = 0.004
 amps = np.linspace(maxAMP, maxAMP/5, numOptim)
 for i in range(numOptim):
     ncpaOptim.resetStudy()
-    psfCam.setProperty("integrationLength", 5)
+    psfCam.setProperty("integrationLength", 50)
     time.sleep(2)
     ncpaOptim.numReads = 3
     ncpaOptim.startMode = 0
-    ncpaOptim.endMode = 15 #wfc.getProperty("numModes")
-    ncpaOptim.numSteps = 1000
+    ncpaOptim.endMode = 50 #wfc.getProperty("numModes")
+    ncpaOptim.numSteps = 3000
     ncpaOptim.correctionMag = amps[i]
     ncpaOptim.isCL = False
     for i in range(1):
@@ -188,9 +183,9 @@ for i in range(numOptim):
     ncpaOptim.applyNext()
 
     wfc.run("saveShape")
-    # slopes.run("takeRefSlopes")
-    # slopes.setProperty("refSlopesFile", "/home/whetstone/pyRTC/SHARP_LAB/calib/refPyWFS.npy")
-    # slopes.run("saveRefSlopes")
+    slopes.run("takeRefSlopes")
+    slopes.setProperty("refSlopesFile", "/home/whetstone/pyRTC/SHARP_LAB/calib/refPyWFS.npy")
+    slopes.run("saveRefSlopes")
     psfCam.setProperty("integrationLength", 2000)
     time.sleep(2)
     psfCam.run("takeModelPSF")

@@ -242,6 +242,19 @@ class ConvLSTMModel(nn.Module):
 
 class basicPredictLoop(Loop):
     def __init__(self, conf) -> None:
+        self.T = conf["T"]
+        self.K = conf["K"]
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.validSubApsFile = conf["validSubApsFile"]
+        self.validSubAps = np.load(self.validSubApsFile)
+        self.numXSlopes = int(np.sum(self.validSubAps) / 2)
+        self.numXSlopes2D = int(self.validSubAps.shape[1]/2)
+        self.slopemask = self.validSubAps[:,:self.numXSlopes2D]
+        self.history = np.zeros((self.K, *self.validSubAps.shape), dtype=np.float32)
+        self.curSignal2D = np.zeros_like(self.history[0])
+        self.history_GPU = torch.tensor(self.history, device = self.device)
+        self.s_pol = torch.zeros(np.sum(self.validSubAps), dtype=torch.float32, device=self.device)
+        self.s_pol_pred = torch.zeros(np.sum(self.validSubAps), dtype=torch.float32, device=self.device)
         #Initialize the pyRTC super class
         super().__init__(conf)
         """
@@ -257,8 +270,7 @@ class basicPredictLoop(Loop):
         - num_epochs (int): Number of epochs for training.
         - batch_size (int): Batch size for training.
         """
-        self.T = conf["T"]
-        self.K = conf["K"]
+
         self.hidden_size = conf["hidden_size"]
         self.num_layers = conf["num_layers"]
         self.learning_rate = conf["learning_rate"]
@@ -266,8 +278,8 @@ class basicPredictLoop(Loop):
         self.batch_size = conf["batch_size"]
         self.recordLength = 0
         # Move the model and its parameters to the GPU
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.validSubAps = np.load("./calib/validSubAps.npy")
+        
+        
         # Define the LSTM-based predictive controller model
         model = ConvLSTMModel( 
                          hidden_channels=[64, 64], 
@@ -287,17 +299,28 @@ class basicPredictLoop(Loop):
         self.optimizer_D = torch.optim.Adam(self.discriminator.parameters(), lr=self.learning_rate, betas=(0.5, 0.999))
 
         # Buffer to hold the most recent K control vectors for real-time prediction
-        
-        self.slopemask = self.validSubAps[:,:self.validSubAps.shape[1]//2]
-        self.history = np.zeros((self.K, *self.validSubAps.shape), dtype=self.CM.dtype)
-        self.curSignal2D = np.zeros_like(self.history[0])
         self.polShm = ImageSHM("pol", self.curSignal2D.shape, self.curSignal2D.dtype, gpuDevice=self.gpuDevice, consumer=False)
         self.slopesBuffer = None
         self.predict = False
         self.numRecords = 0
         self.recordLength = 0
         self.record = False
-        self.gamma = 0.01
+        self.gamma = 0
+
+
+
+    def toDevice(self):
+        self.fIM_GPU = torch.tensor(self.fIM, device= self.device)
+        self.curSignal2D_GPU = torch.tensor(self.curSignal2D, device= self.device)
+        self.slopemask_GPU = torch.tensor(self.slopemask, device= self.device)
+        self.validSubAps_GPU = torch.tensor(self.validSubAps, device= self.device)
+        self.gCM_GPU = torch.tensor(self.gCM, device= self.device)
+        return
+    
+    def computeCM(self):
+        super().computeCM()
+        self.toDevice()
+        return 
 
     def listen(self, recordLength):
         #Turn on the loop
@@ -305,7 +328,8 @@ class basicPredictLoop(Loop):
             self.start()
         self.recordLength = recordLength
         self.slopesBuffer = np.zeros((self.recordLength,  *self.validSubAps.shape)
-                                      , dtype=self.CM.dtype)
+                                      , dtype=np.float32)
+        # self.slopesBuffer = torch.tensor(self.slopesBuffer, device=self.device)
         self.record = True
         self.numRecords = 0
         #Block until recording is done
@@ -500,21 +524,25 @@ class basicPredictLoop(Loop):
         - predicted_vector (np.ndarray or None): The predicted control vector T steps ahead.
           Returns None if not enough data is available yet.
         """
-        input_seq = torch.tensor(
-            history,
-            dtype=torch.float32, device = self.device
-        ).unsqueeze(0)  # Shape: (K, 1, N)
-        predicted_vector = self.model(input_seq).squeeze()
-        return predicted_vector.detach().cpu().numpy()#.flatten()
+        if isinstance(history, np.ndarray):
+            history = torch.tensor(
+                history,
+                dtype=torch.float32, device = self.device
+            ).unsqueeze(0)  # Shape: (K, 1, N)
+
+        predicted_vector = self.model(history).squeeze()
+        return predicted_vector #.detach().cpu().numpy()#.flatten()
 
     def predictiveIntegrator(self):
         #Read Slopes
-        residual_slopes = self.signalShm.read(RELEASE_GIL = self.RELEASE_GIL)
-        currentCorrection = self.wfcShm.read(RELEASE_GIL = self.RELEASE_GIL)
+        residual_slopes = self.signalShm.read(SAFE= False, RELEASE_GIL = self.RELEASE_GIL, GPU=True)
+        currentCorrection = self.wfcShm.read(SAFE= False, RELEASE_GIL = self.RELEASE_GIL , GPU=True)
         # print(f'slopes: {residual_slopes.shape}, IM: {self.IM.shape}, corr: {currentCorrection.shape}')
-        s_pol = residual_slopes - self.fIM@currentCorrection
-        self.curSignal2D[:,:self.validSubAps.shape[1]//2][self.slopemask] = s_pol[:s_pol.size//2]
-        self.curSignal2D[:,self.validSubAps.shape[1]//2:][self.slopemask] = s_pol[s_pol.size//2:]
+        self.s_pol = residual_slopes - self.fIM_GPU@currentCorrection
+
+
+        self.curSignal2D_GPU[:,:self.numXSlopes2D][self.slopemask_GPU] = self.s_pol[:self.numXSlopes]
+        self.curSignal2D_GPU[:,self.numXSlopes2D:][self.slopemask_GPU] = self.s_pol[self.numXSlopes:]
         
         #Add pol_slopes to the buffer
         if self.record and self.numRecords < self.recordLength:
@@ -526,21 +554,21 @@ class basicPredictLoop(Loop):
 
         #if we have enough in the buffer
         if self.predict:
-            add_to_buffer(self.history,self.curSignal2D)
-            tmp = self.runInference(self.history)
-            self.polShm.write(tmp)
-            s_pol_pred = np.zeros_like(s_pol)
+            add_to_buffer(self.history,self.curSignal2D_GPU)
+            predictImage = self.runInference(self.history)
+            self.polShm.write(predictImage)
 
-            s_pol_pred[:s_pol_pred.size//2] = self.curSignal2D[:,:self.validSubAps.shape[1]//2][self.slopemask]
-            s_pol_pred[s_pol_pred.size//2:] = self.curSignal2D[:,self.validSubAps.shape[1]//2:][self.slopemask]
+            self.s_pol_pred[:self.numXSlopes] = predictImage[:,:self.numXSlopes2D][self.slopemask_GPU]
+            self.s_pol_pred[self.numXSlopes:] = predictImage[:,self.numXSlopes2D:][self.slopemask_GPU]
             #Forward propagate the correction using the model
-            s_pol = (1-self.gamma)*s_pol + self.gamma * s_pol_pred
+            self.s_pol = (1-self.gamma)*self.s_pol + self.gamma * self.s_pol_pred
         else:
-            self.polShm.write(self.curSignal2D)
+            self.polShm.write(self.curSignal2D_GPU)
+        #Leak the current shape
         currentCorrection *= (1-self.leakyGain)
-        newCorrection = (1-self.gain)*currentCorrection - np.dot(self.gCM,s_pol)
+        newCorrection = (1-self.gain)*currentCorrection - torch.matmul(self.gCM_GPU,self.s_pol)
         #Send to the WFC
-        self.sendToWfc(newCorrection, slopes=residual_slopes)
+        self.sendToWfc(newCorrection, slopes=None)
 
         return
 
@@ -560,3 +588,7 @@ class basicPredictLoop(Loop):
         torch.save(self.model, './calib/model.pth')
         torch.save(self.discriminator, './calib/discriminator.pth')
         return
+    
+if __name__ == "__main__":
+
+    launchComponent(basicPredictLoop, "loop", start = False)

@@ -469,6 +469,7 @@ class Loop(pyRTCComponent):
         self.gCM = self.gain*self.CM
         self.fIM = np.copy(self.IM)
         self.fIM[:,self.numActiveModes:] = 0
+        
         return 
         
     # @jit(nopython=True)
