@@ -139,12 +139,15 @@ def computeSlopesPYWFSOptimNumba(image:np.ndarray,
     mean_value = total_sum / p1_count
 
     for i in range(numPixelsInPupils):
-        # Compute Y slopes
-        slopes[i] = (tmp1[i] - tmp2[i])/mean_value - refSlopes[i]
-        # Compute X slopes
-        slopes[numPixelsInPupils + i] = ((p1[i] + p3[i]) - (p2[i] + p4[i]))/mean_value \
-            - refSlopes[numPixelsInPupils + i]
-
+        if mean_value > 0:
+            # Compute Y slopes
+            slopes[i] = (tmp1[i] - tmp2[i])/mean_value - refSlopes[i]
+            # Compute X slopes
+            slopes[numPixelsInPupils + i] = ((p1[i] + p3[i]) - (p2[i] + p4[i]))/mean_value \
+                - refSlopes[numPixelsInPupils + i]
+        else:
+            slopes[i] = 0
+            slopes[numPixelsInPupils + i] = 0
     return slopes
 
 """

@@ -9,7 +9,6 @@ os.environ['NUMBA_NUM_THREADS'] = '1'
 from pyRTC.Pipeline import *
 from pyRTC.utils import *
 from pyRTC.pyRTCComponent import *
-import argparse
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -519,7 +518,7 @@ class Loop(pyRTCComponent):
         slopes = self.signalShm.read(SAFE=False, RELEASE_GIL = self.RELEASE_GIL)
         newCorrection = leakyIntegratorNumba(slopes, 
                          self.gCM, 
-                         self.wfcShm.read(SAFE=False).squeeze(),
+                         self.wfcShm.read_noblock(SAFE=False).squeeze(),
                          self.nullCorrection,
                          np.float32(0),#No leak
                          self.numActiveModes)

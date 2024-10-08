@@ -274,14 +274,28 @@ class WavefrontSensor(pyRTCComponent):
         else:
             return self.image.read_noblock()
     
+    def readRaw(self, block = True) -> None:
+        """
+        Reads the dark subtracted image data from shared memory.
+
+        Returns
+        -------
+        ndarray
+            Processed image data.
+        """
+        if block:
+            return self.imageRaw.read(RELEASE_GIL = self.RELEASE_GIL)
+        else:
+            return self.imageRaw.read_noblock()
+
     def takeDark(self) -> None:
         """
         Captures and sets the dark frame.
         """
         self.setDark(np.zeros_like(self.dark))
-        dark = np.zeros(self.imageShape, dtype=np.float64)
+        dark = np.zeros(self.imageRawShape, dtype=np.float64)
         for i in range(self.darkCount):
-            dark += self.read().astype(np.float64)
+            dark += self.readRaw().astype(np.float64)
         dark /= self.darkCount
         self.setDark(dark)        
         return 
