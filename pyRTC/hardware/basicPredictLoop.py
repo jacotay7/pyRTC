@@ -541,8 +541,14 @@ class basicPredictLoop(Loop):
 
     def predictiveIntegrator(self):
         #Read Slopes
-        residual_slopes = self.signalShm.read(SAFE= False, RELEASE_GIL = self.RELEASE_GIL, GPU=True)
-        currentCorrection = self.wfcShm.read(SAFE= False, RELEASE_GIL = self.RELEASE_GIL , GPU=True)
+        if self.gpuDevice is not None:
+            residual_slopes = self.signalShm.read(SAFE= False, RELEASE_GIL = self.RELEASE_GIL, GPU=True)
+            currentCorrection = self.wfcShm.read(SAFE= False, RELEASE_GIL = self.RELEASE_GIL , GPU=True)
+        else:
+            residual_slopes = self.signalShm.read(SAFE= False, RELEASE_GIL = self.RELEASE_GIL, GPU=False)
+            currentCorrection = self.wfcShm.read_noblock(SAFE= False, GPU=False)
+            residual_slopes = torch.tensor(residual_slopes, device = self.device)
+            currentCorrection = torch.tensor(currentCorrection, device = self.device)
         # print(f'slopes: {residual_slopes.shape}, IM: {self.IM.shape}, corr: {currentCorrection.shape}')
         self.s_pol = residual_slopes - self.fIM_GPU@currentCorrection
 
@@ -590,13 +596,22 @@ class basicPredictLoop(Loop):
         #Leak the current shape
         currentCorrection *= (1-self.leakyGain)
         newCorrection = (1-self.gain)*currentCorrection - torch.matmul(self.gCM_GPU,self.s_pol)
+        
+        if self.gpuDevice is None:
+            newCorrection = newCorrection.cpu().numpy()
         #Send to the WFC
         self.sendToWfc(newCorrection, slopes=None)
 
         return
 
+    def setGain(self, gain):
+        super().setGain(gain)
+        self.toDevice()
+        return 
+
     def flatten(self):
         self.history *= 0
+        self.history_GPU *= 0
         return super().flatten()
     
     def loadModels(self):

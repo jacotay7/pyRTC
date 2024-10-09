@@ -608,7 +608,7 @@ class Loop(pyRTCComponent):
 
     def sendToWfc(self, correction, slopes=None):
         #Get an initial slope reading to set shapes
-        correction = correction.reshape(self.flat.shape)
+        correction = correction.reshape(self.wfcShape)
         if self.clDocrime and isinstance(slopes, np.ndarray):
 
             slopes = slopes.reshape(slopes.size, 1)

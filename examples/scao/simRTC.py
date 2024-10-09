@@ -62,12 +62,13 @@ slopes.start()
 #Adjust the config for predictive control test
 confLoop = conf["loop"]
 confLoop["T"] = 3
-confLoop["K"] = 20
-confLoop["hidden_size"] = 512
-confLoop["num_layers"] = 2
+confLoop["K"] = 10
+confLoop["hidden_size"] = 64
+confLoop["num_layers"] = 1
 confLoop["learning_rate"] = 1e-3
 confLoop["num_epochs"] = 100
-confLoop["batch_size"] = 64
+confLoop["batch_size"] = 32
+confLoop["validSubApsFile"] = "./calib/validSubAps.npy"
 confLoop["functions"] = ["predictiveIntegrator"]
 
 from pyRTC.hardware.basicPredictLoop import basicPredictLoop
@@ -98,13 +99,14 @@ sim.addAtmosphere()
 
 #%%Adjust frame delay
 dm.setDelay(confLoop["T"])
-dm.flatten()
+for i in range(5):
+    dm.flatten()
 loop.setGain(0.3)
 time.sleep(1)
 loop.start()
 # %%
-# loop.listen(int(2**14))
-loop.slopesBuffer = np.load("./calib/slopesBuffer.npy")
+loop.listen(int(2**14))
+# loop.slopesBuffer = np.load("./calib/slopesBuffer.npy")
 loop.stop()
 # %%
 # loop.num_epochs = 1
@@ -172,7 +174,7 @@ loop.gamma = 0
 loop.predict=True
 loop.setGain(0.0)
 loop.start()
-N = 300
+N = 100
 gammas = np.linspace(0,1,10)
 gains = np.linspace(0.1,1,10)
 strehls = np.zeros((gammas.size,gains.size))
@@ -180,13 +182,16 @@ for i in tqdm(range(gammas.size), desc="Optimal Gamma"):
     gamma = gammas[i]
     for j in range(gains.size):
         gain = gains[j]
-        loop.gamma = gamma
+        loop.gamma = 0
         loop.setGain(gain)
         resetLoop()
+        time.sleep(1)
+        loop.gamma = gamma
+        loop.setGain(gain)
+        time.sleep(1)
         strehls[i,j] = recordStrehl(strehlShm, N=N)
 np.save("./calib/performance.npy",strehls )
-plt.imshow(strehls)
-plt.show()
+
 #%%
 pred = loop.runInference(loop.history)
 x = np.arange(loop.history.shape[0]+2)

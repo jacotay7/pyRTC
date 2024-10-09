@@ -229,7 +229,7 @@ def _initializeDummyParameterFile():
     param['nPixelPerSubap'       ] = 4                                              # sampling of the PWFS subapertures
     param['resolution'           ] = param['nSubaperture']*param['nPixelPerSubap']  # resolution of the telescope driven by the PWFS
     param['sizeSubaperture'      ] = param['diameter']/param['nSubaperture']        # size of a sub-aperture projected in the M1 space
-    param['samplingTime'         ] = 1/500                                         # loop sampling time in [s]
+    param['samplingTime'         ] = 1/300                                         # loop sampling time in [s]
     param['centralObstruction'   ] = 0.112                                          # central obstruction in percentage of the diameter
     param['nMissingSegments'     ] = 0                                              # number of missing segments on the M1 pupil
     param['m1_reflectivity'      ] = 1                                              # reflectivity of the 798 segments
