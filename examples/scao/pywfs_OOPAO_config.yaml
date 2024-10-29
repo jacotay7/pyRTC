@@ -1,18 +1,20 @@
 loop:
   gain: 0.1
+  leakyGain: 0.01
   numDroppedModes: 0
   pokeAmp: 0.000001 #1000nm
   numItersIM: 1
   affinity: 2
   method: push-pull
   functions:
-  - standardIntegrator
+  - leakyIntegrator
 
 wfs:
   name: OOPAOWFS
   width: 28
   height: 28
   darkCount: 1000
+  integration: 50
   affinity: 3
   functions:
   - expose
@@ -52,8 +54,9 @@ psf:
   width: 200
   height: 200
   darkCount: 10
-  integration: 5
+  integration: 10
   affinity: 3
   functions:
   - expose
   - integrate
+  - computeStrehl

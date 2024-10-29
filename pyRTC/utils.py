@@ -3,7 +3,6 @@ import sys
 import select
 import os 
 from astropy.io import fits
-from subprocess import PIPE, Popen
 import numpy as np
 import psutil
 from scipy.ndimage import median_filter, gaussian_filter
@@ -11,6 +10,8 @@ import socket
 from datetime import datetime
 import time 
 import logging
+import matplotlib
+logging.getLogger('matplotlib').setLevel(logging.WARNING)
 
 NP_DATA_TYPES = [
     np.int8, np.int16, np.int32, np.int64,
@@ -22,6 +23,7 @@ NP_DATA_TYPES = [
     np.string_, np.unicode_,
     np.datetime64, np.timedelta64
 ]
+
 
 def precise_delay(microseconds):
     target_time = time.perf_counter() + microseconds / 1_000_000
@@ -196,8 +198,16 @@ def centroid(array):
     return np.array([x_centroid, y_centroid])
 
 def add_to_buffer(buffer, vec):
-    buffer[:-1] = buffer[1:]
-    buffer[-1] = vec
+    if isinstance(buffer,np.ndarray):
+        buffer[:-1] = buffer[1:]
+        buffer[-1] = vec
+    else: #For torch tensors
+        tmp = buffer[1:].clone()
+        # Clone the slice of buffer[1:] to avoid memory overlap
+        buffer[:-1].copy_(tmp)
+        # Replace the last element with the new vector
+        buffer[-1].copy_(vec)
+        del tmp
     return
 
 def next_power_of_two(n):

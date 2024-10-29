@@ -4,3 +4,4 @@ python pyRTCView.py psfLong &
 python pyRTCView.py signal2D -1 1&
 python pyRTCView.py wfc2D -0.5 0.5&
 python pyRTCView.py wfs &
+python pyRTCView.py pol -3 3 &

@@ -60,8 +60,16 @@ class Optimizer(pyRTCComponent):
         :param conf: Configuration dictionary containing necessary parameters.
         """
         self.name = "Optimizer"
-        self.study = optuna.create_study(direction='maximize', 
-                                         sampler=optuna.samplers.CmaEsSampler())
+        self.sampler = setFromConfig(conf, "sampler", "tpe")
+        if self.sampler == 'cmaes':    
+            self.study = optuna.create_study(direction='maximize', 
+                                            sampler=optuna.samplers.CmaEsSampler())
+        if self.sampler == 'torch':    
+            self.study = optuna.create_study(direction='maximize', 
+                                            sampler=optuna.samplers.BoTorchSampler())
+        else:
+            self.study = optuna.create_study(direction='maximize', 
+                                            sampler=optuna.samplers.TPESampler())
         self.numSteps = setFromConfig(conf, "numSteps", 100)
 
         super().__init__(conf)

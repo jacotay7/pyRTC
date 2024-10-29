@@ -16,7 +16,7 @@ if CLEAR_SHMS:
 
 # %% IMPORTS
 # config = '/home/whetstone/pyRTC/SHARP_LAB/config_SR.yaml'
-config = '/home/whetstone/pyRTC/SHARP_LAB/config.yaml'
+config = '/home/whetstone/pyRTC/SHARP_LAB/config_predict.yaml'
 N = np.random.randint(3000,6000)
 # %% Launch DM
 wfc = hardwareLauncher("../pyRTC/hardware/ALPAODM.py", config, N)
@@ -65,19 +65,19 @@ if RECALIBRATE == True:
 
     # slopes.run("computeImageNoise")
     slopes.run("takeRefSlopes")
-    slopes.setProperty("refSlopesFile", "/home/whetstone/pyRTC/SHARP_LAB/calib/ref.npy")
+    slopes.setProperty("refSlopesFile", "/home/whetstone/pyRTC/SHARP_LAB/calib/ref_SH.npy")
     slopes.run("saveRefSlopes")
 
     wfc.run("flatten")
     psfCam.run("takeModelPSF")
-    psfCam.setProperty("modelFile", "/home/whetstone/pyRTC/SHARP_LAB/calib/modelPSF.npy")
+    psfCam.setProperty("modelFile", "/home/whetstone/pyRTC/SHARP_LAB/calib/modelPSF_SH.npy")
     psfCam.run("saveModelPSF")
 
     #  STANDARD IM
     loop.setProperty("IMMethod", "push-pull")
     loop.setProperty("pokeAmp", 0.03)
     loop.setProperty("numItersIM", 100)
-    loop.setProperty("IMFile", "/home/whetstone/pyRTC/SHARP_LAB/calib/IM.npy")
+    loop.setProperty("IMFile", "/home/whetstone/pyRTC/SHARP_LAB/calib/IM_SH.npy")
     wfc.run("flatten")
     loop.run("computeIM")
     loop.run("saveIM")
@@ -100,12 +100,12 @@ if RECALIBRATE == True:
 
 
 # %% Compute CM
-loop.setProperty("IMFile", "/home/whetstone/pyRTC/SHARP_LAB/calib/IM.npy")
+loop.setProperty("IMFile", "/home/whetstone/pyRTC/SHARP_LAB/calib/IM_SH.npy")
 # loop.setProperty("IMFile", "/home/whetstone/pyRTC/SHARP_LAB/calib/OL_DOCRIME.npy")
 # loop.setProperty("IMFile", "/home/whetstone/pyRTC/SHARP_LAB/calib/OL_DOCRIME_CL_docrime.npy")
 # loop.setProperty("IMFile", "/home/whetstone/pyRTC/SHARP_LAB/calib/ESCAPE.npy")
-loop.setProperty("numDroppedModes", 0)
-loop.setProperty("gain",0.40)
+loop.setProperty("numDroppedModes", 10)
+loop.setProperty("gain",0.1)
 loop.setProperty("leakyGain", 0.021)
 loop.run("loadIM")
 time.sleep(0.5)
@@ -144,10 +144,10 @@ loop.setProperty("clDocrime", False)
 
 
 baseline = np.load("../SHARP_LAB/calib/baseline.npy")
-OLDOCRIME = np.load("../SHARP_LAB/calib/OL_DOCRIME.npy")
+OLDOCRIME = np.load("../SHARP_LAB/calib/IM_OL_docrime.npy")
 CLDOCRIME = np.load("../SHARP_LAB/calib/CL_DOCRIME.npy")
 ESCAPE = np.load("../SHARP_LAB/calib/ESCAPE.npy")
-im = ESCAPE
+im = OLDOCRIME
 plt.imshow(im, aspect="auto")
 plt.show()
 
@@ -195,7 +195,7 @@ pidOptim.applyOptimum()
 import optuna
 optuna.logging.set_verbosity(optuna.logging.WARNING)
 numOptim = 3
-maxAMP = 0.02
+maxAMP = 0.004
 amps = np.linspace(maxAMP, maxAMP/5, numOptim)
 for i in range(numOptim):
     ncpaOptim.resetStudy()
@@ -203,8 +203,8 @@ for i in range(numOptim):
     time.sleep(2)
     ncpaOptim.numReads = 3
     ncpaOptim.startMode = 0
-    ncpaOptim.endMode = 20 #wfc.getProperty("numModes")
-    ncpaOptim.numSteps = 1500
+    ncpaOptim.endMode = 50 #wfc.getProperty("numModes")
+    ncpaOptim.numSteps = 2000
     ncpaOptim.correctionMag = amps[i]
     ncpaOptim.isCL = False
     for i in range(1):
@@ -212,32 +212,34 @@ for i in range(numOptim):
     ncpaOptim.applyNext()
 
     wfc.run("saveShape")
-    # slopes.run("takeRefSlopes")
-    # slopes.setProperty("refSlopesFile", "/home/whetstone/pyRTC/SHARP_LAB/calib/ref.npy")
-    # slopes.run("saveRefSlopes")
+    slopes.run("takeRefSlopes")
+    slopes.setProperty("refSlopesFile", "/home/whetstone/pyRTC/SHARP_LAB/calib/ref_SH.npy")
+    slopes.run("saveRefSlopes")
     psfCam.setProperty("integrationLength", 2000)
     time.sleep(2)
     psfCam.run("takeModelPSF")
-    psfCam.setProperty("modelFile", "/home/whetstone/pyRTC/SHARP_LAB/calib/modelPSF_PyWFS.npy")
+    psfCam.setProperty("modelFile", "/home/whetstone/pyRTC/SHARP_LAB/calib/modelPSF_SH.npy")
     psfCam.run("saveModelPSF")
     wfc.run("loadFlat")
     
 
 #%% Loop Optimizer
-psfCam.setProperty("integrationLength", 100)
+from tqdm import trange
+psfCam.setProperty("integrationLength", 1000)
 time.sleep(1)
-loopOptim.numReads = 10
+loopOptim.numReads = 100
 # loopOptim.maxGain = 0.6
 # loopOptim.maxLeak = 0.1
 # loopOptim.maxDroppedModes = 40
-loopOptim.numSteps = 300
-for i in range(1):
+loopOptim.numSteps = 1
+for i in trange(20):
     loopOptim.optimize()
-loopOptim.applyOptimum()
+    loopOptim.applyOptimum()
+    
 
 
 # %% Plots
-im = np.load("../SHARP_LAB/calib/docrime_IM.npy")
+im = np.load("../SHARP_LAB/calib/IM_OL_docrime.npy")
 plt.imshow(im, aspect="auto")
 plt.show()
 
@@ -252,7 +254,7 @@ for i in range(85,90):
     plt.show()
 
 
-im_dc = np.load("../SHARP_LAB/calib/docrime_IM.npy")
+im_dc = np.load("../SHARP_LAB/calib/IM_OL_docrime.npy")
 im = np.load("../SHARP_LAB/calib/IM.npy")
 
 im_dc = im_dc.reshape(*slopes.getProperty("signalShape"), -1)
@@ -277,7 +279,7 @@ plt.colorbar()
 plt.show()
 # %% SVD
 
-im_dc = np.load("../SHARP_LAB/calib/docrime_IM.npy")
+im_dc = np.load("../SHARP_LAB/calib/IM_OL_docrime.npy")
 im = np.load("../SHARP_LAB/calib/IM.npy")
 im_sprint = np.load("../SHARP_LAB/calib/sprint_IM.npy")
 
@@ -309,15 +311,15 @@ plt.show()
 
 
 N, M = 0,5
-im_sprint = im_sprint.reshape(*slopes.getProperty("signalShape"), -1)
+im_sprint = im_sprint.reshape(*slopes.getProperty("signal2DShape"), -1)
 im_sprint = np.moveaxis(im_sprint, 2, 0)
 a = np.vstack(im_sprint[N:M])
 
-im_dc = im_dc.reshape(*slopes.getProperty("signalShape"), -1)
+im_dc = im_dc.reshape(*slopes.getProperty("signal2DShape"), -1)
 im_dc = np.moveaxis(im_dc, 2, 0)
 b = np.vstack(im_dc[N:M])
 
-im = im.reshape(*slopes.getProperty("signalShape"), -1)
+im = im.reshape(*slopes.getProperty("signal2DShape"), -1)
 im = np.moveaxis(im, 2, 0)
 c = np.vstack(im[N:M])
 

@@ -283,7 +283,7 @@ class ImageSHM:
                 #copy the tensor to the GPU shm
                 self.shmGPU.copy_(arr)
                 #copy a CPU numpy version to the CPU shm
-                np.copyto(self.arr, arr.cpu().numpy())
+                np.copyto(self.arr, arr.detach().cpu().numpy())
             elif isinstance(arr, np.ndarray):
                 #copy a CPU numpy version to the CPU shm
                 np.copyto(self.arr, arr)

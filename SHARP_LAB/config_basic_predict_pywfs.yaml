@@ -1,36 +1,33 @@
 loop:
   gain: 0.1
-  leakyGain: 0.0
+  leakyGain: 0.01
   numDroppedModes: 30
   pokeAmp: 0.02
   numItersIM: 50
   affinity: 2
   delay: 2
   method: push-pull
+  validSubApsFile: "/home/whetstone/pyRTC/SHARP_LAB/calib/validSubApsPyWFS.npy"
   IMFile: "/home/whetstone/pyRTC/SHARP_LAB/calib/IM_PYWFS.npy"
-  pGain: 0.28
-  iGain: 0.066
-  dGain: 0.078
-  controlLimits: [-0.05, 0.05]
-  absoluteLimits: [-0.3, 0.3]
-  integralLimits: [-0.1, 0.1]
-  derivativeFilter: 0.1
-  # gpuDevice: 0
+  gpuDevice: 0
+  batch_size: 64
+  num_epochs: 100
+  learning_rate: 0.001
+  num_layers: 2
+  hidden_size: 128
+  lambda_recon: 20
+  K: 10
+  T: 2
   functions:
-  # - leakyIntegrator
-   - linearExtrapolationPOL
+  - predictiveIntegrator
 
-  # left: 544
-  # top: 100 
-  # width: 384 
-  # height: 384 
 
 wfs:
   name: XIMEA
   serial: "13056250"
   binning: 2
   downsampleFactor: 4
-  exposure: 10000 #3333
+  exposure: 10000
   gain: 0
   bitDepth: 10
   left: 240
@@ -40,7 +37,7 @@ wfs:
   darkCount: 2000
   darkFile: "/home/whetstone/pyRTC/SHARP_LAB/calib/darkPyWFS.npy"
   affinity: 3
-  # gpuDevice: 0
+  gpuDevice: 0
   functions:
   - expose
 
@@ -69,7 +66,7 @@ slopes:
   # - 150,65 #140, 60
   # - 128,128
   affinity: 4
-  # gpuDevice: 0
+  gpuDevice: 0
   functions:
   - computeSignal
 
@@ -86,7 +83,7 @@ wfc:
   affinity: 5
   commandCap: 0.8
   hardwareDelay: 0.001 #seconds
-  # gpuDevice: 0
+  gpuDevice: 0
   frameDelay: 0
   functions:
   - sendToHardware
@@ -104,7 +101,7 @@ psf:
   darkCount: 2000
   darkFile: "/home/whetstone/pyRTC/SHARP_LAB/calib/psfDark_PyWFS.npy"
   modelFile: "/home/whetstone/pyRTC/SHARP_LAB/calib/modelPSF_PyWFS.npy"
-  integration: 5000
+  integration: 50
   affinity: 6
   functions:
   - expose
@@ -130,12 +127,27 @@ optimizer:
     affinity: 10
   loop:
     name: "hyper"
-    numSteps: 100
-    minGain: 0.3
-    maxGain: 0.8
-    maxLeak: 0.05
-    maxDroppedModes: 30
-    numReads: 1
+    numReads: 2
+    params:
+    - gain
+    - leakyGain
+    - gamma
+    - numDroppedModes
+    mins:
+    - 0.1
+    - 0.0
+    - 0.0
+    - 0
+    maxs:
+    - 1.2
+    - 0.05
+    - 1.0
+    - 20
+    types:
+    - float
+    - float
+    - float
+    - int
     affinity: 10
 modulator:
   name: 'E-727'
@@ -150,4 +162,6 @@ modulator:
   servosOn: False
   autoZero: True 
   affinity: 7
+
+
 
