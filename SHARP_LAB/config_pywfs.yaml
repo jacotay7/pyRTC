@@ -17,7 +17,8 @@ loop:
   derivativeFilter: 0.1
   # gpuDevice: 0
   functions:
-  - leakyIntegrator
+  # - leakyIntegrator
+   - linearExtrapolationPOL
 
   # left: 544
   # top: 100 
@@ -29,7 +30,7 @@ wfs:
   serial: "13056250"
   binning: 2
   downsampleFactor: 4
-  exposure: 3333
+  exposure: 10000 #3333
   gain: 0
   bitDepth: 10
   left: 240
@@ -52,7 +53,7 @@ wfs:
 slopes:
   type: PYWFS
   signalType: slopes
-  # validSubApsFile: "/home/whetstone/pyRTC/SHARP_LAB/calib/validSubApsPyWFS.npy"
+  validSubApsFile: "/home/whetstone/pyRTC/SHARP_LAB/calib/validSubApsPyWFS.npy"
   refSlopesFile: "/home/whetstone/pyRTC/SHARP_LAB/calib/refPyWFS.npy"
   flatNorm: True
   pupilsRadius: 8 #8 #64

@@ -20,7 +20,7 @@ shm,_,_ = initExistingShm(shmName)
 
 # Parameters
 update_interval = 0.1  # seconds between updates, modify as needed
-WINDOW_SIZE = 10
+WINDOW_SIZE = 1
 MAX_SIZE = 1000
 
 def rolling_average(data, window_size):

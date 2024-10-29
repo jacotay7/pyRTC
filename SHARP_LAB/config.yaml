@@ -50,7 +50,7 @@ slopes:
   subApOffsetX: 13
   subApOffsetY: 3
   imageNoise: 1.3
-  contrast: 6
+  contrast: 10
   affinity: 4
   functions:
   - computeSignal

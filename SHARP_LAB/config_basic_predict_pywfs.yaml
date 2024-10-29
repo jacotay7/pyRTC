@@ -13,10 +13,11 @@ loop:
   batch_size: 64
   num_epochs: 100
   learning_rate: 0.001
-  num_layers: 1
-  hidden_size: 64
+  num_layers: 2
+  hidden_size: 128
+  lambda_recon: 20
   K: 10
-  T: 3
+  T: 2
   functions:
   - predictiveIntegrator
 
@@ -26,7 +27,7 @@ wfs:
   serial: "13056250"
   binning: 2
   downsampleFactor: 4
-  exposure: 3333
+  exposure: 10000
   gain: 0
   bitDepth: 10
   left: 240
@@ -126,12 +127,27 @@ optimizer:
     affinity: 10
   loop:
     name: "hyper"
-    numSteps: 100
-    minGain: 0.3
-    maxGain: 0.8
-    maxLeak: 0.05
-    maxDroppedModes: 30
-    numReads: 1
+    numReads: 2
+    params:
+    - gain
+    - leakyGain
+    - gamma
+    - numDroppedModes
+    mins:
+    - 0.1
+    - 0.0
+    - 0.0
+    - 0
+    maxs:
+    - 1.2
+    - 0.05
+    - 1.0
+    - 20
+    types:
+    - float
+    - float
+    - float
+    - int
     affinity: 10
 modulator:
   name: 'E-727'

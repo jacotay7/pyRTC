@@ -310,6 +310,7 @@ class basicPredictLoop(Loop):
         self.recordLength = 0
         self.record = False
         self.gamma = 0
+        self.lambda_recon = conf["lambda_recon"] 
 
     def start(self):
         self.model.eval()
@@ -343,6 +344,13 @@ class basicPredictLoop(Loop):
             time.sleep(1e-5)
         
 
+    def saveBuffer(self):
+        np.save('./calib/lastBuffer.npy', self.slopesBuffer)
+        return
+    def loadBuffer(self):
+        self.slopesBuffer = np.load('./calib/lastBuffer.npy')
+        return
+    
     def train(self):
         """
         Trains the predictive controller model with adversarial training.
@@ -362,9 +370,13 @@ class basicPredictLoop(Loop):
         target_images = []
         num_samples = self.slopesBuffer.shape[0]
 
-        for i in range(num_samples - self.K - self.T + 1):
+        for i in range(num_samples - self.K - int(self.T) + 1):
             input_seq = self.slopesBuffer[i:i+self.K]  # Shape: (K, N, M)
-            target = self.slopesBuffer[i+self.K+self.T-1]  # Target is T steps ahead
+            interpVal = self.T - int(self.T)
+            if i+self.K+int(self.T) >= len(self.slopesBuffer) or interpVal < 1e-5: 
+                target = self.slopesBuffer[i+self.K+int(self.T)-1]  # Target is T steps ahead
+            else:
+                target = (1-interpVal) * self.slopesBuffer[i+self.K+int(self.T)-1] + interpVal*self.slopesBuffer[i+self.K+int(self.T)]
             input_sequences.append(input_seq)
             target_images.append(target)
 
@@ -436,8 +448,8 @@ class basicPredictLoop(Loop):
                 g_recon_loss = self.reconstruction_loss(gen_outputs, real_images)
 
                 # Total generator loss
-                lambda_recon = 100  # Weight for reconstruction loss
-                g_loss = g_adv_loss + lambda_recon * g_recon_loss
+                 # Weight for reconstruction loss
+                g_loss = g_adv_loss + self.lambda_recon * g_recon_loss
 
                 g_loss.backward()
                 self.optimizer_G.step()
@@ -470,7 +482,7 @@ class basicPredictLoop(Loop):
                     # Generator loss
                     val_g_adv_loss = self.adversarial_loss(val_fake_pred, valid)
                     val_g_recon_loss = self.reconstruction_loss(val_gen_outputs, val_real_images)
-                    val_g_loss = val_g_adv_loss + lambda_recon * val_g_recon_loss
+                    val_g_loss = val_g_adv_loss + self.lambda_recon * val_g_recon_loss
 
                     val_loss += val_g_loss.item()
 
@@ -537,6 +549,7 @@ class basicPredictLoop(Loop):
             ).unsqueeze(0)  # Shape: (K, 1, N)
 
         predicted_vector = self.model(history).squeeze().detach()
+        predicted_vector[torch.isnan(predicted_vector)] = 0
         return predicted_vector #.detach().cpu().numpy()#.flatten()
 
     def predictiveIntegrator(self):
@@ -621,7 +634,10 @@ class basicPredictLoop(Loop):
         # Load the entire model
         self.discriminator = torch.load('./calib/discriminator.pth')
         self.discriminator.eval()  # Set the model to evaluation mode if necessary
-    
+        # Define optimizers for generator and self.discriminator
+        self.optimizer_G = torch.optim.Adam(self.model.parameters(), lr=self.learning_rate, betas=(0.5, 0.999))
+        self.optimizer_D = torch.optim.Adam(self.discriminator.parameters(), lr=self.learning_rate, betas=(0.5, 0.999))
+
     def saveModels(self):
         torch.save(self.model, './calib/model.pth')
         torch.save(self.discriminator, './calib/discriminator.pth')

@@ -11,43 +11,100 @@ class loopOptimizer(Optimizer):
         self.loop = loop
 
         self.strehlShm, _, _ = initExistingShm("strehl")
-        self.minGain = setFromConfig(conf, "minGain", 0.3)
-        self.maxGain = setFromConfig(conf, "maxGain", 0.6)
-        self.maxLeak = setFromConfig(conf, "maxLeak", 0.1)
-        self.maxDroppedModes = setFromConfig(conf, "maxDroppedModes", 50)
+        # self.minGain = setFromConfig(conf, "minGain", 0.3)
+        # self.maxGain = setFromConfig(conf, "maxGain", 0.6)
+        # self.maxLeak = setFromConfig(conf, "maxLeak", 0.1)
+        # self.maxDroppedModes = setFromConfig(conf, "maxDroppedModes", 50)
         self.numReads = setFromConfig(conf, "numReads", 5)
+
+        self.params  = setFromConfig(conf, "params", [])
+        self.mins = setFromConfig(conf, "mins", [])
+        self.maxs = setFromConfig(conf, "maxs", [])
+        types = setFromConfig(conf, "types", [])
+        self.types = []
+        for i in range(len(types)):
+            if types[i] == "float":
+                self.types.append(float)
+            elif types[i] == "int":
+                self.types.append(int)
+            else:
+                raise Exception("Unsupported Type Given: {types[i]}")
+            
+        assert(len(self.params) == len(self.mins))
+        assert(len(self.params) == len(self.maxs))
+        assert(len(self.params) == len(self.types))
+
+        self.checkValidFunc = None
+        # for i, param in enumerate(self.params):
+        #     self.mins = self.types[i](self.mins[i])
+        #     self.maxs = self.types[i](self.maxs[i])
 
         super().__init__(conf)
 
+    def registerParam(self, param, min_, max_, type=float):
+        self.params.append(param)
+        self.mins.append(min_)
+        self.maxs.append(max_)
+        self.types.append(type)
+        return
+
+    def adjustParam(self, param, min_, max_, type=float):
+
+        if param not in self.params:
+            self.registerParam(param, min_, max_, type=type)
+            return
+        idx = self.params.index(param)
+        self.mins[idx] = min_
+        self.maxs[idx] = max_
+        self.types[idx] = type
+        return
+
     def objective(self, trial):
         
-        self.applyTrial(trial)
         self.loop.run("stop")
         for i in range(10):
             self.loop.run("flatten")
+        self.applyTrial(trial)
         self.loop.run("start")
 
         result = np.empty(self.numReads)
         for i in range(self.numReads):
             result[i] = self.strehlShm.read()
+            if self.checkValidFunc is not None: 
+                if not self.checkValidFunc():
+                    return np.nan
         return np.mean(result)
     
     def applyTrial(self, trial):
-        self.loop.setProperty("numDroppedModes", trial.suggest_int('numDroppedModes', 0, self.maxDroppedModes))
-        self.loop.setProperty("gain",trial.suggest_float('gain', self.minGain, self.maxGain))
-        self.loop.setProperty("leakyGain", trial.suggest_float('leakyGain', 0, self.maxLeak))
+
+        for i, param in enumerate(self.params):
+            if self.types[i] == float:
+                self.loop.setProperty(param, trial.suggest_float(param, self.mins[i], self.maxs[i]))
+            elif self.types[i] == int:
+                self.loop.setProperty(param, trial.suggest_int(param, self.mins[i], self.maxs[i]))
+
         self.loop.run("loadIM")
 
         return super().applyTrial(trial)
 
     def applyOptimum(self):
         super().applyOptimum()
+        best_trial_id = 0 #max(self.study.trials[1:], key=lambda t: t.value)
+        best_value = -1e8
+        for i, t in enumerate(self.study.trials):
+            if i == 0 or t.values is None:
+                continue
+            if t.values[0] > best_value:
+                best_value = t.values[0]
+                best_trial_id = i
         
-        self.loop.setProperty("numDroppedModes", self.study.best_params["numDroppedModes"])
-        self.loop.setProperty("gain", self.study.best_params["gain"])
-        self.loop.setProperty("leakyGain", self.study.best_params["leakyGain"])
-
+        for i, param in enumerate(self.params):
+            self.loop.setProperty(param, self.study.trials[best_trial_id].params[param])
+        self.loop.run("stop")
+        for i in range(10):
+            self.loop.run("flatten")
         self.loop.run("loadIM")
+        self.loop.run("start")
         return 
     
 

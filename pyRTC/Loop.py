@@ -273,6 +273,15 @@ class Loop(pyRTCComponent):
                                 dtype=self.wfcDType)
         
         """
+        For Linear Extrapolation
+        """
+
+        self.alpha = 0.1
+        self.buffer = np.zeros((2, *self.wfcShape), dtype=self.wfcDType)
+        self.prev_command = np.zeros(self.wfcShape, dtype=self.wfcDType)
+        self.bufferCount = 0
+        self.s_pol_old = np.zeros_like(self.nullSignal)
+        """
         Terms for PID integrator
         """
         self.pGain = setFromConfig(self.conf, "pGain", 0.1)
@@ -291,6 +300,10 @@ class Loop(pyRTCComponent):
         self.loadIM()
 
         return
+
+    def start(self):
+        self.bufferCount = 0
+        return super().start()
 
     def setGain(self, gain):
         """
@@ -605,6 +618,64 @@ class Loop(pyRTCComponent):
         self.controlOutput = controlOutput
         
         return
+
+    def linearExtrapolationPOL(self):
+        """
+        Standard integrator using the pseudo open loop slopes.
+        """
+        residual_slopes = self.signalShm.read(RELEASE_GIL = self.RELEASE_GIL)
+        currentCorrection = self.wfcShm.read(RELEASE_GIL = self.RELEASE_GIL)
+        # print(f'slopes: {residual_slopes.shape}, IM: {self.IM.shape}, corr: {currentCorrection.shape}')
+        # Compute POL Slopes s_{POL} = s_{RES} + IM*c_{n-1}
+        # print(f'slopes: {slopes.shape}, IM: {self.IM.shape}, corr: {correction.shape}')
+        s_pol = residual_slopes - self.fIM@currentCorrection
+        
+        s_pol_pred = s_pol + self.alpha*(s_pol- self.s_pol_old)
+
+        self.s_pol_old = s_pol
+        # Update Command Vector c_n = g*CM*s_{POL} + (1 − g) c_{n-1}  https://arxiv.org/pdf/1903.12124.pdf Eq 3
+        newCorrection = (1-self.gain)*currentCorrection - np.dot(self.gCM,s_pol_pred)
+
+        newCorrection[self.numActiveModes:] = 0
+        self.sendToWfc(newCorrection)
+
+
+    def linearPredictIntegrator(self):
+        
+        if self.bufferCount > len(self.buffer):
+            # Compute the extrapolated term for the next command sent to dm
+            a_t = self.prev_command + self.buffer[0] - self.buffer[1] #[nModes]
+        else:
+            a_t = 0
+        # Get the residual slopes on the mirror
+        slopes = self.signalShm.read(SAFE=False, RELEASE_GIL = self.RELEASE_GIL) 
+
+        # Delta should be CM@slopes - a_t
+        # New correction should be oldcorrection - delta 
+        # newCorrection = leakyIntegratorNumba(slopes, 
+        #                  self.gCM, 
+        #                  self.wfcShm.read_noblock(SAFE=False).squeeze(),
+        #                  self.nullCorrection,
+        #                  np.float32(self.leakyGain),
+        #                  self.numActiveModes)
+        oldCorrection = self.wfcShm.read_noblock(SAFE=False).squeeze()
+        residualdelta = self.CM@slopes 
+        extrapolatedDelta =  self.gain*residualdelta  + self.alpha *a_t #[nModes]
+        newCorrection = (1-self.leakyGain)*oldCorrection - extrapolatedDelta 
+
+        # send absolute modal vector to mirror
+        self.sendToWfc(newCorrection, slopes=slopes)
+
+        # Update buffer
+        self.buffer = np.roll(self.buffer,1,axis=0)
+        self.buffer[0] = residualdelta
+        self.bufferCount += 1
+
+        # save current delta as the next prev command
+        self.prev_command = extrapolatedDelta
+        
+        return 
+
 
     def sendToWfc(self, correction, slopes=None):
         #Get an initial slope reading to set shapes

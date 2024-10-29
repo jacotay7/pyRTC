@@ -102,21 +102,18 @@ if RECALIBRATE == True:
 
 
 # %% Compute CM
-#WITH OG 0.15
-#NO OG, BASELINE 0.7, OL 0.05
-# slopes.setProperty("refSlopesFile", "")
-# slopes.run("loadRefSlopes")
 loop.setProperty("IMFile", folder + "IM_PYWFS.npy")
-# loop.setProperty("IMFile", folder + "IM_PYWFS_OL_docrime.npy")
-# loop.setProperty("IMFile", folder + "IM_PYWFS_OL_docrime_CL_docrime.npy")
-# dataFolder = "/home/whetstone/pyRTC/SHARP_LAB/data/PYWFS_ESCAPE_DATA/"
-# loop.setProperty("IMFile", dataFolder + "BASELINE_NO_OG.npy")
-# loop.setProperty("IMFile", dataFolder + "ESCAPE.npy")
-# loop.setProperty("IMFile", dataFolder + "DOCRIME_NO_OG.npy")
+psfCam.setProperty("integrationLength", 2000)
+loop.setProperty("numDroppedModes", 5)
+loop.setProperty("gain",0.6)
+loop.setProperty("leakyGain", 0.01)
 
-loop.setProperty("numDroppedModes", 0)
-loop.setProperty("gain",0.9)
-loop.setProperty("leakyGain", 0.04)
+"""
+LE
+"""
+loop.setProperty("alpha", 1.0)
+wfc.run("setDelay", 0)
+
 loop.run("loadIM")
 time.sleep(0.5)
 
@@ -139,18 +136,20 @@ loop.run("solveDocrime")
 # %% CL DOCRIME Stop
 loop.setProperty("clDocrime", False)
 #%%
-psfCam.setProperty("integrationLength", 300)
+psfCam.setProperty("integrationLength", 3000)
+time.sleep(2)
+loopOptim.adjustParam("gain", 0.1, 0.9)
+loopOptim.adjustParam("numDroppedModes", 0, 20, int)
+loopOptim.adjustParam("leakyGain", 0, 0.05)
+loopOptim.adjustParam("alpha", 0, 1.0)
 time.sleep(1)
 loopOptim.resetStudy()
 time.sleep(5)
-loopOptim.numReads = 5
-loopOptim.maxGain = 1.3
-loopOptim.maxLeak = 0.1
-loopOptim.maxDroppedModes = 20
-loopOptim.numSteps = 100
+loopOptim.numReads = 2
+loopOptim.numSteps = 30
 for i in range(1):
     loopOptim.optimize()
-loopOptim.applyNext()
+loopOptim.applyOptimum()
 #%% Optimize PID
 pidOptim.numReads = 20
 pidOptim.numSteps = 50
@@ -170,12 +169,12 @@ maxAMP = 0.004
 amps = np.linspace(maxAMP, maxAMP/5, numOptim)
 for i in range(numOptim):
     ncpaOptim.resetStudy()
-    psfCam.setProperty("integrationLength", 50)
+    psfCam.setProperty("integrationLength", 5)
     time.sleep(2)
     ncpaOptim.numReads = 3
     ncpaOptim.startMode = 0
     ncpaOptim.endMode = 50 #wfc.getProperty("numModes")
-    ncpaOptim.numSteps = 3000
+    ncpaOptim.numSteps = 2000
     ncpaOptim.correctionMag = amps[i]
     ncpaOptim.isCL = False
     for i in range(1):
@@ -186,7 +185,7 @@ for i in range(numOptim):
     slopes.run("takeRefSlopes")
     slopes.setProperty("refSlopesFile", "/home/whetstone/pyRTC/SHARP_LAB/calib/refPyWFS.npy")
     slopes.run("saveRefSlopes")
-    psfCam.setProperty("integrationLength", 2000)
+    psfCam.setProperty("integrationLength", 500)
     time.sleep(2)
     psfCam.run("takeModelPSF")
     psfCam.setProperty("modelFile", "/home/whetstone/pyRTC/SHARP_LAB/calib/modelPSF_PyWFS.npy")
@@ -551,4 +550,31 @@ plt.xscale('log')
 plt.ylabel("Attenuation (dB)")
 plt.legend()
 plt.show()
+
+# %%
+strehlShm = initExistingShm("strehl")[0]
+wfc2DShm = initExistingShm("wfc2D")[0]
+def recordStrehl(N=10):
+    vals = np.zeros(N)
+    diverge = False
+    for j in range(N):
+        if diverge:
+            return -1
+        vals[j] = np.mean(strehlShm.read())
+        diverge = np.max(wfc2DShm.read_noblock()) > 0.6
+    return np.mean(vals), np.std(vals)
+volts = []
+SRs = []
+SRs_err = []
+#%%
+volts.append(20)
+a, b = recordStrehl(N = 5)
+SRs.append(a)
+SRs_err.append(b)
+
+# %%
+T = wfc.getProperty("frameDelay")
+np.save(f"/home/whetstone/servoLagTest/volts_delay_{T}", np.array(volts))
+np.save(f"/home/whetstone/servoLagTest/sr_delay_{T}", np.array(SRs))
+np.save(f"/home/whetstone/servoLagTest/srErr_delay_{T}", np.array(SRs_err))
 # %%

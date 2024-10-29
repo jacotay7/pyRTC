@@ -16,7 +16,7 @@ if WFS == "PYWFS":
 shm1, _, _ = initExistingShm("wfsRaw")
 shm2, _, _ = initExistingShm("wfc2D")
 # %% Measure Jitter
-N = 30000
+N = 1000
 
 shm1WriteTimes = np.empty(N)
 shm2WriteTimes = np.empty(N)
