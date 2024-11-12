@@ -23,13 +23,18 @@ class SUPERPAOWER(WavefrontCorrector):
         #Initialize connection to ALPAO DM
         self.serialPort = setFromConfig(conf,"serialPort","/dev/tty0USB")
         self.baudRate = setFromConfig(conf,"baudRate",115200)
-        self.voltRange = setFromConfig(conf, "voltRange", [0.0,4.1])
 
         self.communicationPause = setFromConfig(conf, "communicationPause", 0.05) #seconds
 
         #Ask for the number of actuators
         self.numActuators =  conf["numActuators"]
-
+        self.maxVoltage = setFromConfig(conf, "maxVoltage", 8.0)
+        self.minVoltage =  setFromConfig(conf, "minVoltage", 0.0)
+        self.maxCommunicationAttempts = setFromConfig(conf, "maxCommunicationAttempts", 5)
+        self.numDroppedFrames = 0
+        self.acknowledgedFrames = 0
+        self.ACK = 0x34
+        self.NACK = 0x35
         #Generate the ALPAO actuator layout for the number of actuators
         layout = self.generateLayout()
         self.setLayout(layout)
@@ -41,9 +46,7 @@ class SUPERPAOWER(WavefrontCorrector):
             elif '.npy' in conf["flatFile"]:
                 flat = np.load(conf["flatFile"])
             self.setFlat(flat.astype(self.flat.dtype))
-        
-        #flatten the mirror
-        self.flatten()
+
         self.device = None
 
         self.connectToChip()
@@ -51,9 +54,21 @@ class SUPERPAOWER(WavefrontCorrector):
         self.setMapping()
 
         self.device.write('\r'.encode())
-        time.sleep(0.5)
-        self.device.write('\r'.encode())
 
+        time.sleep(0.5)
+        # Read the response from the device
+        response = self.device.read(self.device.in_waiting).decode()
+
+        if not response:
+            print("No response received from the device.")
+        else:
+            print(response)
+        # self.device.read(1)
+
+        #flatten the mirror
+        time.sleep(1)
+        self.flatten()
+        
         return
 
     def generateLayout(self):
@@ -69,17 +84,20 @@ class SUPERPAOWER(WavefrontCorrector):
         self.device = serial.Serial(
             port=self.serialPort,       # Specify the port name
             baudrate=self.baudRate,    # Set the baud rate
-            bytesize=serial.EIGHTBITS,  # Data bits (8)
-            parity=serial.PARITY_NONE,  # Parity (none)
-            stopbits=serial.STOPBITS_ONE,  # Stop bits (1)
-            timeout=10,         # Timeout for read operations (10 seconds)
-            xonxoff=False,      # Disable software flow control
-            rtscts=False,       # Disable hardware (RTS/CTS) flow control
-            dsrdtr=False        # Disable hardware (DSR/DTR) flow control
+            # bytesize=serial.EIGHTBITS,  # Data bits (8)
+            # parity=serial.PARITY_NONE,  # Parity (none)
+            # stopbits=serial.STOPBITS_ONE,  # Stop bits (1)
+            timeout=1e-1,         # Timeout for read operations (10 seconds)
+            # xonxoff=False,      # Disable software flow control
+            # rtscts=False,       # Disable hardware (RTS/CTS) flow control
+            # dsrdtr=False        # Disable hardware (DSR/DTR) flow control
         )
         return
 
     def setMapping(self):
+        # self.channelMapping = [
+        #                      (4, 8),
+        # ]
         self.channelMapping = [
                             (4, 7),
                             (4, 6),
@@ -104,27 +122,39 @@ class SUPERPAOWER(WavefrontCorrector):
         super().sendToHardware()
 
         #All of the modal stuff & Flat is handled by superclass
+        
+        self.currentShape = np.clip(self.currentShape,self.minVoltage,self.maxVoltage)
+        #current = c2m@(max- flat)
+        self.currentCorrection = np.clip(self.currentCorrection,
+                                         self.C2M@(self.minVoltage - self.flat),
+                                         self.C2M@(self.maxVoltage - self.flat)
+                                         )
+        #Copy to shared memory without setting flag
+        np.copyto(self.correctionVector.arr, self.currentCorrection)
 
-        #Loop through zonal shape
-        for i, val in enumerate(self.currentShape):
-            #Extract the corresponding DAC mapping
-            pmod, chan = self.channelMapping[i]
-            #Set the value by communicating with FPGA
-            self.setSingleDAC(pmod, chan, val)
-            time.sleep(self.communicationPause)
+        pkt = self.correctionToPacket(self.currentShape)
+        
+        response = b'5'
+        self.device.write(pkt)
+        # attemptCount = 0
+        # self.device.flush()
+        # while int.from_bytes(response, "big") != self.ACK and attemptCount < self.maxCommunicationAttempts:
+        #     # print(f"Sending packet: {pkt.hex()}")
+        #     self.device.write(pkt)
+        #     # Read the response from the device
+        #     response = self.device.read(1)
+        #     attemptCount += 1
 
-            """
-            Need to implement the other side of this on FPGA
-            """
-            # pkt = self.correctionToPacket(self.currentShape)
-            # self.device.write(pkt)
-
-        return
+        # if int.from_bytes(response, "big") != self.ACK and attemptCount >= self.maxCommunicationAttempts:
+        #     self.numDroppedFrames += 1
+        # else:
+        #     self.acknowledgedFrames += 1
+        # return
 
     def correctionToPacket(self, correction):
 
-        header = b'\xAA\xBB'  # Example header
-        num_commands = self.numActuators
+        header = struct.pack('B', 33) #b'\x21'  # Example header
+        num_commands = len(correction)
         
         # Start with the header and the number of commands
         packet = header + struct.pack('B', num_commands)
@@ -132,36 +162,25 @@ class SUPERPAOWER(WavefrontCorrector):
         # Append each command in 'iif' format
         for i, val in enumerate(correction):
             pmod, chan = self.channelMapping[i]
-            packet += struct.pack('BBf', int(pmod), int(chan), float(val))
+            packet += struct.pack('BB', int(pmod), int(chan))
+            packet += struct.pack('>H', int(420*float(val)))
         
         # Calculate checksum
         checksum = calculate_checksum(packet)
         
         # Append checksum
         packet += struct.pack('B', checksum)
-        
+
         return packet
-
-    def setSingleDAC(self, pmod, chan, volt):
-        # pmod = str(pmod)
-        # chan = str(chan)
-        # volt = str(volt)
-        # print("Sending CMD -- PMOD:{pmod} CHAN: {chan} VOLT: {volt}")
-
-        pmod = int(pmod)
-        chan = int(chan)
-        volt = float(volt)
-
-        data = struct.pack('iif', pmod, chan, volt)
-        self.device.write(data)
-
-        # intstructions = [b'e', b'e', pmod.encode(), chan.encode(), volt.encode(), b'\r']
-        # for instruct in intstructions:
-        #     self.device.write(instruct)  # Send 'e' character
-        #     time.sleep(self.communicationPause)
-
-        return
-
+    
+    def readM2C(self, filename=''):
+        super().readM2C(filename=filename)
+        M2C = self.M2C.copy()
+        #Normalize each mode to min/max of 1
+        for i in range(M2C.shape[1]):
+            M2C[:,i] /= np.max(np.abs(M2C[:,i]))
+        self.setM2C(M2C)
+        return 
     def __del__(self):
         super().__del__()
         #Code to disconnect from serial port

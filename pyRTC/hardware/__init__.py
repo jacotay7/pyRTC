@@ -31,13 +31,28 @@ try:
     __all__.append('powerMeter')
 except:
     print("Power meter modules not found. Likely pyvisa-py & pysub needed.")
+try:
+    from .serialPhotodetector import *
+    __all__.append('photoDetector')
+except:
+    print("Serial modules not found. Likely pyserial is needed.")
+try:
+    from .QHYCCDSciCam import *
+    __all__.append('QHYCCD')
+except:
+    print("All QHY modules not found. Likely needs qhyccd-python: https://github.com/JiangXL/qhyccd-python/tree/master")
+
 
 from .NCPAOptimizer import *
 from .PIDOptimizer import *
+from .PSGDLoop import *
+from .psgdOptim import *
 
 __all__.extend([
            'NCPAOptimizer', 
-           'PIDOptimizer'
+           'PIDOptimizer',
+           'PSGDLoop',
+           'psgdOptimizer'
            ])
 
 #Remove Any duplicates

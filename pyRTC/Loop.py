@@ -234,6 +234,7 @@ class Loop(pyRTCComponent):
         self.computeCM()
 
     def flatten(self):
+
         self.wfcShm.write(self.flat)
         return
     
@@ -350,6 +351,8 @@ class Loop(pyRTCComponent):
         self.controlOutput = controlOutput
         
         return
+
+
 
     def plotIM(self, row=None):
         # if not (row is None):

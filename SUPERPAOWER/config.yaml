@@ -1,14 +1,25 @@
+loop:
+  name: "psgd"
+  rate: 10 #The learning rate, roughly dimensionless, if norm is right
+  amp: 0.2 #Size of pokes in Volts
+  # norm: 0.000001 #100.0 #0.000001 #Factor to norm measurement to 1, should be approximate mean measurement
+  affinity: 6
+  functions:
+  - psgd
+
 wfc:
   name: "SUPERPAOWER"
   # serialPort: "COM10"
-  serialPort: "/dev/ttyUSB1"
-  baudRate: 115200
+  serialPort: "/dev/ttyUSB2"
+  baudRate: 921600 #921600 #115200
   numActuators: 16
-  numModes: 16
+  numModes: 16 #5
   communicationPause: 0.05
-  # flatFile: "./calib/flat.npy"
+  maxVoltage: 5.0 #Max voltage allowd to send to chip
+  minVoltage: 0.0 #Min voltage allowd to send to chip
+  # flatFile: "./calib/wfcShape.npy"
   saveFile: "./calib/wfcShape.npy"
-  # m2cFile:  "./calib/m2c.npy"
+  #m2cFile:  "./calib/m2c_zonal_5.npy" #"./calib/m2c_zonal_custom.npy" #"./calib/m2c_4x4_paower.npy" #The basis, comment out for zonal
   affinity: 2
   functions:
   - sendToHardware
@@ -18,7 +29,7 @@ power:
   device: "/dev/usbtmc2"
   width: 1
   height: 1
-  exposure: 1 #How many power reads averages per read
+  # exposure: 100 #How many power reads averages per read
   darkCount: 100 #How many reads averages to get background
   integration: 1 #How many reads integrated for psfLong
   imageDType: float32
@@ -29,3 +40,49 @@ power:
   - expose
   - integrate
   # - computeStrehl
+
+photodetect:
+  name: "photoDetector"
+  device: "/dev/ttyACM0"
+  baud: 115200 #9600
+  width: 1
+  height: 1
+  # exposure: 100 #How many power reads averages per read
+  darkCount: 1 #How many reads averages to get background
+  integration: 10 #How many reads integrated for psfLong
+  imageDType: float32
+  exposure: 1
+  # darkFile: "/home/whetstone/pyRTC/SHARP_LAB/calib/psfDark.npy"
+  # modelFile: "/home/whetstone/pyRTC/SHARP_LAB/calib/modelPSF.npy"
+  affinity: 3
+  functions:
+  - expose
+  - integrate
+
+psf:
+  name: "qhyccdCamera"
+  top: 558 
+  left: 632 
+  width: 32
+  height: 32
+  gain: 0.0
+  binning: 1
+  usbtraffic: 5 #Change this depending on your ROI size to find best speed
+  exposure: 1 #How many power reads averages per read
+  darkCount: 1000 #How many reads averages to get background
+  integration: 100 #How many reads integrated for psfLong
+  imageDType: float32
+  # darkFile: "/home/whetstone/SUPERPAOWER/pyRTC/SHARP_LAB/calib/psfDark.npy"
+  # modelFile: "/home/whetstone/SUPERPAOWER/pyRTC/SHARP_LAB/calib/modelPSF.npy"
+  affinity: 3
+  functions:
+  - expose
+  - integrate
+  # - computeStrehl
+
+wfs:
+  name: "tmp"
+
+optimizer:
+  name: 'pgsdOptim'
+  numSteps: 100
