@@ -2,9 +2,6 @@ from pyRTC.WavefrontSensor import *
 from ximea import xiapi
 from pyRTC.Pipeline import *
 from pyRTC.utils import *
-import argparse
-import sys
-import os 
 
 class XIMEA_WFS(WavefrontSensor):
 
@@ -14,6 +11,7 @@ class XIMEA_WFS(WavefrontSensor):
         # self.cam.open_device()
         self.cam.open_device_by("XI_OPEN_BY_SN", conf["serial"])
 
+        self.downsampledImage = None
         if "bitDepth" in conf:
             self.setBitDepth(conf["bitDepth"])
         if "binning" in conf:
@@ -26,10 +24,10 @@ class XIMEA_WFS(WavefrontSensor):
         if "gain" in conf:
             self.setGain(conf["gain"])
 
-
         self.img = xiapi.Image()
        
-
+        # self.cam.set_buffer_policy("XI_BP_UNSAFE")
+        # self.cam.set_param('buffers_queue_size', 2)
         self.cam.start_acquisition()
 
         return
@@ -68,9 +66,15 @@ class XIMEA_WFS(WavefrontSensor):
     def expose(self):
         
         self.cam.get_image(self.img)
-        self.data = np.ndarray((self.img.width,self.img.height), 
-                               buffer= self.img.get_image_data_raw(), 
-                               dtype=np.uint16)
+        
+        # self.data = np.ndarray((self.img.width,self.img.height), 
+        #                        buffer= self.img.get_image_data_raw(), 
+        #                        dtype=np.uint16)
+        # if self.binning > 2:
+        #     # /2 is adjusted for on-chip binning
+        #     self.data = downsample_uint16_image_jit(self.img.get_image_data_numpy(), self.binning//2)
+        # else:
+        self.data = self.img.get_image_data_numpy()
         super().expose()
 
         return
@@ -85,28 +89,4 @@ class XIMEA_WFS(WavefrontSensor):
     
 if __name__ == "__main__":
 
-    # Create argument parser
-    parser = argparse.ArgumentParser(description="Read a config file from the command line.")
-
-    # Add command-line argument for the config file
-    parser.add_argument("-c", "--config", required=True, help="Path to the config file")
-    parser.add_argument("-p", "--port", required=True, help="Port for communication")
-
-    # Parse command-line arguments
-    args = parser.parse_args()
-
-    conf = read_yaml_file(args.config)
-
-    pid = os.getpid()
-    set_affinity((conf["wfs"]["affinity"])%os.cpu_count()) 
-    decrease_nice(pid)
-
-    confWFS = conf["wfs"]
-    wfs = XIMEA_WFS(conf=confWFS)
-
-    wfs.start()
-    
-    l = Listener(wfs, port= int(args.port))
-    while l.running:
-        l.listen()
-        time.sleep(1e-3)
+    launchComponent(XIMEA_WFS, "wfs", start = True)

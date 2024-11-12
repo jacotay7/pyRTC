@@ -1,42 +1,38 @@
 loop:
-  gain: 0.1
-  leakyGain: 0.0
-  numDroppedModes: 30
+  gain: 0.425
+  leakyGain: 0.026
+  numDroppedModes: 14
   pokeAmp: 0.02
   numItersIM: 50
   affinity: 2
   delay: 2
   method: push-pull
   IMFile: "/home/whetstone/pyRTC/SHARP_LAB/calib/IM.npy"
-  # AImodel: "shlong_10_default0m_SAM"
-  # AIhalfPrecision: False
-  # AIdevice: "cuda:0"
-  # AIburnIn: 50000
-  # AIresidualLength: 250000
-  pGain: 0.316
-  iGain: 0.0612
-  dGain: 0.0481
-  controlLimits: [-0.01, 0.01]
-  absoluteLimits: [-0.2, 0.2]
+  pGain: 0.28
+  iGain: 0.066
+  dGain: 0.078
+  controlLimits: [-0.05, 0.05]
+  absoluteLimits: [-0.3, 0.3]
   integralLimits: [-0.1, 0.1]
   derivativeFilter: 0.1
+  hardwareDelay: 0.001 #seconds
   functions:
   # - standardIntegrator
   # - standardIntegratorPOL
-  # - leakyIntegrator
+  - leakyIntegrator
   # - pidIntegratorPOL
-  - pidIntegrator
+  # - pidIntegrator
 
 
 wfs:
   name: XIMEA
   serial: "46052550"
   binning: 1 
-  exposure: 2000
+  exposure: 2500
   gain: 0
   bitDepth: 10
-  left: 448 #416 
-  top: 280 
+  left: 400 #416 
+  top: 270 
   width: 400 
   height: 400 
   darkCount: 2000
@@ -48,17 +44,16 @@ wfs:
 slopes:
   type: SHWFS
   signalType: slopes
-  refSlopesFile: "/home/whetstone/pyRTC/SHARP_LAB/calib/ref.npy"
+  refSlopesFile: "/home/whetstone/pyRTC/SHARP_LAB/calib/ref_SH.npy"
   validSubApsFile: "/home/whetstone/pyRTC/SHARP_LAB/calib/validSubAps.npy"
   subApSpacing: 15.54 #7.78
-  subApOffsetX: 8
-  subApOffsetY: 4
-  imageNoise: 0.5
-  contrast: 20
+  subApOffsetX: 13
+  subApOffsetY: 3
+  imageNoise: 1.3
+  contrast: 10
   affinity: 4
   functions:
   - computeSignal
-
 # wfs:
 #   name: XIMEA
 #   serial: "13056250"
@@ -91,14 +86,13 @@ wfc:
   serial: "BAX118"
   numActuators: 97
   numModes: 94
-  flatFile: "/home/whetstone/pyRTC/SHARP_LAB/calib/wfcShape.npy"
-  saveFile: "/home/whetstone/pyRTC/SHARP_LAB/calib/wfcShape.npy"
-  m2cFile: "/home/whetstone/pyRTC/SHARP_LAB/calib/m2c_kl.npy" 
+  flatFile: "/home/whetstone/pyRTC/SHARP_LAB/calib/wfcShape_SH.npy"
+  saveFile: "/home/whetstone/pyRTC/SHARP_LAB/calib/wfcShape_SH.npy"
+  m2cFile:  "/home/whetstone/pyRTC/SHARP_LAB/calib/m2c_kl.npy" 
   floatingActuatorsFile: ""
   floatingInfluenceRadius: 1
   affinity: 5
   commandCap: 0.8
-  hardwareDelay: 0.001 #seconds
   frameDelay: 0
   functions:
   - sendToHardware
@@ -109,14 +103,14 @@ psf:
   exposure: 300
   gain: 0
   bitDepth: 16
-  left: 920
-  top: 436
+  left: 936
+  top: 448
   width: 128
   height: 128
   darkCount: 2000
   darkFile: "/home/whetstone/pyRTC/SHARP_LAB/calib/psfDark.npy"
-  modelFile: "/home/whetstone/pyRTC/SHARP_LAB/calib/modelPSF.npy"
-  integration: 100
+  modelFile: "/home/whetstone/pyRTC/SHARP_LAB/calib/modelPSF_SH.npy"
+  integration: 1
   affinity: 6
   functions:
   - expose
@@ -128,7 +122,7 @@ optimizer:
     name: "NCPA"
     numSteps: 100
     startMode: 0
-    endMode: 20
+    endMode: 40
     correctionMag: 0.003
     numReads: 1
     affinity: 10
@@ -138,6 +132,15 @@ optimizer:
     maxPGain: 0.5
     maxIGain: 0.1
     maxDGain: 0.1
+    numReads: 1
+    affinity: 10
+  loop:
+    name: "hyper"
+    numSteps: 100
+    minGain: 0.3
+    maxGain: 0.6
+    maxLeak: 0.05
+    maxDroppedModes: 30
     numReads: 1
     affinity: 10
 

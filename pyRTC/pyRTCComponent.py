@@ -62,17 +62,24 @@ class pyRTCComponent:
         self.alive = True
         self.running = False
         self.affinity = setFromConfig(conf, "affinity", 0)
+        self.gpuDevice = setFromConfig(conf, "gpuDevice", None)
 
+        # if self.gpuDevice is not None:
+        #     self.gpuDevice = torch.device(self.gpuDevice)
+        
         functionsToRun = setFromConfig(conf, "functions", [])
         self.workThreads = []
+        self.RELEASE_GIL = True
+        
         if isinstance(functionsToRun, list) and len(functionsToRun) > 0:
             for i, functionName in enumerate(functionsToRun):
+                threadAffinity = (self.affinity+i)%os.cpu_count()
                 # Launch a separate thread
-                workThread = threading.Thread(target=work, args = (self,functionName), daemon=True)
+                workThread = threading.Thread(target=work, 
+                                            args = (self,functionName, threadAffinity), 
+                                            daemon=True)
                 # Start the thread
                 workThread.start()
-                # Set CPU affinity for the thread
-                set_affinity((self.affinity+i)%os.cpu_count()) 
                 self.workThreads.append(workThread)
 
         return
@@ -101,25 +108,4 @@ class pyRTCComponent:
 
 if __name__ == "__main__":
 
-    # Create argument parser
-    parser = argparse.ArgumentParser(description="Read a config file from the command line.")
-
-    # Add command-line argument for the config file
-    parser.add_argument("-c", "--config", required=True, help="Path to the config file")
-
-    # Parse command-line arguments
-    args = parser.parse_args()
-
-    conf = read_yaml_file(args.config)
-
-    pid = os.getpid()
-    set_affinity(0) 
-    decrease_nice(pid)
-
-    component = pyRTCComponent(conf=conf)
-    component.start()
-
-    l = Listener(component)
-    while l.running:
-        l.listen()
-        time.sleep(1e-3)
+    launchComponent(pyRTCComponent, "component", start = True)

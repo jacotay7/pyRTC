@@ -14,12 +14,15 @@ class PIModulator(Modulator):
         super().__init__(conf)
 
         self.amplitudeX = conf["amplitude"]
+        self.relativeAmp = setFromConfig(conf, "relativeAmplitude", 1.0)
         self.frequency = conf["frequency"]
-        self.amplitudeY = conf["amplitude"]*conf["relativeAmplitude"]
+        self.amplitudeY = conf["amplitude"]*self.relativeAmp
         self.offsetX = conf["offsetX"]
         self.offsetY = conf["offsetX"]
         self.phaseOffset = conf["phaseOffset"]
         self.sampling = 1/conf["digitalFreq"]
+
+
 
         self.wavegens = (1, 2)
         self.wavetables = (1, 2)
@@ -38,7 +41,11 @@ class PIModulator(Modulator):
         if conf["autoZero"]:
             self.mod.ATZ()
 
-        self.defineCircle()
+        try:
+            self.defineCircle()
+        except:
+            self.stop()
+            self.defineCircle()
 
         return
 
@@ -74,13 +81,14 @@ class PIModulator(Modulator):
 
     def start(self):
         super().start()
+
         #Move axes to their start positions
         startpos = (self.offsetX, self.offsetY + self.amplitudeY // 2)
         self.goTo(startpos)
-        
+
         #Start wave generators {}'.format(self.wavegens))
         self.mod.WGO(self.wavegens, mode=[1] * len(self.wavegens))
-
+        return
 
     def stop(self):
         super().stop()
@@ -95,38 +103,19 @@ class PIModulator(Modulator):
             self.mod.MOV(ax,int(x[i]))
         pitools.waitontarget(self.mod, self.mod.axes[:2])
         return 1
+    
+    def adjustAmp(self, amp, restart=True):
+        self.amplitudeX = amp
+        self.amplitudeY = amp*self.relativeAmp
+        if restart:
+            self.restart()
+        return
+    
+    def restart(self):
+        self.stop()
+        self.defineCircle()
+        self.start()
 
 if __name__ == "__main__":
 
-
-    #Prevents camera output from messing with communication
-    # original_stdout = sys.stdout
-    # sys.stdout = open(os.devnull, 'w')
-
-    # Create argument parser
-    parser = argparse.ArgumentParser(description="Read a config file from the command line.")
-
-    # Add command-line argument for the config file
-    parser.add_argument("-c", "--config", required=True, help="Path to the config file")
-
-    # Parse command-line arguments
-    args = parser.parse_args()
-
-    conf = read_yaml_file(args.config)
-
-    pid = os.getpid()
-    set_affinity((conf["wfc"]["affinity"])%os.cpu_count()) 
-    decrease_nice(pid)
-
-    confMod = conf["modulator"]
-    mod = PIModulator(conf=confMod)
-    mod.start()
-    
-    time.sleep(5)
-    #Go back to communicating with the main program through stdout
-    # sys.stdout = original_stdout
-
-    # l = Listener(wfc)
-    # while l.running:
-    #     l.listen()
-    #     time.sleep(1e-3)
+    launchComponent(PIModulator, "modulator", start = True)

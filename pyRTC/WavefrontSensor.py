@@ -9,6 +9,55 @@ import matplotlib.pyplot as plt
 from numba import jit
 from sys import platform
 
+@jit(nopython=True, nogil=True, cache=True, fastmath=True)
+def downsample_int32_image_jit(image, N):
+    """
+    Numba-optimized function to downsample a 2D int32 NumPy array by a factor N, returning int32 output.
+
+    Parameters:
+    - image: 2D NumPy array of int32 with shape (H, W)
+    - N: int, downsampling factor
+
+    Returns:
+    - downsampled_image: 2D NumPy array of int32 with shape (H//N, W//N)
+    """
+    H, W = image.shape
+
+    # Calculate padding sizes if H or W is not divisible by N
+    pad_H = (-H) % N
+    pad_W = (-W) % N
+
+    # Pad the image if necessary to make dimensions divisible by N
+    if pad_H > 0 or pad_W > 0:
+        # Create a new array with zeros
+        H_padded = H + pad_H
+        W_padded = W + pad_W
+        image_padded = np.zeros((H_padded, W_padded), dtype=np.int32)
+        image_padded[:H, :W] = image
+    else:
+        image_padded = image
+        H_padded, W_padded = H, W
+
+    # Initialize the output array
+    out_H = H_padded // N
+    out_W = W_padded // N
+    downsampled_image = np.zeros((out_H, out_W), dtype=np.int32)
+
+    # Loop over the output array indices with Numba's parallel loops
+    for i in range(out_H):
+        for j in range(out_W):
+            # Compute the sum over the N x N block
+            sum_block = 0
+            for di in range(N):
+                for dj in range(N):
+                    sum_block += image_padded[i*N + di, j*N + dj]
+            # Compute the mean
+            mean_value = sum_block / (N * N)
+            # Round and cast to int32
+            downsampled_image[i, j] = np.int32(round(mean_value))
+
+    return downsampled_image
+
 class WavefrontSensor(pyRTCComponent):
     """
     A pyRTCComponent which represents a Wavefront Sensor (camera). This is a general class which is 
@@ -16,7 +65,7 @@ class WavefrontSensor(pyRTCComponent):
     class should be used by defining a child class held in pyRTC.hardware, which overwrites
     the relevant functions which actual hardware connectivity code. The child class can call its parent
     implementations in order to make use of the code which sets the relevant parameters, write to shared
-    memory, etc... or they can overwrite them completely.
+    memory, etc... or they can overwrite them completely. See hardware/ximeaWFS.py for an example.
 
     Config
     ------
@@ -105,25 +154,29 @@ class WavefrontSensor(pyRTCComponent):
             the "wfs" section of a pyRTC config.
         """
 
+        super().__init__(conf)
+
         self.name = setFromConfig(conf, "name", "wavefrontSensor")
-        self.width = conf["width"]
-        self.height = conf["height"]
+        self.width = setFromConfig(conf, "width", 1)
+        self.height = setFromConfig(conf, "height", 1)
         self.darkCount = setFromConfig(conf, "darkCount", 1000)
         self.darkFile = setFromConfig(conf, "darkFile", "")
+        self.downsampleFactor = setFromConfig(conf, "downsampleFactor", 0)
 
-        self.imageShape = (self.width, self.height)
+        self.imageRawShape = [self.width, self.height]
         self.imageRawDType = np.uint16
         self.imageDType = np.int32
-
-        self.imageRaw = ImageSHM("wfsRaw", self.imageShape, self.imageRawDType)
-        self.image = ImageSHM("wfs", self.imageShape, self.imageDType)
+        self.imageShape = [self.width, self.height]
+        if self.downsampleFactor > 0:
+            self.imageShape[0] = self.imageShape[0] // self.downsampleFactor
+            self.imageShape[1] = self.imageShape[1] // self.downsampleFactor
+        self.imageRaw = ImageSHM("wfsRaw", self.imageRawShape, self.imageRawDType, gpuDevice = self.gpuDevice, consumer=False)
+        self.image = ImageSHM("wfs", self.imageShape, self.imageDType, gpuDevice = self.gpuDevice, consumer=False)
 
         self.data = np.zeros(self.imageShape, dtype=self.imageRawDType)
-        self.dark = np.zeros(self.imageShape, dtype=self.imageDType)
+        self.dark = np.zeros(self.imageRawShape, dtype=self.imageDType)
 
         self.loadDark()
-
-        super().__init__(conf)
 
         return
     
@@ -199,7 +252,12 @@ class WavefrontSensor(pyRTCComponent):
         Writes the current image data to shared memory. Both raw, and dark subtracted.
         """
         self.imageRaw.write(self.data)
-        self.image.write(self.data.astype(self.imageDType) - self.dark)
+        img = self.data.astype(self.imageDType)
+        if self.downsampleFactor > 0:
+            self.image.write(downsample_int32_image_jit(img - self.dark, 
+                                                        self.downsampleFactor))
+        else:
+            self.image.write(img - self.dark)
         return
 
     def read(self, block = True) -> None:
@@ -212,18 +270,32 @@ class WavefrontSensor(pyRTCComponent):
             Processed image data.
         """
         if block:
-            return self.image.read()
+            return self.image.read(RELEASE_GIL = self.RELEASE_GIL)
         else:
             return self.image.read_noblock()
     
+    def readRaw(self, block = True) -> None:
+        """
+        Reads the dark subtracted image data from shared memory.
+
+        Returns
+        -------
+        ndarray
+            Processed image data.
+        """
+        if block:
+            return self.imageRaw.read(RELEASE_GIL = self.RELEASE_GIL)
+        else:
+            return self.imageRaw.read_noblock()
+
     def takeDark(self) -> None:
         """
         Captures and sets the dark frame.
         """
         self.setDark(np.zeros_like(self.dark))
-        dark = np.zeros(self.imageShape, dtype=np.float64)
+        dark = np.zeros(self.imageRawShape, dtype=np.float64)
         for i in range(self.darkCount):
-            dark += self.read().astype(np.float64)
+            dark += self.readRaw().astype(np.float64)
         dark /= self.darkCount
         self.setDark(dark)        
         return 
@@ -286,28 +358,4 @@ class WavefrontSensor(pyRTCComponent):
     
 if __name__ == "__main__":
 
-    # Create argument parser
-    parser = argparse.ArgumentParser(description="Read a config file from the command line.")
-
-    # Add command-line argument for the config file
-    parser.add_argument("-c", "--config", required=True, help="Path to the config file")
-    parser.add_argument("-p", "--port", required=True, help="Port for communication")
-
-    # Parse command-line arguments
-    args = parser.parse_args()
-
-    conf = read_yaml_file(args.config)
-
-    pid = os.getpid()
-    set_affinity((conf["wfs"]["affinity"])%os.cpu_count()) 
-    decrease_nice(pid)
-
-    confWFS = conf["wfs"]
-    wfs = WavefrontSensor(conf=confWFS)
-
-    wfs.start()
-    
-    l = Listener(wfs, port= int(args.port))
-    while l.running:
-        l.listen()
-        time.sleep(1e-3)
+    launchComponent(WavefrontSensor, "wfs", start = True)

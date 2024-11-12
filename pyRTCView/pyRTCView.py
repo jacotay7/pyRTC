@@ -47,7 +47,7 @@ class RealTimeView(QMainWindow):
         self.figure = Figure(figsize=(8, 8), tight_layout=True)
         self.axes = self.figure.add_subplot(111)
 
-        frame = self.shm.read_noblock_safe()
+        frame = self.shm.read_noblock()
 
         aspect = None
         ASPECTCAP = 10

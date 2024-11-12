@@ -1,18 +1,20 @@
 loop:
   gain: 0.1
+  leakyGain: 0.01
   numDroppedModes: 0
   pokeAmp: 0.000001 #1000nm
   numItersIM: 1
   affinity: 2
   method: push-pull
   functions:
-  - standardIntegrator
+  - leakyIntegrator
 
 wfs:
   name: OOPAOWFS
-  width: 48
-  height: 48
+  width: 28
+  height: 28
   darkCount: 1000
+  integration: 50
   affinity: 3
   functions:
   - expose
@@ -23,19 +25,19 @@ slopes:
   affinity: 4
   flatNorm: True
   #Specify where the pupils are and how large for a PYWFS
-  pupilsRadius: 12
-  pupils:  
-  - 12,12
-  - 36,12
-  - 12,36
-  - 36,36
+  # pupilsRadius: 12
+  # pupils:  
+  # - 12,12
+  # - 36,12
+  # - 12,36
+  # - 36,36
   functions:
   - computeSignal
 
 wfc:
   name: "OOPAOWFC"
-  numActuators: 356
-  numModes: 100
+  numActuators: 100
+  numModes: 80
   flatFile: ""
   saveFile: "flat.npy"
   m2cFile:  ""
@@ -49,11 +51,12 @@ wfc:
 psf:
   name: "OOPAOPSF"
   index: 0
-  width: 128
-  height: 128
-  darkCount: 1000
-  integration: 100
+  width: 200
+  height: 200
+  darkCount: 10
+  integration: 10
   affinity: 3
   functions:
   - expose
   - integrate
+  - computeStrehl

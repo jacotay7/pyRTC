@@ -25,6 +25,8 @@ setup(
                       'pyserial',
                       'pyvisa-py',
                       'pyusb',             
+                      'torch',
+                      'numexpr'             
                       ],
     extras_require={
         "docs": [

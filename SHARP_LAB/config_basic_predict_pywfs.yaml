@@ -1,0 +1,167 @@
+loop:
+  gain: 0.1
+  leakyGain: 0.01
+  numDroppedModes: 30
+  pokeAmp: 0.02
+  numItersIM: 50
+  affinity: 2
+  delay: 2
+  method: push-pull
+  validSubApsFile: "/home/whetstone/pyRTC/SHARP_LAB/calib/validSubApsPyWFS.npy"
+  IMFile: "/home/whetstone/pyRTC/SHARP_LAB/calib/IM_PYWFS.npy"
+  gpuDevice: 0
+  batch_size: 64
+  num_epochs: 100
+  learning_rate: 0.001
+  num_layers: 2
+  hidden_size: 128
+  lambda_recon: 20
+  K: 10
+  T: 2
+  functions:
+  - predictiveIntegrator
+
+
+wfs:
+  name: XIMEA
+  serial: "13056250"
+  binning: 2
+  downsampleFactor: 4
+  exposure: 10000
+  gain: 0
+  bitDepth: 10
+  left: 240
+  top: 50 
+  width: 192 
+  height: 192 
+  darkCount: 2000
+  darkFile: "/home/whetstone/pyRTC/SHARP_LAB/calib/darkPyWFS.npy"
+  affinity: 3
+  gpuDevice: 0
+  functions:
+  - expose
+
+  # pupils: 
+  # - 90,110
+  # - 91,270
+  # - 300,145
+  # - 260,270
+
+slopes:
+  type: PYWFS
+  signalType: slopes
+  validSubApsFile: "/home/whetstone/pyRTC/SHARP_LAB/calib/validSubApsPyWFS.npy"
+  refSlopesFile: "/home/whetstone/pyRTC/SHARP_LAB/calib/refPyWFS.npy"
+  flatNorm: True
+  pupilsRadius: 8 #8 #64
+  pupils: 
+  - 11,12
+  - 11,32
+  - 38,16 
+  - 32,32
+  # pupilsRadius: 32
+  # pupils: 
+  # - 46,48
+  # - 44,128
+  # - 150,65 #140, 60
+  # - 128,128
+  affinity: 4
+  gpuDevice: 0
+  functions:
+  - computeSignal
+
+wfc:
+  name: "ALPAO"
+  serial: "BAX118"
+  numActuators: 97
+  numModes: 94
+  flatFile: "/home/whetstone/pyRTC/SHARP_LAB/calib/wfcShapePyWFS.npy"
+  saveFile: "/home/whetstone/pyRTC/SHARP_LAB/calib/wfcShapePyWFS.npy"
+  m2cFile: "/home/whetstone/pyRTC/SHARP_LAB/calib/m2c_kl.npy" 
+  floatingActuatorsFile: ""
+  floatingInfluenceRadius: 1
+  affinity: 5
+  commandCap: 0.8
+  hardwareDelay: 0.001 #seconds
+  gpuDevice: 0
+  frameDelay: 0
+  functions:
+  - sendToHardware
+
+psf:
+  name: "FLIR"
+  index: 0
+  exposure: 3333
+  gain: 0
+  bitDepth: 16
+  left: 936
+  top: 432
+  width: 128
+  height: 128
+  darkCount: 2000
+  darkFile: "/home/whetstone/pyRTC/SHARP_LAB/calib/psfDark_PyWFS.npy"
+  modelFile: "/home/whetstone/pyRTC/SHARP_LAB/calib/modelPSF_PyWFS.npy"
+  integration: 50
+  affinity: 6
+  functions:
+  - expose
+  - integrate
+  - computeStrehl
+
+optimizer:
+  ncpa:
+    name: "NCPA"
+    numSteps: 100
+    startMode: 0
+    endMode: 40
+    correctionMag: 0.003
+    numReads: 1
+    affinity: 10
+  pid:
+    name: "PID"
+    numSteps: 100
+    maxPGain: 0.5
+    maxIGain: 0.1
+    maxDGain: 0.1
+    numReads: 1
+    affinity: 10
+  loop:
+    name: "hyper"
+    numReads: 2
+    params:
+    - gain
+    - leakyGain
+    - gamma
+    - numDroppedModes
+    mins:
+    - 0.1
+    - 0.0
+    - 0.0
+    - 0
+    maxs:
+    - 1.2
+    - 0.05
+    - 1.0
+    - 20
+    types:
+    - float
+    - float
+    - float
+    - int
+    affinity: 10
+modulator:
+  name: 'E-727'
+  libFolder: '/opt/PI/lib64/'
+  digitalFreq: 20000 #Hz
+  frequency: 300 #Hz
+  amplitude: 600
+  relativeAmplitude: 1.0
+  offsetX: 2500 #2800
+  offsetY: 2500 #1100
+  phaseOffset: 0
+  servosOn: False
+  autoZero: True 
+  affinity: 7
+
+
+

@@ -102,9 +102,11 @@ class _OOPAOScienceCamera(ScienceCamera):
         # #Add current dm state to the telescope
         self.src*self.tel#*self.dm
         #Compute PSF
-        self.tel.computePSF(zeroPaddingFactor=5, N_crop=136)
+        self.tel.computePSF(zeroPaddingFactor=5)#, N_crop=136)
         #Check that we still have the right source coupled
-        self.data = (255.*self.tel.PSF_norma_zoom).astype(np.uint16)
+        psfImg = self.tel.PSF_norma.copy()
+        psfImg[psfImg > 65536] = 65536
+        self.data = (psfImg).astype(np.uint16)
         
         super().expose()
 
@@ -213,7 +215,7 @@ def _initializeDummyParameterFile():
     
     ###%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% ATMOSPHERE PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     
-    param['r0'                   ] = 0.3                                            # value of r0 in the visible in [m]
+    param['r0'                   ] = 0.15                                            # value of r0 in the visible in [m]
     param['L0'                   ] = 30                                             # value of L0 in the visible in [m]
     param['fractionnalR0'        ] = [0.45,0.1,0.1,0.25,0.1]                        # Cn2 profile
     param['windSpeed'            ] = [10,12,11,15,20]                               # wind speed of the different layers in [m.s-1]
@@ -223,11 +225,11 @@ def _initializeDummyParameterFile():
     ###%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% M1 PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     
     param['diameter'             ] = 8                                              # diameter in [m]
-    param['nSubaperture'         ] = 20                                             # number of PWFS subaperture along the telescope diameter
+    param['nSubaperture'         ] = 10                                             # number of PWFS subaperture along the telescope diameter
     param['nPixelPerSubap'       ] = 4                                              # sampling of the PWFS subapertures
     param['resolution'           ] = param['nSubaperture']*param['nPixelPerSubap']  # resolution of the telescope driven by the PWFS
     param['sizeSubaperture'      ] = param['diameter']/param['nSubaperture']        # size of a sub-aperture projected in the M1 space
-    param['samplingTime'         ] = 1/1000                                         # loop sampling time in [s]
+    param['samplingTime'         ] = 1/300                                         # loop sampling time in [s]
     param['centralObstruction'   ] = 0.112                                          # central obstruction in percentage of the diameter
     param['nMissingSegments'     ] = 0                                              # number of missing segments on the M1 pupil
     param['m1_reflectivity'      ] = 1                                              # reflectivity of the 798 segments
@@ -235,8 +237,8 @@ def _initializeDummyParameterFile():
     ###%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% NGS PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     
     param['magnitude'            ] = 8                                              # magnitude of the guide star
-    param['opticalBand'          ] = 'I'                                            # optical band of the guide star
-    param['sourceBand'          ] = 'K'
+    param['opticalBand'          ] = 'R'                                            # optical band of the guide star
+    param['sourceBand'          ] = 'J'
 
     ###%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% DM PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     param['nActuator'            ] = param['nSubaperture']+1                        # number of actuators 
