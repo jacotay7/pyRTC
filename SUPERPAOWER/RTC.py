@@ -32,8 +32,11 @@ loop.launch()
 
 # %%
 #%%Set-up Loop
-loop.setProperty("rate",1)
+loop.setProperty("rate", 3)
 loop.setProperty("amp", 0.2)
+loop.setProperty("useLong", True)
+power.setProperty("integrationLength", 7)
+loop.setProperty("gradientDamp", 3e-2)
 #%%Start Loop
 loop.run("start")
 
@@ -60,26 +63,29 @@ optim.maxIntegrate = 20
 
 #%%
 
-FREQ = 400 # Hz
-delay = 1/(2*FREQ)
+# FREQ = 400 # Hz
+# delay = 1/(2*FREQ)
 
-# act = 2
-wfcShm, _, _ = initExistingShm("wfc")
+# # act = 2
+# wfcShm, _, _ = initExistingShm("wfc")
 
-correction = np.zeros_like(wfcShm.read_noblock())
+# correction = np.zeros_like(wfcShm.read_noblock())
 
-BIN = True
-HEIGHT = 3
-LOW = 1
-HIGH = LOW + HEIGHT
+# BIN = True
+# HEIGHT = 3
+# LOW = 1
+# HIGH = LOW + HEIGHT
 
-correction[:] = LOW
-while True:
-    if BIN:
-        correction[:] = HIGH
-    else:
-        correction[:] = LOW
-    BIN = not BIN
-    wfcShm.write(correction)
-    time.sleep(2e-3)
+# correction[:] = LOW
+# while True:
+#     if BIN:
+#         correction[:] = HIGH
+#     else:
+#         correction[:] = LOW
+#     BIN = not BIN
+#     wfcShm.write(correction)
+#     time.sleep(2e-3)
+wfc.run("startClock", 1, 0.2)
+# %%
+wfc.run("stopClock")
 # %%

@@ -30,6 +30,8 @@ class SUPERPAOWER(WavefrontCorrector):
         self.numActuators =  conf["numActuators"]
         self.maxVoltage = setFromConfig(conf, "maxVoltage", 8.0)
         self.minVoltage =  setFromConfig(conf, "minVoltage", 0.0)
+        self.maxCoeff = setFromConfig(conf, "maxCoeff", 1.0)
+        self.minCoeff =  setFromConfig(conf, "minCoeff", -1.0)
         self.maxCommunicationAttempts = setFromConfig(conf, "maxCommunicationAttempts", 5)
         self.numDroppedFrames = 0
         self.acknowledgedFrames = 0
@@ -68,7 +70,12 @@ class SUPERPAOWER(WavefrontCorrector):
         #flatten the mirror
         time.sleep(1)
         self.flatten()
-        
+        self.clockActive = False
+        self.clockDelay = 1e-4
+        self.BIN = True
+        self.LOW = np.zeros_like(self.flat)
+        self.HIGH = np.zeros_like(self.flat)
+
         return
 
     def generateLayout(self):
@@ -98,25 +105,25 @@ class SUPERPAOWER(WavefrontCorrector):
         # self.channelMapping = [
         #                      (4, 8),
         # ]
-        self.channelMapping = [
-                            (4, 7),
-                            (4, 6),
-                            (4, 5),
-                            (4, 4),
-                            (4, 3),
-                            (4, 2),
-                            (4, 1),
-                            (4, 0),
-                            (4, 8),
-                            (4, 9),
-                            (4, 10),
-                            (4, 11),
-                            (4, 12),
-                            (4, 13),
-                            (4, 14),
-                            (4, 15),                               
-                               ]
-
+        # self.channelMapping = [
+        #                     (4, 7),
+        #                     (4, 6),
+        #                     (4, 5),
+        #                     (4, 4),
+        #                     (4, 3),
+        #                     (4, 2),
+        #                     (4, 1),
+        #                     (4, 0),
+        #                     (4, 8),
+        #                     (4, 9),
+        #                     (4, 10),
+        #                     (4, 11),
+        #                     (4, 12),
+        #                     (4, 13),
+        #                     (4, 14),
+        #                     (4, 15),                               
+        #                        ]
+        self.channelMapping = [(4,i) for i in range(16)]
     def sendToHardware(self):
         #Do all of the normal updating of the super class
         super().sendToHardware()
@@ -125,10 +132,14 @@ class SUPERPAOWER(WavefrontCorrector):
         
         self.currentShape = np.clip(self.currentShape,self.minVoltage,self.maxVoltage)
         #current = c2m@(max- flat)
-        self.currentCorrection = np.clip(self.currentCorrection,
-                                         self.C2M@(self.minVoltage - self.flat),
-                                         self.C2M@(self.maxVoltage - self.flat)
-                                         )
+
+        # self.currentCorrection = self.correctionVector.read_noblock()
+        # self.currentCorrection = self.C2M@self.currentShape - self.flatModal
+        if self.minCoeff is not None and self.maxCoeff is not None:
+            self.currentCorrection = np.clip(self.currentCorrection,
+                                            self.minCoeff,
+                                            self.maxCoeff
+                                            )
         #Copy to shared memory without setting flag
         np.copyto(self.correctionVector.arr, self.currentCorrection)
 
@@ -150,6 +161,19 @@ class SUPERPAOWER(WavefrontCorrector):
         # else:
         #     self.acknowledgedFrames += 1
         # return
+
+    def runClock(self):
+        if self.clockActive:
+            if self.BIN:
+                correction = self.HIGH
+            else:
+                correction = self.LOW
+            self.BIN = not self.BIN
+            self.correctionVector.write(correction)
+            time.sleep(self.clockDelay)
+        else:
+            time.sleep(1)
+        return
 
     def correctionToPacket(self, correction):
 
@@ -187,30 +211,21 @@ class SUPERPAOWER(WavefrontCorrector):
         self.device.close()
         return
     
+    def startClock(self, freq, MAG, checkerboard = False):
+        self.clockDelay = 1/(2*freq)
 
+        self.BIN = True
+        self.LOW = np.zeros_like(self.flat)
+        self.HIGH = self.LOW + MAG
+        if checkerboard:
+            self.HIGH[::2] = self.LOW[::2]
+
+        self.clockActive = True
+        return
+    
+    def stopClock(self):
+        self.clockActive = False
+        return
 if __name__ == "__main__":
 
-    # Create argument parser
-    parser = argparse.ArgumentParser(description="Read a config file from the command line.")
-
-    # Add command-line argument for the config file
-    parser.add_argument("-c", "--config", required=True, help="Path to the config file")
-    parser.add_argument("-p", "--port", required=True, help="Port for communication")
-
-    # Parse command-line arguments
-    args = parser.parse_args()
-
-    conf = read_yaml_file(args.config)
-
-    pid = os.getpid()
-    set_affinity((conf["wfc"]["affinity"])%os.cpu_count()) 
-    decrease_nice(pid)
-
-    confWFC = conf["wfc"]
-    wfc = SUPERPAOWER(conf=confWFC)
-    wfc.start()
-
-    l = Listener(wfc, port = int(args.port))
-    while l.running:
-        l.listen()
-        time.sleep(1e-3)
+    launchComponent(SUPERPAOWER, "wfc", start = True)

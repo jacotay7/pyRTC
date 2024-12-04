@@ -19,7 +19,7 @@ shmName = args.shm#'psfShort'
 shm,_,_ = initExistingShm(shmName)
 
 # Parameters
-update_interval = 0.1  # seconds between updates, modify as needed
+update_interval = 1/30  # seconds between updates, modify as needed
 WINDOW_SIZE = 1
 MAX_SIZE = 1000
 
@@ -77,7 +77,8 @@ def update_plot():
     ydata = rolling_average(past_values, WINDOW_SIZE)
     xdata = list(range(len(ydata)))
     line.set_data(xdata, ydata)
-    ax.set_ylim(np.percentile(ydata, 5), np.percentile(ydata, 95))
+    # ax.set_ylim(np.percentile(ydata, 5), np.percentile(ydata, 95))
+    ax.set_ylim(np.percentile(ydata, 1), np.percentile(ydata, 99))
     fig.canvas.draw()
     fig.canvas.flush_events()
 

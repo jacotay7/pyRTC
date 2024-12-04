@@ -139,7 +139,7 @@ class QHYCCD(ScienceCamera):
         super().__init__(conf)
 
         self.powerShm = ImageSHM("power", (1,), dtype=np.float64)
-
+        self.noiseThrehold = 2
         self.dtype = np.uint8
 
         ctypes.cdll.LoadLibrary("/usr/lib/x86_64-linux-gnu/libopencv_core.so")
@@ -275,13 +275,24 @@ class QHYCCD(ScienceCamera):
             self.data = np.asarray(self.imgdata)#np.ndarray(self.imageShape, 
                                 #buffer=self.imgdata, 
                                # dtype=self.dtype)
-            self.powerShm.write(np.sum(self.data).astype(np.float64).reshape((1,)))
+            mask = self.data>self.noiseThrehold
+            if np.sum(mask) == 0:
+                val = np.array([0])
+            else:
+                val = np.mean(self.data[mask])
+            self.powerShm.write(val.astype(np.float64).reshape((1,)))
             super().expose()
 
         return
     
     def readLong(self):
-        return np.sum(self.psfLong.read())
+        x = self.psfLong.read()
+        mask = x>self.noiseThrehold
+        if np.sum(mask) == 0:
+            val = 0*np.mean(self.data)
+        else:
+            val = np.mean(self.data[mask])
+        return val
 
     def __del__(self):
         super().__del__()
@@ -291,27 +302,5 @@ class QHYCCD(ScienceCamera):
 
 if __name__ == "__main__":
 
-    # Create argument parser
-    parser = argparse.ArgumentParser(description="Read a config file from the command line.")
-
-    # Add command-line argument for the config file
-    parser.add_argument("-c", "--config", required=True, help="Path to the config file")
-    parser.add_argument("-p", "--port", required=True, help="Port for communication")
-
-    # Parse command-line arguments
-    args = parser.parse_args()
-
-    conf = read_yaml_file(args.config)
-
-    pid = os.getpid()
-    set_affinity((conf["psf"]["affinity"])%os.cpu_count()) 
-    decrease_nice(pid)
-
-    psf = QHYCCD(conf=conf["psf"])
-    psf.start()
-
-    l = Listener(psf, port = int(args.port))
-    while l.running:
-        l.listen()
-        time.sleep(1e-3)
+    launchComponent(QHYCCD, "psf", start = True)
         

@@ -69,27 +69,5 @@ class photoDetector(ScienceCamera):
 
 if __name__ == "__main__":
 
-    # Create argument parser
-    parser = argparse.ArgumentParser(description="Read a config file from the command line.")
-
-    # Add command-line argument for the config file
-    parser.add_argument("-c", "--config", required=True, help="Path to the config file")
-    parser.add_argument("-p", "--port", required=True, help="Port for communication")
-
-    # Parse command-line arguments
-    args = parser.parse_args()
-
-    conf = read_yaml_file(args.config)
-
-    pid = os.getpid()
-    set_affinity((conf["photodetect"]["affinity"])%os.cpu_count()) 
-    decrease_nice(pid)
-
-    power = photoDetector(conf=conf["photodetect"])
-    power.start()
-
-    l = Listener(power, port = int(args.port))
-    while l.running:
-        l.listen()
-        time.sleep(1e-3)
+    launchComponent(photoDetector, "power", start = True)
         

@@ -110,7 +110,8 @@ class WavefrontCorrector(pyRTCComponent):
         self.m2cFile = setFromConfig(conf,"m2cFile", "")
         self.correctionVector = ImageSHM("wfc", (self.numModes,), np.float32, gpuDevice = self.gpuDevice, consumer=False)
         self.correctionVector2D = None
-        
+        self.C2M = None
+        self.M2C = None
         #If its an array it will initialize a 2D correction ImageSHM for display
         self.setLayout(None)
 
@@ -147,6 +148,7 @@ class WavefrontCorrector(pyRTCComponent):
             Flat shape to set.
         """
         self.flat = flat.astype(self.flat.dtype)
+        
         return
 
     def loadFlat(self,filename=''):
@@ -170,6 +172,8 @@ class WavefrontCorrector(pyRTCComponent):
             elif '.npy' in filename:
                 flat = np.load(filename)
         self.setFlat(flat)
+        if isinstance(self.C2M, np.ndarray):
+            self.flatModal = self.C2M@self.flat
         return
     def setLayout(self, layout):
         """

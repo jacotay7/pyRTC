@@ -9,8 +9,6 @@ os.environ['NUMBA_NUM_THREADS'] = '1'
 from pyRTC.Loop import *
 from pyRTC.Pipeline import *
 from pyRTC.utils import *
-import argparse
-import time
 
 class PSGDLoop(Loop):
 
@@ -28,9 +26,10 @@ class PSGDLoop(Loop):
         self.useLong = False
         self.perturb = True
         self.prevMeasurement = 0
-        self.amp = self.confLoop["amp"]
-        self.rate = self.confLoop["rate"]
-        self.norm = setFromConfig(self.confLoop, "norm", 1.0)
+        self.amp = self.conf["amp"]
+        self.rate = self.conf["rate"]
+        self.norm = setFromConfig(self.conf, "norm", 1.0)
+        self.droppedModeList = None
 
         self.currentShape = np.zeros_like(self.wfcShm.read_noblock())
         self.dofs = self.currentShape.size
@@ -41,19 +40,19 @@ class PSGDLoop(Loop):
         tmp = 0
 
         for i in range(100):
-            tmp += self.psfShm.read()
+            tmp += np.max(self.psfShm.read())
         self.norm = tmp/100
 
-        self.gradientDamp = setFromConfig(self.confLoop, 'gradientDamp', -1)
+        self.gradientDamp = setFromConfig(self.conf, 'gradientDamp', -1)
 
         # SPSA Parameters
         self.theta = self.currentShape.copy()
         self.k = 1  # Iteration counter
-        self.a = setFromConfig(self.confLoop, 'a', 0.1)
-        self.c = setFromConfig(self.confLoop, 'c', 0.1)
-        self.A = setFromConfig(self.confLoop, 'A', 10)
-        self.alpha = setFromConfig(self.confLoop, 'alpha', 0.602)
-        self.gamma = setFromConfig(self.confLoop, 'gamma', 0.101)
+        self.a = setFromConfig(self.conf, 'a', 0.1)
+        self.c = setFromConfig(self.conf, 'c', 0.1)
+        self.A = setFromConfig(self.conf, 'A', 10)
+        self.alpha = setFromConfig(self.conf, 'alpha', 0.602)
+        self.gamma = setFromConfig(self.conf, 'gamma', 0.101)
         self.spsa_state = 0  # State variable for SPSA steps
         self.delta = None
         self.y_plus = None
@@ -63,6 +62,8 @@ class PSGDLoop(Loop):
     
     def psgd(self):
 
+        if self.droppedModeList is not None and len(self.droppedModeList) > 0:
+            self.currentShape[self.droppedModeList] *= 0
         #Adjust the environmant
         self.wfcShm.write(self.currentShape)
         #Adjust loss function for GD
@@ -188,25 +189,4 @@ class PSGDLoop(Loop):
 
 if __name__ == "__main__":
 
-    # Create argument parser
-    parser = argparse.ArgumentParser(description="Read a config file from the command line.")
-
-    # Add command-line argument for the config file
-    parser.add_argument("-c", "--config", required=True, help="Path to the config file")
-    parser.add_argument("-p", "--port", required=True, help="Port for communication")
-
-    # Parse command-line arguments
-    args = parser.parse_args()
-
-    conf = read_yaml_file(args.config)
-
-    pid = os.getpid()
-    set_affinity((conf["loop"]["affinity"])%os.cpu_count()) 
-    decrease_nice(pid)
-
-    loop = PSGDLoop(conf=conf)
-    
-    l = Listener(loop, port= int(args.port))
-    while l.running:
-        l.listen()
-        time.sleep(1e-3)
+    launchComponent(PSGDLoop, "loop", start = False)

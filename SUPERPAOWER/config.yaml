@@ -17,12 +17,13 @@ wfc:
   communicationPause: 0.05
   maxVoltage: 5.0 #Max voltage allowd to send to chip
   minVoltage: 0.0 #Min voltage allowd to send to chip
-  # flatFile: "./calib/wfcShape.npy"
+  flatFile: "./calib/wfcShape.npy"
   saveFile: "./calib/wfcShape.npy"
-  #m2cFile:  "./calib/m2c_zonal_5.npy" #"./calib/m2c_zonal_custom.npy" #"./calib/m2c_4x4_paower.npy" #The basis, comment out for zonal
+  m2cFile:  "./calib/m2c_4x4_paower.npy" #The basis, comment out for zonal
   affinity: 2
   functions:
   - sendToHardware
+  - runClock
 
 power:
   name: "powerMeter"
@@ -61,10 +62,12 @@ photodetect:
 
 psf:
   name: "qhyccdCamera"
-  top: 558 
-  left: 632 
-  width: 32
-  height: 32
+  # top: 502 #516
+  top: 510 #516
+  # left: 680 #689 
+  left: 691 #689 
+  width: 16
+  height: 16
   gain: 0.0
   binning: 1
   usbtraffic: 5 #Change this depending on your ROI size to find best speed
