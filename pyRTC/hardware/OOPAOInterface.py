@@ -15,6 +15,8 @@ from OOPAO.calibration.ao_calibration import ao_calibration
 from OOPAO.calibration.compute_KL_modal_basis import compute_M2C
 from OOPAO.tools.displayTools import displayMap
 
+from OOPAO.ShackHartmann import ShackHartmann
+
 class _OOPAOWFSensor(WavefrontSensor):
 
     def __init__(self, wfsConf, tel, ngs, atm, dm, wfs) -> None:
@@ -131,6 +133,19 @@ class OOPAOInterface():
         correctorConf = conf["wfc"]
         scienceConf = conf["psf"]
 
+        slopesConf = conf.get("slopes", {})
+        is_shwfs = str(slopesConf.get("type", "")).upper() == "SHWFS"
+
+        # If SHWFS and geometry is provided, align telescope sampling to the sensor
+        if is_shwfs:
+            nx = int(slopesConf.get("lensletsX", self.param.get("nSubaperture", 0)) or self.param["nSubaperture"])
+            px = int(slopesConf.get("pixelsPerLenslet", self.param.get("nPixelPerSubap", 0)) or self.param["nPixelPerSubap"])
+            # keep behavior identical unless values are present
+            if nx and px:
+                self.param["nSubaperture"]   = nx
+                self.param["nPixelPerSubap"] = px
+                self.param["resolution"]     = nx * px
+
         if param is None:
             param = self.param
         else:
@@ -169,14 +184,37 @@ class OOPAOInterface():
                                         nSubap         = param['nSubaperture'], 
                                         mechCoupling   = param['mechanicalCoupling'])
 
-        # create the Pyramid WFS Object
-        self.wfs = Pyramid(nSubap         = param['nSubaperture'],
-                    telescope             = self.tel,
-                    modulation            = param['modulation'],
-                    lightRatio            = param['lightThreshold'],
-                    n_pix_separation      = param['n_pix_separation'],
-                    psfCentering          = param['psfCentering'],
-                    postProcessing        = param['postProcessing'])
+        # --- WFS creation ---
+        if is_shwfs:
+            # Shack–Hartmann path (uses your class signature)
+            self.wfs = ShackHartmann(
+                nSubap=self.param["nSubaperture"],
+                telescope=self.tel,
+                lightRatio=self.param["lightThreshold"],
+                # the rest keep defaults to avoid changing behavior unless needed:
+                threshold_cog=0.01,
+                is_geometric=False,
+                binning_factor=1,
+                pixel_scale=None,
+                threshold_convolution=0.05,
+                shannon_sampling=False,
+                unit_P2V=False,
+                n_pixel_per_subaperture=self.param["nPixelPerSubap"],
+                half_pixel_shift=False,
+                padding_extension_factor=None
+            )
+        else:
+            # Pyramid path (unchanged)
+            self.wfs = Pyramid(
+                nSubap=self.param["nSubaperture"],
+                telescope=self.tel,
+                modulation=self.param["modulation"],
+                lightRatio=self.param["lightThreshold"],
+                n_pix_separation=self.param["n_pix_separation"],
+                psfCentering=self.param["psfCentering"],
+                postProcessing=self.param["postProcessing"],
+            )
+
         
         #Initialize the atmosphere
         self.atm.initializeAtmosphere(self.tel)
