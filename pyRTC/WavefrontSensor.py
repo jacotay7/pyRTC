@@ -1,6 +1,7 @@
 """
 Wavefront Sensor Superclass
 """
+
 from pyRTC.Pipeline import ImageSHM, work
 from pyRTC.utils import *
 from pyRTC.pyRTCComponent import *
@@ -8,6 +9,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from numba import jit
 from sys import platform
+
 
 @jit(nopython=True, nogil=True, cache=True, fastmath=True)
 def downsample_int32_image_jit(image, N):
@@ -50,7 +52,7 @@ def downsample_int32_image_jit(image, N):
             sum_block = 0
             for di in range(N):
                 for dj in range(N):
-                    sum_block += image_padded[i*N + di, j*N + dj]
+                    sum_block += image_padded[i * N + di, j * N + dj]
             # Compute the mean
             mean_value = sum_block / (N * N)
             # Round and cast to int32
@@ -58,9 +60,10 @@ def downsample_int32_image_jit(image, N):
 
     return downsampled_image
 
+
 class WavefrontSensor(pyRTCComponent):
     """
-    A pyRTCComponent which represents a Wavefront Sensor (camera). This is a general class which is 
+    A pyRTCComponent which represents a Wavefront Sensor (camera). This is a general class which is
     reponsible for all components of wavefront sensing which are common to all wavefront sensors. This
     class should be used by defining a child class held in pyRTC.hardware, which overwrites
     the relevant functions which actual hardware connectivity code. The child class can call its parent
@@ -74,7 +77,7 @@ class WavefrontSensor(pyRTCComponent):
     width : int
         The width of the wavefront sensor image. Required.
     height : int
-        The width of the wavefront sensor image.  Required.      
+        The width of the wavefront sensor image.  Required.
     darkCount : int
         Number of dark frames to average. Default 1000.
     darkFile : str
@@ -170,8 +173,20 @@ class WavefrontSensor(pyRTCComponent):
         if self.downsampleFactor > 0:
             self.imageShape[0] = self.imageShape[0] // self.downsampleFactor
             self.imageShape[1] = self.imageShape[1] // self.downsampleFactor
-        self.imageRaw = ImageSHM("wfsRaw", self.imageRawShape, self.imageRawDType, gpuDevice = self.gpuDevice, consumer=False)
-        self.image = ImageSHM("wfs", self.imageShape, self.imageDType, gpuDevice = self.gpuDevice, consumer=False)
+        self.imageRaw = ImageSHM(
+            "wfsRaw",
+            self.imageRawShape,
+            self.imageRawDType,
+            gpuDevice=self.gpuDevice,
+            consumer=False,
+        )
+        self.image = ImageSHM(
+            "wfs",
+            self.imageShape,
+            self.imageDType,
+            gpuDevice=self.gpuDevice,
+            consumer=False,
+        )
 
         self.data = np.zeros(self.imageShape, dtype=self.imageRawDType)
         self.dark = np.zeros(self.imageRawShape, dtype=self.imageDType)
@@ -179,7 +194,7 @@ class WavefrontSensor(pyRTCComponent):
         self.loadDark()
 
         return
-    
+
     def setRoi(self, roi):
         """
         Sets the region of interest (ROI) for the sensor.
@@ -208,7 +223,7 @@ class WavefrontSensor(pyRTCComponent):
         self.exposure = exposure
 
         return
-    
+
     def setBinning(self, binning: int) -> None:
         """
         Sets the binning factor for the sensor.
@@ -221,7 +236,7 @@ class WavefrontSensor(pyRTCComponent):
         self.binning = binning
 
         return
-    
+
     def setGain(self, gain: float) -> None:
         """
         Sets the gain for the sensor.
@@ -233,7 +248,7 @@ class WavefrontSensor(pyRTCComponent):
         """
         self.gain = gain
         return
-    
+
     def setBitDepth(self, bitDepth: int) -> None:
         """
         Sets the bit depth for the sensor.
@@ -246,7 +261,7 @@ class WavefrontSensor(pyRTCComponent):
         """
         self.bitDepth = bitDepth
         return
-    
+
     def expose(self) -> None:
         """
         Writes the current image data to shared memory. Both raw, and dark subtracted.
@@ -254,13 +269,14 @@ class WavefrontSensor(pyRTCComponent):
         self.imageRaw.write(self.data)
         img = self.data.astype(self.imageDType)
         if self.downsampleFactor > 0:
-            self.image.write(downsample_int32_image_jit(img - self.dark, 
-                                                        self.downsampleFactor))
+            self.image.write(
+                downsample_int32_image_jit(img - self.dark, self.downsampleFactor)
+            )
         else:
             self.image.write(img - self.dark)
         return
 
-    def read(self, block = True) -> None:
+    def read(self, block=True) -> None:
         """
         Reads the dark subtracted image data from shared memory.
 
@@ -270,11 +286,11 @@ class WavefrontSensor(pyRTCComponent):
             Processed image data.
         """
         if block:
-            return self.image.read(RELEASE_GIL = self.RELEASE_GIL)
+            return self.image.read(RELEASE_GIL=self.RELEASE_GIL)
         else:
             return self.image.read_noblock()
-    
-    def readRaw(self, block = True) -> None:
+
+    def readRaw(self, block=True) -> None:
         """
         Reads the dark subtracted image data from shared memory.
 
@@ -284,7 +300,7 @@ class WavefrontSensor(pyRTCComponent):
             Processed image data.
         """
         if block:
-            return self.imageRaw.read(RELEASE_GIL = self.RELEASE_GIL)
+            return self.imageRaw.read(RELEASE_GIL=self.RELEASE_GIL)
         else:
             return self.imageRaw.read_noblock()
 
@@ -297,8 +313,8 @@ class WavefrontSensor(pyRTCComponent):
         for i in range(self.darkCount):
             dark += self.readRaw().astype(np.float64)
         dark /= self.darkCount
-        self.setDark(dark)        
-        return 
+        self.setDark(dark)
+        return
 
     def setDark(self, dark) -> None:
         """
@@ -311,8 +327,8 @@ class WavefrontSensor(pyRTCComponent):
         """
         self.dark = dark.astype(self.imageDType)
         return
-    
-    def saveDark(self,filename=''):
+
+    def saveDark(self, filename=""):
         """
         Saves the dark frame to a file.
 
@@ -321,12 +337,12 @@ class WavefrontSensor(pyRTCComponent):
         filename : str, optional
             Filename to save the dark frame to. If not specified, uses the dark file path from the configuration.
         """
-        if filename == '':
+        if filename == "":
             filename = self.darkFile
         np.save(filename, self.dark)
         return
-    
-    def loadDark(self,filename=''):
+
+    def loadDark(self, filename=""):
         """
         Loads the dark frame from a file.
 
@@ -335,27 +351,28 @@ class WavefrontSensor(pyRTCComponent):
         filename : str, optional
             Filename to load the dark frame from. If not specified, uses the dark file path from the configuration.
         """
-        #If no file given, first try dark file
-        if filename == '':
+        # If no file given, first try dark file
+        if filename == "":
             filename = self.darkFile
-        #If we are still without a file, set zeros
-        if filename == '':
+        # If we are still without a file, set zeros
+        if filename == "":
             self.dark = np.zeros_like(self.dark)
-        else: #If we have a filename
+        else:  # If we have a filename
             self.dark = np.load(filename)
         return
-    
+
     def plot(self) -> None:
         """
         Plots the current image data.
         """
         arr = self.read(block=False)
-        plt.figure(figsize=(8,8))
-        plt.imshow(arr, cmap = 'inferno', origin='lower')
+        plt.figure(figsize=(8, 8))
+        plt.imshow(arr, cmap="inferno", origin="lower")
         plt.colorbar()
         plt.show()
         return
-    
+
+
 if __name__ == "__main__":
 
-    launchComponent(WavefrontSensor, "wfs", start = True)
+    launchComponent(WavefrontSensor, "wfs", start=True)

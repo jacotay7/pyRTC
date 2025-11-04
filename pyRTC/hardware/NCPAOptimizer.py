@@ -27,10 +27,13 @@ class NCPAOptimizer(Optimizer):
 
         self.applyTrial(trial)
 
-        result = np.empty(self.numReads)
+        result = np.zeros(self.numReads)
         self.strehlShm.read() #burn last read
+        self.strehlShm.read() #burn last read
+
         for i in range(self.numReads):
             result[i] = self.strehlShm.read()
+
         return np.mean(result)
     
     def applyTrial(self, trial):
@@ -100,7 +103,7 @@ class NCPAOptimizer(Optimizer):
             #Load current valid sub aperture map
             self.validSubAps = np.load(self.slopes.getProperty("validSubApsFile"))
             #Compute current IM
-            self.IM =np.load(self.loop.getProperty("IMFile"))
+            self.IM = np.load(self.loop.getProperty("IMFile"))
 
             self.origRefSlopes = np.load(self.refSlopesFile)
             #Set-up the slopes to read from new slopes file on load

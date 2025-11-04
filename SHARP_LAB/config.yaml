@@ -1,13 +1,13 @@
 loop:
-  gain: 0.425
+  gain: 0.3425
   leakyGain: 0.026
   numDroppedModes: 14
-  pokeAmp: 0.02
+  pokeAmp: 0.03
   numItersIM: 50
   affinity: 2
-  delay: 2
+  delay: 0 # 2
   method: push-pull
-  IMFile: "/home/whetstone/pyRTC/SHARP_LAB/calib/IM.npy"
+  IMFile: "/home/whetstone/pyRTC_backup/SHARP_LAB/calib/IM_SH.npy"
   pGain: 0.28
   iGain: 0.066
   dGain: 0.078
@@ -15,7 +15,7 @@ loop:
   absoluteLimits: [-0.3, 0.3]
   integralLimits: [-0.1, 0.1]
   derivativeFilter: 0.1
-  hardwareDelay: 0.001 #seconds
+  hardwareDelay: 0.0 #0.001 #seconds
   functions:
   # - standardIntegrator
   # - standardIntegratorPOL
@@ -31,12 +31,12 @@ wfs:
   exposure: 2500
   gain: 0
   bitDepth: 10
-  left: 400 #416 
-  top: 270 
-  width: 400 
-  height: 400 
+  left: 432 # increments of 16
+  top: 260 # inc. of 4
+  width: 384 #400 
+  height: 384 #400 
   darkCount: 2000
-  darkFile: "/home/whetstone/pyRTC/SHARP_LAB/calib/dark.npy"
+  darkFile: "/home/whetstone/pyRTC_backup/SHARP_LAB/calib/dark.npy"
   affinity: 3
   functions:
   - expose
@@ -44,51 +44,30 @@ wfs:
 slopes:
   type: SHWFS
   signalType: slopes
-  refSlopesFile: "/home/whetstone/pyRTC/SHARP_LAB/calib/ref_SH.npy"
-  validSubApsFile: "/home/whetstone/pyRTC/SHARP_LAB/calib/validSubAps.npy"
-  subApSpacing: 15.54 #7.78
-  subApOffsetX: 13
-  subApOffsetY: 3
+  # refSlopesFile: "/home/whetstone/pyRTC_backup/SHARP_LAB/calib/ref_SH.npy"
+  refSlopesFile: "/home/whetstone/pyRTC_backup/SHARP_LAB/calib/ref_SHWFS.npy"
+  validSubApsFile: "/home/whetstone/pyRTC_backup/SHARP_LAB/calib/validSubAps.npy"
+  subApSpacing: 15.62  # 15.54 #7.78
+  subApOffsetX: 3.25 #13 #9
+  subApOffsetY: 0 #10.5 #9.5 
   imageNoise: 1.3
   contrast: 10
   affinity: 4
   functions:
   - computeSignal
-# wfs:
-#   name: XIMEA
-#   serial: "13056250"
-#   type: PYWFS
-#   signalType: slopes
-#   pupilsRadius: 32
-#   binning: 2
-#   exposure: 3333
-#   gain: 0
-#   bitDepth: 10
-#   left: 272
-#   top: 50
-#   width: 192
-#   height: 192
-#   darkCount: 1000
-#   darkFile: "/home/whetstone/pyRTC/SHARP_LAB/calib/dark.npy"
-#   affinity: 12
-#   flatNorm: True
-#   pupils: 
-#   - 44,57
-#   - 45,138
-#   - 150,75
-#   - 130,138
-#   functions:
-#   - expose
-#   - computeSignal
 
 wfc:
   name: "ALPAO"
   serial: "BAX118"
   numActuators: 97
-  numModes: 94
-  flatFile: "/home/whetstone/pyRTC/SHARP_LAB/calib/wfcShape_SH.npy"
-  saveFile: "/home/whetstone/pyRTC/SHARP_LAB/calib/wfcShape_SH.npy"
-  m2cFile:  "/home/whetstone/pyRTC/SHARP_LAB/calib/m2c_kl.npy" 
+  numModes: 95
+  # flatFile: "/home/whetstone/pyRTC_backup/SHARP_LAB/calib/backup_ref_sh_J27/wfcShapePyWFS.npy"
+  # saveFile: "/home/whetstone/pyRTC_backup/SHARP_LAB/calib/backup_ref_sh_J27/wfcShapePyWFS.npy"
+  flatFile: "/home/whetstone/pyRTC_backup/SHARP_LAB/calib/new_optim_flat.npy"
+  saveFile: "/home/whetstone/pyRTC_backup/SHARP_LAB/calib/new_optim_flat.npy"
+  # flatFile: "/home/whetstone/pyRTC_backup/SHARP_LAB/calib/wfcShapePyWFS.npy"
+  # saveFile: "/home/whetstone/pyRTC_backup/SHARP_LAB/calib/wfcShapePyWFS.npy"
+  m2cFile:  "/home/whetstone/pyRTC_backup/SHARP_LAB/calib/m2c_zern_manual.npy" 
   floatingActuatorsFile: ""
   floatingInfluenceRadius: 1
   affinity: 5
@@ -100,18 +79,19 @@ wfc:
 psf:
   name: "FLIR"
   index: 0
-  exposure: 300
+  exposure: 800
   gain: 0
   bitDepth: 16
-  left: 936
-  top: 448
+  left: 1104 #1024 #628 #1000   # div by 4
+  top: 114 #688 #484 #360 #590
   width: 128
   height: 128
   darkCount: 2000
-  darkFile: "/home/whetstone/pyRTC/SHARP_LAB/calib/psfDark.npy"
-  modelFile: "/home/whetstone/pyRTC/SHARP_LAB/calib/modelPSF_SH.npy"
-  integration: 1
+  darkFile: "/home/whetstone/pyRTC_backup/SHARP_LAB/calib/psfDark.npy"
+  modelFile: "/home/whetstone/pyRTC_backup/SHARP_LAB/calib/modelPSF.npy"
+  integration: 10
   affinity: 6
+  binning: 0
   functions:
   - expose
   - integrate
@@ -126,6 +106,7 @@ optimizer:
     correctionMag: 0.003
     numReads: 1
     affinity: 10
+    sampler: "cmaes"
   pid:
     name: "PID"
     numSteps: 100
@@ -157,3 +138,31 @@ optimizer:
 #   servosOn: True
 #   autoZero: True
 
+
+
+# wfs:
+#   name: XIMEA
+#   serial: "13056250"
+#   type: PYWFS
+#   signalType: slopes
+#   pupilsRadius: 32
+#   binning: 2
+#   exposure: 3333
+#   gain: 0
+#   bitDepth: 10
+#   left: 272
+#   top: 50
+#   width: 192
+#   height: 192
+#   darkCount: 1000
+#   darkFile: "/home/whetstone/pyRTC/SHARP_LAB/calib/dark.npy"
+#   affinity: 12
+#   flatNorm: True
+#   pupils: 
+#   - 44,57
+#   - 45,138
+#   - 150,75
+#   - 130,138
+#   functions:
+#   - expose
+#   - computeSignal

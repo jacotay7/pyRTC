@@ -21,6 +21,7 @@ class loopOptimizer(Optimizer):
         self.mins = setFromConfig(conf, "mins", [])
         self.maxs = setFromConfig(conf, "maxs", [])
         types = setFromConfig(conf, "types", [])
+        self.isLog = []
         self.types = []
         for i in range(len(types)):
             if types[i] == "float":
@@ -41,22 +42,36 @@ class loopOptimizer(Optimizer):
 
         super().__init__(conf)
 
-    def registerParam(self, param, min_, max_, type=float):
+    def registerParam(self, param, min_, max_, type=float, log=False):
         self.params.append(param)
         self.mins.append(min_)
         self.maxs.append(max_)
         self.types.append(type)
+        self.isLog.append(log)
         return
 
-    def adjustParam(self, param, min_, max_, type=float):
+    def adjustParam(self, param, min_, max_, type=float, log=False):
 
         if param not in self.params:
-            self.registerParam(param, min_, max_, type=type)
+            self.registerParam(param, min_, max_, type=type, log = log)
             return
         idx = self.params.index(param)
         self.mins[idx] = min_
         self.maxs[idx] = max_
         self.types[idx] = type
+        self.isLog[idx] = log
+        return
+    
+    def removeParam(self, param):
+
+        if param in self.params:
+            idx = self.params.index(param)
+            self.mins.remove(idx)
+            self.maxs.remove(idx)
+            self.types.remove(idx)
+            self.isLog.remove(idx)
+            self.params.remove(idx)
+        
         return
 
     def objective(self, trial):
@@ -65,27 +80,39 @@ class loopOptimizer(Optimizer):
         for i in range(10):
             self.loop.run("flatten")
         self.applyTrial(trial)
+        self.loop.run("resetBuffer")
         self.loop.run("start")
 
         result = np.empty(self.numReads)
         for i in range(self.numReads):
             result[i] = self.strehlShm.read()
+
+            trial.report(result[i], i)
+
+            # Handle pruning based on the intermediate value.
+            if trial.should_prune():
+                raise optuna.TrialPruned()
+
             if self.checkValidFunc is not None: 
                 if not self.checkValidFunc():
-                    return np.nan
-        return np.mean(result)
+                    return -1.0
+        return np.median(result)
     
     def applyTrial(self, trial):
 
         for i, param in enumerate(self.params):
             if self.types[i] == float:
-                self.loop.setProperty(param, trial.suggest_float(param, self.mins[i], self.maxs[i]))
+                self.loop.setProperty(param, trial.suggest_float(param, self.mins[i], self.maxs[i], log = self.isLog[i]))
             elif self.types[i] == int:
-                self.loop.setProperty(param, trial.suggest_int(param, self.mins[i], self.maxs[i]))
+                self.loop.setProperty(param, trial.suggest_int(param, self.mins[i], self.maxs[i], log = self.isLog[i]))
 
+        self.loop.run("loadModel")
+        # time.sleep(10)
         self.loop.run("loadIM")
-
-        return super().applyTrial(trial)
+        time.sleep(1)
+        super().applyTrial(trial)
+        # time.sleep(1)
+        return 
 
     def applyOptimum(self):
         super().applyOptimum()

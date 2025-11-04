@@ -8,6 +8,7 @@ import argparse
 import sys
 import os
 import time
+from typing import Any
 
 
 class pyRTCComponent:
@@ -73,7 +74,7 @@ class pyRTCComponent:
         
         if isinstance(functionsToRun, list) and len(functionsToRun) > 0:
             for i, functionName in enumerate(functionsToRun):
-                threadAffinity = (self.affinity+i)%os.cpu_count()
+                threadAffinity = (self.affinity+i) % os.cpu_count() #type: ignore
                 # Launch a separate thread
                 workThread = threading.Thread(target=work, 
                                             args = (self,functionName, threadAffinity), 
@@ -105,7 +106,28 @@ class pyRTCComponent:
         """
         self.running = False
         return
+    
+    def getProperty(self, s: str) -> Any:
 
+        try:
+            return getattr(self, s)
+        except:
+            logging.log(logging.ERROR, f"No property with name {s}")
+            return None
+
+    def setProperty(self, s: str, v: Any) -> None:
+
+        try:
+            setattr(self, s, v)
+        except:
+            logging.log(logging.ERROR, f"No property with name {s}")
+
+    def run(self, s, *args):
+
+        func = self.getProperty(s)
+        return func(args)
+
+    
 if __name__ == "__main__":
 
     launchComponent(pyRTCComponent, "component", start = True)

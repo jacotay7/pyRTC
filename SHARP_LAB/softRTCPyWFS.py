@@ -6,7 +6,8 @@ from pyRTC import *
 from pyRTC.hardware import *
 from pyRTC.utils import *
 from pyRTC.Pipeline import *
-#%% CLEAR SHMs
+
+# %% CLEAR SHMs
 # shms = ["wfs= "wfsRaw= "signal= "signal2D= "wfc= "wfc2D= "psfShort= "psfLong"]
 # clear_shms(shms)
 # %% Load Config
@@ -41,6 +42,7 @@ loop = Loop(conf=conf["loop"])
 time.sleep(1)
 # %%
 from pyRTC.hardware.NCPAOptimizer import NCPAOptimizer
+
 ncpaOptim = NCPAOptimizer(conf["optimizer"]["ncpa"], loop, slopes)
 
 # %% Recalibrate
@@ -63,14 +65,13 @@ if False:
     psf.modelFile = "/home/whetstone/pyRTC/SHARP_LAB/calib/modelPSF.npy"
     psf.saveModelPSF()
 
-
     slopes.takeRefSlopes()
     slopes.refSlopesFile = "/home/whetstone/pyRTC/SHARP_LAB/calib/refPyWFS.npy"
     slopes.saveRefSlopes()
 
     #  STANDARD IM
     loop.IMMethod = "push-pull"
-    loop.pokeAmp = 0.03
+    loop.pokeAmp = 0.01
     loop.numItersIM = 100
     loop.IMFile = "/home/whetstone/pyRTC/SHARP_LAB/calib/IM_PyWFS.npy"
     wfc.flatten()
@@ -94,7 +95,7 @@ if False:
 
 # %% Compute CM
 loop.IMFile = "/home/whetstone/pyRTC/SHARP_LAB/calib/IM_PyWFS.npy"
-loop.numDroppedModes = 10
+loop.numDroppedModes = 5
 loop.gain = 0.1
 loop.leakyGain = 0.01
 loop.loadIM()
@@ -110,20 +111,21 @@ time.sleep(0.3)
 
 wfc.flatten()
 
-#%% Optimize NCPA
+# %% Optimize NCPA
 import optuna
+
 optuna.logging.set_verbosity(optuna.logging.WARNING)
 numOptim = 3
 maxAMP = 0.005
-amps = np.linspace(maxAMP, maxAMP/5, numOptim)
+amps = np.linspace(maxAMP, maxAMP / 5, numOptim)
 for i in range(numOptim):
     ncpaOptim.resetStudy()
-    psf.integrationLength= 5
+    psf.integrationLength = 5
     time.sleep(2)
     ncpaOptim.numReads = 3
     ncpaOptim.startMode = 0
-    ncpaOptim.endMode = 15 #wfc.getProperty("numModes")
-    ncpaOptim.numSteps = 1000
+    ncpaOptim.endMode = 25  # wfc.getProperty("numModes")
+    ncpaOptim.numSteps = 5000
     ncpaOptim.correctionMag = amps[i]
     ncpaOptim.isCL = False
     for i in range(1):
@@ -134,58 +136,60 @@ for i in range(numOptim):
     # slopes.takeRefSlopes()
     # slopes.refSlopesFile= "/home/whetstone/pyRTC/SHARP_LAB/calib/ref.npy")
     # slopes.saveRefSlopes()
-    psf.integrationLength= 2000
+    psf.integrationLength = 2000
     time.sleep(2)
     psf.takeModelPSF()
-    psf.modelFile= "/home/whetstone/pyRTC/SHARP_LAB/calib/modelPSF_PyWFS.npy"
+    psf.modelFile = "/home/whetstone/pyRTC/SHARP_LAB/calib/modelPSF_PyWFS.npy"
     psf.saveModelPSF()
     wfc.loadFlat()
 
 
-#%%
+# %%
+
 
 def find_threshold_average(values, threshold):
     first_index = None
     last_index = None
-    
+
     # Loop through the list to find the first index
     for i, value in enumerate(values):
         if value > threshold:
             first_index = i
             break
-    
+
     # Loop through the list in reverse to find the last index
     for i in range(len(values) - 1, -1, -1):
         if values[i] > threshold:
             last_index = i
             break
-    
+
     # Check if the indices were found
     if first_index is None or last_index is None:
         return None
-    
+
     # Calculate the average of the two indices
     average_index = (first_index + last_index) / 2.0
     return average_index
+
 
 im = wfs.read()
 
 theshold = 6500
 
-q1 = im[:im.shape[0]//2, im.shape[1]//2:]
+q1 = im[: im.shape[0] // 2, im.shape[1] // 2 :]
 plt.imshow(q1)
 plt.show()
 
-a = np.sum(q1, axis = 0)
-b = np.sum(q1, axis = 1)
+a = np.sum(q1, axis=0)
+b = np.sum(q1, axis=1)
 
 plt.plot(a)
 plt.plot(b)
-indexA = find_threshold_average(a,theshold)
-plt.axvline(x=indexA, color = 'r')
-indexB = find_threshold_average(b,theshold)
-plt.axvline(x=indexB, color = 'r')
+indexA = find_threshold_average(a, theshold)
+plt.axvline(x=indexA, color="r")
+indexB = find_threshold_average(b, theshold)
+plt.axvline(x=indexB, color="r")
 plt.show()
 print(indexA, indexB)
-print(indexA+ im.shape[0]//2, indexB+im.shape[0]//2)
+print(indexA + im.shape[0] // 2, indexB + im.shape[0] // 2)
 # %%

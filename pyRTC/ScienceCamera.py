@@ -96,6 +96,7 @@ class ScienceCamera(pyRTCComponent):
         self.imageDType = np.int32
         self.psfLongDtype = np.float64
         
+        self.setTheoreticalPSF(airy_disk(self.imageShape, 0.5).astype(self.psfLongDtype))
         self.psfShort = ImageSHM("psfShort", self.imageShape, self.imageDType)
         self.psfLong = ImageSHM("psfLong", self.imageShape, self.psfLongDtype)
         self.strehlShm = ImageSHM("strehl", (1,), float)
@@ -354,7 +355,30 @@ class ScienceCamera(pyRTCComponent):
             self.model = np.load(filename)
         return
 
-    def computeStrehl(self, median_filter_size = 1, gaussian_sigma = 0):
+    def setTheoreticalPSF(self, psf):
+
+        from copy import deepcopy
+        self.theory = deepcopy(psf) #.deepcopy()
+        self.theory /= self.theory.max()
+
+    def computeTheoreticalStrehl(self):
+
+        current = clean_image_for_strehl(self.readLong(), 
+                                    median_filter_size = 1, 
+                                    gaussian_sigma = 0)
+        current /= current.max()
+
+        rmse = np.sqrt(((self.theory - current) ** 2).mean())
+
+        self.strehl_ratio = np.exp(-rmse)
+        self.peak_dist = np.linalg.norm(centroid(current) - centroid(self.theory))
+
+        self.strehlShm.write(np.array([self.strehl_ratio], dtype=float))
+        self.tipTiltShm.write(np.array([self.peak_dist], dtype=float))
+
+        return self.strehl_ratio
+
+    def computeStrehl(self, use_filter=False, median_filter_size = 1, gaussian_sigma = 0.1):
         """
         Compute the rough Strehl ratio and tip tilt offset. These values are reference to the modelPSF.
         If your model PSF is taken empirically, then the Strehl ratio is not absolute, and should only be
@@ -373,14 +397,18 @@ class ScienceCamera(pyRTCComponent):
             Strehl ratio.
         """
 
-        model = clean_image_for_strehl(self.model, 
-                                       median_filter_size = median_filter_size, 
-                                       gaussian_sigma = gaussian_sigma)
+        if use_filter:
+            model = clean_image_for_strehl(self.model, 
+                                        median_filter_size = median_filter_size, 
+                                        gaussian_sigma = gaussian_sigma)
 
-        current = clean_image_for_strehl(self.readLong(), 
-                                         median_filter_size = median_filter_size, 
-                                         gaussian_sigma = gaussian_sigma)
-
+            current = clean_image_for_strehl(self.readLong(), 
+                                            median_filter_size = median_filter_size, 
+                                            gaussian_sigma = gaussian_sigma)
+        else:
+            model = self.model
+            current = self.readLong()
+            
         self.strehl_ratio = np.max(current) / np.max(model)
         self.peak_dist = np.linalg.norm(centroid(current) - centroid(self.model))
 

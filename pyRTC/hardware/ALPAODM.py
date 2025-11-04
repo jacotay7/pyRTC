@@ -12,7 +12,17 @@ from pyRTC.utils import *
 import struct
 import argparse
 import sys
+import logging
 
+logger = logging.getLogger("SHARP_RTC")
+logging.basicConfig(level=logging.DEBUG,
+                    format='%(asctime)s %(filename)s[line:%(lineno)d] %(levelname)s %(message)s',
+                    datefmt='%a, %d %b %Y %H:%M:%S',
+                    filename='/home/whetstone/pyRTC_backup/SHARP_LAB/debug.log',
+                    filemode='w')
+
+sys.stdout = LoggerWriter(logger.info)
+sys.stderr = LoggerWriter(logger.error)
 
 #Prevents camera output from messing with communication
 original_stdout = sys.stdout

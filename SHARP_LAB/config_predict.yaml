@@ -1,0 +1,148 @@
+loop:
+  gain: 0.5
+  leakyGain: 0.02
+  numDroppedModes: 0
+  pokeAmp: 0.02
+  numItersIM: 50
+  affinity: 2
+  delay: 0
+  method: push-pull
+  IMFile: "/home/whetstone/pyRTC/SHARP_LAB/calib/IM_SH.npy"
+  validSubApsFile: "/home/whetstone/pyRTC/SHARP_LAB/calib/validSubAps.npy"
+  AImodel: "GAN_NOSAM_1step_25rec_01n"
+  AIhalfPrecision: False
+  # gpuDevice: 0
+  AIburnIn: 500
+  pGain: 0.35
+  iGain: 0.066
+  dGain: 0.078
+  controlLimits: [-0.05, 0.05]
+  absoluteLimits: [-0.5, 0.5]
+  integralLimits: [-0.1, 0.1]
+  derivativeFilter: 0.1
+  functions:
+  # - baseline_standardIntegratorPOL
+  # - standardIntegrator
+  # - standardIntegratorPOL #COMMENTING THIS OUT FOR NEW INTEGRATOR
+  - jacobPOL
+  # - leakyIntegrator
+  # - pidIntegratorPOL
+
+wfs:
+  name: XIMEA
+  serial: "46052550"
+  binning: 1 
+  exposure: 10000 #2500
+  gain: 0
+  bitDepth: 10
+  left: 416 
+  top: 270 
+  width: 400 
+  height: 400 
+  darkCount: 2000
+  darkFile: "/home/whetstone/pyRTC/SHARP_LAB/calib/dark.npy"
+  affinity: 3
+  # gpuDevice: 0
+  functions:
+  - expose
+
+slopes:
+  type: SHWFS
+  signalType: slopes
+  refSlopesFile: "/home/whetstone/pyRTC/SHARP_LAB/calib/ref_SH.npy" #"/home/whetstone/pyRTC/SHARP_LAB/calib/ref_SH.npy"
+  validSubApsFile: "/home/whetstone/pyRTC/SHARP_LAB/calib/validSubAps.npy"
+  subApSpacing: 15.54 #7.78
+  subApOffsetX: 9
+  subApOffsetY: 12
+  imageNoise: 1.3
+  contrast: 10
+  affinity: 4
+  # gpuDevice: 0
+  functions:
+  - computeSignal
+
+wfc:
+  name: "ALPAO"
+  serial: "BAX118"
+  numActuators: 97
+  numModes: 95 #94
+  flatFile: "/home/whetstone/pyRTC/SHARP_LAB/calib/wfcShapePyWFS.npy"
+  saveFile: "/home/whetstone/pyRTC/SHARP_LAB/calib/wfcShapePyWFS.npy"
+  m2cFile:  "/home/whetstone/pyRTC/SHARP_LAB/calib/m2c_zern_manual.npy" #"/home/whetstone/pyRTC/SHARP_LAB/calib/m2c_kl.npy" 
+  floatingActuatorsFile: ""
+  floatingInfluenceRadius: 1
+  affinity: 5
+  # gpuDevice: 0
+  commandCap: 0.7
+  frameDelay: 0
+  functions:
+  - sendToHardware
+
+psf:
+  name: "FLIR"
+  index: 0
+  exposure: 750 #3333
+  gain: 0
+  bitDepth: 16
+  left: 796
+  top: 470
+  width: 128
+  height: 128
+  darkCount: 2000
+  darkFile: "/home/whetstone/pyRTC/SHARP_LAB/calib/psfDark.npy"
+  modelFile: "/home/whetstone/pyRTC/SHARP_LAB/calib/modelPSF_SH.npy"
+  integration: 50
+  affinity: 6
+  functions:
+  - expose
+  - integrate
+  - computeStrehl
+
+optimizer:
+  ncpa:
+    name: "NCPA"
+    numSteps: 100
+    startMode: 0
+    endMode: 20
+    correctionMag: 0.003
+    numReads: 1
+    affinity: 10
+  pid:
+    name: "PID"
+    numSteps: 100
+    maxPGain: 0.5
+    maxIGain: 0.1
+    maxDGain: 0.1
+    numReads: 1
+    affinity: 10
+  loop:
+    name: "hyper"
+    numSteps: 1
+    minGain: 0.3
+    maxGain: 0.8
+    maxLeak: 0.05
+    maxDroppedModes: 30
+    numReads: 1
+    affinity: 10
+    sampler: 'cmaes'
+    pruner: 'hyperband'
+
+telemetry:
+  name: "telem"
+
+  dataDir: "/media/whetstone/storage/pyRTCTelem"
+  # functions:
+
+# modulator:
+#   name: 'E-727'
+#   libFolder: '/opt/PI/lib64/'
+#   digitalFreq: 20000 #Hz
+#   frequency: 300 #Hz
+#   amplitude: 1000
+#   relativeAmplitude: 1
+#   offsetX: 2500
+#   offsetY: 2500
+#   phaseOffset: 0
+#   servosOn: True
+#   autoZero: True
+

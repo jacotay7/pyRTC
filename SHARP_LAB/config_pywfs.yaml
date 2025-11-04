@@ -7,7 +7,7 @@ loop:
   affinity: 2
   delay: 2
   method: push-pull
-  IMFile: "/home/whetstone/pyRTC/SHARP_LAB/calib/IM_PYWFS.npy"
+  # IMFile: "/home/whetstone/pyRTC/SHARP_LAB/calib/IM_PYWFS.npy"
   pGain: 0.28
   iGain: 0.066
   dGain: 0.078
@@ -58,10 +58,10 @@ slopes:
   flatNorm: True
   pupilsRadius: 8 #8 #64
   pupils: 
-  - 11,12
-  - 11,32
-  - 38,16 
-  - 32,32
+  - 11,15
+  - 11,35
+  - 38,19 
+  - 32,35
   # pupilsRadius: 32
   # pupils: 
   # - 46,48
@@ -77,10 +77,10 @@ wfc:
   name: "ALPAO"
   serial: "BAX118"
   numActuators: 97
-  numModes: 94
+  numModes: 95
   flatFile: "/home/whetstone/pyRTC/SHARP_LAB/calib/wfcShapePyWFS.npy"
   saveFile: "/home/whetstone/pyRTC/SHARP_LAB/calib/wfcShapePyWFS.npy"
-  m2cFile: "/home/whetstone/pyRTC/SHARP_LAB/calib/m2c_kl.npy" 
+  m2cFile: "/home/whetstone/pyRTC/SHARP_LAB/calib/m2c_zern_manual.npy"  #"/home/whetstone/pyRTC/SHARP_LAB/calib/m2c_kl.npy" 
   floatingActuatorsFile: ""
   floatingInfluenceRadius: 1
   affinity: 5
@@ -97,8 +97,8 @@ psf:
   exposure: 3333
   gain: 0
   bitDepth: 16
-  left: 936
-  top: 432
+  left: 808
+  top: 440
   width: 128
   height: 128
   darkCount: 2000

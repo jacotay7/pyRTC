@@ -8,6 +8,7 @@ import psutil
 from scipy.ndimage import median_filter, gaussian_filter
 import socket
 from datetime import datetime
+from typing import Tuple
 import time 
 import logging
 import matplotlib
@@ -130,7 +131,7 @@ def load_data(filename, dtype=None):
         data = np.load(filename)
     elif filename.endswith('.fits'):
         with fits.open(filename) as hdul:
-            data = hdul[0].data
+            data = hdul[0].data # typing: ignore
     else:
         raise ValueError("Unsupported file format. Please provide a .npy or .fits file.")
     
@@ -196,6 +197,22 @@ def centroid(array):
     x_centroid = (x_indices * array).sum() / total
     y_centroid = (y_indices * array).sum() / total
     return np.array([x_centroid, y_centroid])
+
+def airy_disk(pupil_shape: Tuple[int, int], radius: float, offset: Tuple[int, int] = (0,0)):
+    
+    # make pupil
+    pupil = np.zeros(pupil_shape)
+    xx, yy = np.meshgrid(np.linspace(-1.0, 1.0, pupil_shape[0]), np.linspace(-1.0, 1.0, pupil_shape[1]))
+    pupil[np.sqrt(xx**2 + yy**2) < radius] = 1.0
+
+    # make airy disk
+    disk = np.fft.fftshift(np.abs(np.fft.fft2(pupil)))
+
+    # shift the disk
+    disk = np.roll(disk, offset, axis=(0,1))
+    disk /= disk.sum()
+
+    return disk
 
 def add_to_buffer(buffer, vec):
     if isinstance(buffer,np.ndarray):
@@ -367,7 +384,7 @@ def float_to_dtype(dtype_float):
     """
     return np.dtype(NP_DATA_TYPES[int(dtype_float)])
 
-def bind_socket(host, start_port, max_attempts=5):
+def bind_socket(host, start_port, max_attempts=5) -> socket.socket:
     """Attempts to bind a socket on a range of ports, handling OSError exceptions."""
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)  # Allow reuse of socket addresses
@@ -377,10 +394,10 @@ def bind_socket(host, start_port, max_attempts=5):
             # Attempt to bind the socket
             sock.bind((host, start_port + attempt))
             print(f"Successfully bound to {host}:{start_port + attempt}")
-            return sock
+            break
         except OSError as e:
             print(f"Failed to bind to {host}:{start_port + attempt}: {e}")
-            if e.errno == socket.errno.EADDRINUSE:
+            if e.errno == socket.errno.EADDRINUSE:  # typing: ignore
                 print("Address already in use. Trying next port...")
             else:
                 print("An unexpected error occurred. Stopping attempts.")
@@ -388,8 +405,9 @@ def bind_socket(host, start_port, max_attempts=5):
     else:
         # After all attempts, if no binding was successful, raise an exception
         raise RuntimeError("Failed to bind socket after multiple attempts")
+    
+    return sock
 
-    return -1
 
 def decrease_nice():
     # Unsupported by MacOS or Windows
@@ -432,3 +450,20 @@ def is_numeric(s):
         return True
     except ValueError:
         return False
+
+class LoggerWriter(object):
+    def __init__(self, writer):
+        self._writer = writer
+        self._msg = ''
+
+    def write(self, message):
+        self._msg = self._msg + message
+        while '\n' in self._msg:
+            pos = self._msg.find('\n')
+            self._writer(self._msg[:pos])
+            self._msg = self._msg[pos+1:]
+
+    def flush(self):
+        if self._msg != '':
+            self._writer(self._msg)
+            self._msg = ''

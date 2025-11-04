@@ -3,6 +3,8 @@ Pipeline Superclasss
 """
 from multiprocessing import shared_memory, resource_tracker
 from subprocess import PIPE, Popen
+from typing import List, Tuple
+from numpy.typing import DTypeLike
 import numpy as np
 import time
 import sys
@@ -34,13 +36,33 @@ try:
 except:
     pass
 
+from functools import reduce
+
+logger = logging.getLogger("SHARP_RTC")
+logging.basicConfig(level=logging.DEBUG,
+                    format='%(asctime)s %(filename)s[line:%(lineno)d] %(levelname)s %(message)s',
+                    datefmt='%a, %d %b %Y %H:%M:%S',
+                    filename='/home/whetstone/pyRTC_backup/SHARP_LAB/debug.log',
+                    filemode='w')
+
+# recursive get/setattr
+def rgetattr(obj, attr, *args):
+    """See https://stackoverflow.com/questions/31174295/getattr-and-setattr-on-nested-objects"""
+    def _getattr(obj, attr):
+        return getattr(obj, attr, *args)
+    return reduce(_getattr, [obj] + attr.split('.'))
+
+def rsetattr(obj, attr, val):
+    pre, _, post = attr.rpartition('.')
+    return setattr(rgetattr(obj, pre) if pre else obj, post, val)
+
 def work(obj, functionName, affinity):
     """
     The main working thread for the any Pipeline object
     """
     set_affinity_and_priority(functionName, [affinity])
     #Get what function we need to run
-    workFunction = getattr(obj, functionName, None)
+    workFunction = rgetattr(obj, functionName, None)
     # count = 0
     # N = 10000
     # times = np.zeros(N)
@@ -80,10 +102,12 @@ class ImageSHM:
 
         try:
             self.shm = shared_memory.SharedMemory(name= name, create=True, size=self.arr.nbytes)
-            print(f"Creating New Shared Memory Object {self.name}")
+            # print(f"Creating New Shared Memory Object {self.name}")
+            logger.info(f"Creating New Shared Memory Object {self.name}")
         except:
             self.shm = shared_memory.SharedMemory(name=name)
-            print(f"Opening Existing Shared Memory Object {self.name}")
+            # print(f"Opening Existing Shared Memory Object {self.name}")
+            logger.info(f"Opening Existing Shared Memory Object {self.name}")
 
         #Doesn't work in windows
         if sys.platform != 'win32':
@@ -95,10 +119,12 @@ class ImageSHM:
             #Create/Open an associated metadata SHM 
             try:
                 self.metadataShm = shared_memory.SharedMemory(name= name+"_meta", create=True, size=self.metadata.nbytes)
-                print(f"Creating New Shared Memory Object {self.name}"+"_meta")
+                # print(f"Creating New Shared Memory Object {self.name}"+"_meta")
+                logger.info(f"Creating New Shared Memory Object {self.name}"+"_meta")
             except:
                 self.metadataShm = shared_memory.SharedMemory(name= name+"_meta")
-                print(f"Opening Existing Shared Memory Object {self.name}"+"_meta")
+                # print(f"Opening Existing Shared Memory Object {self.name}"+"_meta")
+                logger.info(f"Opening Existing Shared Memory Object {self.name}"+"_meta")
             if sys.platform != 'win32':
                 resource_tracker.unregister(self.metadataShm._name, 'shared_memory')
             self.metadata = np.ndarray(self.metadata.shape, dtype=self.metadata.dtype, buffer=self.metadataShm.buf)
@@ -166,7 +192,8 @@ class ImageSHM:
         # try:
         gpuHandleShm = shared_memory.SharedMemory(
             name=self.name + "_gpu_handle", create=True, size=total_size)
-        print(f"Creating New Shared Memory Object {self.name}_gpu_handle")
+        # print(f"Creating New Shared Memory Object {self.name}_gpu_handle")
+        logger.info(f"Creating New Shared Memory Object {self.name}_gpu_handle")
         # except FileExistsError:
         #     gpuHandleShm = shared_memory.SharedMemory(name=self.name + "_gpu_handle")
         #     print(f"Opening Existing Shared Memory Object {self.name}_gpu_handle")
@@ -180,7 +207,8 @@ class ImageSHM:
         buf[offset:offset + struct.calcsize(header_format)] = header
         offset += struct.calcsize(header_format)
 
-        print(offset, handle_length, type(offset), type(handle_length), handle_bytes, type(offset + handle_length))
+        # print(offset, handle_length, type(offset), type(handle_length), handle_bytes, type(offset + handle_length))
+        logger.info(offset, handle_length, type(offset), type(handle_length), handle_bytes, type(offset + handle_length))
 
         # Write handle_bytes
         buf[offset:offset + handle_length] = handle_bytes
@@ -200,7 +228,8 @@ class ImageSHM:
         # Open the shared memory segment
         try:
             gpuHandleShm = shared_memory.SharedMemory(name=self.name + "_gpu_handle")
-            print(f"Opened Shared Memory Object {self.name}_gpu_handle")
+            # print(f"Opened Shared Memory Object {self.name}_gpu_handle")
+            logger.info(f"Opened Shared Memory Object {self.name}_gpu_handle")
         except:
             self.gpuDevice=None
             logging.log(level=logging.WARNING, msg=f"{self.name}: Trying to initialize GPU memory which does not exist. Defaulting to CPU")
@@ -263,7 +292,8 @@ class ImageSHM:
         return
 
     def close(self):
-        print(f"Closing {self.name}")
+        # print(f"Closing {self.name}")
+        logger.info(f"Closing {self.name}")
         self.shm.close()
         return
 
@@ -411,13 +441,15 @@ class hardwareLauncher:
     
     def launch(self):
         if not self.running:
-            print(f"Launching Process: {self.hardwareFile}")
-            self.process = Popen(self.command,stdin=PIPE,stdout=PIPE, text=True, bufsize=1)
+            # print(f"Launching Process: {self.hardwareFile}")
+            logger.info(f"Launching Process: {self.hardwareFile}")
+            self.process = Popen(self.command,stdin=PIPE,stdout=PIPE, stderr=PIPE,text=True, bufsize=1)
             self.running = True
 
             # Create a socket object
             self.processSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            print(f"Waiting for Process at {self.host}:{self.port}")
+            # print(f"Waiting for Process at {self.host}:{self.port}")
+            logger.info(f"Waiting for Process at {self.host}:{self.port}")
             connected = False
             restTime = 2
             while not connected:
@@ -427,13 +459,14 @@ class hardwareLauncher:
                     self.processSocket.connect((self.host, self.port))
                     connected = True
                 except Exception as e:
-                    print(f"Connection failed: {e}")
-                    print("Retrying in {} seconds...".format(restTime))
+                    # print(f"Connection failed: {e}\nRetrying in {restTime} seconds...")
+                    logger.info(f"Connection failed: {e}\nRetrying in {restTime} seconds...")
 
             if isinstance(self.timeout,float) or isinstance(self.timeout,int):
                 self.processSocket.settimeout(self.timeout)
 
-            print("Connected")
+            # print("Connected")
+            logger.info("Connected")
 
         return
     
@@ -511,7 +544,8 @@ class Listener:
         # except OSError as
         # Listen for incoming connections
         server_socket.listen()
-        print(f"{hardware.name}: Awaiting RTC connection")
+        # print(f"{hardware.name}: Awaiting RTC connection")
+        logger.info(f"{hardware.name}: Awaiting RTC connection")
         #Connect to the RTC process that spawned you
         self.RTCsocket, self.RTCaddress = server_socket.accept()
 
@@ -539,7 +573,7 @@ class Listener:
         elif requestType == "get":
             try:
                 propertyName = request["property"]
-                property = getattr(self.hardware, propertyName)
+                property = rgetattr(self.hardware, propertyName)
                 message = self.OKMessage.copy()
                 message["property"] = property
                 self.write(message)
@@ -549,8 +583,8 @@ class Listener:
             try:
                 propertyName = request["property"]
                 propertyValue = request["value"]
-                property = getattr(self.hardware, propertyName)
-                setattr(self.hardware, propertyName, type(property)(propertyValue))
+                property = rgetattr(self.hardware, propertyName)
+                rsetattr(self.hardware, propertyName, type(property)(propertyValue))
                 self.write(self.OKMessage)
             except:
                 self.write(self.BadMessage)
@@ -561,7 +595,7 @@ class Listener:
                 for i in range(0, len(request.keys())-2):
                     arg = request[f"arg_{i+1}"]
                     args.append(arg)
-                function = getattr(self.hardware, functionName)
+                function = rgetattr(self.hardware, functionName)
                 if len(args) > 0:
                     function(*args)
                 else:
@@ -581,7 +615,7 @@ class Listener:
         reply = self.RTCsocket.recv(4096).decode()
         return json.loads(reply)
     
-def initExistingShm(shmName, gpuDevice=None):
+def initExistingShm(shmName, gpuDevice=None) -> Tuple[ImageSHM, List[int], DTypeLike]:
     #Read wfc metadata and open a stream to the shared memory
     shmMeta = ImageSHM(shmName+"_meta", (ImageSHM.METADATA_SIZE,), np.float64).read_noblock()
     shmDType = float_to_dtype(shmMeta[3])

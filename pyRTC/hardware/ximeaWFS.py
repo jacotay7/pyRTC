@@ -19,8 +19,12 @@ class XIMEA_WFS(WavefrontSensor):
         if "exposure" in conf:
             self.setExposure(conf["exposure"])
         if "top" in conf and "left" in conf and "width" in conf and "height" in conf:
+            
+            # min increment for ROI = 16
             roi=[conf["width"],conf["height"],conf["left"],conf["top"]]
             self.setRoi(roi)
+
+
         if "gain" in conf:
             self.setGain(conf["gain"])
 

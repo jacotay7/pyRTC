@@ -281,6 +281,7 @@ class Loop(pyRTCComponent):
         self.prev_command = np.zeros(self.wfcShape, dtype=self.wfcDType)
         self.bufferCount = 0
         self.s_pol_old = np.zeros_like(self.nullSignal)
+        
         """
         Terms for PID integrator
         """
@@ -334,6 +335,9 @@ class Loop(pyRTCComponent):
         """
         Compute the interaction matrix using the push-pull method.
         """
+
+        self.IM = np.zeros((self.signalSize, self.numModes),dtype=self.signalDType)
+
         #For each mode
         for i in range(self.numModes):
             #Reset the correction
@@ -347,7 +351,9 @@ class Loop(pyRTCComponent):
             #Burn the first new image since we were moving the DM during the exposure
             self.signalShm.read(RELEASE_GIL = True)
             #Average out N new WFS frames
-            tmp_plus = np.zeros_like(self.IM[:,i])
+            # tmp_plus = np.zeros_like(self.IM[:,i])
+            tmp_plus = np.zeros((self.signalSize,) ,dtype=self.signalDType)
+
             for n in range(self.numItersIM):
                 tmp_plus += self.signalShm.read(RELEASE_GIL = True)
             tmp_plus /= self.numItersIM
@@ -361,7 +367,7 @@ class Loop(pyRTCComponent):
             #Burn the first new image since we were moving the DM during the exposure
             self.signalShm.read(RELEASE_GIL = True)
             #Average out N new WFS frames
-            tmp_minus = np.zeros_like(self.IM[:,i])
+            tmp_minus = np.zeros((self.signalSize,) ,dtype=self.signalDType)
             for n in range(self.numItersIM):
                 tmp_minus += self.signalShm.read(RELEASE_GIL = True)
             tmp_minus /= self.numItersIM
@@ -459,6 +465,7 @@ class Loop(pyRTCComponent):
             self.IM = np.zeros_like(self.IM)
         else:
             self.IM = np.load(filename)
+            self.CM = np.zeros_like(self.IM.T)
         self.computeCM()
 
     def flatten(self):
@@ -476,6 +483,8 @@ class Loop(pyRTCComponent):
         if self.numActiveModes < 0:
             print("Invalid Number of Modes used in CM. Check numDroppedModes")
             return
+        self.CM = np.zeros((self.numModes, self.signalSize), dtype=self.signalDType)
+
         self.CM[:self.numActiveModes,:] = np.linalg.pinv(self.IM[:,:self.numActiveModes], rcond=0)
         self.CM[self.numActiveModes:,:] = 0
         self.gCM = self.gain*self.CM

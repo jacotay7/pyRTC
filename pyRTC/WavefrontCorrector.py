@@ -16,6 +16,17 @@ from pyRTC.pyRTCComponent import *
 import numpy as np
 import matplotlib.pyplot as plt
 from numba import jit
+import logging
+
+logger = logging.getLogger("SHARP_RTC")
+logging.basicConfig(level=logging.DEBUG,
+                    format='%(asctime)s %(filename)s[line:%(lineno)d] %(levelname)s %(message)s',
+                    datefmt='%a, %d %b %Y %H:%M:%S',
+                    filename='/home/whetstone/pyRTC_backup/SHARP_LAB/debug.log',
+                    filemode='w')
+
+sys.stdout = LoggerWriter(logger.info)
+sys.stderr = LoggerWriter(logger.error)
 
 @jit(nopython=True)
 def ModaltoZonalWithFlat(correction=np.array([],dtype=np.float32), 
@@ -170,7 +181,11 @@ class WavefrontCorrector(pyRTCComponent):
                 flat = np.genfromtxt(filename)
             elif '.npy' in filename:
                 flat = np.load(filename)
+                
         self.setFlat(flat)
+        if hasattr(self, 'self.C2M'):
+            self.flatModal = self.C2M@self.flat
+
         return
     def setLayout(self, layout):
         """
@@ -263,7 +278,7 @@ class WavefrontCorrector(pyRTCComponent):
             self.deactivateActuators(actsToDeactivate)
         return
 
-    def setM2C(self, M2C):
+    def setM2C(self, M2C: np.ndarray | None) -> None:
         """
         Set the mode-to-command matrix. This is the basis for correction.
 
@@ -286,7 +301,7 @@ class WavefrontCorrector(pyRTCComponent):
         self.currentCorrection = np.zeros(self.numModes, dtype=self.flat.dtype)
         self.flatModal = self.C2M@self.flat
 
-    def setDelay(self,delay):
+    def setDelay(self, delay):
         """
         Sets an artificial frame delay. Used for testing, nominally the delay should always be zero.
 

@@ -1,0 +1,63 @@
+Launching Process: ../pyRTC/hardware/ALPAODM.py
+Waiting for Process at 127.0.0.1:3382
+Connected
+Launching Process: ../pyRTC/hardware/ximeaWFS.py
+Waiting for Process at 127.0.0.1:3383
+Connection failed: [Errno 111] Connection refused
+Retrying in 2 seconds...
+Connected
+Launching Process: ../pyRTC/SlopesProcess.py
+Waiting for Process at 127.0.0.1:3384
+Connected
+Launching Process: ../pyRTC/hardware/SpinnakerScienceCam.py
+Waiting for Process at 127.0.0.1:3392
+Connected
+Launching Process: prediction/predictLoop.py
+Waiting for Process at 127.0.0.1:3386
+Connection failed: [Errno 111] Connection refused
+Retrying in 2 seconds...
+Connection failed: [Errno 111] Connection refused
+Retrying in 2 seconds...
+Connection failed: [Errno 111] Connection refused
+Retrying in 2 seconds...
+Connected
+Opening Existing Shared Memory Object psfLong_meta
+Closing psfLong_meta
+Opening Existing Shared Memory Object psfLong
+Opening Existing Shared Memory Object psfLong_meta
+Opening Existing Shared Memory Object strehl_meta
+Closing strehl_meta
+Opening Existing Shared Memory Object strehl
+Opening Existing Shared Memory Object strehl_meta
+Opening Existing Shared Memory Object signal_meta
+Closing signal_meta
+Opening Existing Shared Memory Object signal
+Opening Existing Shared Memory Object signal_meta
+Opening Existing Shared Memory Object signal2D_meta
+Closing signal2D_meta
+Opening Existing Shared Memory Object signal2D
+Opening Existing Shared Memory Object signal2D_meta
+Create sweep with ID: c9e7tlq0
+Sweep URL: https://wandb.ai/robinswanson/pyRTC_vTruTests/sweeps/c9e7tlq0
+c9e7tlq0
+{'extra_noise': False, 'frame_delay': 0, 'gain': -1, 'half_p': False, 'laser_dB': 0.03, 'leaky_gain': -1, 'loop_iters': 2400, 'model': 'shlong_10_default0m_SAM', 'norm_slopes': False, 'num_dropped_modes': -1, 'opt_mode': 'tiptilt', 'soft_mode': False, 'use_next_slope': True, 'wind_speed': 16}
+>>>>>>>>>>>> wandb_config.gain=-1
+Running PIDOpt:
+Opening Existing Shared Memory Object strehl_meta
+Closing strehl_meta
+Opening Existing Shared Memory Object strehl
+Opening Existing Shared Memory Object strehl_meta
+Opening Existing Shared Memory Object tiptilt_meta
+Closing tiptilt_meta
+Opening Existing Shared Memory Object tiptilt
+Opening Existing Shared Memory Object tiptilt_meta
+Opening Existing Shared Memory Object signal_meta
+Closing signal_meta
+Opening Existing Shared Memory Object signal
+Opening Existing Shared Memory Object signal_meta
+And...
+Go...
+Loop Starting:
+Closing strehl
+Closing tiptilt
+Closing signal

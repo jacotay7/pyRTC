@@ -1,9 +1,100 @@
-#%% 
+# #%%
+# import matplotlib.pyplot as plt
+# from IPython.display import display, clear_output
+# import time
+# from pyRTC.Pipeline import *
+# import argparse
+
+# # Create the parser
+# parser = argparse.ArgumentParser(description="Get the SHM name")
+
+# # Add a required positional argument for the word
+# parser.add_argument("shm", type=str, help="name of SHM to plot", default="strehl")
+
+# # Parse the arguments
+# args = parser.parse_args()
+
+# #%%
+# shmName = args.shm#'psfShort'
+# shm,_,_ = initExistingShm(shmName)
+
+# # Parameters
+# update_interval = 0.1  # seconds between updates, modify as needed
+# WINDOW_SIZE = 1
+# MAX_SIZE = 1000
+
+# def rolling_average(data, window_size):
+#     n = len(data)
+#     if n < window_size:
+#         return []  # Return empty list if window is larger than data length
+
+#     averages = []
+#     # Compute the initial window's sum
+#     window_sum = sum(data[:window_size])
+#     averages.append(window_sum / window_size)
+
+#     # Slide the window across the data
+#     for i in range(1, n - window_size + 1):
+#         window_sum += data[i + window_size - 1] - data[i - 1]
+#         averages.append(window_sum / window_size)
+
+#     return averages
+
+# # Function to compute the next value in the time series
+# def compute_next_value():
+#     return np.max(shm.read_noblock())
+
+
+# # Create a figure and axis
+# fig, ax = plt.subplots(figsize=(12, 5))
+# line, = ax.plot([], [], lw=2)
+
+# # Initialize the data
+# xdata, ydata = [], []
+# past_values = [compute_next_value()]*WINDOW_SIZE
+
+# # Set the plot limits
+# ax.set_xlim(0, MAX_SIZE)
+# ax.set_ylabel(shmName, size = 16)
+# ax.set_xlabel("Time [arb]", size = 16)
+# ax.grid()
+
+# # Enable interactive mode
+# plt.ion()
+# plt.show()
+
+# # Function to update the plot
+# def update_plot():
+
+#     global past_values
+
+#     if len(past_values) >= MAX_SIZE:
+#         past_values[:-1] = past_values[1:]
+#         past_values[-1] = compute_next_value()
+#     else:
+#         past_values.append(compute_next_value())
+
+#     ydata = rolling_average(past_values, WINDOW_SIZE)
+#     xdata = list(range(len(ydata)))
+#     line.set_data(xdata, ydata)
+#     ax.set_ylim(np.percentile(ydata, 5), np.percentile(ydata, 95))
+#     fig.canvas.draw()
+#     fig.canvas.flush_events()
+
+# while True:
+#     update_plot()
+#     time.sleep(update_interval)  # Adjust the sleep time as needed
+
+# %%
+# %%
+# %%
+# %%
 import matplotlib.pyplot as plt
 from IPython.display import display, clear_output
 import time
 from pyRTC.Pipeline import *
 import argparse
+import numpy as np
 
 # Create the parser
 parser = argparse.ArgumentParser(description="Get the SHM name")
@@ -14,31 +105,31 @@ parser.add_argument("shm", type=str, help="name of SHM to plot", default="strehl
 # Parse the arguments
 args = parser.parse_args()
 
-#%% 
-shmName = args.shm#'psfShort'
-shm,_,_ = initExistingShm(shmName)
+# %%
+shmName = args.shm  # 'psfShort'
+shm, _, _ = initExistingShm(shmName)
 
 # Parameters
-update_interval = 0.1  # seconds between updates, modify as needed
-WINDOW_SIZE = 1
+update_interval = 0.1  # seconds between updates
+WINDOW_SIZE = 100  # Window size for mean and std computation
 MAX_SIZE = 1000
+THRESHOLD_PERCENT = 5  # Threshold percentage for substantial change
+SHORT_WINDOW = 5  # Short window size to compare recent changes
+
 
 def rolling_average(data, window_size):
-    n = len(data)
-    if n < window_size:
-        return []  # Return empty list if window is larger than data length
+    if len(data) < window_size:
+        return sum(data) / len(data) if data else 0
+    else:
+        return sum(data[-window_size:]) / window_size
 
-    averages = []
-    # Compute the initial window's sum
-    window_sum = sum(data[:window_size])
-    averages.append(window_sum / window_size)
 
-    # Slide the window across the data
-    for i in range(1, n - window_size + 1):
-        window_sum += data[i + window_size - 1] - data[i - 1]
-        averages.append(window_sum / window_size)
+def rolling_std(data, window_size):
+    if len(data) < window_size:
+        return np.std(data)
+    else:
+        return np.std(data[-window_size:])
 
-    return averages
 
 # Function to compute the next value in the time series
 def compute_next_value():
@@ -47,42 +138,114 @@ def compute_next_value():
 
 # Create a figure and axis
 fig, ax = plt.subplots(figsize=(12, 5))
-line, = ax.plot([], [], lw=2)
+(line,) = ax.plot([], [], lw=2)
 
 # Initialize the data
 xdata, ydata = [], []
-past_values = [compute_next_value()]*WINDOW_SIZE
+past_values = []
+mean_values = []
+std_values = []
 
 # Set the plot limits
 ax.set_xlim(0, MAX_SIZE)
-ax.set_ylabel(shmName, size = 16)
-ax.set_xlabel("Time [arb]", size = 16)
+ax.set_ylabel(shmName, size=16)
+ax.set_xlabel("Time [arb]", size=16)
 ax.grid()
+
+# Create a text box for displaying the rolling mean and std
+text_box = ax.text(0.02, 0.95, "", transform=ax.transAxes, va="top", ha="left")
 
 # Enable interactive mode
 plt.ion()
 plt.show()
 
+# Initialize previous mean and std for comparison
+prev_mean = None
+prev_std = None
+
+
 # Function to update the plot
 def update_plot():
+    global past_values, mean_values, std_values, prev_mean, prev_std
 
-    global past_values
-    
-    if len(past_values) >= MAX_SIZE:
-        past_values[:-1] = past_values[1:]
-        past_values[-1] = compute_next_value()
-    else:
-        past_values.append(compute_next_value())
+    # Get new data point
+    new_value = compute_next_value()
+    past_values.append(new_value)
 
-    ydata = rolling_average(past_values, WINDOW_SIZE)
-    xdata = list(range(len(ydata)))
+    # Maintain the size of past_values
+    if len(past_values) > MAX_SIZE:
+        past_values.pop(0)
+
+    # Update xdata and ydata
+    xdata.append(len(xdata))
+    ydata.append(new_value)
     line.set_data(xdata, ydata)
-    ax.set_ylim(np.percentile(ydata, 5), np.percentile(ydata, 95))
+    ax.set_xlim(max(0, len(xdata) - MAX_SIZE), len(xdata))
+
+    # Adjust y-axis limits
+
+    y_min = np.percentile(np.array(ydata[-MAX_SIZE:]), 1)
+    y_max = np.percentile(np.array(ydata[-MAX_SIZE:]), 99)
+    if y_min == y_max:
+        y_min -= 1  # Avoid zero range in y-axis
+        y_max += 1
+    ax.set_ylim(y_min - 0.1 * abs(y_min), y_max + 0.1 * abs(y_max))
+
+    # Compute rolling mean and std
+    current_mean = rolling_average(past_values, WINDOW_SIZE)
+    current_std = rolling_std(past_values, WINDOW_SIZE)
+
+    mean_values.append(current_mean)
+    std_values.append(current_std)
+
+    # Initialize mean_change and std_change
+    mean_change = 0
+    std_change = 0
+
+    # Compare with previous mean and std to determine substantial changes
+    mean_color = "black"
+    std_color = "black"
+
+    # Update previous mean and std for next comparison
+    # Use a short window to capture recent changes
+    if len(mean_values) >= SHORT_WINDOW + 1:
+        prev_mean = rolling_average(mean_values[-SHORT_WINDOW - 1 : -1], SHORT_WINDOW)
+        prev_std = rolling_average(std_values[-SHORT_WINDOW - 1 : -1], SHORT_WINDOW)
+
+        # Ensure prev_mean and prev_std are not zero to avoid division by zero
+        if prev_mean != 0:
+            mean_change = (current_mean - prev_mean) / abs(prev_mean) * 100
+            if abs(mean_change) > THRESHOLD_PERCENT:
+                mean_color = "green" if mean_change > 0 else "red"
+
+        if prev_std != 0:
+            std_change = (current_std - prev_std) / abs(prev_std) * 100
+            if abs(std_change) > THRESHOLD_PERCENT:
+                std_color = "green" if std_change > 0 else "red"
+    else:
+        # Not enough data yet, initialize prev_mean and prev_std
+        prev_mean = current_mean
+        prev_std = current_std
+
+    # Update the text box with formatted values and colors
+    text_str = f"Mean: {current_mean:.2f}\nStd: {current_std:.2f}"
+
+    # Decide which color to use based on larger change
+    if abs(mean_change) > abs(std_change):
+        text_box.set_color(mean_color)
+    else:
+        text_box.set_color(std_color)
+
+    text_box.set_text(text_str)
+
     fig.canvas.draw()
     fig.canvas.flush_events()
 
-while True:
-    update_plot()
-    time.sleep(update_interval)  # Adjust the sleep time as needed
 
-# %%
+try:
+    while True:
+        update_plot()
+        time.sleep(update_interval)
+except KeyboardInterrupt:
+    print("Exiting...")
+    plt.close(fig)

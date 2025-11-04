@@ -61,22 +61,33 @@ class Optimizer(pyRTCComponent):
         """
         self.name = "Optimizer"
         self.sampler = setFromConfig(conf, "sampler", "tpe")
+        self.pruner = setFromConfig(conf, "pruner", None)
+        self.storage = None
+        
+        if self.pruner == 'hyperband':
+            self.pruner = optuna.pruners.HyperbandPruner()
+        else:
+            self.pruner = None
+
         if self.sampler == 'cmaes':    
             self.study = optuna.create_study(direction='maximize', 
-                                            sampler=optuna.samplers.CmaEsSampler())
-        if self.sampler == 'torch':    
+                                            sampler=optuna.samplers.CmaEsSampler(),
+                                            pruner=self.pruner)
+        elif self.sampler == 'torch':    
             self.study = optuna.create_study(direction='maximize', 
-                                            sampler=optuna.samplers.BoTorchSampler())
+                                            sampler=optuna.samplers.BoTorchSampler(),
+                                            pruner=self.pruner)
         else:
             self.study = optuna.create_study(direction='maximize', 
-                                            sampler=optuna.samplers.TPESampler())
+                                            sampler=optuna.samplers.TPESampler(),
+                                            pruner=self.pruner)
         self.numSteps = setFromConfig(conf, "numSteps", 100)
 
         super().__init__(conf)
 
         return
     
-    def objective(self):
+    def objective(self) -> float:
         """
         Defines the objective function for the optimization.
 
@@ -85,7 +96,7 @@ class Optimizer(pyRTCComponent):
 
         :return: The objective value to be optimized.
         """
-        return
+        return -1
 
     def optimize(self):
         """
@@ -94,8 +105,7 @@ class Optimizer(pyRTCComponent):
         This method runs the optimization process using the defined objective 
         function and the number of steps specified in the configuration.
         """
-        self.study.optimize(self.objective, 
-                            n_trials=self.numSteps)
+        self.study.optimize(self.objective, n_trials=self.numSteps)
         self.applyOptimum()
         return
     
@@ -129,7 +139,8 @@ class Optimizer(pyRTCComponent):
     def resetStudy(self):
 
         self.study = optuna.create_study(direction='maximize', 
-                                         sampler=optuna.samplers.CmaEsSampler())
+                                         sampler=optuna.samplers.CmaEsSampler(),
+                                         storage=self.storage)
 
         return
 
