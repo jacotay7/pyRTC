@@ -31,10 +31,9 @@ slopes:
   lensletsX: 25
   lensletsY: 25
   pixelsPerLenslet: 14
-  # Optional: define pupil if your sensor has margins; comment out if auto-detected
-  # pupilsRadius: 187
-  # pupils:
-  # - 187,187
+  subApSpacing: 14
+  subApOffsetX: 0
+  subApOffsetY: 0
 
   functions:
   - computeSignal
@@ -42,7 +41,7 @@ slopes:
 wfc:
   name: "OOPAOWFC"
   numActuators: 97
-  numModes: 97
+  numModes: 95
   flatFile: ""
   saveFile: "flat.npy"
   m2cFile: ""
