@@ -7,7 +7,7 @@ loop:
   affinity: 2
   delay: 0 # 2
   method: push-pull
-  IMFile: "" #"/home/whetstone/pyRTC_backup/SHARP_LAB/calib/IM_SH.npy"
+  IMFile: "/home/whetstone/pyRTC_backup/SHARP_LAB/calib/IM_PyWFS.npy"
   pGain: 0.28
   iGain: 0.066
   dGain: 0.078
@@ -23,37 +23,62 @@ loop:
   # - pidIntegratorPOL
   # - pidIntegrator
 
-
 wfs:
   name: XIMEA
-  serial: "46052550"
-  binning: 1 
-  exposure: 2500
+  serial: "13056250"
+  binning: 2
+  downsampleFactor: 4
+  exposure: 3333
   gain: 0
   bitDepth: 10
-  left: 416 # increments of 16
-  top: 286 # inc. of 4
-  width: 416 
-  height: 416 
-  darkCount: 2000
-  darkFile: "/home/whetstone/pyRTC_backup/SHARP_LAB/calib/dark.npy"
+  left: 224
+  top: 62 
+  width: 192 
+  height: 192 
+  darkCount: 200
+  darkFile: "/home/whetstone/pyRTC_backup/SHARP_LAB/calib/darkPyWFS.npy"
   affinity: 3
+  # gpuDevice: 0
   functions:
   - expose
 
 slopes:
-  type: SHWFS
+  type: PYWFS
   signalType: slopes
-  refSlopesFile: "/home/whetstone/pyRTC_backup/SHARP_LAB/calib/ref_SH.npy"
-  validSubApsFile: "/home/whetstone/pyRTC_backup/SHARP_LAB/calib/validSubAps.npy"
-  subApSpacing: 15.62  # 15.54 #7.78
-  subApOffsetX: 15.5 #3.25 #13 #9
-  subApOffsetY: 11.62 #10.5 #9.5 
-  imageNoise: 1.3
-  contrast: 10
+  validSubApsFile: "/home/whetstone/pyRTC_backup/SHARP_LAB/calib/validSubApsPyWFS.npy"
+  refSlopesFile: "/home/whetstone/pyRTC_backup/SHARP_LAB/calib/refPyWFS.npy"
+  flatNorm: True
+  pupilsRadius: 8.5 #8 #64
+  pupils: 
+  - 11,13
+  - 11,33
+  - 38,17
+  - 33,33
+  # [(13, 11), (33, 11), (17, 38), (33, 33)]
+  # pupilsRadius: 32
+  # pupils: 
+  # - 46,48
+  # - 44,128
+  # - 150,65 #140, 60
+  # - 128,128
   affinity: 4
+  # gpuDevice: 0
   functions:
   - computeSignal
+
+modulator:
+  name: 'E-727'
+  libFolder: '/opt/PI/lib64/'
+  digitalFreq: 20000 #Hz
+  frequency: 300 #Hz
+  amplitude: 600
+  relativeAmplitude: 1.0
+  offsetX: 2500 #2800
+  offsetY: 2500 #1100
+  phaseOffset: 0
+  servosOn: False
+  autoZero: True 
+  affinity: 7
 
 wfc:
   name: "ALPAO"
@@ -78,7 +103,7 @@ wfc:
 psf:
   name: "FLIR"
   index: 0
-  exposure: 25000
+  exposure: 100
   gain: 0
   bitDepth: 16
   left: 280 #1024 #628 #1000   # div by 4

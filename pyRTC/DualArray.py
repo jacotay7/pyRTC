@@ -1,6 +1,7 @@
 import numpy as np
 import torch
 
+
 class SyncArray:
     def __init__(self, array, sync_callback):
         self.array = array
@@ -19,6 +20,7 @@ class SyncArray:
     def __repr__(self):
         return repr(self.array)
 
+
 class DualArray:
     def __init__(self, data):
         # Initialize from either a NumPy array or a PyTorch tensor
@@ -27,7 +29,9 @@ class DualArray:
             self.torch_tensor = torch.from_numpy(data).float()
         elif isinstance(data, torch.Tensor):
             self.torch_tensor = data
-            self.numpy_array = SyncArray(data.cpu().detach().numpy(), self._sync_from_numpy)
+            self.numpy_array = SyncArray(
+                data.cpu().detach().numpy(), self._sync_from_numpy
+            )
         else:
             raise TypeError("Input must be a NumPy array or a PyTorch tensor")
 
@@ -36,7 +40,9 @@ class DualArray:
         self.torch_tensor = torch.from_numpy(self.numpy_array.array).float()
 
     def _sync_from_torch(self):
-        self.numpy_array = SyncArray(self.torch_tensor.cpu().detach().numpy(), self._sync_from_numpy)
+        self.numpy_array = SyncArray(
+            self.torch_tensor.cpu().detach().numpy(), self._sync_from_numpy
+        )
 
     @property
     def numpy(self):
@@ -123,8 +129,9 @@ class DualArray:
     # Ensure that when printed, both representations are shown
     def __repr__(self):
         return f"DualArray:\nNumPy Array:\n{self.numpy_array}\nTorch Tensor:\n{self.torch_tensor}"
-    
-# Some testing 
+
+
+# Some testing
 if __name__ == "__main__":
     # Initialize with a NumPy array
     np_data = np.array([[1.0, 2.0], [3.0, 4.0]])
@@ -142,9 +149,9 @@ if __name__ == "__main__":
 
     # Numpy operation: sum after modification
     numpy_sum_after_mod = np.sum(dual)
-    print(f"\Numpy sum after modification: {numpy_sum_after_mod}")
+    print(f"\nNumpy sum after modification: {numpy_sum_after_mod}")
 
-    dual *= 0 
+    dual *= 0
     print(dual)
 
     dual.numpy = np.array([[2.0, 2.0], [5.0, 7.0]])

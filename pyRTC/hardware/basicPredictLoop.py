@@ -7,8 +7,10 @@ from torch.utils.data import random_split, DataLoader
 import logging
 import matplotlib
 import matplotlib.pyplot as plt
-logging.getLogger('matplotlib').setLevel(logging.WARNING)
-logging.getLogger('plt').setLevel(logging.WARNING)
+
+logging.getLogger("matplotlib").setLevel(logging.WARNING)
+logging.getLogger("plt").setLevel(logging.WARNING)
+
 
 class Discriminator(nn.Module):
     def __init__(self, image_size):
@@ -17,27 +19,26 @@ class Discriminator(nn.Module):
 
         # Define the convolutional layers with smaller kernel sizes and strides
         self.model = nn.Sequential(
-            nn.Conv2d(1, 64, kernel_size=3, stride=2, padding=1),  # Output: (batch, 64, N/2, M/2)
+            nn.Conv2d(
+                1, 64, kernel_size=3, stride=2, padding=1
+            ),  # Output: (batch, 64, N/2, M/2)
             nn.LeakyReLU(0.2, inplace=True),
-
-            nn.Conv2d(64, 128, kernel_size=3, stride=2, padding=1),  # Output: (batch, 128, N/4, M/4)
+            nn.Conv2d(
+                64, 128, kernel_size=3, stride=2, padding=1
+            ),  # Output: (batch, 128, N/4, M/4)
             nn.BatchNorm2d(128),
             nn.LeakyReLU(0.2, inplace=True),
-
-            nn.Conv2d(128, 256, kernel_size=3, stride=2, padding=1),  # Output: (batch, 256, N/8, M/8)
+            nn.Conv2d(
+                128, 256, kernel_size=3, stride=2, padding=1
+            ),  # Output: (batch, 256, N/8, M/8)
             nn.BatchNorm2d(256),
             nn.LeakyReLU(0.2, inplace=True),
-
             # Apply Adaptive Average Pooling to reduce spatial dimensions to (1, 1)
             nn.AdaptiveAvgPool2d((1, 1)),
         )
 
         # Fully connected layer to output the probability
-        self.fc = nn.Sequential(
-            nn.Flatten(),
-            nn.Linear(256, 1),
-            nn.Sigmoid()
-        )
+        self.fc = nn.Sequential(nn.Flatten(), nn.Linear(256, 1), nn.Sigmoid())
 
     def forward(self, x):
         # x shape: (batch_size, 1, N, M)
@@ -50,34 +51,41 @@ class ConvLSTMCell(nn.Module):
     """
     Basic ConvLSTM cell.
     """
+
     def __init__(self, input_channels, hidden_channels, kernel_size, bias=True):
         super(ConvLSTMCell, self).__init__()
-        
+
         self.input_channels = input_channels
         self.hidden_channels = hidden_channels
-        
-        self.kernel_size = kernel_size if isinstance(kernel_size, tuple) else (kernel_size, kernel_size)
+
+        self.kernel_size = (
+            kernel_size
+            if isinstance(kernel_size, tuple)
+            else (kernel_size, kernel_size)
+        )
         self.padding = tuple(k // 2 for k in self.kernel_size)
         self.bias = bias
-        
+
         self.conv = nn.Conv2d(
             in_channels=self.input_channels + self.hidden_channels,
             out_channels=4 * self.hidden_channels,
             kernel_size=self.kernel_size,
             padding=self.padding,
-            bias=self.bias
+            bias=self.bias,
         )
-    
+
     def forward(self, input_tensor, cur_state):
         h_cur, c_cur = cur_state
-        
+
         # Concatenate input and previous hidden state
-        combined = torch.cat([input_tensor, h_cur], dim=1)  # (batch, input_channels + hidden_channels, height, width)
-        
+        combined = torch.cat(
+            [input_tensor, h_cur], dim=1
+        )  # (batch, input_channels + hidden_channels, height, width)
+
         # Compute gates
         combined_conv = self.conv(combined)
         cc_i, cc_f, cc_o, cc_g = torch.split(combined_conv, self.hidden_channels, dim=1)
-        
+
         # Input gate
         i = torch.sigmoid(cc_i)
         # Forget gate
@@ -86,50 +94,65 @@ class ConvLSTMCell(nn.Module):
         o = torch.sigmoid(cc_o)
         # Cell gate
         g = torch.tanh(cc_g)
-        
+
         # New cell state
         c_next = f * c_cur + i * g
         # New hidden state
         h_next = o * torch.tanh(c_next)
-        
+
         return h_next, c_next
-    
+
     def init_hidden(self, batch_size, height, width, device=None):
         device = device or self.conv.weight.device
-        return (torch.zeros(batch_size, self.hidden_channels, height, width, device=device),
-                torch.zeros(batch_size, self.hidden_channels, height, width, device=device))
+        return (
+            torch.zeros(batch_size, self.hidden_channels, height, width, device=device),
+            torch.zeros(batch_size, self.hidden_channels, height, width, device=device),
+        )
 
 
 class ConvLSTM(nn.Module):
     """
     Multi-layer ConvLSTM module.
     """
-    def __init__(self, input_channels, hidden_channels, kernel_size, num_layers, batch_first=True, bias=True):
+
+    def __init__(
+        self,
+        input_channels,
+        hidden_channels,
+        kernel_size,
+        num_layers,
+        batch_first=True,
+        bias=True,
+    ):
         super(ConvLSTM, self).__init__()
-        
+
         # Ensure hidden_channels and kernel_size are lists
         hidden_channels = self._to_list(hidden_channels, num_layers)
         kernel_size = self._to_list(kernel_size, num_layers)
-        
+
         self.input_channels = input_channels
         self.hidden_channels = hidden_channels
         self.kernel_size = kernel_size
         self.num_layers = num_layers
         self.batch_first = batch_first
         self.bias = bias
-        
+
         # Create a list of ConvLSTMCells
         cells = []
         for i in range(num_layers):
-            cur_input_channels = self.input_channels if i == 0 else self.hidden_channels[i - 1]
-            cells.append(ConvLSTMCell(
-                input_channels=cur_input_channels,
-                hidden_channels=self.hidden_channels[i],
-                kernel_size=self.kernel_size[i],
-                bias=self.bias
-            ))
+            cur_input_channels = (
+                self.input_channels if i == 0 else self.hidden_channels[i - 1]
+            )
+            cells.append(
+                ConvLSTMCell(
+                    input_channels=cur_input_channels,
+                    hidden_channels=self.hidden_channels[i],
+                    kernel_size=self.kernel_size[i],
+                    bias=self.bias,
+                )
+            )
         self.cells = nn.ModuleList(cells)
-    
+
     def forward(self, input_tensor, hidden_state=None):
         """
         Parameters:
@@ -139,44 +162,51 @@ class ConvLSTM(nn.Module):
         if not self.batch_first:
             # Convert to (batch, seq_len, channels, height, width)
             input_tensor = input_tensor.permute(1, 0, 2, 3, 4)
-        
+
         b, seq_len, _, h, w = input_tensor.size()
-        
+
         if hidden_state is None:
-            hidden_state = self._init_hidden(batch_size=b, height=h, width=w, device=input_tensor.device)
-        
+            hidden_state = self._init_hidden(
+                batch_size=b, height=h, width=w, device=input_tensor.device
+            )
+
         layer_output_list = []
         last_state_list = []
-        
+
         seq_len = input_tensor.size(1)
-        
+
         cur_layer_input = input_tensor
-        
+
         for layer_idx in range(self.num_layers):
             h, c = hidden_state[layer_idx]
             output_inner = []
-            
+
             for t in range(seq_len):
-                h, c = self.cells[layer_idx](input_tensor=cur_layer_input[:, t, :, :, :],
-                                             cur_state=[h, c])
+                h, c = self.cells[layer_idx](
+                    input_tensor=cur_layer_input[:, t, :, :, :], cur_state=[h, c]
+                )
                 output_inner.append(h)
-            
+
             # Stack outputs for each time step
-            layer_output = torch.stack(output_inner, dim=1)  # (batch, seq_len, hidden_channels, height, width)
+            layer_output = torch.stack(
+                output_inner, dim=1
+            )  # (batch, seq_len, hidden_channels, height, width)
             cur_layer_input = layer_output
-            
+
             layer_output_list.append(layer_output)
             last_state_list.append((h, c))
-        
+
         # Return outputs and last states
         return layer_output_list, last_state_list
-    
+
     def _init_hidden(self, batch_size, height, width, device):
         init_states = []
         for i in range(self.num_layers):
-            init_states.append(self.cells[i].init_hidden(batch_size, height, width, device))
+            init_states.append(
+                self.cells[i].init_hidden(batch_size, height, width, device)
+            )
         return init_states
-    
+
     @staticmethod
     def _to_list(param, num_layers):
         if isinstance(param, list):
@@ -186,17 +216,20 @@ class ConvLSTM(nn.Module):
             return [param] * num_layers
 
 
-
 class ConvLSTMModel(nn.Module):
     def __init__(self, image_size, hidden_channels, num_layers=1, kernel_size=(3, 3)):
         super(ConvLSTMModel, self).__init__()
-        
+
         N, M = image_size  # Image dimensions
-        
+
         self.N = N
         self.M = M
-        self.hidden_channels = hidden_channels if isinstance(hidden_channels, list) else [hidden_channels] * num_layers
-        
+        self.hidden_channels = (
+            hidden_channels
+            if isinstance(hidden_channels, list)
+            else [hidden_channels] * num_layers
+        )
+
         # Define ConvLSTM
         self.convlstm = ConvLSTM(
             input_channels=1,  # Grayscale images
@@ -204,41 +237,45 @@ class ConvLSTMModel(nn.Module):
             kernel_size=kernel_size,
             num_layers=num_layers,
             batch_first=True,
-            bias=True
+            bias=True,
         )
-        
+
         # Final convolution to map hidden state to output image
         self.conv_out = nn.Conv2d(
             in_channels=self.hidden_channels[-1],
             out_channels=1,  # Output is a grayscale image
-            kernel_size=1
+            kernel_size=1,
         )
-    
+
     def forward(self, x):
         # x shape: (batch_size, seq_len, N, M)
         batch_size, seq_len, N, M = x.size()
-        
+
         # Ensure input size matches model initialization
-        assert N == self.N and M == self.M, "Input image size must match the initialized image size"
-        
+        assert (
+            N == self.N and M == self.M
+        ), "Input image size must match the initialized image size"
+
         # Add channel dimension: (batch_size, seq_len, channels=1, N, M)
         x = x.unsqueeze(2)
-        
+
         # Forward through ConvLSTM
         layer_output_list, last_state_list = self.convlstm(x)
-        
+
         # Get output from the last layer
-        output = layer_output_list[-1]  # (batch_size, seq_len, hidden_channels[-1], N, M)
-        
+        output = layer_output_list[
+            -1
+        ]  # (batch_size, seq_len, hidden_channels[-1], N, M)
+
         # Take output at the last time step
         output = output[:, -1, :, :, :]  # (batch_size, hidden_channels[-1], N, M)
-        
+
         # Map to output image
         output = self.conv_out(output)  # (batch_size, 1, N, M)
-        
+
         # Optionally apply activation (e.g., sigmoid) if needed
         # output = torch.sigmoid(output)
-        
+
         return output
 
 
@@ -250,16 +287,20 @@ class basicPredictLoop(Loop):
         self.validSubApsFile = conf["validSubApsFile"]
         self.validSubAps = np.load(self.validSubApsFile)
         self.numXSlopes = int(np.sum(self.validSubAps) / 2)
-        self.numXSlopes2D = int(self.validSubAps.shape[1]/2)
-        self.slopemask = self.validSubAps[:,:self.numXSlopes2D]
+        self.numXSlopes2D = int(self.validSubAps.shape[1] / 2)
+        self.slopemask = self.validSubAps[:, : self.numXSlopes2D]
         self.history = np.zeros((self.K, *self.validSubAps.shape), dtype=np.float32)
         self.curSignal2D = np.zeros_like(self.history[0])
-        self.history_GPU = torch.tensor(self.history, device = self.device).unsqueeze(0)
+        self.history_GPU = torch.tensor(self.history, device=self.device).unsqueeze(0)
         self.history_idx = 0
         self.arangeK = torch.arange(self.K, device=self.device)
-        self.s_pol = torch.zeros(np.sum(self.validSubAps), dtype=torch.float32, device=self.device)
-        self.s_pol_pred = torch.zeros(np.sum(self.validSubAps), dtype=torch.float32, device=self.device)
-        #Initialize the pyRTC super class
+        self.s_pol = torch.zeros(
+            np.sum(self.validSubAps), dtype=torch.float32, device=self.device
+        )
+        self.s_pol_pred = torch.zeros(
+            np.sum(self.validSubAps), dtype=torch.float32, device=self.device
+        )
+        # Initialize the pyRTC super class
         super().__init__(conf)
         """
         Initializes the predictive controller.
@@ -282,13 +323,13 @@ class basicPredictLoop(Loop):
         self.batch_size = conf["batch_size"]
         self.recordLength = 0
         # Move the model and its parameters to the GPU
-        
-        
+
         # Define the LSTM-based predictive controller model
-        model = ConvLSTMModel( 
-                         hidden_channels=[self.hidden_size]*self.num_layers, 
-                         image_size=self.validSubAps.shape,
-                         num_layers=self.num_layers)
+        model = ConvLSTMModel(
+            hidden_channels=[self.hidden_size] * self.num_layers,
+            image_size=self.validSubAps.shape,
+            num_layers=self.num_layers,
+        )
         discriminator = Discriminator(image_size=self.validSubAps.shape)
         self.model = model.to(self.device)
         self.discriminator = discriminator.to(self.device)
@@ -299,58 +340,69 @@ class basicPredictLoop(Loop):
         self.reconstruction_loss = nn.L1Loss()  # You can also use nn.MSELoss()
 
         # Define optimizers for generator and self.discriminator
-        self.optimizer_G = torch.optim.Adam(self.model.parameters(), lr=self.learning_rate, betas=(0.5, 0.999))
-        self.optimizer_D = torch.optim.Adam(self.discriminator.parameters(), lr=self.learning_rate, betas=(0.5, 0.999))
+        self.optimizer_G = torch.optim.Adam(
+            self.model.parameters(), lr=self.learning_rate, betas=(0.5, 0.999)
+        )
+        self.optimizer_D = torch.optim.Adam(
+            self.discriminator.parameters(), lr=self.learning_rate, betas=(0.5, 0.999)
+        )
 
         # Buffer to hold the most recent K control vectors for real-time prediction
-        self.polShm = ImageSHM("pol", self.curSignal2D.shape, self.curSignal2D.dtype, gpuDevice=self.gpuDevice, consumer=False)
+        self.polShm = ImageSHM(
+            "pol",
+            self.curSignal2D.shape,
+            self.curSignal2D.dtype,
+            gpuDevice=self.gpuDevice,
+            consumer=False,
+        )
         self.slopesBuffer = None
         self.predict = False
         self.numRecords = 0
         self.recordLength = 0
         self.record = False
         self.gamma = 0
-        self.lambda_recon = conf["lambda_recon"] 
+        self.lambda_recon = conf["lambda_recon"]
 
     def start(self):
         self.model.eval()
         return super().start()
 
     def toDevice(self):
-        self.fIM_GPU = torch.tensor(self.fIM, device= self.device)
-        self.curSignal2D_GPU = torch.tensor(self.curSignal2D, device= self.device)
-        self.slopemask_GPU = torch.tensor(self.slopemask, device= self.device)
-        self.validSubAps_GPU = torch.tensor(self.validSubAps, device= self.device)
-        self.gCM_GPU = torch.tensor(self.gCM, device= self.device)
+        self.fIM_GPU = torch.tensor(self.fIM, device=self.device)
+        self.curSignal2D_GPU = torch.tensor(self.curSignal2D, device=self.device)
+        self.slopemask_GPU = torch.tensor(self.slopemask, device=self.device)
+        self.validSubAps_GPU = torch.tensor(self.validSubAps, device=self.device)
+        self.gCM_GPU = torch.tensor(self.gCM, device=self.device)
         return
-    
+
     def computeCM(self):
         super().computeCM()
         self.toDevice()
-        return 
+        return
 
     def listen(self, recordLength):
-        #Turn on the loop
+        # Turn on the loop
         if not self.running:
             self.start()
         self.recordLength = recordLength
-        self.slopesBuffer = np.zeros((self.recordLength,  *self.validSubAps.shape)
-                                      , dtype=np.float32)
+        self.slopesBuffer = np.zeros(
+            (self.recordLength, *self.validSubAps.shape), dtype=np.float32
+        )
         # self.slopesBuffer = torch.tensor(self.slopesBuffer, device=self.device)
         self.record = True
         self.numRecords = 0
-        #Block until recording is done
+        # Block until recording is done
         while self.record:
             time.sleep(1e-5)
-        
 
     def saveBuffer(self):
-        np.save('./calib/lastBuffer.npy', self.slopesBuffer)
+        np.save("./calib/lastBuffer.npy", self.slopesBuffer)
         return
+
     def loadBuffer(self):
-        self.slopesBuffer = np.load('./calib/lastBuffer.npy')
+        self.slopesBuffer = np.load("./calib/lastBuffer.npy")
         return
-    
+
     def train(self):
         """
         Trains the predictive controller model with adversarial training.
@@ -371,33 +423,44 @@ class basicPredictLoop(Loop):
         num_samples = self.slopesBuffer.shape[0]
 
         for i in range(num_samples - self.K - int(self.T) + 1):
-            input_seq = self.slopesBuffer[i:i+self.K]  # Shape: (K, N, M)
+            input_seq = self.slopesBuffer[i : i + self.K]  # Shape: (K, N, M)
             interpVal = self.T - int(self.T)
-            if i+self.K+int(self.T) >= len(self.slopesBuffer) or interpVal < 1e-5: 
-                target = self.slopesBuffer[i+self.K+int(self.T)-1]  # Target is T steps ahead
+            if i + self.K + int(self.T) >= len(self.slopesBuffer) or interpVal < 1e-5:
+                target = self.slopesBuffer[
+                    i + self.K + int(self.T) - 1
+                ]  # Target is T steps ahead
             else:
-                target = (1-interpVal) * self.slopesBuffer[i+self.K+int(self.T)-1] + interpVal*self.slopesBuffer[i+self.K+int(self.T)]
+                target = (1 - interpVal) * self.slopesBuffer[
+                    i + self.K + int(self.T) - 1
+                ] + interpVal * self.slopesBuffer[i + self.K + int(self.T)]
             input_sequences.append(input_seq)
             target_images.append(target)
 
         input_sequences = np.array(input_sequences)  # Shape: (num_samples, K, N, M)
-        target_images = np.array(target_images)      # Shape: (num_samples, N, M)
+        target_images = np.array(target_images)  # Shape: (num_samples, N, M)
 
         # Convert to PyTorch tensors
-        input_sequences = torch.tensor(input_sequences, dtype=torch.float32, device=self.device)
-        target_images = torch.tensor(target_images, dtype=torch.float32, device=self.device)
+        input_sequences = torch.tensor(
+            input_sequences, dtype=torch.float32, device=self.device
+        )
+        target_images = torch.tensor(
+            target_images, dtype=torch.float32, device=self.device
+        )
 
         # Create Dataset and DataLoaders
         dataset = torch.utils.data.TensorDataset(input_sequences, target_images)
         train_size = int(0.8 * len(dataset))
         val_size = len(dataset) - train_size
-        train_dataset, validation_dataset = random_split(dataset, [train_size, val_size])
+        train_dataset, validation_dataset = random_split(
+            dataset, [train_size, val_size]
+        )
 
         dataloader = DataLoader(train_dataset, batch_size=self.batch_size, shuffle=True)
-        validation_loader = DataLoader(validation_dataset, batch_size=self.batch_size, shuffle=False)
+        validation_loader = DataLoader(
+            validation_dataset, batch_size=self.batch_size, shuffle=False
+        )
 
-
-        pbar = tqdm(range(self.num_epochs), unit='epoch')
+        pbar = tqdm(range(self.num_epochs), unit="epoch")
         tLoss = []
         vLoss = []
         for epoch in pbar:
@@ -409,8 +472,12 @@ class basicPredictLoop(Loop):
             for inputs, targets in dataloader:
                 batch_size = inputs.size(0)
                 # Generate labels
-                valid = torch.ones((batch_size, 1), dtype=torch.float, device=self.device)
-                fake = torch.zeros((batch_size, 1), dtype=torch.float, device=self.device)
+                valid = torch.ones(
+                    (batch_size, 1), dtype=torch.float, device=self.device
+                )
+                fake = torch.zeros(
+                    (batch_size, 1), dtype=torch.float, device=self.device
+                )
 
                 # ---------------------
                 #  Train self.discriminator
@@ -448,7 +515,7 @@ class basicPredictLoop(Loop):
                 g_recon_loss = self.reconstruction_loss(gen_outputs, real_images)
 
                 # Total generator loss
-                 # Weight for reconstruction loss
+                # Weight for reconstruction loss
                 g_loss = g_adv_loss + self.lambda_recon * g_recon_loss
 
                 g_loss.backward()
@@ -468,10 +535,14 @@ class basicPredictLoop(Loop):
             with torch.no_grad():
                 for val_inputs, val_targets in validation_loader:
                     batch_size = val_inputs.size(0)
-                    valid = torch.ones((batch_size, 1), dtype=torch.float, device=self.device)
+                    valid = torch.ones(
+                        (batch_size, 1), dtype=torch.float, device=self.device
+                    )
 
                     # Generate outputs
-                    val_gen_outputs = self.model(val_inputs)  # Shape: (batch_size, 1, N, M)
+                    val_gen_outputs = self.model(
+                        val_inputs
+                    )  # Shape: (batch_size, 1, N, M)
 
                     # Real images (targets)
                     val_real_images = val_targets.unsqueeze(1)
@@ -481,7 +552,9 @@ class basicPredictLoop(Loop):
 
                     # Generator loss
                     val_g_adv_loss = self.adversarial_loss(val_fake_pred, valid)
-                    val_g_recon_loss = self.reconstruction_loss(val_gen_outputs, val_real_images)
+                    val_g_recon_loss = self.reconstruction_loss(
+                        val_gen_outputs, val_real_images
+                    )
                     val_g_loss = val_g_adv_loss + self.lambda_recon * val_g_recon_loss
 
                     val_loss += val_g_loss.item()
@@ -502,34 +575,39 @@ class basicPredictLoop(Loop):
                     plt.figure(figsize=(12, 4))
 
                     plt.subplot(1, 3, 1)
-                    plt.imshow(sample_pred, cmap='gray')
-                    plt.title('Generated Image')
-                    plt.axis('off')
+                    plt.imshow(sample_pred, cmap="gray")
+                    plt.title("Generated Image")
+                    plt.axis("off")
 
                     plt.subplot(1, 3, 2)
-                    plt.imshow(sample_gt, cmap='gray')
-                    plt.title('Ground Truth')
-                    plt.axis('off')
+                    plt.imshow(sample_gt, cmap="gray")
+                    plt.title("Ground Truth")
+                    plt.axis("off")
 
                     plt.subplot(1, 3, 3)
-                    plt.imshow(sample_pred - sample_gt, cmap='bwr')
-                    plt.title('Difference')
-                    plt.axis('off')
+                    plt.imshow(sample_pred - sample_gt, cmap="bwr")
+                    plt.title("Difference")
+                    plt.axis("off")
 
                     plt.show()
 
-                    plt.plot(tLoss, color='k', label='Generator Loss')
-                    plt.plot(vLoss, color='r', label='Validation Loss')
-                    plt.xlabel('Epoch')
-                    plt.ylabel('Loss')
-                    plt.yscale('log')
+                    plt.plot(tLoss, color="k", label="Generator Loss")
+                    plt.plot(vLoss, color="r", label="Validation Loss")
+                    plt.xlabel("Epoch")
+                    plt.ylabel("Loss")
+                    plt.yscale("log")
                     plt.legend()
                     plt.show()
 
             # Update the progress bar's description
-            pbar.set_description(f'Epoch [{epoch+1}/{self.num_epochs}]')
-            pbar.set_postfix({'G Loss': f'{avg_g_loss:.4f}', 'D Loss': f'{avg_d_loss:.4f}', 'Val Loss': f'{avg_val_loss:.4f}'})
-
+            pbar.set_description(f"Epoch [{epoch+1}/{self.num_epochs}]")
+            pbar.set_postfix(
+                {
+                    "G Loss": f"{avg_g_loss:.4f}",
+                    "D Loss": f"{avg_d_loss:.4f}",
+                    "Val Loss": f"{avg_val_loss:.4f}",
+                }
+            )
 
     def runInference(self, history):
         """
@@ -544,35 +622,46 @@ class basicPredictLoop(Loop):
         """
         if isinstance(history, np.ndarray):
             history = torch.tensor(
-                history,
-                dtype=torch.float32, device = self.device
-            ).unsqueeze(0)  # Shape: (K, 1, N)
+                history, dtype=torch.float32, device=self.device
+            ).unsqueeze(
+                0
+            )  # Shape: (K, 1, N)
 
         predicted_vector = self.model(history).squeeze().detach()
         predicted_vector[torch.isnan(predicted_vector)] = 0
-        return predicted_vector #.detach().cpu().numpy()#.flatten()
+        return predicted_vector  # .detach().cpu().numpy()#.flatten()
 
     def predictiveIntegrator(self):
-        #Read Slopes
+        # Read Slopes
         if self.gpuDevice is not None:
-            residual_slopes = self.signalShm.read(SAFE= False, RELEASE_GIL = self.RELEASE_GIL, GPU=True)
-            currentCorrection = self.wfcShm.read(SAFE= False, RELEASE_GIL = self.RELEASE_GIL , GPU=True)
+            residual_slopes = self.signalShm.read(
+                SAFE=False, RELEASE_GIL=self.RELEASE_GIL, GPU=True
+            )
+            currentCorrection = self.wfcShm.read(
+                SAFE=False, RELEASE_GIL=self.RELEASE_GIL, GPU=True
+            )
         else:
-            residual_slopes = self.signalShm.read(SAFE= False, RELEASE_GIL = self.RELEASE_GIL, GPU=False)
-            currentCorrection = self.wfcShm.read_noblock(SAFE= False, GPU=False)
-            residual_slopes = torch.tensor(residual_slopes, device = self.device)
-            currentCorrection = torch.tensor(currentCorrection, device = self.device)
+            residual_slopes = self.signalShm.read(
+                SAFE=False, RELEASE_GIL=self.RELEASE_GIL, GPU=False
+            )
+            currentCorrection = self.wfcShm.read_noblock(SAFE=False, GPU=False)
+            residual_slopes = torch.tensor(residual_slopes, device=self.device)
+            currentCorrection = torch.tensor(currentCorrection, device=self.device)
         # print(f'slopes: {residual_slopes.shape}, IM: {self.IM.shape}, corr: {currentCorrection.shape}')
-        self.s_pol = residual_slopes - self.fIM_GPU@currentCorrection
+        self.s_pol = residual_slopes - self.fIM_GPU @ currentCorrection
 
-        self.curSignal2D_GPU[:,:self.numXSlopes2D][self.slopemask_GPU] = self.s_pol[:self.numXSlopes]
-        self.curSignal2D_GPU[:,self.numXSlopes2D:][self.slopemask_GPU] = self.s_pol[self.numXSlopes:]
-        
+        self.curSignal2D_GPU[:, : self.numXSlopes2D][self.slopemask_GPU] = self.s_pol[
+            : self.numXSlopes
+        ]
+        self.curSignal2D_GPU[:, self.numXSlopes2D :][self.slopemask_GPU] = self.s_pol[
+            self.numXSlopes :
+        ]
+
         # Update history buffer using circular buffer logic
         self.history_GPU[0][self.history_idx].copy_(self.curSignal2D_GPU)
         self.history_idx = (self.history_idx + 1) % self.K
 
-        #Add pol_slopes to the buffer
+        # Add pol_slopes to the buffer
         if self.record and self.numRecords < self.recordLength:
             self.slopesBuffer[self.numRecords] = self.curSignal2D_GPU.cpu().numpy()
             self.numRecords += 1
@@ -580,9 +669,8 @@ class basicPredictLoop(Loop):
             self.record = False
             self.numRecords = 0
 
-        #if we have enough in the buffer
+        # if we have enough in the buffer
         if self.predict:
-            
 
             # Assemble the sequence using precomputed indices
             indices = (self.arangeK + self.history_idx) % self.K
@@ -593,26 +681,28 @@ class basicPredictLoop(Loop):
             self.polShm.write(predictImage)
 
             # Optimize slicing and indexing
-            x_slopes = predictImage[:, :self.numXSlopes2D]
-            y_slopes = predictImage[:, self.numXSlopes2D:]
+            x_slopes = predictImage[:, : self.numXSlopes2D]
+            y_slopes = predictImage[:, self.numXSlopes2D :]
 
             # Use boolean indexing directly
-            self.s_pol_pred[:self.numXSlopes] = x_slopes[self.slopemask_GPU]
-            self.s_pol_pred[self.numXSlopes:] = y_slopes[self.slopemask_GPU]
-            
-            #Forward propagate the correction using the model
-            self.s_pol = (1-self.gamma)*self.s_pol + self.s_pol_pred*self.gamma
+            self.s_pol_pred[: self.numXSlopes] = x_slopes[self.slopemask_GPU]
+            self.s_pol_pred[self.numXSlopes :] = y_slopes[self.slopemask_GPU]
+
+            # Forward propagate the correction using the model
+            self.s_pol = (1 - self.gamma) * self.s_pol + self.s_pol_pred * self.gamma
             # del predictImage
             # torch.cuda.empty_cache()
         else:
             self.polShm.write(self.curSignal2D_GPU)
-        #Leak the current shape
-        currentCorrection *= (1-self.leakyGain)
-        newCorrection = (1-self.gain)*currentCorrection - torch.matmul(self.gCM_GPU,self.s_pol)
-        
+        # Leak the current shape
+        currentCorrection *= 1 - self.leakyGain
+        newCorrection = (1 - self.gain) * currentCorrection - torch.matmul(
+            self.gCM_GPU, self.s_pol
+        )
+
         if self.gpuDevice is None:
             newCorrection = newCorrection.cpu().numpy()
-        #Send to the WFC
+        # Send to the WFC
         self.sendToWfc(newCorrection, slopes=None)
 
         return
@@ -620,29 +710,34 @@ class basicPredictLoop(Loop):
     def setGain(self, gain):
         super().setGain(gain)
         self.toDevice()
-        return 
+        return
 
     def flatten(self):
         self.history *= 0
         self.history_GPU *= 0
         return super().flatten()
-    
+
     def loadModels(self):
         # Load the entire model
-        self.model = torch.load('./calib/model.pth')
+        self.model = torch.load("./calib/model.pth")
         self.model.eval()  # Set the model to evaluation mode if necessary
         # Load the entire model
-        self.discriminator = torch.load('./calib/discriminator.pth')
+        self.discriminator = torch.load("./calib/discriminator.pth")
         self.discriminator.eval()  # Set the model to evaluation mode if necessary
         # Define optimizers for generator and self.discriminator
-        self.optimizer_G = torch.optim.Adam(self.model.parameters(), lr=self.learning_rate, betas=(0.5, 0.999))
-        self.optimizer_D = torch.optim.Adam(self.discriminator.parameters(), lr=self.learning_rate, betas=(0.5, 0.999))
+        self.optimizer_G = torch.optim.Adam(
+            self.model.parameters(), lr=self.learning_rate, betas=(0.5, 0.999)
+        )
+        self.optimizer_D = torch.optim.Adam(
+            self.discriminator.parameters(), lr=self.learning_rate, betas=(0.5, 0.999)
+        )
 
     def saveModels(self):
-        torch.save(self.model, './calib/model.pth')
-        torch.save(self.discriminator, './calib/discriminator.pth')
+        torch.save(self.model, "./calib/model.pth")
+        torch.save(self.discriminator, "./calib/discriminator.pth")
         return
-    
+
+
 if __name__ == "__main__":
 
-    launchComponent(basicPredictLoop, "loop", start = False)
+    launchComponent(basicPredictLoop, "loop", start=False)

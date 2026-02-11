@@ -1,4 +1,5 @@
 # Ignore the Sphinx build directory
+.vscode
 docs/source/_build/
 SHARP_LAB/data/
 SHARP_LAB/calib/

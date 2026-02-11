@@ -3,22 +3,26 @@ __all__ = []
 
 try:
     from .ALPAODM import *
-    __all__.append('ALPAODM')
+
+    __all__.append("ALPAODM")
 except:
     print("ALPAO python SDK installation not found")
 try:
     from .SpinnakerScienceCam import *
-    __all__.append('spinCam')
+
+    __all__.append("spinCam")
 except:
     print("Spinnaker python SDK installation not found")
 try:
     from .ximeaWFS import *
-    __all__.append('XIMEA_WFS')
+
+    __all__.append("XIMEA_WFS")
 except:
     print("ximea python SDK installation not found")
 try:
     from .PIModulator import *
-    __all__.append('PIModulator')
+
+    __all__.append("PIModulator")
 except:
     print("PI python SDK installation not found")
 # try:
@@ -31,8 +35,4 @@ from .NCPAOptimizer import *
 from .PIDOptimizer import *
 from .loopHyperparamsOptimizer import *
 
-__all__.extend([
-            'NCPAOptimizer', 
-            'PIDOptimizer',
-            'loopOptimizer'
-           ])
+__all__.extend(["NCPAOptimizer", "PIDOptimizer", "loopOptimizer"])

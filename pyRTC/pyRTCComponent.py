@@ -1,6 +1,7 @@
 """
 pyRTC Component Superclass
 """
+
 from pyRTC.Pipeline import *
 from pyRTC.utils import *
 import threading
@@ -15,8 +16,8 @@ class pyRTCComponent:
     """
     A base class for real-time control components.
 
-    This class provides a framework for real-time control components, allowing for the 
-    management of threads and CPU affinity settings. You can register a function to the 
+    This class provides a framework for real-time control components, allowing for the
+    management of threads and CPU affinity settings. You can register a function to the
     real-time pipeline in the config by including their name under the key "functions". These
     function will then be spawned into their own thread and controlled by the start and stop
     functions. Note: any return value from registered functions is not used or stored.
@@ -49,6 +50,7 @@ class pyRTCComponent:
     stop():
         Stop the registered real-time functions.
     """
+
     def __init__(self, conf) -> None:
         """
         Constructs all the necessary attributes for the real-time control component object.
@@ -67,18 +69,18 @@ class pyRTCComponent:
 
         # if self.gpuDevice is not None:
         #     self.gpuDevice = torch.device(self.gpuDevice)
-        
+
         functionsToRun = setFromConfig(conf, "functions", [])
         self.workThreads = []
         self.RELEASE_GIL = True
-        
+
         if isinstance(functionsToRun, list) and len(functionsToRun) > 0:
             for i, functionName in enumerate(functionsToRun):
-                threadAffinity = (self.affinity+i) % os.cpu_count() #type: ignore
+                threadAffinity = (self.affinity + i) % os.cpu_count()  # type: ignore
                 # Launch a separate thread
-                workThread = threading.Thread(target=work, 
-                                            args = (self,functionName, threadAffinity), 
-                                            daemon=True)
+                workThread = threading.Thread(
+                    target=work, args=(self, functionName, threadAffinity), daemon=True
+                )
                 # Start the thread
                 workThread.start()
                 self.workThreads.append(workThread)
@@ -106,7 +108,7 @@ class pyRTCComponent:
         """
         self.running = False
         return
-    
+
     def getProperty(self, s: str) -> Any:
 
         try:
@@ -127,7 +129,7 @@ class pyRTCComponent:
         func = self.getProperty(s)
         return func(args)
 
-    
+
 if __name__ == "__main__":
 
-    launchComponent(pyRTCComponent, "component", start = True)
+    launchComponent(pyRTCComponent, "component", start=True)

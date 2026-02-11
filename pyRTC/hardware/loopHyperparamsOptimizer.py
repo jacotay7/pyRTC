@@ -4,10 +4,11 @@ from pyRTC.Optimizer import *
 
 import numpy as np
 
+
 class loopOptimizer(Optimizer):
 
     def __init__(self, conf, loop) -> None:
-        
+
         self.loop = loop
 
         self.strehlShm, _, _ = initExistingShm("strehl")
@@ -17,7 +18,7 @@ class loopOptimizer(Optimizer):
         # self.maxDroppedModes = setFromConfig(conf, "maxDroppedModes", 50)
         self.numReads = setFromConfig(conf, "numReads", 5)
 
-        self.params  = setFromConfig(conf, "params", [])
+        self.params = setFromConfig(conf, "params", [])
         self.mins = setFromConfig(conf, "mins", [])
         self.maxs = setFromConfig(conf, "maxs", [])
         types = setFromConfig(conf, "types", [])
@@ -30,10 +31,10 @@ class loopOptimizer(Optimizer):
                 self.types.append(int)
             else:
                 raise Exception("Unsupported Type Given: {types[i]}")
-            
-        assert(len(self.params) == len(self.mins))
-        assert(len(self.params) == len(self.maxs))
-        assert(len(self.params) == len(self.types))
+
+        assert len(self.params) == len(self.mins)
+        assert len(self.params) == len(self.maxs)
+        assert len(self.params) == len(self.types)
 
         self.checkValidFunc = None
         # for i, param in enumerate(self.params):
@@ -53,7 +54,7 @@ class loopOptimizer(Optimizer):
     def adjustParam(self, param, min_, max_, type=float, log=False):
 
         if param not in self.params:
-            self.registerParam(param, min_, max_, type=type, log = log)
+            self.registerParam(param, min_, max_, type=type, log=log)
             return
         idx = self.params.index(param)
         self.mins[idx] = min_
@@ -61,7 +62,7 @@ class loopOptimizer(Optimizer):
         self.types[idx] = type
         self.isLog[idx] = log
         return
-    
+
     def removeParam(self, param):
 
         if param in self.params:
@@ -71,11 +72,11 @@ class loopOptimizer(Optimizer):
             self.types.remove(idx)
             self.isLog.remove(idx)
             self.params.remove(idx)
-        
+
         return
 
     def objective(self, trial):
-        
+
         self.loop.run("stop")
         for i in range(10):
             self.loop.run("flatten")
@@ -93,18 +94,28 @@ class loopOptimizer(Optimizer):
             if trial.should_prune():
                 raise optuna.TrialPruned()
 
-            if self.checkValidFunc is not None: 
+            if self.checkValidFunc is not None:
                 if not self.checkValidFunc():
                     return -1.0
         return np.median(result)
-    
+
     def applyTrial(self, trial):
 
         for i, param in enumerate(self.params):
             if self.types[i] == float:
-                self.loop.setProperty(param, trial.suggest_float(param, self.mins[i], self.maxs[i], log = self.isLog[i]))
+                self.loop.setProperty(
+                    param,
+                    trial.suggest_float(
+                        param, self.mins[i], self.maxs[i], log=self.isLog[i]
+                    ),
+                )
             elif self.types[i] == int:
-                self.loop.setProperty(param, trial.suggest_int(param, self.mins[i], self.maxs[i], log = self.isLog[i]))
+                self.loop.setProperty(
+                    param,
+                    trial.suggest_int(
+                        param, self.mins[i], self.maxs[i], log=self.isLog[i]
+                    ),
+                )
 
         self.loop.run("loadModel")
         # time.sleep(10)
@@ -112,11 +123,11 @@ class loopOptimizer(Optimizer):
         time.sleep(1)
         super().applyTrial(trial)
         # time.sleep(1)
-        return 
+        return
 
     def applyOptimum(self):
         super().applyOptimum()
-        best_trial_id = 0 #max(self.study.trials[1:], key=lambda t: t.value)
+        best_trial_id = 0  # max(self.study.trials[1:], key=lambda t: t.value)
         best_value = -1e8
         for i, t in enumerate(self.study.trials):
             if i == 0 or t.values is None:
@@ -124,7 +135,7 @@ class loopOptimizer(Optimizer):
             if t.values[0] > best_value:
                 best_value = t.values[0]
                 best_trial_id = i
-        
+
         for i, param in enumerate(self.params):
             self.loop.setProperty(param, self.study.trials[best_trial_id].params[param])
         self.loop.run("stop")
@@ -132,17 +143,19 @@ class loopOptimizer(Optimizer):
             self.loop.run("flatten")
         self.loop.run("loadIM")
         self.loop.run("start")
-        return 
-    
+        return
+
 
 if __name__ == "__main__":
 
-    #Prevents camera output from messing with communication
+    # Prevents camera output from messing with communication
     original_stdout = sys.stdout
-    sys.stdout = open(os.devnull, 'w')
+    sys.stdout = open(os.devnull, "w")
 
     # Create argument parser
-    parser = argparse.ArgumentParser(description="Read a config file from the command line.")
+    parser = argparse.ArgumentParser(
+        description="Read a config file from the command line."
+    )
 
     # Add command-line argument for the config file
     parser.add_argument("-c", "--config", required=True, help="Path to the config file")
@@ -154,7 +167,7 @@ if __name__ == "__main__":
     conf = read_yaml_file(args.config)["optimizer"]
 
     pid = os.getpid()
-    set_affinity((conf["affinity"])%os.cpu_count()) 
+    set_affinity((conf["affinity"]) % os.cpu_count())
     decrease_nice(pid)
 
     component = loopOptimizer(conf=conf)
@@ -163,7 +176,7 @@ if __name__ == "__main__":
     # Go back to communicating with the main program through stdout
     sys.stdout = original_stdout
 
-    l = Listener(component, port = int(args.port))
+    l = Listener(component, port=int(args.port))
     while l.running:
         l.listen()
         time.sleep(1e-3)

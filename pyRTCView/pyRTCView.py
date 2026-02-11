@@ -80,7 +80,7 @@ class RealTimeView(QMainWindow):
         )
 
         self.LinearNorm = self.im.norm
-        self.cbar = self.figure.colorbar(self.im, ax=self.axes)
+        self.cbar = self.figure.colorbar(self.im, ax=self.axes, fraction=0.025, pad=0.04, format="%.1f")
 
         self.logButton = QPushButton("Toggle Log Colorbar")
         self.logButton.clicked.connect(self.toggleLog)
@@ -141,7 +141,7 @@ class RealTimeView(QMainWindow):
     def toggleLog(self):
         self.log = not self.log
         if self.log:
-            self.im.set_norm("log")  # LogNorm(vmin = 1e-2, vmax =  1))
+            self.im.set_norm("symlog")  # LogNorm(vmin = 1e-2, vmax =  1))
         else:
             self.im.set_norm("linear")  # self.LinearNorm)
         return

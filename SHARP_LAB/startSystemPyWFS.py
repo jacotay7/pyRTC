@@ -5,7 +5,7 @@ from pyRTC.utils import *
 from pyRTC.hardware import *
 import os
 
-os.chdir("/home/whetstone/pyRTC/SHARP_LAB")
+os.chdir("/home/whetstone/pyRTC_backup/SHARP_LAB")
 RECALIBRATE = False
 CLEAR_SHMS = False
 # %% Clear SHMs
@@ -26,7 +26,7 @@ if CLEAR_SHMS:
 
 # %% IMPORTS
 # config = '/home/whetstone/pyRTC/SHARP_LAB/config_SR.yaml'
-config = "/home/whetstone/pyRTC/SHARP_LAB/config_pywfs.yaml"
+config = "/home/whetstone/pyRTC_backup/SHARP_LAB/config_pywfs_2026.yaml"
 N = np.random.randint(3000, 6000)
 # %% Launch DM
 wfc = hardwareLauncher("../pyRTC/hardware/ALPAODM.py", config, N)

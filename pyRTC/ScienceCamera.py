@@ -1,15 +1,17 @@
 """
 Science Camera Superclass
 """
+
 from pyRTC.Pipeline import ImageSHM
 from pyRTC.pyRTCComponent import *
 from pyRTC.utils import *
 import numpy as np
 import matplotlib.pyplot as plt
 
+
 class ScienceCamera(pyRTCComponent):
     """
-    A pyRTCComponent which represents a Science Camera. This is a general class which is 
+    A pyRTCComponent which represents a Science Camera. This is a general class which is
     reponsible for all components of imaging which are common to all Science Cameras. This
     class should be used by defining a child class held in pyRTC.hardware, which overwrites
     the relevant functions which actual hardware connectivity code. The child class can call its parent
@@ -88,6 +90,7 @@ class ScienceCamera(pyRTCComponent):
     bitDepth : int
         Bit depth setting.
     """
+
     def __init__(self, conf) -> None:
 
         self.name = conf["name"]
@@ -95,8 +98,10 @@ class ScienceCamera(pyRTCComponent):
         self.imageRawDType = np.uint16
         self.imageDType = np.int32
         self.psfLongDtype = np.float64
-        
-        self.setTheoreticalPSF(airy_disk(self.imageShape, 0.5).astype(self.psfLongDtype))
+
+        self.setTheoreticalPSF(
+            airy_disk(self.imageShape, 0.5).astype(self.psfLongDtype)
+        )
         self.psfShort = ImageSHM("psfShort", self.imageShape, self.imageDType)
         self.psfLong = ImageSHM("psfLong", self.imageShape, self.psfLongDtype)
         self.strehlShm = ImageSHM("strehl", (1,), float)
@@ -116,7 +121,7 @@ class ScienceCamera(pyRTCComponent):
 
         self.integrationLength = conf["integration"]
         super().__init__(conf)
-    
+
     def setRoi(self, roi):
         """
         Set the region of interest (ROI).
@@ -143,7 +148,7 @@ class ScienceCamera(pyRTCComponent):
         """
         self.exposure = exposure
         return
-    
+
     def setBinning(self, binning):
         """
         Set the binning factor.
@@ -155,7 +160,7 @@ class ScienceCamera(pyRTCComponent):
         """
         self.binning = binning
         return
-    
+
     def setGain(self, gain):
         """
         Set the gain.
@@ -167,7 +172,7 @@ class ScienceCamera(pyRTCComponent):
         """
         self.gain = gain
         return
-    
+
     def setGamma(self, gamma):
         """
         Set the gamma.
@@ -179,7 +184,7 @@ class ScienceCamera(pyRTCComponent):
         """
         self.gamma = gamma
         return
-    
+
     def setBitDepth(self, bitDepth):
         """
         Set the bit depth.
@@ -191,7 +196,7 @@ class ScienceCamera(pyRTCComponent):
         """
         self.bitDepth = bitDepth
         return
-    
+
     def setIntegrationLength(self, integrationLength):
         """
         Set the integration length.
@@ -203,7 +208,7 @@ class ScienceCamera(pyRTCComponent):
         """
         self.integrationLength = integrationLength
         return
-    
+
     def expose(self):
         """
         Perform a single exposure.
@@ -218,10 +223,10 @@ class ScienceCamera(pyRTCComponent):
         x = np.zeros(self.data.shape)
         for i in range(self.integrationLength):
             x += self.read().astype(x.dtype)
-        self.psfLong.write(x/self.integrationLength)
-        return 
+        self.psfLong.write(x / self.integrationLength)
+        return
 
-    def read(self, block = True):
+    def read(self, block=True):
         """
         Read the current short exposure PSF.
 
@@ -231,9 +236,9 @@ class ScienceCamera(pyRTCComponent):
             Current short exposure PSF.
         """
         if block:
-            return self.psfShort.read(RELEASE_GIL = True)
+            return self.psfShort.read(RELEASE_GIL=True)
         return self.psfShort.read_noblock()
-    
+
     def readLong(self):
         """
         Read the current long exposure PSF.
@@ -243,11 +248,11 @@ class ScienceCamera(pyRTCComponent):
         numpy.ndarray
             Current long exposure PSF.
         """
-        return self.psfLong.read(RELEASE_GIL = True)
-    
+        return self.psfLong.read(RELEASE_GIL=True)
+
     def takeDark(self):
         """
-        Take dark frames and average them to create a dark frame. 
+        Take dark frames and average them to create a dark frame.
         Number of exposures to average set by darkCount parameter.
         """
         self.setDark(np.zeros_like(self.dark))
@@ -255,8 +260,8 @@ class ScienceCamera(pyRTCComponent):
         for i in range(self.darkCount):
             dark += self.read().astype(np.float64)
         dark /= self.darkCount
-        self.setDark(dark)        
-        return 
+        self.setDark(dark)
+        return
 
     def setDark(self, dark):
         """
@@ -269,8 +274,8 @@ class ScienceCamera(pyRTCComponent):
         """
         self.dark = dark.astype(self.imageDType)
         return
-    
-    def saveDark(self,filename=''):
+
+    def saveDark(self, filename=""):
         """
         Save the dark frame to a file.
 
@@ -279,12 +284,12 @@ class ScienceCamera(pyRTCComponent):
         filename : str, optional
             File to save the dark frame to. If not specified, uses the configured darkFile.
         """
-        if filename == '':
+        if filename == "":
             filename = self.darkFile
         np.save(filename, self.dark)
         return
-    
-    def loadDark(self,filename=''):
+
+    def loadDark(self, filename=""):
         """
         Load the dark frame from a file.
 
@@ -293,16 +298,16 @@ class ScienceCamera(pyRTCComponent):
         filename : str, optional
             File to load the dark frame from. If not specified, uses the configured darkFile.
         """
-        #If no file given, first try dark file
-        if filename == '':
+        # If no file given, first try dark file
+        if filename == "":
             filename = self.darkFile
-        #If we are still without a file, set zeros
-        if filename == '':
+        # If we are still without a file, set zeros
+        if filename == "":
             self.dark = np.zeros_like(self.dark)
-        else: #If we have a filename
+        else:  # If we have a filename
             self.dark = np.load(filename)
         return
-    
+
     def takeModelPSF(self):
         """
         Capture the current long exposure PSF as the model PSF.
@@ -321,8 +326,8 @@ class ScienceCamera(pyRTCComponent):
         """
         self.model = model.astype(self.psfLongDtype)
         return
-    
-    def saveModelPSF(self,filename=''):
+
+    def saveModelPSF(self, filename=""):
         """
         Save the model PSF to a file.
 
@@ -331,12 +336,12 @@ class ScienceCamera(pyRTCComponent):
         filename : str, optional
             File to save the model PSF to. If not specified, uses the configured modelFile.
         """
-        if filename == '':
+        if filename == "":
             filename = self.modelFile
         np.save(filename, self.model)
         return
-    
-    def loadModelPSF(self,filename=''):
+
+    def loadModelPSF(self, filename=""):
         """
         Load the model PSF from a file.
 
@@ -345,27 +350,28 @@ class ScienceCamera(pyRTCComponent):
         filename : str, optional
             File to load the model PSF from. If not specified, uses the configured modelFile.
         """
-        #If no file given, first try dark file
-        if filename == '':
+        # If no file given, first try dark file
+        if filename == "":
             filename = self.modelFile
-        #If we are still without a file, set zeros
-        if filename == '':
+        # If we are still without a file, set zeros
+        if filename == "":
             self.model = np.zeros_like(self.model)
-        else: #If we have a filename
+        else:  # If we have a filename
             self.model = np.load(filename)
         return
 
     def setTheoreticalPSF(self, psf):
 
         from copy import deepcopy
-        self.theory = deepcopy(psf) #.deepcopy()
+
+        self.theory = deepcopy(psf)  # .deepcopy()
         self.theory /= self.theory.max()
 
     def computeTheoreticalStrehl(self):
 
-        current = clean_image_for_strehl(self.readLong(), 
-                                    median_filter_size = 1, 
-                                    gaussian_sigma = 0)
+        current = clean_image_for_strehl(
+            self.readLong(), median_filter_size=1, gaussian_sigma=0
+        )
         current /= current.max()
 
         rmse = np.sqrt(((self.theory - current) ** 2).mean())
@@ -378,7 +384,7 @@ class ScienceCamera(pyRTCComponent):
 
         return self.strehl_ratio
 
-    def computeStrehl(self, use_filter=False, median_filter_size = 1, gaussian_sigma = 0.1):
+    def computeStrehl(self, use_filter=False, median_filter_size=1, gaussian_sigma=0.1):
         """
         Compute the rough Strehl ratio and tip tilt offset. These values are reference to the modelPSF.
         If your model PSF is taken empirically, then the Strehl ratio is not absolute, and should only be
@@ -398,17 +404,21 @@ class ScienceCamera(pyRTCComponent):
         """
 
         if use_filter:
-            model = clean_image_for_strehl(self.model, 
-                                        median_filter_size = median_filter_size, 
-                                        gaussian_sigma = gaussian_sigma)
+            model = clean_image_for_strehl(
+                self.model,
+                median_filter_size=median_filter_size,
+                gaussian_sigma=gaussian_sigma,
+            )
 
-            current = clean_image_for_strehl(self.readLong(), 
-                                            median_filter_size = median_filter_size, 
-                                            gaussian_sigma = gaussian_sigma)
+            current = clean_image_for_strehl(
+                self.readLong(),
+                median_filter_size=median_filter_size,
+                gaussian_sigma=gaussian_sigma,
+            )
         else:
             model = self.model
             current = self.readLong()
-            
+
         self.strehl_ratio = np.max(current) / np.max(model)
         self.peak_dist = np.linalg.norm(centroid(current) - centroid(self.model))
 
@@ -422,11 +432,12 @@ class ScienceCamera(pyRTCComponent):
         Plot the current short exposure PSF.
         """
         arr = self.read()
-        plt.imshow(arr, cmap = 'inferno', origin='lower')
+        plt.imshow(arr, cmap="inferno", origin="lower")
         plt.colorbar()
         plt.show()
         return
 
+
 if __name__ == "__main__":
 
-    launchComponent(ScienceCamera, "psf", start = True)
+    launchComponent(ScienceCamera, "psf", start=True)

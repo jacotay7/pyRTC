@@ -2,12 +2,14 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import time
+import sys
+original_stdout = sys.stdout
 from pyRTC import *
 from pyRTC.hardware import *
 from pyRTC.utils import *
 from pyRTC.Pipeline import *
 from tqdm import trange
-
+sys.stdout = original_stdout
 # from pyRTC.hardware.ximeaWFS import *
 # # from pyRTC.WavefrontSensor import *
 # from pyRTC.hardware.ALPAODM import *
@@ -23,14 +25,14 @@ from tqdm import trange
 
 # %% Load Config
 # cfile = "/home/whetstone/pyRTC_backup/SHARP_LAB/config_predict.yaml"
-cfile = "/home/whetstone/pyRTC_backup/SHARP_LAB/config.yaml"
+cfile = "/home/whetstone/pyRTC_backup/SHARP_LAB/config_pywfs_2026.yaml"
 conf = read_yaml_file(cfile)
 
 # %% Launch Modulator (PyWFS)
-# confMod = conf["modulator"]
-# mod = PIModulator(conf=confMod)
-# time.sleep(0.5)
-# mod.start()
+confMod = conf["modulator"]
+mod = PIModulator(conf=confMod)
+time.sleep(0.5)
+mod.start()
 # %% Launch WFS
 confWFS = conf["wfs"]
 wfs = XIMEA_WFS(conf=confWFS)
@@ -59,13 +61,16 @@ wfc.flatten()
 # %% rom prediction.predictLoop import *
 # loop = predictLoop(conf=conf['loop'])
 psfShortShm, _, _ = initExistingShm("psfShort")
+wfsShm, _, _ = initExistingShm("wfs")
+wfcShm, _, _ = initExistingShm("wfc2D")
+slopeShm, _, _ = initExistingShm("signal2D")
 pupilShm, _, _ = initExistingShm("pupil")
 time.sleep(1)
 
 # %% Recalibrate
 
 # Darks
-if False:
+if True:
     input("Sources Off?")
     wfs.takeDark()
     wfs.darkFile = "/home/whetstone/pyRTC_backup/SHARP_LAB/calib/dark.npy"
@@ -137,7 +142,9 @@ loop.stop()
 wfc.flatten()
 
 # %% Stop Loop
-psf.setExposure(500)
+psf.setExposure(50)
+
+# %%
 for nol in [4,5,6]:
     # %%
 
@@ -163,9 +170,9 @@ for nol in [4,5,6]:
     ncpaOptim.numReads = 5
     ncpaOptim.startMode = 2
     ncpaOptim.endMode = 10 + 5*nol
-    ncpaOptim.numSteps = 2000
+    ncpaOptim.numSteps = 1000
     ncpaOptim.isCL = False
-    ncpaOptim.correctionMag = 0.01 / ((1 + nol/2.0))
+    ncpaOptim.correctionMag = 0.02 / ((1 + nol/2.0))
 
     # %%
     for i in range(1):
@@ -212,7 +219,7 @@ for nol in [4,5,6]:
 valid_sub_aps = slopes.validSubAps.copy()
 
 # %% Refine Valid Sup Aps
-nreads = 1000
+nreads = 2000
 slope_shape = slopes.signal2DShape
 slopesx = np.zeros((nreads, slope_shape[0], slope_shape[1]))
 # slopes.setValidSubAps(np.ones_like(valid_sub_aps))
@@ -223,9 +230,10 @@ for i in trange(nreads):
 # slopes2D /= nreads
 
 # %%
-slopes2D = np.abs(slopesx).sum(axis=0).squeeze()
+slopes2D = np.abs(slopesx).max(axis=0).squeeze()
 slopestd = slopesx.std(axis=0).squeeze()
 
+plt.figure(figsize=(10,10))
 plt.subplot(221)
 plt.imshow(slopes2D)
 plt.title("Abs Avg Slopes")
@@ -237,7 +245,7 @@ plt.imshow(slopestd)
 plt.title("STD Slopes")
 plt.colorbar()
 
-mask = (slopes2D < 20) | (slopes2D > 4500)
+mask = slopes2D > 1
 combineXY = mask[: mask.shape[0] // 2, :] | mask[mask.shape[0] // 2 :, :]
 mask[: mask.shape[0] // 2, :] = combineXY
 mask[mask.shape[0] // 2 :, :] = combineXY
@@ -245,7 +253,7 @@ plt.subplot(234)
 plt.imshow(mask)
 plt.title("Intensity Mask")
 
-mask2 = np.abs(slopestd) > 0.15
+mask2 = np.abs(slopestd) > .08
 combineXY = mask2[: mask.shape[0] // 2, :] | mask2[mask.shape[0] // 2 :, :]
 mask[: mask.shape[0] // 2, :] += combineXY
 mask[mask.shape[0] // 2 :, :] += combineXY
@@ -259,6 +267,7 @@ plt.subplot(236)
 plt.imshow(mask2 | mask)
 plt.title("Combined Mask")
 plt.show()
+
 
 # %%
 slopes.validSubApsFile = "/home/whetstone/pyRTC_backup/SHARP_LAB/calib/validSubAps.npy"

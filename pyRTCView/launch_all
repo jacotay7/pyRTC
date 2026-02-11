@@ -1,8 +1,8 @@
 #!/bin/bash
 python pyRTCView.py psfShort &
 python pyRTCView.py psfLong &
-python pyRTCView.py signal2D -4 4 &
-python pyRTCView.py wfc2D -0.75 0.75 &
+python pyRTCView.py signal2D & #-4 4 &
+python pyRTCView.py wfc2D & #-0.75 0.75 &
 python pyRTCView.py wfs &
-# python pyRTCView.py pupil &
+python pyRTCView.py pupil &
 #python pyRTCView.py pol -3 3 &

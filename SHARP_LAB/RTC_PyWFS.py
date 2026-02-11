@@ -1,14 +1,29 @@
 # %% IMPORTS
 # Import pyRTC classes
+import sys
+import os
 import matplotlib.pyplot as plt
+import logging
+
+logging.getLogger("SHARP_RTC")
+logging.basicConfig(
+    level=logging.DEBUG,
+    format="%(asctime)s %(filename)s[line:%(lineno)d] %(levelname)s %(message)s",
+    datefmt="%a, %d %b %Y %H:%M:%S",
+    filename="/home/whetstone/pyRTC_backup/SHARP_LAB/debug.log",
+    filemode="w",
+)
+
+original_stdout = sys.stdout
 from pyRTC.Pipeline import *
 from pyRTC.utils import *
 from pyRTC.hardware import *
-import os
+sys.stdout = original_stdout
 
-os.chdir("/home/whetstone/pyRTC/SHARP_LAB")
+os.chdir("/home/whetstone/pyRTC_backup/SHARP_LAB")
 RECALIBRATE = False
 CLEAR_SHMS = False
+
 # %% Clear SHMs
 if CLEAR_SHMS:
     shm_names = [
@@ -23,9 +38,10 @@ if CLEAR_SHMS:
     ]  # list of SHMs to reset
     clear_shms(shm_names)
 # %% IMPORTS
-config = "/home/whetstone/pyRTC/SHARP_LAB/config_pywfs.yaml"
+# config = "/home/whetstone/pyRTC/SHARP_LAB/config_pywfs.yaml"
+config = "/home/whetstone/pyRTC_backup/SHARP_LAB/config_pywfs_2026.yaml"
 N = np.random.randint(3000, 6000)
-folder = "/home/whetstone/pyRTC/SHARP_LAB/calib/"
+folder = "/home/whetstone/pyRTC_backup/SHARP_LAB/calib/"
 
 # %% Launch WFS
 wfs = hardwareLauncher("../pyRTC/hardware/ximeaWFS.py", config, N + 1)
@@ -119,7 +135,7 @@ if RECALIBRATE == True:
 # %% Compute CM
 loop.setProperty("IMFile", folder + "IM_PYWFS.npy")
 # psfCam.setProperty("integrationLength", 2000)
-loop.setProperty("numDroppedModes", 0)
+loop.setProperty("numDroppedModes", 10)
 loop.setProperty("gain", 0.4)
 loop.setProperty("leakyGain", 0.01)
 

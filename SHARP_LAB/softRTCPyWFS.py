@@ -2,16 +2,26 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import time
+import sys
+import logging
+logging.basicConfig()
+logging.getLogger().setLevel(logging.DEBUG)
+
+original_stdout = sys.stdout
 from pyRTC import *
 from pyRTC.hardware import *
 from pyRTC.utils import *
 from pyRTC.Pipeline import *
+from tqdm import trange
+sys.stdout = original_stdout
 
 # %% CLEAR SHMs
-# shms = ["wfs= "wfsRaw= "signal= "signal2D= "wfc= "wfc2D= "psfShort= "psfLong"]
+# from pyRTC.Pipeline import clear_shms
+# shms = ["pupil", "wfs", "wfsRaw", "signal", "signal2D", "wfc", "wfc2D", "psfShort", "psfLong"]
 # clear_shms(shms)
+
 # %% Load Config
-conf = read_yaml_file("/home/whetstone/pyRTC/SHARP_LAB/config_pywfs.yaml")
+conf = read_yaml_file("/home/whetstone/pyRTC_backup/SHARP_LAB/config_pywfs_2026.yaml")
 # %% Launch WFS
 confWFS = conf["wfs"]
 wfs = XIMEA_WFS(conf=confWFS)
@@ -51,29 +61,29 @@ ncpaOptim = NCPAOptimizer(conf["optimizer"]["ncpa"], loop, slopes)
 if False:
     input("Sources Off?")
     wfs.takeDark()
-    wfs.darkFile = "/home/whetstone/pyRTC/SHARP_LAB/calib/darkPyWFS.npy"
+    wfs.darkFile = "/home/whetstone/pyRTC_backup/SHARP_LAB/calib/darkPyWFS.npy"
     wfs.saveDark()
     time.sleep(1)
     psf.takeDark()
-    psf.darkFile = "/home/whetstone/pyRTC/SHARP_LAB/calib/psfDark.npy"
+    psf.darkFile = "/home/whetstone/pyRTC_backup/SHARP_LAB/calib/psfDark.npy"
     psf.saveDark()
 
     input("Sources On?")
     input("Is Atmosphere Out?")
     wfc.flatten()
     psf.takeModelPSF()
-    psf.modelFile = "/home/whetstone/pyRTC/SHARP_LAB/calib/modelPSF.npy"
+    psf.modelFile = "/home/whetstone/pyRTC_backup/SHARP_LAB/calib/modelPSF.npy"
     psf.saveModelPSF()
 
     slopes.takeRefSlopes()
-    slopes.refSlopesFile = "/home/whetstone/pyRTC/SHARP_LAB/calib/refPyWFS.npy"
+    slopes.refSlopesFile = "/home/whetstone/pyRTC_backup/SHARP_LAB/calib/refPyWFS.npy"
     slopes.saveRefSlopes()
 
     #  STANDARD IM
     loop.IMMethod = "push-pull"
     loop.pokeAmp = 0.01
     loop.numItersIM = 100
-    loop.IMFile = "/home/whetstone/pyRTC/SHARP_LAB/calib/IM_PyWFS.npy"
+    loop.IMFile = "/home/whetstone/pyRTC_backup/SHARP_LAB/calib/IM_PyWFS.npy"
     wfc.flatten()
     loop.computeIM()
     loop.saveIM()
@@ -86,7 +96,7 @@ if False:
     loop.delay = 3
     loop.pokeAmp = 2e-2
     loop.numItersIM = 10000
-    loop.IMFile = "/home/whetstone/pyRTC/SHARP_LAB/calib/docrime_IM.npy"
+    loop.IMFile = "/home/whetstone/pyRTC_backup/SHARP_LAB/calib/docrime_IM.npy"
     wfc.flatten()
     loop.computeIM()
     loop.saveIM()
@@ -94,10 +104,10 @@ if False:
     time.sleep(1)
 
 # %% Compute CM
-loop.IMFile = "/home/whetstone/pyRTC/SHARP_LAB/calib/IM_PyWFS.npy"
-loop.numDroppedModes = 5
-loop.gain = 0.1
-loop.leakyGain = 0.01
+loop.IMFile = "/home/whetstone/pyRTC_backup/SHARP_LAB/calib/IM_PyWFS.npy"
+loop.numDroppedModes = 15
+loop.gain = 0.341
+loop.leakyGain = 0.026
 loop.loadIM()
 # %% Start Loop
 wfc.flatten()
@@ -114,38 +124,76 @@ wfc.flatten()
 # %% Optimize NCPA
 import optuna
 
-optuna.logging.set_verbosity(optuna.logging.WARNING)
+optuna.logging.set_verbosity(optuna.logging.DEBUG)
 numOptim = 3
-maxAMP = 0.005
-amps = np.linspace(maxAMP, maxAMP / 5, numOptim)
+maxAMP = loop.pokeAmp / 10.0
+amps = np.linspace(maxAMP, maxAMP / 2, numOptim)
+modes = np.linspace(30, loop.numModes, numOptim, dtype=int)
 for i in range(numOptim):
     ncpaOptim.resetStudy()
     psf.integrationLength = 5
     time.sleep(2)
-    ncpaOptim.numReads = 3
-    ncpaOptim.startMode = 0
-    ncpaOptim.endMode = 25  # wfc.getProperty("numModes")
-    ncpaOptim.numSteps = 5000
+    ncpaOptim.numReads = 2
+    ncpaOptim.startMode = 2
+    ncpaOptim.endMode = modes[i]
+    ncpaOptim.numSteps = 1000*(i+1)
     ncpaOptim.correctionMag = amps[i]
     ncpaOptim.isCL = False
     for i in range(1):
         ncpaOptim.optimize()
-    ncpaOptim.applyNext()
+    # ncpaOptim.applyNext()
 
+    ncpaOptim.applyOptimum()
+    time.sleep(1)
+    ncpaOptim.applyOptimum()
     wfc.saveShape()
-    # slopes.takeRefSlopes()
-    # slopes.refSlopesFile= "/home/whetstone/pyRTC/SHARP_LAB/calib/ref.npy")
-    # slopes.saveRefSlopes()
+    slopes.takeRefSlopes()
+    slopes.refSlopesFile = "/home/whetstone/pyRTC_backup/SHARP_LAB/calib/refPyWFS.npy"
+    slopes.saveRefSlopes()
     psf.integrationLength = 2000
     time.sleep(2)
     psf.takeModelPSF()
-    psf.modelFile = "/home/whetstone/pyRTC/SHARP_LAB/calib/modelPSF_PyWFS.npy"
+    psf.modelFile = "/home/whetstone/pyRTC_backup/SHARP_LAB/calib/modelPSF.npy"
     psf.saveModelPSF()
     wfc.loadFlat()
 
 
 # %%
+fig = plt.figure(figsize=(10,8))
+ax = fig.add_subplot(111)
 
+live_image = 0
+for _ in range(10):
+    live_image += slopes.readImage()
+im = ax.imshow(
+    live_image,
+    cmap="inferno",
+    origin="lower",
+    aspect="auto",
+    norm='log'
+)
+
+pupilshadow = slopes.pupilMask > 0
+
+im2 = ax.imshow(pupilshadow, 
+            cmap="inferno", 
+            origin="lower", 
+            aspect="auto",
+            alpha=0.2)
+
+colors = ["g", "b", "orange", "r"]
+for i in range(len(slopes.pupilLocs)):
+    px, py = slopes.pupilLocs[i]
+    circ = plt.Circle((px, py), radius=slopes.pupilRadius, color=colors[i], fill=False)
+    # plt.axvline(x=px, color=colors[i], alpha=0.6)
+    # plt.axhline(y=py, color=colors[i], alpha=0.6)
+    ax.add_patch(circ)
+fig.colorbar(im, ax=ax)        
+# plt.title("Pupil Mask * Image ")
+plt.show()
+
+
+# %%
 
 def find_threshold_average(values, threshold):
     first_index = None

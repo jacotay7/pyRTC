@@ -1,7 +1,7 @@
 import yaml
 import sys
 import select
-import os 
+import os
 from astropy.io import fits
 import numpy as np
 import psutil
@@ -9,20 +9,32 @@ from scipy.ndimage import median_filter, gaussian_filter
 import socket
 from datetime import datetime
 from typing import Tuple
-import time 
+import time
 import logging
 import matplotlib
-logging.getLogger('matplotlib').setLevel(logging.WARNING)
+
+logging.getLogger("matplotlib").setLevel(logging.WARNING)
 
 NP_DATA_TYPES = [
-    np.int8, np.int16, np.int32, np.int64,
-    np.uint8, np.uint16, np.uint32, np.uint64,
-    np.float16, np.float32, np.float64, #np.float128,  # np.float128 availability depends on the system
-    np.complex64, np.complex128, #np.complex256,       # np.complex256 availability depends on the system
+    np.int8,
+    np.int16,
+    np.int32,
+    np.int64,
+    np.uint8,
+    np.uint16,
+    np.uint32,
+    np.uint64,
+    np.float16,
+    np.float32,
+    np.float64,  # np.float128,  # np.float128 availability depends on the system
+    np.complex64,
+    np.complex128,  # np.complex256,       # np.complex256 availability depends on the system
     np.bool_,
     np.object_,
-    np.string_, np.unicode_,
-    np.datetime64, np.timedelta64
+    np.string_,
+    np.unicode_,
+    np.datetime64,
+    np.timedelta64,
 ]
 
 
@@ -31,10 +43,11 @@ def precise_delay(microseconds):
     while np.float64(time.perf_counter()) < target_time:
         pass
 
+
 # Function to measure execution time
 def measure_execution_time(f, args, numIters=10):
-   
-    #init once
+
+    # init once
     f(*args)
 
     # Measure time
@@ -43,14 +56,15 @@ def measure_execution_time(f, args, numIters=10):
         start_time = time.time()
         f(*args)
         end_time = time.time()
-        exTimes[i] = (end_time - start_time)
-    
+        exTimes[i] = end_time - start_time
+
     median = np.median(exTimes)
-    iqr = np.percentile(exTimes, 75)-np.percentile(exTimes, 25)
+    iqr = np.percentile(exTimes, 75) - np.percentile(exTimes, 25)
     CI_1 = np.percentile(exTimes, 0.5)
     CI_99 = np.percentile(exTimes, 99.5)
 
     return median, iqr, CI_1, CI_99
+
 
 def change_directory(directory):
     try:
@@ -64,6 +78,7 @@ def change_directory(directory):
         print(f"An unexpected error occurred: {e}")
     return
 
+
 def add_to_path(directory):
     # Check if the directory exists
     if not os.path.isdir(directory):
@@ -71,18 +86,19 @@ def add_to_path(directory):
         return
 
     # Add the directory to the PATH environment variable
-    current_path = os.environ.get('PATH', '')
+    current_path = os.environ.get("PATH", "")
     if directory not in current_path:
         new_path = f"{directory}:{current_path}"
-        os.environ['PATH'] = new_path
+        os.environ["PATH"] = new_path
         print(f"Directory '{directory}' added to PATH.")
     else:
         print(f"Directory '{directory}' is already in PATH.")
 
     return
 
+
 def powerLawOG(numModes, k):
-    return (1- (np.arange(numModes)/numModes)**k)
+    return 1 - (np.arange(numModes) / numModes) ** k
 
 
 def append_to_file(filename, data, dtype=np.float32):
@@ -99,17 +115,18 @@ def append_to_file(filename, data, dtype=np.float32):
     """
     if os.path.exists(filename):
         # If the file exists, append to it
-        with open(filename, 'ab') as f:
+        with open(filename, "ab") as f:
             data.tofile(f)
     else:
         # If the file does not exist, create it and write the initial data
-        with open(filename, 'wb') as f:
+        with open(filename, "wb") as f:
             data.tofile(f)
+
 
 def generate_circular_aperture_mask(N, R, ratio):
     """
     Generates a binary mask of size NxN with a circular aperture of radius R and a central obscuration of radius r.
-    
+
     Parameters:
     N (int): The size of the mask (NxN).
     R (float): The radius of the outer circular aperture.
@@ -119,27 +136,31 @@ def generate_circular_aperture_mask(N, R, ratio):
     numpy.ndarray: Binary mask with the circular aperture.
     """
     r = R * ratio
-    x = np.linspace(-N/2, N/2, N)
-    xx, yy = np.meshgrid(x,x)
-    mask = (xx**2 + yy**2 <= R**2) 
+    x = np.linspace(-N / 2, N / 2, N)
+    xx, yy = np.meshgrid(x, x)
+    mask = xx**2 + yy**2 <= R**2
     if r > 0:
-        mask &= (xx**2 + yy**2 >= r**2)
+        mask &= xx**2 + yy**2 >= r**2
     return mask.astype(bool)
 
+
 def load_data(filename, dtype=None):
-    if filename.endswith('.npy'):
+    if filename.endswith(".npy"):
         data = np.load(filename)
-    elif filename.endswith('.fits'):
+    elif filename.endswith(".fits"):
         with fits.open(filename) as hdul:
-            data = hdul[0].data # typing: ignore
+            data = hdul[0].data  # typing: ignore
     else:
-        raise ValueError("Unsupported file format. Please provide a .npy or .fits file.")
-    
+        raise ValueError(
+            "Unsupported file format. Please provide a .npy or .fits file."
+        )
+
     if dtype is not None:
         return data.astype(dtype)
     return data
 
-def generate_filepath(base_dir='.', prefix='file', extension='.dat'):
+
+def generate_filepath(base_dir=".", prefix="file", extension=".dat"):
     """
     Generate a file path based on the current date and time.
 
@@ -159,7 +180,7 @@ def generate_filepath(base_dir='.', prefix='file', extension='.dat'):
     current_time = datetime.now()
 
     # Format the date and time
-    timestamp = current_time.strftime('%Y%m%d_%H%M%S')
+    timestamp = current_time.strftime("%Y%m%d_%H%M%S")
 
     # Construct the file name
     filename = f"{prefix}_{timestamp}{extension}"
@@ -169,7 +190,8 @@ def generate_filepath(base_dir='.', prefix='file', extension='.dat'):
 
     return filepath
 
-def get_tmp_filepath(file_path, uniqueStr = 'tmp'):
+
+def get_tmp_filepath(file_path, uniqueStr="tmp"):
     """
     Append '_tmp' to the filename part of the given file path, before the file extension.
 
@@ -190,6 +212,7 @@ def get_tmp_filepath(file_path, uniqueStr = 'tmp'):
 
     return new_file_path
 
+
 def centroid(array):
     # Each point contributes to the centroid proportionally to its value.
     total = array.sum() + 1e-4
@@ -198,27 +221,33 @@ def centroid(array):
     y_centroid = (y_indices * array).sum() / total
     return np.array([x_centroid, y_centroid])
 
-def airy_disk(pupil_shape: Tuple[int, int], radius: float, offset: Tuple[int, int] = (0,0)):
-    
+
+def airy_disk(
+    pupil_shape: Tuple[int, int], radius: float, offset: Tuple[int, int] = (0, 0)
+):
+
     # make pupil
     pupil = np.zeros(pupil_shape)
-    xx, yy = np.meshgrid(np.linspace(-1.0, 1.0, pupil_shape[0]), np.linspace(-1.0, 1.0, pupil_shape[1]))
+    xx, yy = np.meshgrid(
+        np.linspace(-1.0, 1.0, pupil_shape[0]), np.linspace(-1.0, 1.0, pupil_shape[1])
+    )
     pupil[np.sqrt(xx**2 + yy**2) < radius] = 1.0
 
     # make airy disk
     disk = np.fft.fftshift(np.abs(np.fft.fft2(pupil)))
 
     # shift the disk
-    disk = np.roll(disk, offset, axis=(0,1))
+    disk = np.roll(disk, offset, axis=(0, 1))
     disk /= disk.sum()
 
     return disk
 
+
 def add_to_buffer(buffer, vec):
-    if isinstance(buffer,np.ndarray):
+    if isinstance(buffer, np.ndarray):
         buffer[:-1] = buffer[1:]
         buffer[-1] = vec
-    else: #For torch tensors
+    else:  # For torch tensors
         tmp = buffer[1:].clone()
         # Clone the slice of buffer[1:] to avoid memory overlap
         buffer[:-1].copy_(tmp)
@@ -226,6 +255,7 @@ def add_to_buffer(buffer, vec):
         buffer[-1].copy_(vec)
         del tmp
     return
+
 
 def next_power_of_two(n):
     # Handle case for non-positive input
@@ -255,6 +285,7 @@ def robust_variance(data):
     mad = np.median(deviations)
     return (mad / 0.6745) ** 2
 
+
 def cosine_similarity(v1, v2):
     # Calculate the magnitudes of the vectors
     mag_v1 = np.linalg.norm(v1)
@@ -268,21 +299,25 @@ def cosine_similarity(v1, v2):
 
     return dot_product / (mag_v1 * mag_v2)
 
+
 def angle_between_vectors(v1, v2):
 
     # Calculate the cosine of the angle
     return np.abs(np.arccos(cosine_similarity(v1, v2)))
 
+
 def compute_fwhm_dark_subtracted_image(image):
     # Filter to keep only negative values
     negative_pixels = image[image < 1]
-    
+
     # Compute the histogram of negative values
     # Adjust bins and range as necessary for your specific image
-    hist, bins = np.histogram(negative_pixels, bins=np.arange(np.min(negative_pixels), 1)+0.5)
+    hist, bins = np.histogram(
+        negative_pixels, bins=np.arange(np.min(negative_pixels), 1) + 0.5
+    )
     # Since the distribution is symmetric, we can mirror the histogram to get the full distribution
     hist_full = np.concatenate((hist[::-1], hist))
-    
+
     # Compute the bin centers from the bin edges
     bin_centers = (bins[:-1] + bins[1:]) / 2
     bin_centers_full = np.concatenate((-bin_centers[::-1], bin_centers))
@@ -290,22 +325,26 @@ def compute_fwhm_dark_subtracted_image(image):
     # Find the maximum value (mode of the distribution)
     peak_value = np.max(hist_full)
     half_max = peak_value / 2
-    
+
     # Find the points where the histogram crosses the half maximum
     cross_points = np.where(np.diff((hist_full > half_max).astype(int)))[0]
-    
+
     # Assuming the distribution is sufficiently smooth and has a single peak,
     # the FWHM is the distance between the first and last crossing points
-    fwhm_value = np.abs(bin_centers_full[cross_points[-1]] - bin_centers_full[cross_points[0]])
-    
+    fwhm_value = np.abs(
+        bin_centers_full[cross_points[-1]] - bin_centers_full[cross_points[0]]
+    )
+
     return fwhm_value
 
-def clean_image_for_strehl(img, median_filter_size = 3, gaussian_sigma = 1):
+
+def clean_image_for_strehl(img, median_filter_size=3, gaussian_sigma=1):
 
     corrected_img = median_filter(img, size=median_filter_size)  # Hot pixel correction
     corrected_img = gaussian_filter(corrected_img, sigma=gaussian_sigma)  # Smoothing
-    
+
     return corrected_img
+
 
 def gaussian_2d_grid(i, j, sigma, grid_size):
     grid = np.zeros((grid_size, grid_size))
@@ -317,24 +356,26 @@ def gaussian_2d_grid(i, j, sigma, grid_size):
                 continue  # Skip the center point as its value should be 0
             else:
                 # Compute the Gaussian value
-                grid[x, y] = np.exp(-((x - i)**2 + (y - j)**2) / (2 * sigma**2))
-    
+                grid[x, y] = np.exp(-((x - i) ** 2 + (y - j) ** 2) / (2 * sigma**2))
+
     grid /= np.sum(grid)
 
     return grid
 
+
 def set_affinity(affinity):
     # Unsupported by MacOS
     if isinstance(affinity, int) or isinstance(affinity, float):
-        affinity = [int(affinity),]
+        affinity = [
+            int(affinity),
+        ]
     elif isinstance(affinity, np.ndarray):
         affinity = list(affinity)
     else:
         return -1
-    if sys.platform != 'darwin':
+    if sys.platform != "darwin":
         psutil.Process(os.getpid()).cpu_affinity(affinity)
     return
-
 
 
 def setFromConfig(conf, name, default):
@@ -350,12 +391,14 @@ def setFromConfig(conf, name, default):
 
     return val
 
+
 def signal2D(signal, layout):
     curSignal2D = np.zeros(layout.shape)
-    slopemask = layout[:,:layout.shape[1]//2]
-    curSignal2D[:,:layout.shape[1]//2][slopemask] = signal[:signal.size//2]
-    curSignal2D[:,layout.shape[1]//2:][slopemask] = signal[signal.size//2:]
+    slopemask = layout[:, : layout.shape[1] // 2]
+    curSignal2D[:, : layout.shape[1] // 2][slopemask] = signal[: signal.size // 2]
+    curSignal2D[:, layout.shape[1] // 2 :][slopemask] = signal[signal.size // 2 :]
     return curSignal2D
+
 
 def dtype_to_float(dtype):
     """
@@ -372,6 +415,7 @@ def dtype_to_float(dtype):
             return i
     return -1
 
+
 def float_to_dtype(dtype_float):
     """
     Convert a unique float back to the original NumPy dtype.
@@ -384,10 +428,13 @@ def float_to_dtype(dtype_float):
     """
     return np.dtype(NP_DATA_TYPES[int(dtype_float)])
 
+
 def bind_socket(host, start_port, max_attempts=5) -> socket.socket:
     """Attempts to bind a socket on a range of ports, handling OSError exceptions."""
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)  # Allow reuse of socket addresses
+    sock.setsockopt(
+        socket.SOL_SOCKET, socket.SO_REUSEADDR, 1
+    )  # Allow reuse of socket addresses
 
     for attempt in range(max_attempts):
         try:
@@ -405,20 +452,24 @@ def bind_socket(host, start_port, max_attempts=5) -> socket.socket:
     else:
         # After all attempts, if no binding was successful, raise an exception
         raise RuntimeError("Failed to bind socket after multiple attempts")
-    
+
     return sock
 
 
 def decrease_nice():
     # Unsupported by MacOS or Windows
-    if sys.platform != 'darwin' and sys.platform != 'win32':
+    if sys.platform != "darwin" and sys.platform != "win32":
         try:
             p = psutil.Process(os.getpid())
             p.nice(-20)  # Unix uses a numeric value (lower means higher priority)
         except:
-            logging.log(level=logging.WARNING, msg="Unable to adjust nice level.\
-                         Give your user sudo privledges without passowrd to use this feature.")
+            logging.log(
+                level=logging.WARNING,
+                msg="Unable to adjust nice level.\
+                         Give your user sudo privledges without passowrd to use this feature.",
+            )
     return
+
 
 # Set CPU affinity and priority for a thread
 def set_affinity_and_priority(thread_id, cpu_cores):
@@ -426,24 +477,27 @@ def set_affinity_and_priority(thread_id, cpu_cores):
     decrease_nice()
     print(f"Thread {thread_id}: Priority set to REALTIME")
 
+
 def read_yaml_file(file_path):
-    with open(file_path, 'r') as file:
+    with open(file_path, "r") as file:
         conf = yaml.safe_load(file)
     return conf
+
 
 def read_input_with_timeout(timeout):
     # Set the list of file descriptors to watch for input (stdin)
     inputs = [sys.stdin]
-    
+
     # Use select to wait for input or timeout
     readable, _, _ = select.select(inputs, [], [], timeout)
-    
+
     if readable:
         user_input = sys.stdin.readline().strip()
         return user_input
     else:
         return None
-    
+
+
 def is_numeric(s):
     try:
         float(s)
@@ -451,19 +505,20 @@ def is_numeric(s):
     except ValueError:
         return False
 
+
 class LoggerWriter(object):
     def __init__(self, writer):
         self._writer = writer
-        self._msg = ''
+        self._msg = ""
 
     def write(self, message):
         self._msg = self._msg + message
-        while '\n' in self._msg:
-            pos = self._msg.find('\n')
+        while "\n" in self._msg:
+            pos = self._msg.find("\n")
             self._writer(self._msg[:pos])
-            self._msg = self._msg[pos+1:]
+            self._msg = self._msg[pos + 1 :]
 
     def flush(self):
-        if self._msg != '':
+        if self._msg != "":
             self._writer(self._msg)
-            self._msg = ''
+            self._msg = ""

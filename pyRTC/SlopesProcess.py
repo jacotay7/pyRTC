@@ -481,31 +481,51 @@ class SlopesProcess(pyRTCComponent):
             print(f"signalShape: {self.signalShape}")
             print(f"signalDType: {self.signalDType}")
 
-            self.signal = ImageSHM(
-                "signal",
-                self.signalShape,
-                self.signalDType,
-                gpuDevice=self.gpuDevice,
-                consumer=False,
-            )
-            self.signal2D = ImageSHM(
-                "signal2D",
-                self.signal2DShape,
-                self.signalDType,
-                gpuDevice=self.gpuDevice,
-                consumer=False,
-            )
-            self.pupilShm = ImageSHM(
-                "pupil",
-                self.pupilShape,
-                self.signalDType,
-                gpuDevice=self.gpuDevice,
-                consumer=False,
-            )
+            try:
+                self.signal = ImageSHM(
+                    "signal",
+                    self.signalShape,
+                    self.signalDType,
+                    gpuDevice=self.gpuDevice,
+                    consumer=False,
+                )
+                print(f"Signal SHM Opened")
+            except:
+                print(f"Could Not Open Signal SHM")
+
+            try:
+                self.signal2D = ImageSHM(
+                    "signal2D",
+                    self.signal2DShape,
+                    self.signalDType,
+                    gpuDevice=self.gpuDevice,
+                    consumer=False,
+                )
+                print(f"Signal SHM Opened")
+
+            except:
+                print(f"Could Not Open Signal SHM")
+            try:
+                self.pupilShm = ImageSHM(
+                    "pupil",
+                    self.pupilShape,
+                    self.signalDType,
+                    gpuDevice=self.gpuDevice,
+                    consumer=False,
+                )
+                print(f"Signal SHM Opened")
+
+            except:
+                print(f"Could Not Open Signal SHM")
 
             self.refSlopes = np.zeros(self.signal2DShape, dtype=self.signalDType)
 
-        self.loadRefSlopes()
+        try:
+            self.loadRefSlopes()
+            print(f"Reference Slopes Loaded")
+
+        except:
+            print(f"Error loading reference slopes.")
 
     def read(self, block=True, SAFE=True, GPU=False):
         """
@@ -760,17 +780,23 @@ class SlopesProcess(pyRTCComponent):
         self.computePupilsMask()
         if self.signalType == "slopes":
             self.signalSize = np.count_nonzero(self.pupilMask) // 2
-            slopemask = (
-                self.pupilMask[
-                    self.pupilLocs[0][1]
-                    - self.pupilRadius : self.pupilLocs[0][1]
-                    + self.pupilRadius,
-                    self.pupilLocs[0][0]
-                    - self.pupilRadius : self.pupilLocs[0][0]
-                    + self.pupilRadius,
-                ]
-                > 0
+            slopemask = generate_circular_aperture_mask(
+                int(2 * np.floor(self.pupilRadius)),
+                self.pupilRadius,
+                self.centralObscurationRatio,
             )
+            # slopemask = (pupilTemplate, pupilTemplate)
+            # slopemask = (
+            #     self.pupilMask[
+            #         self.pupilLocs[0][1]
+            #         - self.pupilRadius : self.pupilLocs[0][1]
+            #         + self.pupilRadius,
+            #         self.pupilLocs[0][0]
+            #         - self.pupilRadius : self.pupilLocs[0][0]
+            #         + self.pupilRadius,
+            #     ]
+            #     > 0
+            # )
             self.setValidSubAps(np.concatenate([slopemask, slopemask], axis=1))
             if self.validSubApsFile != "":
                 self.saveValidSubAps()
@@ -800,7 +826,7 @@ class SlopesProcess(pyRTCComponent):
         self.pupilMask = np.zeros(self.imageShape)
 
         pupilTemplate = generate_circular_aperture_mask(
-            int(np.ceil(2 * self.pupilRadius)),
+            int(2 * np.floor(self.pupilRadius)),
             self.pupilRadius,
             self.centralObscurationRatio,
         )
@@ -834,25 +860,39 @@ class SlopesProcess(pyRTCComponent):
         """
         Plot the pupil mask to see if its right.
         """
-        # plt.figure(figsize=(10,8))
+        plt.figure(figsize=(10, 8))
         plt.imshow(self.pupilMask, cmap="inferno", origin="lower", aspect="auto")
         plt.colorbar()
         plt.title("Pupil Mask (Value is Pupil Number)")
         plt.show()
 
-        plt.imshow(
-            self.pupilMask * self.readImage(),
-            cmap="inferno",
-            origin="lower",
-            aspect="auto",
+        fig = plt.figure(figsize=(10, 8))
+        ax = fig.add_subplot(111)
+
+        live_image = 0
+        for _ in range(10):
+            live_image += self.readImage()
+        im = ax.imshow(
+            live_image, cmap="inferno", origin="lower", aspect="auto", norm="log"
         )
+        im2 = ax.imshow(
+            self.pupilMask, cmap="inferno", origin="lower", aspect="auto", alpha=0.5
+        )
+
         colors = ["g", "b", "orange", "r"]
         for i in range(len(self.pupilLocs)):
             px, py = self.pupilLocs[i]
-            plt.axvline(x=px, color=colors[i], alpha=0.6)
-            plt.axhline(y=py, color=colors[i], alpha=0.6)
-        plt.colorbar()
-        plt.title("Pupil Mask * Image ")
+            circ = plt.Circle(
+                (px - 0.5, py - 0.5),
+                radius=self.pupilRadius,
+                color=colors[i],
+                fill=False,
+            )
+            # plt.axvline(x=px, color=colors[i], alpha=0.6)
+            # plt.axhline(y=py, color=colors[i], alpha=0.6)
+            ax.add_patch(circ)
+        fig.colorbar(im, ax=ax)
+        # plt.title("Pupil Mask * Image ")
         plt.show()
         return
 
