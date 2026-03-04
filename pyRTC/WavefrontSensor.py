@@ -6,7 +6,7 @@ from pyRTC.utils import *
 from pyRTC.pyRTCComponent import *
 import numpy as np
 import matplotlib.pyplot as plt
-from numba import jit
+from numba import jit, prange
 from sys import platform
 
 @jit(nopython=True, nogil=True, cache=True, fastmath=True)
@@ -57,6 +57,64 @@ def downsample_int32_image_jit(image, N):
             downsampled_image[i, j] = np.int32(round(mean_value))
 
     return downsampled_image
+
+@jit(nopython=True, nogil=True, cache=True, fastmath=True, parallel=True)
+def rotate_image_jit(image, angle_rad):
+    """
+    Numba-optimized parallel bilinear interpolation rotation.
+    
+    Parameters:
+    - image: 2D NumPy array (int32 or float) with shape (H, W)
+    - angle_rad: float, rotation angle in radians (positive = counter-clockwise)
+    
+    Returns:
+    - rotated_image: 2D NumPy array with same shape and dtype as input
+    """
+    h, w = image.shape
+    cos_angle = np.cos(angle_rad)
+    sin_angle = np.sin(angle_rad)
+    
+    # Center of rotation
+    cx, cy = w / 2.0, h / 2.0
+    
+    # Output image (same size as input)
+    rotated = np.zeros_like(image)
+    
+    for y in prange(h):
+        for x in range(w):
+            # Translate to center
+            x_centered = x - cx
+            y_centered = y - cy
+            
+            # Rotate (inverse transformation)
+            x_orig = x_centered * cos_angle + y_centered * sin_angle + cx
+            y_orig = -x_centered * sin_angle + y_centered * cos_angle + cy
+            
+            # Check if the source coordinates are within bounds
+            if 0 <= x_orig < w-1 and 0 <= y_orig < h-1:
+                # Bilinear interpolation
+                x0, x1 = int(np.floor(x_orig)), int(np.ceil(x_orig))
+                y0, y1 = int(np.floor(y_orig)), int(np.ceil(y_orig))
+                
+                # Ensure indices are within bounds
+                if x1 >= w:
+                    x1 = w - 1
+                if y1 >= h:
+                    y1 = h - 1
+                
+                # Interpolation weights
+                wx = x_orig - x0
+                wy = y_orig - y0
+                
+                # Bilinear interpolation
+                val = (image[y0, x0] * (1 - wx) * (1 - wy) +
+                       image[y0, x1] * wx * (1 - wy) +
+                       image[y1, x0] * (1 - wx) * wy +
+                       image[y1, x1] * wx * wy)
+                
+                rotated[y, x] = val
+    
+    return rotated
 
 class WavefrontSensor(pyRTCComponent):
     """
@@ -141,6 +199,8 @@ class WavefrontSensor(pyRTCComponent):
         Loads the dark frame from a file.
     plot()
         Plots the current image data.
+    rotateImage(angle_deg)
+        Rotates the current image data by the specified angle in degrees.
     """
 
     def __init__(self, conf: dict) -> None:
@@ -162,6 +222,7 @@ class WavefrontSensor(pyRTCComponent):
         self.darkCount = setFromConfig(conf, "darkCount", 1000)
         self.darkFile = setFromConfig(conf, "darkFile", "")
         self.downsampleFactor = setFromConfig(conf, "downsampleFactor", 0)
+        self.rotationAngle = setFromConfig(conf, "rotationAngle", 0.0)
 
         self.imageRawShape = [self.width, self.height]
         self.imageRawDType = np.uint16
@@ -250,14 +311,27 @@ class WavefrontSensor(pyRTCComponent):
     def expose(self) -> None:
         """
         Writes the current image data to shared memory. Both raw, and dark subtracted.
+        
+        Parameters
+        ----------
         """
         self.imageRaw.write(self.data)
         img = self.data.astype(self.imageDType)
+        
+        # Apply dark subtraction
+        processed_image = img - self.dark
+        
+        # Apply downsampling if configured
         if self.downsampleFactor > 0:
-            self.image.write(downsample_int32_image_jit(img - self.dark, 
-                                                        self.downsampleFactor))
-        else:
-            self.image.write(img - self.dark)
+            processed_image = downsample_int32_image_jit(processed_image, self.downsampleFactor)
+        
+        # Apply rotation if specified
+        if self.rotationAngle != 0.0:
+            angle_rad = np.radians(self.rotationAngle)
+            processed_image = rotate_image_jit(processed_image, angle_rad)
+        
+        # Write the processed image to shared memory
+        self.image.write(processed_image)
         return
 
     def read(self, block = True) -> None:
@@ -341,6 +415,41 @@ class WavefrontSensor(pyRTCComponent):
         plt.colorbar()
         plt.show()
         return
+    
+    def rotateImage(self, angle_deg: float) -> np.ndarray:
+        """
+        Rotates the current image data by the specified angle.
+        
+        This method uses a high-performance numba JIT-compiled bilinear interpolation
+        rotation algorithm that is significantly faster than scipy or opencv implementations
+        while maintaining good image quality.
+
+        Parameters
+        ----------
+        angle_deg : float
+            Rotation angle in degrees. Positive values rotate counter-clockwise.
+
+        Returns
+        -------
+        ndarray
+            Rotated image data with the same shape and dtype as the original.
+            
+        Examples
+        --------
+        >>> wfs = WavefrontSensor(config)
+        >>> rotated_img = wfs.rotateImage(45.0)  # Rotate 45 degrees counter-clockwise
+        >>> rotated_img = wfs.rotateImage(-90.0) # Rotate 90 degrees clockwise
+        """
+        # Get the current image data
+        current_image = self.read(block=False)
+        
+        # Convert angle to radians
+        angle_rad = np.radians(angle_deg)
+        
+        # Apply rotation using the optimized JIT function
+        rotated_image = rotate_image_jit(current_image, angle_rad)
+        
+        return rotated_image
     
 if __name__ == "__main__":
 
