@@ -2,7 +2,12 @@ name: Python Install
 
 on:
   push:
+    branches:
+      - main
   pull_request:
+    branches:
+      - main
+      - dev
 
 jobs:
   install:
