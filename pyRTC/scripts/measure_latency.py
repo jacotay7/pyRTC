@@ -7,6 +7,29 @@ import numpy as np
 from pyRTC import initExistingShm
 
 
+def _safe_mean(values) -> float:
+    arr = np.asarray(values, dtype=np.float64).reshape(-1)
+    if arr.size == 0:
+        return 0.0
+    return float(np.add.reduce(arr, dtype=np.float64) / arr.size)
+
+
+def _safe_percentile(values, pct: float) -> float:
+    arr = np.asarray(values, dtype=np.float64).reshape(-1)
+    if arr.size == 0:
+        return 0.0
+    sorted_vals = sorted(float(x) for x in arr)
+    if len(sorted_vals) == 1:
+        return sorted_vals[0]
+    rank = (pct / 100.0) * (len(sorted_vals) - 1)
+    low = int(rank)
+    high = min(low + 1, len(sorted_vals) - 1)
+    if low == high:
+        return sorted_vals[low]
+    weight = rank - low
+    return sorted_vals[low] * (1.0 - weight) + sorted_vals[high] * weight
+
+
 def _build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Measure latency between two pyRTC shared-memory streams."
@@ -67,7 +90,7 @@ def compute_latency_seconds(source_write_times: np.ndarray, target_write_times: 
     sys_latency = target_write_times - source_write_times
     frame_shift = 0
 
-    while np.mean(sys_latency) < 0 and frame_shift < source_write_times.size - 1:
+    while _safe_mean(sys_latency) < 0 and frame_shift < source_write_times.size - 1:
         frame_shift += 1
         sys_latency = target_write_times[frame_shift:] - source_write_times[:-frame_shift]
 
@@ -88,9 +111,9 @@ def plot_latency_histogram(sys_latency: np.ndarray, args) -> plt.Figure:
         density=False,
     )
 
-    p99 = np.percentile(sys_latency, 99)
-    p999 = np.percentile(sys_latency, 99.9)
-    p9999 = np.percentile(sys_latency, 99.99)
+    p99 = _safe_percentile(sys_latency, 99)
+    p999 = _safe_percentile(sys_latency, 99.9)
+    p9999 = _safe_percentile(sys_latency, 99.99)
 
     plt.axvline(x=p99, color="green", label=f"1 in 100 > {1e6 * p99:.0f}us")
     plt.axvline(x=p999, color="orange", label=f"1 in 1,000 > {1e6 * p999:.0f}us")
@@ -141,7 +164,7 @@ def main(argv=None) -> int:
 
     sys_latency, frame_shift = compute_latency_seconds(source_write_times, target_write_times)
     print(f"Applied frame shift: {frame_shift}")
-    print(f"Mean latency: {np.mean(sys_latency) * 1e6:.2f} us")
+    print(f"Mean latency: {_safe_mean(sys_latency) * 1e6:.2f} us")
 
     plot_latency_histogram(sys_latency, args)
 

@@ -15,6 +15,29 @@ def _noop(_x):
     return None
 
 
+def _safe_mean(values) -> float:
+    arr = np.asarray(values, dtype=np.float64).reshape(-1)
+    if arr.size == 0:
+        return 0.0
+    return float(np.add.reduce(arr, dtype=np.float64) / arr.size)
+
+
+def _safe_percentile(values, pct: float) -> float:
+    arr = np.asarray(values, dtype=np.float64).reshape(-1)
+    if arr.size == 0:
+        return 0.0
+    sorted_vals = sorted(float(x) for x in arr)
+    if len(sorted_vals) == 1:
+        return sorted_vals[0]
+    rank = (pct / 100.0) * (len(sorted_vals) - 1)
+    low = int(rank)
+    high = min(low + 1, len(sorted_vals) - 1)
+    if low == high:
+        return sorted_vals[low]
+    weight = rank - low
+    return sorted_vals[low] * (1.0 - weight) + sorted_vals[high] * weight
+
+
 def _benchmark_measure_execution_time(num_iters: int):
     start = time.perf_counter()
     median, iqr, ci1, ci99 = measure_execution_time(_noop, (1,), numIters=num_iters)
@@ -35,8 +58,8 @@ def _benchmark_latency_math(num_samples: int):
     latency, frame_shift = compute_latency_seconds(source, target)
     elapsed = time.perf_counter() - start
     return {
-        "mean_latency_s": float(np.mean(latency)),
-        "p99_latency_s": float(np.percentile(latency, 99)),
+        "mean_latency_s": _safe_mean(latency),
+        "p99_latency_s": _safe_percentile(latency, 99),
         "frame_shift": int(frame_shift),
         "elapsed_wall_s": float(elapsed),
     }

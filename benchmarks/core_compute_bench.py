@@ -18,6 +18,21 @@ from pyRTC.WavefrontCorrector import ModaltoZonalWithFlat
 from pyRTC.WavefrontSensor import downsample_int32_image_jit, rotate_image_jit
 
 
+def _safe_percentile(values, pct: float) -> float:
+    vals = sorted(float(x) for x in values)
+    if not vals:
+        return 0.0
+    if len(vals) == 1:
+        return vals[0]
+    rank = (pct / 100.0) * (len(vals) - 1)
+    low = int(rank)
+    high = min(low + 1, len(vals) - 1)
+    if low == high:
+        return vals[low]
+    weight = rank - low
+    return vals[low] * (1.0 - weight) + vals[high] * weight
+
+
 def _time_kernel(func: Callable[[], Any], iterations: int, warmup: int) -> Dict[str, float]:
     for _ in range(warmup):
         func()
@@ -28,17 +43,19 @@ def _time_kernel(func: Callable[[], Any], iterations: int, warmup: int) -> Dict[
         func()
         timings[index] = time.perf_counter() - start
 
-    p99_s = float(np.percentile(timings, 99))
+    timings_list = [float(x) for x in timings]
+    sorted_timings = sorted(timings_list)
+    p99_s = _safe_percentile(sorted_timings, 99)
     return {
         "iterations": float(iterations),
         "warmup": float(warmup),
-        "mean_s": float(np.mean(timings)),
-        "median_s": float(np.median(timings)),
-        "p95_s": float(np.percentile(timings, 95)),
+        "mean_s": float(sum(sorted_timings) / len(sorted_timings)) if sorted_timings else 0.0,
+        "median_s": _safe_percentile(sorted_timings, 50),
+        "p95_s": _safe_percentile(sorted_timings, 95),
         "p99_s": p99_s,
         "p99_hz": float(1.0 / p99_s) if p99_s > 0 else float("inf"),
-        "min_s": float(np.min(timings)),
-        "max_s": float(np.max(timings)),
+        "min_s": sorted_timings[0] if sorted_timings else 0.0,
+        "max_s": sorted_timings[-1] if sorted_timings else 0.0,
     }
 
 
