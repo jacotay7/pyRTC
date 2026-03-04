@@ -28,8 +28,8 @@
 - ✅ WS6 (core slice): Removed wildcard imports and cleaned lint issues across all core modules (`pyRTC/*.py`).
 - ✅ WS6 (expanded): Removed active wildcard imports across `pyRTC/*.py`, `pyRTC/hardware/*.py`, `pyRTCView/*.py`, and `examples/sharp_lab/*.py`.
 - ⏳ WS2: Core/viewer separation work started indirectly via API stabilization; viewer cleanup still pending.
-- ⏳ WS3: Config validation layer not yet implemented.
-- ⏳ WS4: System/notebook CI smoke tests not yet implemented.
+- ✅ WS3: Config validation layer implemented in `utils`, centrally enforced in `pyRTCComponent`, and covered by tests.
+- ⏳ WS4: System/notebook CI smoke tests now started (system + notebook surrogate tests added; dedicated smoke CI job added).
 - ⏳ WS5: Performance regression instrumentation not yet implemented.
 
 ## Workstreams

@@ -10,7 +10,7 @@ import socket
 from datetime import datetime
 import time 
 import logging
-from typing import Any, Iterable, Mapping
+from typing import Any, Iterable, Mapping, Optional
 
 NP_DATA_TYPES = [
     np.int8, np.int16, np.int32, np.int64,
@@ -34,7 +34,7 @@ def _require_mapping(conf: Any, component: str) -> Mapping[str, Any]:
     return conf
 
 
-def _validate_optional_numeric(conf: Mapping[str, Any], key: str, component: str, minimum: float | None = None):
+def _validate_optional_numeric(conf: Mapping[str, Any], key: str, component: str, minimum: Optional[float] = None):
     if key not in conf:
         return
     value = conf[key]
@@ -296,12 +296,12 @@ def get_tmp_filepath(file_path, uniqueStr = 'tmp'):
     return new_file_path
 
 def centroid(array):
-    # Each point contributes to the centroid proportionally to its value.
-    total = array.sum() + 1e-4
-    y_indices, x_indices = np.indices(array.shape)
-    x_centroid = (x_indices * array).sum() / total
-    y_centroid = (y_indices * array).sum() / total
-    return np.array([x_centroid, y_centroid])
+    arr = np.asarray(array, dtype=np.float64)
+    total = np.add.reduce(arr.ravel(), dtype=np.float64) + 1e-4
+    y_indices, x_indices = np.indices(arr.shape, dtype=np.float64)
+    x_weighted = np.add.reduce((x_indices * arr).ravel(), dtype=np.float64)
+    y_weighted = np.add.reduce((y_indices * arr).ravel(), dtype=np.float64)
+    return np.array([x_weighted / total, y_weighted / total], dtype=np.float64)
 
 def add_to_buffer(buffer, vec):
     buffer[:-1] = buffer[1:]
