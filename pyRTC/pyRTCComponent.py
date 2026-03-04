@@ -1,13 +1,11 @@
 """
 pyRTC Component Superclass
 """
-from pyRTC.Pipeline import *
-from pyRTC.utils import *
-import threading
-import argparse
-import sys
 import os
-import time
+import threading
+
+from pyRTC.Pipeline import launchComponent, normalize_gpu_device, work
+from pyRTC.utils import setFromConfig
 
 
 class pyRTCComponent:

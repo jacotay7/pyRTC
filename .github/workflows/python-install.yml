@@ -30,6 +30,9 @@ jobs:
       - name: Install test dependencies
         run: python -m pip install -r requirements-test.txt
 
+      - name: Run ruff lint checks (staged scope)
+        run: ruff check pyRTC/__init__.py pyRTC/pyRTCComponent.py pyRTC/Telemetry.py pyRTC/Modulator.py pyRTC/Optimizer.py pyRTC/ScienceCamera.py pyRTC/WavefrontSensor.py pyRTC/WavefrontCorrector.py pyRTC/Loop.py pyRTC/SlopesProcess.py pyRTC/Pipeline.py tests/test_public_api.py
+
       - name: Verify import
         run: python -c "import pyRTC; print('pyRTC import OK')"
 

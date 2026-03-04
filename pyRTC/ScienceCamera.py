@@ -1,11 +1,13 @@
 """
 Science Camera Superclass
 """
-from pyRTC.Pipeline import ImageSHM
-from pyRTC.pyRTCComponent import *
-from pyRTC.utils import *
-import numpy as np
 import matplotlib.pyplot as plt
+import numpy as np
+
+from pyRTC.Pipeline import ImageSHM
+from pyRTC.Pipeline import launchComponent
+from pyRTC.pyRTCComponent import pyRTCComponent
+from pyRTC.utils import centroid, clean_image_for_strehl, setFromConfig
 
 class ScienceCamera(pyRTCComponent):
     """

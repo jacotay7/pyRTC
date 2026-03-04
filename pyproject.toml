@@ -1,3 +1,20 @@
 [build-system]
 requires = ["setuptools>=61", "wheel"]
 build-backend = "setuptools.build_meta"
+
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+exclude = [
+	"build",
+	"dist",
+	"docs/source/_build",
+	"__pycache__",
+]
+
+[tool.ruff.lint]
+select = ["E", "F"]
+ignore = ["E402", "E501"]
+
+[tool.ruff.lint.per-file-ignores]
+"pyRTC/hardware/*.py" = ["E722"]

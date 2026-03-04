@@ -1,13 +1,13 @@
 """
 Wavefront Sensor Superclass
 """
-from pyRTC.Pipeline import ImageSHM, work
-from pyRTC.utils import *
-from pyRTC.pyRTCComponent import *
-import numpy as np
 import matplotlib.pyplot as plt
+import numpy as np
 from numba import jit, prange
-from sys import platform
+
+from pyRTC.Pipeline import ImageSHM, launchComponent
+from pyRTC.pyRTCComponent import pyRTCComponent
+from pyRTC.utils import setFromConfig
 
 @jit(nopython=True, nogil=True, cache=True, fastmath=True)
 def downsample_int32_image_jit(image, N):
