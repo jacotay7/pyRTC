@@ -1,16 +1,13 @@
 import sys
+import os
 import numpy as np
-from multiprocessing import shared_memory
-from PyQt5.QtCore import Qt, QTimer
+from PyQt5.QtCore import QTimer
 from PyQt5.QtWidgets import QApplication, QMainWindow, QVBoxLayout, QWidget, QPushButton
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 from pyRTC.Pipeline import ImageSHM
-from pyRTC.utils import *
-import matplotlib.pyplot as plt
-from matplotlib.colors import LogNorm, Normalize
-import matplotlib
-import os
+from pyRTC.utils import float_to_dtype, set_affinity
+from matplotlib.colors import LogNorm
 
 def read_shared_memory(shm_arr):
     return np.copy(shm_arr)

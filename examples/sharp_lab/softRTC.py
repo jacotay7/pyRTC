@@ -2,17 +2,10 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import time
-from pyRTC import *
-from pyRTC.hardware import *
-from pyRTC.utils import *
-from pyRTC.Pipeline import *
-# from pyRTC.hardware.ximeaWFS import *
-# # from pyRTC.WavefrontSensor import *
-# from pyRTC.hardware.ALPAODM import *
-
-# from pyRTC.hardware.SpinnakerScienceCam import *
-# from pyRTC.SlopesProcess import *
-# from pyRTC.Loop import *
+from pyRTC import Loop, SlopesProcess
+from pyRTC.Pipeline import ImageSHM, initExistingShm
+from pyRTC.hardware import ALPAODM, NCPAOptimizer, XIMEA_WFS, spinCam
+from pyRTC.utils import read_yaml_file
 #%% CLEAR SHMs
 # from pyRTC.Pipeline import clear_shms
 # shms = ["wfs", "wfsRaw", "signal", "signal2D", "wfc", "wfc2D", "psfShort", "psfLong"]

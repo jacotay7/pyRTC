@@ -1,11 +1,9 @@
-from pyRTC.ScienceCamera import *
-from pyRTC.Pipeline import *
-from pyRTC.utils import *
-from rotpy.system import SpinSystem
+import numpy as np
+
+from pyRTC.Pipeline import launchComponent
+from pyRTC.ScienceCamera import ScienceCamera
 from rotpy.camera import CameraList
-import argparse
-import sys
-import os 
+from rotpy.system import SpinSystem
 
 class spinCam(ScienceCamera):
 

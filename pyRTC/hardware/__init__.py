@@ -2,24 +2,24 @@
 __all__ = []
 
 try:
-    from .ALPAODM import *
+    from .ALPAODM import ALPAODM as ALPAODM
     __all__.append('ALPAODM')
-except:
+except Exception:
     print("ALPAO python SDK installation not found")
 try:
-    from .SpinnakerScienceCam import *
+    from .SpinnakerScienceCam import spinCam as spinCam
     __all__.append('spinCam')
-except:
+except Exception:
     print("Spinnaker python SDK installation not found")
 try:
-    from .ximeaWFS import *
+    from .ximeaWFS import XIMEA_WFS as XIMEA_WFS
     __all__.append('XIMEA_WFS')
-except:
+except Exception:
     print("ximea python SDK installation not found")
 try:
-    from .PIModulator import *
+    from .PIModulator import PIModulator as PIModulator
     __all__.append('PIModulator')
-except:
+except Exception:
     print("PI python SDK installation not found")
 # try:
 #     from .OOPAOInterface import OOPAOInterface
@@ -27,9 +27,9 @@ except:
 # except:
 #     print("OOPAO installation not found")
 
-from .NCPAOptimizer import *
-from .PIDOptimizer import *
-from .loopHyperparamsOptimizer import *
+from .NCPAOptimizer import NCPAOptimizer as NCPAOptimizer
+from .PIDOptimizer import PIDOptimizer as PIDOptimizer
+from .loopHyperparamsOptimizer import loopOptimizer as loopOptimizer
 
 __all__.extend([
             'NCPAOptimizer', 

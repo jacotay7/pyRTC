@@ -1,9 +1,10 @@
 #%% 
 import matplotlib.pyplot as plt
-from IPython.display import display, clear_output
+import numpy as np
 import time
-from pyRTC.Pipeline import *
 import argparse
+
+from pyRTC.Pipeline import initExistingShm
 
 # Create the parser
 parser = argparse.ArgumentParser(description="Get the SHM name")

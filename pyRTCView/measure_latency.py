@@ -1,10 +1,9 @@
 #%%imports
 import matplotlib.pyplot as plt
-from pyRTC import *
-from pyRTC.Pipeline import *
-from pyRTC.hardware import *
-from pyRTC.utils import *
+import numpy as np
 import tqdm
+
+from pyRTC.Pipeline import initExistingShm
 
 
 # %% Measure Jitter

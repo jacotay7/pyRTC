@@ -1,11 +1,10 @@
-from pyRTC.utils import *
-from pyRTC.Modulator import *
-from pyRTC.Pipeline import *
-
 import os
-import argparse
 
 from pipython import GCSDevice, pitools
+
+from pyRTC.Modulator import Modulator
+from pyRTC.Pipeline import launchComponent
+from pyRTC.utils import setFromConfig
 
 class PIModulator(Modulator):
 
@@ -43,7 +42,7 @@ class PIModulator(Modulator):
 
         try:
             self.defineCircle()
-        except:
+        except Exception:
             self.stop()
             self.defineCircle()
 

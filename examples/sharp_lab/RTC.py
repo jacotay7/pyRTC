@@ -1,10 +1,14 @@
 # %% IMPORTS
 #Import pyRTC classes
-from pyRTC.Pipeline import *
-from pyRTC.utils import *
-from pyRTC.hardware import *
 import matplotlib.pyplot as plt
 import os
+import time
+
+import numpy as np
+
+from pyRTC.Pipeline import clear_shms, hardwareLauncher, initExistingShm
+from pyRTC.hardware import NCPAOptimizer, PIDOptimizer, loopOptimizer
+from pyRTC.utils import precise_delay, read_yaml_file
 os.chdir("/home/whetstone/pyRTC/examples/sharp_lab")
 RECALIBRATE = False
 CLEAR_SHMS =  False

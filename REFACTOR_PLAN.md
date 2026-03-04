@@ -8,17 +8,29 @@
 5. Add fast-fail configuration validation to reduce runtime surprises.
 
 ## Current Snapshot (objective)
-- Core quality baseline is stronger than before (pytest + coverage gate already green).
-- API surface is still implicit and fragile:
-  - `pyRTC/__init__.py` uses wildcard exports and duplicates imports.
-- Code hygiene debt remains high:
-  - ~100 wildcard import matches across core/hardware/examples/viewer.
-  - dead/commented code concentrated in `pyRTC/Pipeline.py`, `pyRTC/Loop.py`, `pyRTC/SlopesProcess.py`, `pyRTC/WavefrontCorrector.py`.
-- Boundary separation is incomplete:
-  - viewer scripts in `pyRTCView/` import core internals directly and use wildcard imports.
+- Core quality baseline is stronger than before (pytest + coverage gate green; latest full run: 38 tests passing, coverage >80%).
+- Core package API surface is now explicit:
+  - `pyRTC/__init__.py` now uses explicit exports and `__all__`.
+- Core import hygiene is substantially improved:
+  - no wildcard imports remain in `pyRTC/*.py`.
+  - staged `ruff` lint gate is active in CI for all migrated core files.
+- Wildcard import cleanup has now been completed across core, hardware, viewer, and sharp_lab examples.
+- Remaining debt is primarily dead/commented legacy blocks and broader lint/type normalization in examples.
+- Boundary separation is still incomplete:
+  - viewer scripts still import internal helpers broadly.
 - Test strategy still leans unit-heavy:
-  - missing explicit system-flow tests and performance regression checks.
-- Configs are permissive YAML dictionaries with limited validation.
+  - missing explicit system-flow tests and notebook smoke tests in CI.
+- Configs are still permissive YAML dictionaries with limited validation.
+
+## Progress Since Plan Start
+- ✅ WS0 (partial): Added staged `ruff` gate in CI; pytest+coverage gate retained.
+- ✅ WS1 (major): Explicit top-level API exports in `pyRTC/__init__.py`; API smoke tests added.
+- ✅ WS6 (core slice): Removed wildcard imports and cleaned lint issues across all core modules (`pyRTC/*.py`).
+- ✅ WS6 (expanded): Removed active wildcard imports across `pyRTC/*.py`, `pyRTC/hardware/*.py`, `pyRTCView/*.py`, and `examples/sharp_lab/*.py`.
+- ⏳ WS2: Core/viewer separation work started indirectly via API stabilization; viewer cleanup still pending.
+- ⏳ WS3: Config validation layer not yet implemented.
+- ⏳ WS4: System/notebook CI smoke tests not yet implemented.
+- ⏳ WS5: Performance regression instrumentation not yet implemented.
 
 ## Workstreams
 
@@ -38,6 +50,10 @@ Actions:
 Acceptance:
 - CI blocks on lint failures and test failures.
 - CI reports include lint, tests, and coverage in one run.
+
+Status:
+- In progress: staged `ruff` gate implemented for migrated core files and API smoke test.
+- Remaining: widen lint/type coverage to hardware/viewer/examples and add notebook smoke job.
 
 ---
 
@@ -59,6 +75,10 @@ Acceptance:
 - `import pyRTC` remains user-friendly and stable.
 - Public API changes are intentional and reviewed.
 
+Status:
+- Largely complete for current public classes/utilities.
+- Ongoing: keep API contract stable while cleaning downstream modules.
+
 ---
 
 ### WS2 — Core vs Viewer boundary
@@ -79,6 +99,10 @@ Actions:
 Acceptance:
 - Core package imports and tests succeed without viewer dependencies.
 - Viewer scripts operate when `.[viewer]` extras are installed.
+
+Status:
+- Core import path is clean.
+- Viewer import narrowing and explicit boundary cleanup still pending.
 
 ---
 
@@ -157,6 +181,10 @@ Acceptance:
 - No wildcard imports in targeted Python files.
 - `ruff` passes for unused-import and star-import rules.
 
+Status:
+- Wildcard import removal complete for core/hardware/viewer/sharp_lab examples.
+- Remaining: dead/commented code reduction and optional expansion of strict lint gates to all examples.
+
 ## Priority Order (recommended)
 1. WS0 (CI gates), WS1 (public API), WS2 (core/viewer boundary).
 2. WS3 (config validation) and WS4 (system + notebook tests).
@@ -171,11 +199,17 @@ Acceptance:
 - Add API smoke tests for `import pyRTC` and key classes.
 - Clean wildcard imports in lowest-risk modules first (`Telemetry`, `Modulator`, `pyRTCComponent`).
 
+Progress:
+- Completed and extended through all core modules (`Loop`, `SlopesProcess`, `Pipeline`, WFS/WFC, etc.).
+
 ### Sprint B (1–2 weeks)
 - Create config validation MVP for 2–3 core components (`loop`, `wfs`, `wfc`).
 - Add one end-to-end system test using simulated path.
 - Add notebook smoke test strategy (direct `nbconvert` execution or equivalent Python script mirror).
 - Document core/viewer install and runtime boundaries.
+
+Current focus:
+- Start WS3 config validation MVP (`loop`, `wfs`, `wfc`) and WS4 system/notebook smoke test lane.
 
 ## Risks and Mitigations
 - **Risk:** Breaking existing user imports.

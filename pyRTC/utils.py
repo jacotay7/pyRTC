@@ -19,7 +19,7 @@ NP_DATA_TYPES = [
     np.complex64, np.complex128, #np.complex256,       # np.complex256 availability depends on the system
     np.bool_,
     np.object_,
-    np.string_, np.unicode_,
+    np.bytes_, np.str_,
     np.datetime64, np.timedelta64
 ]
 

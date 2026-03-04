@@ -1,8 +1,13 @@
-from pyRTC.utils import *
-from pyRTC.Pipeline import *
-from pyRTC.Optimizer import *
+import argparse
+import os
+import sys
+import time
 
 import numpy as np
+
+from pyRTC.Optimizer import Optimizer
+from pyRTC.Pipeline import Listener, initExistingShm
+from pyRTC.utils import decrease_nice, get_tmp_filepath, read_yaml_file, setFromConfig, set_affinity
 
 class NCPAOptimizer(Optimizer):
 
@@ -141,7 +146,7 @@ if __name__ == "__main__":
     # Go back to communicating with the main program through stdout
     sys.stdout = original_stdout
 
-    l = Listener(component, port = int(args.port))
-    while l.running:
-        l.listen()
+    listener = Listener(component, port = int(args.port))
+    while listener.running:
+        listener.listen()
         time.sleep(1e-3)
