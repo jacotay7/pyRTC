@@ -19,7 +19,7 @@ setup(
     include_package_data=True,
     python_requires='>=3.9',
     install_requires=[
-        'numpy',
+        'numpy>=1.26,<2.3',
         'matplotlib',
         'PyYAML',
         'numba',

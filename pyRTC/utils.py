@@ -42,11 +42,28 @@ def measure_execution_time(f, args, numIters=10):
         f(*args)
         end_time = time.time()
         exTimes[i] = (end_time - start_time)
-    
-    median = np.median(exTimes)
-    iqr = np.percentile(exTimes, 75)-np.percentile(exTimes, 25)
-    CI_1 = np.percentile(exTimes, 0.5)
-    CI_99 = np.percentile(exTimes, 99.5)
+
+    sorted_times = np.sort(exTimes)
+
+    def _percentile_from_sorted(sorted_arr, pct):
+        if sorted_arr.size == 0:
+            return np.float64(0.0)
+        if sorted_arr.size == 1:
+            return np.float64(sorted_arr[0])
+        rank = (pct / 100.0) * (sorted_arr.size - 1)
+        low = int(np.floor(rank))
+        high = int(np.ceil(rank))
+        if low == high:
+            return np.float64(sorted_arr[low])
+        weight = rank - low
+        return np.float64(sorted_arr[low] * (1.0 - weight) + sorted_arr[high] * weight)
+
+    median = _percentile_from_sorted(sorted_times, 50.0)
+    q1 = _percentile_from_sorted(sorted_times, 25.0)
+    q3 = _percentile_from_sorted(sorted_times, 75.0)
+    iqr = q3 - q1
+    CI_1 = _percentile_from_sorted(sorted_times, 0.5)
+    CI_99 = _percentile_from_sorted(sorted_times, 99.5)
 
     return median, iqr, CI_1, CI_99
 
