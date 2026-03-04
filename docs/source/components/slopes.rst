@@ -71,8 +71,8 @@ See below for how to launch a hard-RTC equivalent.
   plt.show()
 
   """
-  Monitor the SHM in realtime by running the pyRTCView script in a terminal
-  python pyRTCView.py signal2D &
+  Monitor the SHM in realtime by running the viewer command in a terminal
+  pyrtc-view signal2D &
   """
 
 Hard-RTC Example

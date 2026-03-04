@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import tqdm
 
-from pyRTC.Pipeline import initExistingShm
+from pyRTC import initExistingShm
 
 
 # %% Measure Jitter

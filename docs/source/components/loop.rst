@@ -66,8 +66,8 @@ See below for how to launch a hard-RTC equivalent.
 
 
   """
-  Monitor the SHM in realtime by running the pyRTCView script in a terminal
-  python pyRTCView.py wfs &
+  Monitor the SHM in realtime by running the viewer command in a terminal
+  pyrtc-view wfs &
   """
 
 Hard-RTC Example

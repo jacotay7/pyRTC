@@ -1,4 +1,3 @@
-import numpy as np
 import importlib
 
 from pyRTC.Modulator import Modulator

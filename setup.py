@@ -56,6 +56,15 @@ setup(
                 "sphinx_copybutton",
             ],
     },
+    entry_points={
+        "console_scripts": [
+            "pyrtc-view=pyRTC.scripts.view:main",
+            "pyrtc-shm-monitor=pyRTC.scripts.shm_monitor:main",
+            "pyrtc-clear-shms=pyRTC.scripts.clear_shms:main",
+            "pyrtc-view-launch-all=pyRTC.scripts.view_launch_all:main",
+            "pyrtc-measure-latency=pyRTC.scripts.measure_latency:main",
+        ]
+    },
 
     classifiers=[
         'Development Status :: 2 - Pre-Alpha',
