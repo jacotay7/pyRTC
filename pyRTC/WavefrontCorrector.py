@@ -102,7 +102,6 @@ class WavefrontCorrector(pyRTCComponent):
         Template for the 2D correction vector.
     """
     def __init__(self, conf) -> None:
-
         super().__init__(conf)
 
         self.name = conf["name"]

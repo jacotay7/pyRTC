@@ -3,7 +3,6 @@ import sys
 import select
 import os 
 from astropy.io import fits
-from subprocess import PIPE, Popen
 import numpy as np
 import psutil
 from scipy.ndimage import median_filter, gaussian_filter
@@ -11,6 +10,7 @@ import socket
 from datetime import datetime
 import time 
 import logging
+from typing import Any, Iterable, Mapping
 
 NP_DATA_TYPES = [
     np.int8, np.int16, np.int32, np.int64,
@@ -22,6 +22,96 @@ NP_DATA_TYPES = [
     np.bytes_, np.str_,
     np.datetime64, np.timedelta64
 ]
+
+
+class ConfigValidationError(ValueError):
+    pass
+
+
+def _require_mapping(conf: Any, component: str) -> Mapping[str, Any]:
+    if not isinstance(conf, Mapping):
+        raise ConfigValidationError(f"{component}: config must be a mapping/dict, got {type(conf).__name__}")
+    return conf
+
+
+def _validate_optional_numeric(conf: Mapping[str, Any], key: str, component: str, minimum: float | None = None):
+    if key not in conf:
+        return
+    value = conf[key]
+    if not isinstance(value, (int, float)):
+        raise ConfigValidationError(f"{component}: '{key}' must be numeric, got {type(value).__name__}")
+    if minimum is not None and value < minimum:
+        raise ConfigValidationError(f"{component}: '{key}' must be >= {minimum}, got {value}")
+
+
+def validate_wfs_config(conf: Any) -> None:
+    component = "wfs"
+    conf = _require_mapping(conf, component)
+
+    _validate_optional_numeric(conf, "width", component, minimum=1)
+    _validate_optional_numeric(conf, "height", component, minimum=1)
+    _validate_optional_numeric(conf, "darkCount", component, minimum=0)
+    _validate_optional_numeric(conf, "downsampleFactor", component, minimum=0)
+    _validate_optional_numeric(conf, "rotationAngle", component)
+
+
+def validate_wfc_config(conf: Any) -> None:
+    component = "wfc"
+    conf = _require_mapping(conf, component)
+
+    required = ["name", "numActuators", "numModes"]
+    missing = [key for key in required if key not in conf]
+    if missing:
+        missing_str = ", ".join(missing)
+        raise ConfigValidationError(f"{component}: missing required config key(s): {missing_str}")
+
+    if not isinstance(conf["name"], str) or not conf["name"].strip():
+        raise ConfigValidationError(f"{component}: 'name' must be a non-empty string")
+
+    if not isinstance(conf["numActuators"], int) or conf["numActuators"] <= 0:
+        raise ConfigValidationError(f"{component}: 'numActuators' must be a positive int, got {conf['numActuators']}")
+
+    if not isinstance(conf["numModes"], int) or conf["numModes"] <= 0:
+        raise ConfigValidationError(f"{component}: 'numModes' must be a positive int, got {conf['numModes']}")
+
+    _validate_optional_numeric(conf, "floatingInfluenceRadius", component, minimum=0)
+    _validate_optional_numeric(conf, "frameDelay", component, minimum=0)
+
+
+def validate_loop_config(conf: Any) -> None:
+    component = "loop"
+    conf = _require_mapping(conf, component)
+
+    _validate_optional_numeric(conf, "numDroppedModes", component, minimum=0)
+    _validate_optional_numeric(conf, "gain", component)
+    _validate_optional_numeric(conf, "leakyGain", component)
+    _validate_optional_numeric(conf, "hardwareDelay", component, minimum=0)
+    _validate_optional_numeric(conf, "pokeAmp", component, minimum=0)
+    _validate_optional_numeric(conf, "numItersIM", component, minimum=1)
+    _validate_optional_numeric(conf, "delay", component, minimum=0)
+    _validate_optional_numeric(conf, "pGain", component)
+    _validate_optional_numeric(conf, "iGain", component)
+    _validate_optional_numeric(conf, "dGain", component)
+    _validate_optional_numeric(conf, "derivativeFilter", component)
+
+    for key in ["controlLimits", "integralLimits", "absoluteLimits"]:
+        if key not in conf:
+            continue
+        value = conf[key]
+        if not isinstance(value, (list, tuple)) or len(value) != 2:
+            raise ConfigValidationError(f"{component}: '{key}' must be a list/tuple of length 2")
+
+
+def validate_component_config(conf: Any, mro_names: Iterable[str]) -> None:
+    _require_mapping(conf, "component")
+
+    mro_name_set = set(mro_names)
+    if "Loop" in mro_name_set:
+        validate_loop_config(conf)
+    if "WavefrontSensor" in mro_name_set:
+        validate_wfs_config(conf)
+    if "WavefrontCorrector" in mro_name_set:
+        validate_wfc_config(conf)
 
 
 def precise_delay(microseconds):
@@ -292,13 +382,37 @@ def compute_fwhm_dark_subtracted_image(image):
     return fwhm_value
 
 def clean_image_for_strehl(img, median_filter_size = 3, gaussian_sigma = 1):
+    corrected_img = np.asarray(img)
 
-    corrected_img = median_filter(img, size=median_filter_size)  # Hot pixel correction
-    corrected_img = gaussian_filter(corrected_img, sigma=gaussian_sigma)  # Smoothing
-    
+    if median_filter_size is not None and median_filter_size > 1:
+        corrected_img = median_filter(
+            corrected_img,
+            size=median_filter_size,
+            output=None,
+            mode='reflect',
+            cval=0.0,
+            origin=0,
+        )
+
+    if gaussian_sigma is not None and gaussian_sigma > 0:
+        corrected_img = gaussian_filter(
+            corrected_img,
+            sigma=gaussian_sigma,
+            order=0,
+            output=None,
+            mode='reflect',
+            cval=0.0,
+            truncate=4.0,
+        )
+
     return corrected_img
 
 def gaussian_2d_grid(i, j, sigma, grid_size):
+    i = int(np.asarray(i).reshape(-1)[0])
+    j = int(np.asarray(j).reshape(-1)[0])
+    sigma = float(np.asarray(sigma).reshape(-1)[0])
+    grid_size = int(np.asarray(grid_size).reshape(-1)[0])
+
     grid = np.zeros((grid_size, grid_size))
     if sigma == 0:
         return grid
@@ -337,7 +451,7 @@ def setFromConfig(conf, name, default):
     debugStr = f"There is a type mismatch between the default value for config variable {name} and the given value: {type(val).__name__} != {type(default).__name__}"
 
     if default is not None:
-        assert type(val) == type(default), debugStr
+        assert isinstance(val, type(default)), debugStr
 
     return val
 
@@ -405,7 +519,7 @@ def decrease_nice():
         try:
             p = psutil.Process(os.getpid())
             p.nice(-20)  # Unix uses a numeric value (lower means higher priority)
-        except:
+        except Exception:
             logging.log(level=logging.WARNING, msg="Unable to adjust nice level.\
                          Give your user sudo privledges without passowrd to use this feature.")
     return

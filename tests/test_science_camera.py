@@ -5,7 +5,7 @@ sci_mod = importlib.import_module("pyRTC.ScienceCamera")
 
 
 def test_science_camera_core(monkeypatch, tmp_path):
-    from tests.conftest import DummySHM
+    from conftest import DummySHM
 
     monkeypatch.setattr(sci_mod, "ImageSHM", DummySHM)
 

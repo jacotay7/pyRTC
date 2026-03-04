@@ -5,7 +5,7 @@ import os
 import threading
 
 from pyRTC.Pipeline import launchComponent, normalize_gpu_device, work
-from pyRTC.utils import setFromConfig
+from pyRTC.utils import setFromConfig, validate_component_config
 
 
 class pyRTCComponent:
@@ -57,6 +57,8 @@ class pyRTCComponent:
             - affinity (int, optional): The CPU affinity for the component. Default 0.
             - functions (list, optional): A list of functions to run in separate threads. Default is an empty list.
         """
+        validate_component_config(conf, [cls.__name__ for cls in self.__class__.mro()])
+
         self.alive = True
         self.running = False
         self.affinity = setFromConfig(conf, "affinity", 0)

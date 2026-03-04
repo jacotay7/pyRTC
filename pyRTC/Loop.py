@@ -236,7 +236,6 @@ class Loop(pyRTCComponent):
                 derivativeFilter : float, optional
                     Filter for the derivative term. Default is 0.1.
         """
-
         super().__init__(conf) 
         self.name = "Loop"
         self.conf = conf
