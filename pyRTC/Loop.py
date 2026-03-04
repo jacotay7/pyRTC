@@ -14,6 +14,7 @@ import argparse
 import numpy as np
 import matplotlib.pyplot as plt
 import time
+from typing import Any
 from numba import jit
 
 @jit(nopython=True, nogil=True, cache=True, fastmath=True)
@@ -38,11 +39,14 @@ def leakyIntegratorNumba(slopes: np.ndarray,
     return correction
 
 def leakIntegratorGPU(slopes:np.ndarray, 
-                                resconstructionMatrix:torch.tensor, 
+                                resconstructionMatrix:Any,
                                 oldCorrection:np.ndarray,
                                 leak:float,
                                 numActiveModes:int
                                 ):
+    if not gpu_torch_available():
+        raise ImportError("leakIntegratorGPU requires PyTorch. Install with 'pip install pyRTC[gpu]' or 'pip install torch'.")
+
     slopes_GPU = torch.tensor(slopes, device='cuda')
     correctionGPU = torch.matmul(resconstructionMatrix, slopes_GPU) 
     correctionGPU[numActiveModes:] = 0

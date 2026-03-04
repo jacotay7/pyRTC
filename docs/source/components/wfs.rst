@@ -96,7 +96,7 @@ See above for how to launch a soft-RTC equivalent.
     width: 400 
     height: 400 
     darkCount: 2000
-    darkFile: "/home/whetstone/pyRTC/SHARP_LAB/calib/dark.npy"
+    darkFile: "/home/whetstone/pyRTC/examples/sharp_lab/calib/dark.npy"
     affinity: 3
     functions:
     - expose

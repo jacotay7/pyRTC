@@ -18,8 +18,8 @@ from pyRTC.Pipeline import *
 # shms = ["wfs", "wfsRaw", "signal", "signal2D", "wfc", "wfc2D", "psfShort", "psfLong"]
 # clear_shms(shms)
 # %% Load Config
-cfile = "/home/whetstone/pyRTC/SHARP_LAB/config_SR.yaml"
-cfile = "/home/whetstone/pyRTC/SHARP_LAB/config.yaml"
+cfile = "/home/whetstone/pyRTC/examples/sharp_lab/config_SR.yaml"
+cfile = "/home/whetstone/pyRTC/examples/sharp_lab/config.yaml"
 conf = read_yaml_file(cfile)
 
 # %% Launch Modulator (PyWFS)
@@ -58,11 +58,11 @@ time.sleep(1)
 if False:
     input("Sources Off?")
     wfs.takeDark()
-    wfs.darkFile = "/home/whetstone/pyRTC/SHARP_LAB/calib/dark.npy"
+    wfs.darkFile = "/home/whetstone/pyRTC/examples/sharp_lab/calib/dark.npy"
     wfs.saveDark()
     time.sleep(1)
     psf.takeDark()
-    psf.darkFile = "/home/whetstone/pyRTC/SHARP_LAB/calib/psfDark_SR.npy"
+    psf.darkFile = "/home/whetstone/pyRTC/examples/sharp_lab/calib/psfDark_SR.npy"
     psf.saveDark()
     input("Sources On?")
     input("Is Atmosphere Out?")
@@ -71,19 +71,19 @@ if False:
     slopes.refSlopesFile =  ""
     slopes.loadRefSlopes()
     slopes.takeRefSlopes()
-    slopes.refSlopesFile = "/home/whetstone/pyRTC/SHARP_LAB/calib/ref.npy"
+    slopes.refSlopesFile = "/home/whetstone/pyRTC/examples/sharp_lab/calib/ref.npy"
     slopes.saveRefSlopes()
 
     wfc.flatten()
     psf.takeModelPSF()
-    psf.modelFile = "/home/whetstone/pyRTC/SHARP_LAB/calib/modelPSF.npy"
+    psf.modelFile = "/home/whetstone/pyRTC/examples/sharp_lab/calib/modelPSF.npy"
     psf.saveModelPSF()
 
     #  STANDARD IM
     loop.IMMethod = "push-pull"
     loop.pokeAmp = 0.03
     loop.numItersIM = 100
-    loop.IMFile = "/home/whetstone/pyRTC/SHARP_LAB/calib/IM.npy"
+    loop.IMFile = "/home/whetstone/pyRTC/examples/sharp_lab/calib/IM.npy"
     wfc.flatten()
     loop.computeIM()
     loop.saveIM()
@@ -96,7 +96,7 @@ if False:
     # loop.delay = 3
     # loop.pokeAmp = 2e-2
     # loop.numItersIM = 10000
-    # loop.IMFile = "/home/whetstone/pyRTC/SHARP_LAB/calib/docrime_IM.npy"
+    # loop.IMFile = "/home/whetstone/pyRTC/examples/sharp_lab/calib/docrime_IM.npy"
     # wfc.flatten()
     # loop.computeIM()
     # loop.saveIM()
@@ -105,7 +105,7 @@ if False:
 
 
 # %% Compute CM
-loop.IMFile = "/home/whetstone/pyRTC/SHARP_LAB/calib/IM.npy"
+loop.IMFile = "/home/whetstone/pyRTC/examples/sharp_lab/calib/IM.npy"
 loop.numDroppedModes = 15
 loop.gain = 0.1
 loop.leakyGain = 0.02
@@ -123,7 +123,7 @@ time.sleep(0.3)
 wfc.flatten()
 
 #%% NCPA
-ncpaOptim = NCPAOptimizer(read_yaml_file('/home/whetstone/pyRTC/SHARP_LAB/config.yaml'
+ncpaOptim = NCPAOptimizer(read_yaml_file('/home/whetstone/pyRTC/examples/sharp_lab/config.yaml'
 )["optimizer"]["ncpa"], loop, slopes)
 psf.integrationLength = 1
 ncpaOptim.numReads = 10
@@ -136,11 +136,11 @@ for i in range(1):
 ncpaOptim.applyOptimum()
 wfc.saveShape()
 slopes.takeRefSlopes()
-slopes.refSlopesFile = "/home/whetstone/pyRTC/SHARP_LAB/calib/ref.npy"
+slopes.refSlopesFile = "/home/whetstone/pyRTC/examples/sharp_lab/calib/ref.npy"
 slopes.saveRefSlopes()
 psf.integrationLength = 10000
 psf.takeModelPSF()
-psf.modelFile = "/home/whetstone/pyRTC/SHARP_LAB/calib/modelPSF.npy"
+psf.modelFile = "/home/whetstone/pyRTC/examples/sharp_lab/calib/modelPSF.npy"
 psf.saveModelPSF()
 
 
@@ -164,12 +164,12 @@ plt.show()
 
 # %% Bench Conversion
 # %% Compute CM
-# loop.IMFile = "/home/whetstone/pyRTC/SHARP_LAB/cIM.npy"
+# loop.IMFile = "/home/whetstone/pyRTC/examples/sharp_lab/cIM.npy"
 loop.loadIM()
 loop.numDroppedModes = 20
 loop.computeCM()
 # %%
-SIM = np.load("/home/whetstone/pyRTC/SHARP_LAB/calib/sprint_IM_nomisreg_valid.npy").reshape(94, -1).T
+SIM = np.load("/home/whetstone/pyRTC/examples/sharp_lab/calib/sprint_IM_nomisreg_valid.npy").reshape(94, -1).T
 bench_converter_SL = (np.linalg.pinv(SIM) @ loop.IM) #[:,:21]
 bench_converter_LS = (loop.CM @ SIM) #[:,:21]
 bench_converter_NP = np.eye(94) #[:,:21]
@@ -292,7 +292,7 @@ plt.show()
 # %% Generate Valid SubAps for SHWFS
 #First make an IM with all valid subAps
 import matplotlib.pyplot as plt
-IM = np.load("/home/whetstone/pyRTC/SHARP_LAB/calib/IM.npy")
+IM = np.load("/home/whetstone/pyRTC/examples/sharp_lab/calib/IM.npy")
 IM = np.moveaxis(IM, 0 ,1)
 pdiam = int(np.sqrt(IM.shape[1]/2))
 IM = IM.reshape(IM.shape[0], 2*pdiam, pdiam)
@@ -309,7 +309,7 @@ plt.show()
 plt.imshow(valid_sub_aps)
 plt.show()
 
-np.save("/home/whetstone/pyRTC/SHARP_LAB/validSubAps.npy", valid_sub_aps.astype(bool))
+np.save("/home/whetstone/pyRTC/examples/sharp_lab/validSubAps.npy", valid_sub_aps.astype(bool))
 
 
 # %%
@@ -456,7 +456,7 @@ valid_sub_aps = slopes.validSubAps.copy()
 valid_sub_aps[mask] = 0
 plt.imshow(valid_sub_aps)
 plt.show()
-# np.save("/home/whetstone/pyRTC/SHARP_LAB/validSubAps.npy", valid_sub_aps.astype(bool))
+# np.save("/home/whetstone/pyRTC/examples/sharp_lab/validSubAps.npy", valid_sub_aps.astype(bool))
 
 
 

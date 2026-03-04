@@ -62,7 +62,8 @@ class pyRTCComponent:
         self.alive = True
         self.running = False
         self.affinity = setFromConfig(conf, "affinity", 0)
-        self.gpuDevice = setFromConfig(conf, "gpuDevice", None)
+        requested_gpu_device = setFromConfig(conf, "gpuDevice", None)
+        self.gpuDevice = normalize_gpu_device(requested_gpu_device, self.__class__.__name__)
 
         # if self.gpuDevice is not None:
         #     self.gpuDevice = torch.device(self.gpuDevice)

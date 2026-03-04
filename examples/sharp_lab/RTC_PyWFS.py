@@ -5,7 +5,7 @@ from pyRTC.Pipeline import *
 from pyRTC.utils import *
 from pyRTC.hardware import *
 import os
-os.chdir("/home/whetstone/pyRTC/SHARP_LAB")
+os.chdir("/home/whetstone/pyRTC/examples/sharp_lab")
 RECALIBRATE = False
 CLEAR_SHMS =  False
 # %% Clear SHMs
@@ -13,9 +13,9 @@ if CLEAR_SHMS:
     shm_names = ["wfs", "wfsRaw", "wfc", "wfc2D", "signal", "signal2D", "psfShort", "psfLong"] #list of SHMs to reset
     clear_shms(shm_names)
 # %% IMPORTS
-config = '/home/whetstone/pyRTC/SHARP_LAB/config_pywfs.yaml'
+config = '/home/whetstone/pyRTC/examples/sharp_lab/config_pywfs.yaml'
 N = np.random.randint(3000,6000)
-folder = "/home/whetstone/pyRTC/SHARP_LAB/calib/"
+folder = "/home/whetstone/pyRTC/examples/sharp_lab/calib/"
 
 # %% Launch WFS
 wfs = hardwareLauncher("../pyRTC/hardware/ximeaWFS.py", config, N+1)
@@ -115,7 +115,7 @@ plt.show()
 loop.setProperty("IMFile", folder + "IM_PYWFS.npy")
 # loop.setProperty("IMFile", folder + "IM_PYWFS_OL_docrime.npy")
 # loop.setProperty("IMFile", folder + "IM_PYWFS_OL_docrime_CL_docrime.npy")
-# dataFolder = "/home/whetstone/pyRTC/SHARP_LAB/data/PYWFS_ESCAPE_DATA/"
+# dataFolder = "/home/whetstone/pyRTC/examples/sharp_lab/data/PYWFS_ESCAPE_DATA/"
 # loop.setProperty("IMFile", dataFolder + "BASELINE_NO_OG.npy")
 # loop.setProperty("IMFile", dataFolder + "ESCAPE.npy")
 # loop.setProperty("IMFile", dataFolder + "DOCRIME_NO_OG.npy")
@@ -189,12 +189,12 @@ for i in range(numOptim):
 
     wfc.run("saveShape")
     # slopes.run("takeRefSlopes")
-    # slopes.setProperty("refSlopesFile", "/home/whetstone/pyRTC/SHARP_LAB/calib/refPyWFS.npy")
+    # slopes.setProperty("refSlopesFile", "/home/whetstone/pyRTC/examples/sharp_lab/calib/refPyWFS.npy")
     # slopes.run("saveRefSlopes")
     psfCam.setProperty("integrationLength", 2000)
     time.sleep(2)
     psfCam.run("takeModelPSF")
-    psfCam.setProperty("modelFile", "/home/whetstone/pyRTC/SHARP_LAB/calib/modelPSF_PyWFS.npy")
+    psfCam.setProperty("modelFile", "/home/whetstone/pyRTC/examples/sharp_lab/calib/modelPSF_PyWFS.npy")
     psfCam.run("saveModelPSF")
     wfc.run("loadFlat")
     
@@ -261,7 +261,7 @@ for i in range(N,N + 5):
     plt.show()
 # %%
 
-dataFolder =  "/home/whetstone/pyRTC/SHARP_LAB/calib/" # "/home/whetstone/pyRTC/SHARP_LAB/data/PYWFS_ESCAPE_DATA/"
+dataFolder =  "/home/whetstone/pyRTC/examples/sharp_lab/calib/" # "/home/whetstone/pyRTC/examples/sharp_lab/data/PYWFS_ESCAPE_DATA/"
 loop.run("solveDocrime")
 time.sleep(0.1)
 
@@ -386,7 +386,7 @@ def wandfunction():
 
     # Adjust Loop
     loop.setProperty("IMFile", 
-                     f"/home/whetstone/pyRTC/SHARP_LAB/data/PYWFS_ESCAPE_DATA/{wconfig.im_file}.npy")
+                     f"/home/whetstone/pyRTC/examples/sharp_lab/data/PYWFS_ESCAPE_DATA/{wconfig.im_file}.npy")
     loop.setProperty("numDroppedModes", wconfig.num_dropped_modes)
     loop.setProperty("gain", wconfig.loop_gain)
     loop.setProperty("leakyGain", wconfig.leaky_gain)
@@ -437,7 +437,7 @@ wandb.teardown()
 ##CHANGE THIS LINE
 filename = "DOCRIME_NO_OG_PSF"
 numReads = 10
-folder = "/home/whetstone/pyRTC/SHARP_LAB/data/PYWFS_ESCAPE_DATA/"
+folder = "/home/whetstone/pyRTC/examples/sharp_lab/data/PYWFS_ESCAPE_DATA/"
 filename = folder + filename
 
 psfShm, _, _ = initExistingShm("psfLong")

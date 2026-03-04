@@ -83,9 +83,9 @@ See above for how to launch a soft-RTC equivalent.
     serial: "BAX118"
     numActuators: 97
     numModes: 94
-    flatFile: "./SHARP_LAB/calib/wfcShape.npy"
-    saveFile: "./SHARP_LAB/calib/wfcShape.npy"
-    m2cFile: "./SHARP_LAB/calib/m2c_kl.npy" 
+    flatFile: "./examples/sharp_lab/calib/wfcShape.npy"
+    saveFile: "./examples/sharp_lab/calib/wfcShape.npy"
+    m2cFile: "./examples/sharp_lab/calib/m2c_kl.npy" 
     affinity: 5
     commandCap: 0.8
     hardwareDelay: 0.001 #seconds

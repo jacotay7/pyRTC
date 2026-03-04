@@ -1,0 +1,10 @@
+numpy
+matplotlib
+PyYAML
+numba
+scipy
+psutil
+optuna
+cmaes
+numexpr
+astropy

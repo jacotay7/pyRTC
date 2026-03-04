@@ -5,7 +5,7 @@ from pyRTC.utils import *
 from pyRTC.hardware import *
 import matplotlib.pyplot as plt
 import os
-os.chdir("/home/whetstone/pyRTC/SHARP_LAB")
+os.chdir("/home/whetstone/pyRTC/examples/sharp_lab")
 RECALIBRATE = False
 CLEAR_SHMS =  False
 # %% Clear SHMs
@@ -15,8 +15,8 @@ if CLEAR_SHMS:
     clear_shms(shm_names)
 
 # %% IMPORTS
-# config = '/home/whetstone/pyRTC/SHARP_LAB/config_SR.yaml'
-config = '/home/whetstone/pyRTC/SHARP_LAB/config.yaml'
+# config = '/home/whetstone/pyRTC/examples/sharp_lab/config_SR.yaml'
+config = '/home/whetstone/pyRTC/examples/sharp_lab/config.yaml'
 N = np.random.randint(3000,6000)
 # %% Launch DM
 wfc = hardwareLauncher("../pyRTC/hardware/ALPAODM.py", config, N)
@@ -54,30 +54,30 @@ if RECALIBRATE == True:
 
     input("Sources Off?")
     wfs.run("takeDark")
-    wfs.setProperty("darkFile", "/home/whetstone/pyRTC/SHARP_LAB/calib/dark.npy")
+    wfs.setProperty("darkFile", "/home/whetstone/pyRTC/examples/sharp_lab/calib/dark.npy")
     wfs.run("saveDark")
     time.sleep(1)
     psfCam.run("takeDark")
-    psfCam.setProperty("darkFile", "/home/whetstone/pyRTC/SHARP_LAB/calib/psfDark.npy")
+    psfCam.setProperty("darkFile", "/home/whetstone/pyRTC/examples/sharp_lab/calib/psfDark.npy")
     psfCam.run("saveDark")
     input("Sources On?")
     input("Is Atmosphere Out?")
 
     # slopes.run("computeImageNoise")
     slopes.run("takeRefSlopes")
-    slopes.setProperty("refSlopesFile", "/home/whetstone/pyRTC/SHARP_LAB/calib/ref.npy")
+    slopes.setProperty("refSlopesFile", "/home/whetstone/pyRTC/examples/sharp_lab/calib/ref.npy")
     slopes.run("saveRefSlopes")
 
     wfc.run("flatten")
     psfCam.run("takeModelPSF")
-    psfCam.setProperty("modelFile", "/home/whetstone/pyRTC/SHARP_LAB/calib/modelPSF.npy")
+    psfCam.setProperty("modelFile", "/home/whetstone/pyRTC/examples/sharp_lab/calib/modelPSF.npy")
     psfCam.run("saveModelPSF")
 
     #  STANDARD IM
     loop.setProperty("IMMethod", "push-pull")
     loop.setProperty("pokeAmp", 0.03)
     loop.setProperty("numItersIM", 100)
-    loop.setProperty("IMFile", "/home/whetstone/pyRTC/SHARP_LAB/calib/IM.npy")
+    loop.setProperty("IMFile", "/home/whetstone/pyRTC/examples/sharp_lab/calib/IM.npy")
     wfc.run("flatten")
     loop.run("computeIM")
     loop.run("saveIM")
@@ -90,7 +90,7 @@ if RECALIBRATE == True:
     loop.setProperty("delay", 2) #Needs to be set in the CONFIG
     loop.setProperty("pokeAmp", 1e-2)
     loop.setProperty("numItersIM", 1000)
-    loop.setProperty("IMFile", "/home/whetstone/pyRTC/SHARP_LAB/calib/IM_OL_docrime.npy")
+    loop.setProperty("IMFile", "/home/whetstone/pyRTC/examples/sharp_lab/calib/IM_OL_docrime.npy")
     wfc.run("flatten")
     loop.run("computeIM")
     loop.run("saveIM")
@@ -100,10 +100,10 @@ if RECALIBRATE == True:
 
 
 # %% Compute CM
-loop.setProperty("IMFile", "/home/whetstone/pyRTC/SHARP_LAB/calib/IM.npy")
-# loop.setProperty("IMFile", "/home/whetstone/pyRTC/SHARP_LAB/calib/OL_DOCRIME.npy")
-# loop.setProperty("IMFile", "/home/whetstone/pyRTC/SHARP_LAB/calib/OL_DOCRIME_CL_docrime.npy")
-# loop.setProperty("IMFile", "/home/whetstone/pyRTC/SHARP_LAB/calib/ESCAPE.npy")
+loop.setProperty("IMFile", "/home/whetstone/pyRTC/examples/sharp_lab/calib/IM.npy")
+# loop.setProperty("IMFile", "/home/whetstone/pyRTC/examples/sharp_lab/calib/OL_DOCRIME.npy")
+# loop.setProperty("IMFile", "/home/whetstone/pyRTC/examples/sharp_lab/calib/OL_DOCRIME_CL_docrime.npy")
+# loop.setProperty("IMFile", "/home/whetstone/pyRTC/examples/sharp_lab/calib/ESCAPE.npy")
 loop.setProperty("numDroppedModes", 0)
 loop.setProperty("gain",0.40)
 loop.setProperty("leakyGain", 0.021)
@@ -143,10 +143,10 @@ loop.setProperty("clDocrime", False)
 # %% Plot DOCRIME
 
 
-baseline = np.load("../SHARP_LAB/calib/baseline.npy")
-OLDOCRIME = np.load("../SHARP_LAB/calib/OL_DOCRIME.npy")
-CLDOCRIME = np.load("../SHARP_LAB/calib/CL_DOCRIME.npy")
-ESCAPE = np.load("../SHARP_LAB/calib/ESCAPE.npy")
+baseline = np.load("./calib/baseline.npy")
+OLDOCRIME = np.load("./calib/OL_DOCRIME.npy")
+CLDOCRIME = np.load("./calib/CL_DOCRIME.npy")
+ESCAPE = np.load("./calib/ESCAPE.npy")
 im = ESCAPE
 plt.imshow(im, aspect="auto")
 plt.show()
@@ -168,7 +168,7 @@ plt.plot(d/a, label = 'ESCAPE')
 plt.legend()
 plt.show()
 
-vsa = np.load("../SHARP_LAB/calib/validSubAps.npy")
+vsa = np.load("./calib/validSubAps.npy")
 
 imFull = np.zeros((im.shape[-1],*vsa.shape))
 for i in range(imFull.shape[0]):
@@ -213,12 +213,12 @@ for i in range(numOptim):
 
     wfc.run("saveShape")
     # slopes.run("takeRefSlopes")
-    # slopes.setProperty("refSlopesFile", "/home/whetstone/pyRTC/SHARP_LAB/calib/ref.npy")
+    # slopes.setProperty("refSlopesFile", "/home/whetstone/pyRTC/examples/sharp_lab/calib/ref.npy")
     # slopes.run("saveRefSlopes")
     psfCam.setProperty("integrationLength", 2000)
     time.sleep(2)
     psfCam.run("takeModelPSF")
-    psfCam.setProperty("modelFile", "/home/whetstone/pyRTC/SHARP_LAB/calib/modelPSF_PyWFS.npy")
+    psfCam.setProperty("modelFile", "/home/whetstone/pyRTC/examples/sharp_lab/calib/modelPSF_PyWFS.npy")
     psfCam.run("saveModelPSF")
     wfc.run("loadFlat")
     
@@ -237,7 +237,7 @@ loopOptim.applyOptimum()
 
 
 # %% Plots
-im = np.load("../SHARP_LAB/calib/docrime_IM.npy")
+im = np.load("./calib/docrime_IM.npy")
 plt.imshow(im, aspect="auto")
 plt.show()
 
@@ -252,8 +252,8 @@ for i in range(85,90):
     plt.show()
 
 
-im_dc = np.load("../SHARP_LAB/calib/docrime_IM.npy")
-im = np.load("../SHARP_LAB/calib/IM.npy")
+im_dc = np.load("./calib/docrime_IM.npy")
+im = np.load("./calib/IM.npy")
 
 im_dc = im_dc.reshape(*slopes.getProperty("signalShape"), -1)
 im_dc = np.moveaxis(im_dc, 2, 0)
@@ -277,14 +277,14 @@ plt.colorbar()
 plt.show()
 # %% SVD
 
-im_dc = np.load("../SHARP_LAB/calib/docrime_IM.npy")
-im = np.load("../SHARP_LAB/calib/IM.npy")
-im_sprint = np.load("../SHARP_LAB/calib/sprint_IM.npy")
+im_dc = np.load("./calib/docrime_IM.npy")
+im = np.load("./calib/IM.npy")
+im_sprint = np.load("./calib/sprint_IM.npy")
 
 #RESCALES SPRINT TO MATCH EMPIRICAL
 # for i in range(im_sprint.shape[1]):
 #     im_sprint[:,i] *= np.std(im[:,i])/np.std(im_sprint[:,i])
-# np.save("../SHARP_LAB/calib/sprint_IM.npy", im_sprint)
+# np.save("./calib/sprint_IM.npy", im_sprint)
 
 u,s,v = np.linalg.svd(im)
 plt.plot(s/np.max(s), label = 'EMPIRICAL')
@@ -429,7 +429,7 @@ for trial in pidOptim.study.trials:
 ##CHANGE THIS LINE
 filename = "BASLINE_LONG_PSF"
 numReads = 100
-folder = "/home/whetstone/pyRTC/SHARP_LAB/data/"
+folder = "/home/whetstone/pyRTC/examples/sharp_lab/data/"
 filename = folder + filename
 
 

@@ -41,6 +41,16 @@ cd pyRTC
 pip install .[docs]
 ```
 
+Optionally, install with GPU dependencies (PyTorch):
+
+```
+cd pyRTC
+pip install .[gpu]
+```
+
+If GPU mode is configured in a component (`gpuDevice` in config) but PyTorch is not installed,
+pyRTC now automatically falls back to CPU mode with a warning instead of failing import/startup.
+
 # Getting Started 
 
 

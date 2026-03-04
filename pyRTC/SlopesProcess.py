@@ -16,21 +16,20 @@ import argparse
 import numpy as np
 import matplotlib.pyplot as plt
 import time
+from typing import Any
 from numba import jit
 
-try:
-    import torch
-except:
-    pass
-
-def computeSlopesPYWFSTorch(image: torch.Tensor,
-                            p1Mask: torch.Tensor, 
-                            p2Mask: torch.Tensor,
-                            p3Mask: torch.Tensor, 
-                            p4Mask: torch.Tensor,
+def computeSlopesPYWFSTorch(image: Any,
+                            p1Mask: Any,
+                            p2Mask: Any,
+                            p3Mask: Any,
+                            p4Mask: Any,
                             numPixelsInPupils: int, 
-                            slopes: torch.Tensor,
-                            refSlopes: torch.Tensor):
+                            slopes: Any,
+                            refSlopes: Any):
+    if not gpu_torch_available():
+        raise ImportError("computeSlopesPYWFSTorch requires PyTorch. Install with 'pip install pyRTC[gpu]' or 'pip install torch'.")
+
     # Ensure the image is in float format
     image = image.to(torch.float32)
     

@@ -14,8 +14,13 @@ import logging
 
 from pyRTC.utils import *
 
+TORCH_AVAILABLE = False
+torch = None
+dtype_mapping = {}
+
 try:
     import torch
+    TORCH_AVAILABLE = True
     # Mapping dictionary
     dtype_mapping = {
         np.float32: torch.float32,
@@ -31,8 +36,25 @@ try:
         np.dtype("uint8"): torch.uint8,
         np.dtype("uint16"): torch.uint16,
     }
-except:
-    pass
+except Exception:
+    TORCH_AVAILABLE = False
+
+
+def gpu_torch_available() -> bool:
+    return TORCH_AVAILABLE
+
+
+def normalize_gpu_device(gpuDevice, context: str = ""):
+    if gpuDevice is None:
+        return None
+    if not TORCH_AVAILABLE:
+        prefix = f"{context}: " if context else ""
+        logging.log(
+            level=logging.WARNING,
+            msg=f"{prefix}gpuDevice was requested but PyTorch is not installed; defaulting to CPU mode.",
+        )
+        return None
+    return gpuDevice
 
 def work(obj, functionName, affinity):
     """
@@ -76,7 +98,7 @@ class ImageSHM:
         self.lastWriteTime = 0
         self.lastReadTime = 0
         self.areData = not ("meta" in name)
-        self.gpuDevice = gpuDevice
+        self.gpuDevice = normalize_gpu_device(gpuDevice, name)
 
         try:
             self.shm = shared_memory.SharedMemory(name= name, create=True, size=self.arr.nbytes)
@@ -106,7 +128,10 @@ class ImageSHM:
 
             if self.gpuDevice is not None:
                 self.torchDtype = dtype_mapping.get(self.dtype, None)
-                assert(self.torchDtype is not None)
+                if self.torchDtype is None:
+                    self.gpuDevice = None
+                    logging.log(level=logging.WARNING, msg=f"{self.name}: dtype {self.dtype} not supported for GPU SHM; defaulting to CPU mode.")
+                    return
                 
                 #If we expect the SHM to already exist
                 if consumer:
@@ -121,6 +146,9 @@ class ImageSHM:
         self.close()
 
     def createGPUMemSHM(self):
+
+        if self.gpuDevice is None or not TORCH_AVAILABLE:
+            return None
 
         # Create a GPU tensor
         self.shmGPU = torch.empty(self.shape, dtype=self.torchDtype, device=self.gpuDevice)
@@ -197,6 +225,9 @@ class ImageSHM:
         return self.shmGPU
 
     def initGPUMemFromSHM(self):
+        if self.gpuDevice is None or not TORCH_AVAILABLE:
+            return
+
         # Open the shared memory segment
         try:
             gpuHandleShm = shared_memory.SharedMemory(name=self.name + "_gpu_handle")
