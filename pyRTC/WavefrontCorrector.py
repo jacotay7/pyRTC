@@ -10,12 +10,13 @@ os.environ["NUMEXPR_NUM_THREADS"] = "1"
 os.environ['NUMBA_NUM_THREADS'] = '1'
 os.environ['TBB_NUM_THREADS'] = '1'
 
-from pyRTC.Pipeline import *
-from pyRTC.utils import *
-from pyRTC.pyRTCComponent import *
 import numpy as np
 import matplotlib.pyplot as plt
 from numba import jit
+
+from pyRTC.Pipeline import ImageSHM, launchComponent
+from pyRTC.pyRTCComponent import pyRTCComponent
+from pyRTC.utils import gaussian_2d_grid, setFromConfig
 
 @jit(nopython=True)
 def ModaltoZonalWithFlat(correction=np.array([],dtype=np.float32), 
@@ -101,7 +102,6 @@ class WavefrontCorrector(pyRTCComponent):
         Template for the 2D correction vector.
     """
     def __init__(self, conf) -> None:
-
         super().__init__(conf)
 
         self.name = conf["name"]
@@ -258,7 +258,7 @@ class WavefrontCorrector(pyRTCComponent):
         #Reset Floating Actuator Map
         self.floatMatrix = np.eye(self.numActuators, dtype=self.flat.dtype)
         #Deactivate all actuators that are still disabled
-        actsToDeactivate = [i for i in range(self.numActuators) if self.actuatorStatus[i] == False]
+        actsToDeactivate = [i for i in range(self.numActuators) if not self.actuatorStatus[i]]
         if len(actsToDeactivate) > 0:
             self.deactivateActuators(actsToDeactivate)
         return

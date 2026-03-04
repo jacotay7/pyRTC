@@ -1,13 +1,11 @@
 """
 pyRTC Component Superclass
 """
-from pyRTC.Pipeline import *
-from pyRTC.utils import *
-import threading
-import argparse
-import sys
 import os
-import time
+import threading
+
+from pyRTC.Pipeline import launchComponent, normalize_gpu_device, work
+from pyRTC.utils import setFromConfig, validate_component_config
 
 
 class pyRTCComponent:
@@ -59,10 +57,13 @@ class pyRTCComponent:
             - affinity (int, optional): The CPU affinity for the component. Default 0.
             - functions (list, optional): A list of functions to run in separate threads. Default is an empty list.
         """
+        validate_component_config(conf, [cls.__name__ for cls in self.__class__.mro()])
+
         self.alive = True
         self.running = False
         self.affinity = setFromConfig(conf, "affinity", 0)
-        self.gpuDevice = setFromConfig(conf, "gpuDevice", None)
+        requested_gpu_device = setFromConfig(conf, "gpuDevice", None)
+        self.gpuDevice = normalize_gpu_device(requested_gpu_device, self.__class__.__name__)
 
         # if self.gpuDevice is not None:
         #     self.gpuDevice = torch.device(self.gpuDevice)

@@ -9,28 +9,32 @@ os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
 os.environ["NUMEXPR_NUM_THREADS"] = "1" 
 os.environ['NUMBA_NUM_THREADS'] = '1'
 
-from pyRTC.Pipeline import *
-from pyRTC.utils import *
-from pyRTC.pyRTCComponent import *
-import argparse
-import numpy as np
 import matplotlib.pyplot as plt
-import time
+import numpy as np
+from typing import Any
 from numba import jit
 
-try:
-    import torch
-except:
-    pass
+from pyRTC.Pipeline import ImageSHM, gpu_torch_available, initExistingShm, launchComponent
+from pyRTC.pyRTCComponent import pyRTCComponent
+from pyRTC.utils import (
+    compute_fwhm_dark_subtracted_image,
+    generate_circular_aperture_mask,
+    setFromConfig,
+)
 
-def computeSlopesPYWFSTorch(image: torch.Tensor,
-                            p1Mask: torch.Tensor, 
-                            p2Mask: torch.Tensor,
-                            p3Mask: torch.Tensor, 
-                            p4Mask: torch.Tensor,
+def computeSlopesPYWFSTorch(image: Any,
+                            p1Mask: Any,
+                            p2Mask: Any,
+                            p3Mask: Any,
+                            p4Mask: Any,
                             numPixelsInPupils: int, 
-                            slopes: torch.Tensor,
-                            refSlopes: torch.Tensor):
+                            slopes: Any,
+                            refSlopes: Any):
+    if not gpu_torch_available():
+        raise ImportError("computeSlopesPYWFSTorch requires PyTorch. Install with 'pip install pyRTC[gpu]' or 'pip install torch'.")
+
+    import torch
+
     # Ensure the image is in float format
     image = image.to(torch.float32)
     
@@ -592,7 +596,9 @@ class SlopesProcess(pyRTCComponent):
         image = self.readImage(SAFE=False, GPU = False)
         if self.signalType == "slopes":
             if self.wfsType == "pywfs":
-                if False:#self.gpuDevice is not None:
+                if self.gpuDevice is not None and gpu_torch_available():
+                    import torch
+
                     slope_signal = computeSlopesPYWFSTorch(image.ravel(),
                                 p1Mask=torch.from_numpy(self.p1mask.ravel()).to(self.gpuDevice), 
                                 p2Mask=torch.from_numpy(self.p2mask.ravel()).to(self.gpuDevice),

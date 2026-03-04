@@ -6,15 +6,15 @@ os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
 os.environ["NUMEXPR_NUM_THREADS"] = "1" 
 os.environ['NUMBA_NUM_THREADS'] = '1'
 
-from pyRTC.Pipeline import *
-from pyRTC.utils import *
-from pyRTC.pyRTCComponent import *
-import argparse
-
-import numpy as np
 import matplotlib.pyplot as plt
+import numpy as np
 import time
+from typing import Any
 from numba import jit
+
+from pyRTC.Pipeline import gpu_torch_available, initExistingShm, launchComponent
+from pyRTC.pyRTCComponent import pyRTCComponent
+from pyRTC.utils import add_to_buffer, get_tmp_filepath, setFromConfig
 
 @jit(nopython=True, nogil=True, cache=True, fastmath=True)
 def leakyIntegratorNumba(slopes: np.ndarray, 
@@ -38,11 +38,16 @@ def leakyIntegratorNumba(slopes: np.ndarray,
     return correction
 
 def leakIntegratorGPU(slopes:np.ndarray, 
-                                resconstructionMatrix:torch.tensor, 
+                                resconstructionMatrix:Any,
                                 oldCorrection:np.ndarray,
                                 leak:float,
                                 numActiveModes:int
                                 ):
+    if not gpu_torch_available():
+        raise ImportError("leakIntegratorGPU requires PyTorch. Install with 'pip install pyRTC[gpu]' or 'pip install torch'.")
+
+    import torch
+
     slopes_GPU = torch.tensor(slopes, device='cuda')
     correctionGPU = torch.matmul(resconstructionMatrix, slopes_GPU) 
     correctionGPU[numActiveModes:] = 0
@@ -231,7 +236,6 @@ class Loop(pyRTCComponent):
                 derivativeFilter : float, optional
                     Filter for the derivative term. Default is 0.1.
         """
-
         super().__init__(conf) 
         self.name = "Loop"
         self.conf = conf
@@ -368,7 +372,6 @@ class Loop(pyRTCComponent):
 
         #Get a correction to set the shape
         correction = self.flat.copy()
-        corrShapeWFC = correction.shape
         correction = correction.reshape(correction.size,1)
 
         #Have a history of corrections

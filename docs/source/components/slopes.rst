@@ -41,8 +41,8 @@ See below for how to launch a hard-RTC equivalent.
   confSlopes = {
     "type": "SHWFS",
     "signalType": "slopes",
-    "refSlopesFile": "", #"/home/whetstone/pyRTC/SHARP_LAB/calib/ref.npy",
-    "validSubApsFile": "", #"/home/whetstone/pyRTC/SHARP_LAB/calib/validSubAps.npy",
+    "refSlopesFile": "", #"/home/whetstone/pyRTC/examples/sharp_lab/calib/ref.npy",
+    "validSubApsFile": "", #"/home/whetstone/pyRTC/examples/sharp_lab/calib/validSubAps.npy",
     "subApSpacing": 16,
     "subApOffsetX": 0,
     "subApOffsetY": 0,
@@ -71,8 +71,8 @@ See below for how to launch a hard-RTC equivalent.
   plt.show()
 
   """
-  Monitor the SHM in realtime by running the pyRTCView script in a terminal
-  python pyRTCView.py signal2D &
+  Monitor the SHM in realtime by running the viewer command in a terminal
+  pyrtc-view signal2D &
   """
 
 Hard-RTC Example
@@ -97,8 +97,8 @@ See above for how to launch a soft-RTC equivalent.
   slopes:
     type: SHWFS
     signalType: slopes
-    refSlopesFile: "/home/whetstone/pyRTC/SHARP_LAB/calib/ref.npy"
-    validSubApsFile: "/home/whetstone/pyRTC/SHARP_LAB/calib/validSubAps.npy"
+    refSlopesFile: "/home/whetstone/pyRTC/examples/sharp_lab/calib/ref.npy"
+    validSubApsFile: "/home/whetstone/pyRTC/examples/sharp_lab/calib/validSubAps.npy"
     subApSpacing: 16
     subApOffsetX: 8
     subApOffsetY: 4

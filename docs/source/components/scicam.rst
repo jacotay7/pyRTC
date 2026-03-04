@@ -66,8 +66,8 @@ See below for how to launch a hard-RTC equivalent.
 
 
   """
-  Monitor the SHM in realtime by running the pyRTCView script in a terminal
-  python pyRTCView.py wfs &
+  Monitor the SHM in realtime by running the viewer command in a terminal
+  pyrtc-view wfs &
   """
 
 Hard-RTC Example
@@ -101,7 +101,7 @@ See above for how to launch a soft-RTC equivalent.
     width: 400 
     height: 400 
     darkCount: 2000
-    darkFile: "/home/whetstone/pyRTC/SHARP_LAB/calib/dark.npy"
+    darkFile: "/home/whetstone/pyRTC/examples/sharp_lab/calib/dark.npy"
     affinity: 3
     functions:
     - expose

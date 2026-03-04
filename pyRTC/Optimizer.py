@@ -1,15 +1,16 @@
 """
 A Superclass for Peformance Optimizer
 """
-from pyRTC.Pipeline import *
-from pyRTC.utils import *
-from pyRTC.pyRTCComponent import *
-
 import argparse
-import sys
 import os
+import sys
 import time
+
 import optuna
+
+from pyRTC.Pipeline import Listener
+from pyRTC.pyRTCComponent import pyRTCComponent
+from pyRTC.utils import decrease_nice, read_yaml_file, set_affinity, setFromConfig
 
 class Optimizer(pyRTCComponent):
     """
@@ -154,7 +155,7 @@ if __name__ == "__main__":
     # Go back to communicating with the main program through stdout
     sys.stdout = original_stdout
 
-    l = Listener(component, port = int(args.port))
-    while l.running:
-        l.listen()
+    listener = Listener(component, port = int(args.port))
+    while listener.running:
+        listener.listen()
         time.sleep(1e-3)

@@ -41,6 +41,44 @@ cd pyRTC
 pip install .[docs]
 ```
 
+Optionally, install with GPU dependencies (PyTorch):
+
+```
+cd pyRTC
+pip install .[gpu]
+```
+
+If GPU mode is configured in a component (`gpuDevice` in config) but PyTorch is not installed,
+pyRTC now automatically falls back to CPU mode with a warning instead of failing import/startup.
+
+### Performance Smoke Report
+
+To generate a lightweight performance report (CI-safe, non hard real-time), run:
+
+```
+python benchmarks/perf_smoke.py --output perf_smoke_report.json
+```
+
+This writes a JSON summary with timing metrics for core utility paths that can be stored as a CI artifact.
+By default, it also attempts core compute kernel benchmarks (and GPU kernels when available),
+falling back to CPU-only sections automatically when GPU paths are unavailable.
+
+### Core Compute Benchmarks (JIT/GPU Kernels)
+
+To benchmark core compute kernels in `SlopesProcess`, `Loop`, `WavefrontSensor`, and `WavefrontCorrector`:
+
+```
+pyrtc-core-bench --quick --cpu-only --output core_compute_bench_report.json
+```
+
+Run without `--cpu-only` to include GPU kernels when CUDA/PyTorch are available:
+
+```
+pyrtc-core-bench --quick --output core_compute_bench_report.json
+```
+
+This reports per-kernel timing statistics (`mean`, `median`, `p95`, `p99`) in JSON.
+
 # Getting Started 
 
 

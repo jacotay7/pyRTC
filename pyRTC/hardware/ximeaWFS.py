@@ -1,7 +1,8 @@
-from pyRTC.WavefrontSensor import *
+import time
+
+from pyRTC.Pipeline import launchComponent
+from pyRTC.WavefrontSensor import WavefrontSensor
 from ximea import xiapi
-from pyRTC.Pipeline import *
-from pyRTC.utils import *
 
 class XIMEA_WFS(WavefrontSensor):
 

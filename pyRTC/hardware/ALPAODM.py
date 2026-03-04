@@ -6,12 +6,13 @@ os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
 os.environ["NUMEXPR_NUM_THREADS"] = "1" 
 os.environ['NUMBA_NUM_THREADS'] = '1'
 
-from pyRTC.WavefrontCorrector import *
-from pyRTC.Pipeline import *
-from pyRTC.utils import *
 import struct
-import argparse
 import sys
+
+import numpy as np
+
+from pyRTC.Pipeline import launchComponent
+from pyRTC.WavefrontCorrector import WavefrontCorrector
 
 
 #Prevents camera output from messing with communication

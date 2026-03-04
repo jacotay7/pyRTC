@@ -1,0 +1,94 @@
+name: Python Install
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+      - dev
+
+jobs:
+  install:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13"]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Upgrade pip
+        run: python -m pip install --upgrade pip
+
+      - name: Install package
+        run: python -m pip install .
+
+      - name: Install test dependencies
+        run: python -m pip install -r requirements-test.txt
+
+      - name: Run ruff lint checks (staged scope)
+        run: ruff check pyRTC/__init__.py pyRTC/pyRTCComponent.py pyRTC/Telemetry.py pyRTC/Modulator.py pyRTC/Optimizer.py pyRTC/ScienceCamera.py pyRTC/WavefrontSensor.py pyRTC/WavefrontCorrector.py pyRTC/Loop.py pyRTC/SlopesProcess.py pyRTC/Pipeline.py pyRTC/scripts/view.py pyRTC/scripts/shm_monitor.py pyRTC/scripts/clear_shms.py pyRTC/scripts/view_launch_all.py pyRTC/scripts/measure_latency.py pyRTC/hardware/__init__.py pyRTC/hardware/ALPAODM.py pyRTC/hardware/NCPAOptimizer.py pyRTC/hardware/OOPAOInterface.py pyRTC/hardware/PIDOptimizer.py pyRTC/hardware/PIModulator.py pyRTC/hardware/SpinnakerScienceCam.py pyRTC/hardware/loopHyperparamsOptimizer.py pyRTC/hardware/ximeaWFS.py tests/test_public_api.py tests/test_viewer_cli.py tests/test_viewer_boundary.py tests/test_measure_latency_cli.py
+
+      - name: Verify import
+        run: python -c "import pyRTC; print('pyRTC import OK')"
+
+      - name: Run pytest with coverage
+        run: pytest
+
+  smoke-system-notebook:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12"]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Upgrade pip
+        run: python -m pip install --upgrade pip
+
+      - name: Install package
+        run: python -m pip install .
+
+      - name: Install test dependencies
+        run: python -m pip install -r requirements-test.txt
+
+      - name: Run system and notebook smoke tests
+        run: pytest tests/system tests/notebooks -q --no-cov
+
+      - name: Run performance smoke report
+        run: python benchmarks/perf_smoke.py --output benchmarks/perf_smoke_report.json
+
+      - name: Print performance dictionaries
+        run: |
+          python - <<'PY'
+          import json
+          with open('benchmarks/perf_smoke_report.json', 'r', encoding='utf-8') as f:
+              report = json.load(f)
+          print(json.dumps(report, indent=2))
+          PY
+
+      - name: Compare against committed perf baseline
+        run: python benchmarks/check_perf_baseline.py --current benchmarks/perf_smoke_report.json --baseline benchmarks/perf_smoke_baseline.json
+
+      - name: Upload performance smoke artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: perf-smoke-report-py${{ matrix.python-version }}
+          path: benchmarks/perf_smoke_report.json

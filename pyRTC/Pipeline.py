@@ -1,21 +1,37 @@
 """
 Pipeline Superclasss
 """
+import argparse
+import json 
+import logging
+import os
+import socket
+import struct
+import sys
+import time
+
 from multiprocessing import shared_memory, resource_tracker
 from subprocess import PIPE, Popen
-import numpy as np
-import time
-import sys
-import argparse
-import socket
-import json 
-import struct
-import logging
 
-from pyRTC.utils import *
+import numpy as np
+
+from pyRTC.utils import (
+    bind_socket,
+    dtype_to_float,
+    float_to_dtype,
+    precise_delay,
+    read_yaml_file,
+    setFromConfig,
+    set_affinity_and_priority,
+)
+
+TORCH_AVAILABLE = False
+torch = None
+dtype_mapping = {}
 
 try:
     import torch
+    TORCH_AVAILABLE = True
     # Mapping dictionary
     dtype_mapping = {
         np.float32: torch.float32,
@@ -31,8 +47,25 @@ try:
         np.dtype("uint8"): torch.uint8,
         np.dtype("uint16"): torch.uint16,
     }
-except:
-    pass
+except Exception:
+    TORCH_AVAILABLE = False
+
+
+def gpu_torch_available() -> bool:
+    return TORCH_AVAILABLE
+
+
+def normalize_gpu_device(gpuDevice, context: str = ""):
+    if gpuDevice is None:
+        return None
+    if not TORCH_AVAILABLE:
+        prefix = f"{context}: " if context else ""
+        logging.log(
+            level=logging.WARNING,
+            msg=f"{prefix}gpuDevice was requested but PyTorch is not installed; defaulting to CPU mode.",
+        )
+        return None
+    return gpuDevice
 
 def work(obj, functionName, affinity):
     """
@@ -75,13 +108,13 @@ class ImageSHM:
         self.count = 0
         self.lastWriteTime = 0
         self.lastReadTime = 0
-        self.areData = not ("meta" in name)
-        self.gpuDevice = gpuDevice
+        self.areData = "meta" not in name
+        self.gpuDevice = normalize_gpu_device(gpuDevice, name)
 
         try:
             self.shm = shared_memory.SharedMemory(name= name, create=True, size=self.arr.nbytes)
             print(f"Creating New Shared Memory Object {self.name}")
-        except:
+        except Exception:
             self.shm = shared_memory.SharedMemory(name=name)
             print(f"Opening Existing Shared Memory Object {self.name}")
 
@@ -96,7 +129,7 @@ class ImageSHM:
             try:
                 self.metadataShm = shared_memory.SharedMemory(name= name+"_meta", create=True, size=self.metadata.nbytes)
                 print(f"Creating New Shared Memory Object {self.name}"+"_meta")
-            except:
+            except Exception:
                 self.metadataShm = shared_memory.SharedMemory(name= name+"_meta")
                 print(f"Opening Existing Shared Memory Object {self.name}"+"_meta")
             if sys.platform != 'win32':
@@ -106,7 +139,10 @@ class ImageSHM:
 
             if self.gpuDevice is not None:
                 self.torchDtype = dtype_mapping.get(self.dtype, None)
-                assert(self.torchDtype is not None)
+                if self.torchDtype is None:
+                    self.gpuDevice = None
+                    logging.log(level=logging.WARNING, msg=f"{self.name}: dtype {self.dtype} not supported for GPU SHM; defaulting to CPU mode.")
+                    return
                 
                 #If we expect the SHM to already exist
                 if consumer:
@@ -121,6 +157,9 @@ class ImageSHM:
         self.close()
 
     def createGPUMemSHM(self):
+
+        if self.gpuDevice is None or not TORCH_AVAILABLE:
+            return None
 
         # Create a GPU tensor
         self.shmGPU = torch.empty(self.shape, dtype=self.torchDtype, device=self.gpuDevice)
@@ -197,11 +236,14 @@ class ImageSHM:
         return self.shmGPU
 
     def initGPUMemFromSHM(self):
+        if self.gpuDevice is None or not TORCH_AVAILABLE:
+            return
+
         # Open the shared memory segment
         try:
             gpuHandleShm = shared_memory.SharedMemory(name=self.name + "_gpu_handle")
             print(f"Opened Shared Memory Object {self.name}_gpu_handle")
-        except:
+        except Exception:
             self.gpuDevice=None
             logging.log(level=logging.WARNING, msg=f"{self.name}: Trying to initialize GPU memory which does not exist. Defaulting to CPU")
             return
@@ -392,7 +434,7 @@ def clear_shms(names):
         try:
             shm = ImageSHM(n+"_gpu_handle",(1,),np.uint8)
             shm.shm.unlink()
-        except:
+        except Exception:
             pass
 
 
@@ -460,7 +502,7 @@ class hardwareLauncher:
             self.write(message)
             reply = self.read()
             #If there are issues with the reply format
-            if type(reply) != type(dict()) or "status" not in reply.keys():
+            if not isinstance(reply, dict) or "status" not in reply.keys():
                 return -1
             #If there was an issue on the process end
             if reply["status"] == 'BAD':
@@ -534,7 +576,7 @@ class Listener:
                 self.hardware.__del__()
                 self.running = False
                 self.write(self.OKMessage)
-            except:
+            except Exception:
                 self.write(self.BadMessage)
         elif requestType == "get":
             try:
@@ -543,7 +585,7 @@ class Listener:
                 message = self.OKMessage.copy()
                 message["property"] = property
                 self.write(message)
-            except:
+            except Exception:
                 self.write(self.BadMessage)
         elif requestType == "set":
             try:
@@ -552,7 +594,7 @@ class Listener:
                 property = getattr(self.hardware, propertyName)
                 setattr(self.hardware, propertyName, type(property)(propertyValue))
                 self.write(self.OKMessage)
-            except:
+            except Exception:
                 self.write(self.BadMessage)
         elif requestType == "run":
             try:
@@ -567,7 +609,7 @@ class Listener:
                 else:
                     function()
                 self.write(self.OKMessage)
-            except:
+            except Exception:
                 self.write(self.BadMessage)
         else:
             self.write(self.BadMessage)
@@ -585,7 +627,6 @@ def initExistingShm(shmName, gpuDevice=None):
     #Read wfc metadata and open a stream to the shared memory
     shmMeta = ImageSHM(shmName+"_meta", (ImageSHM.METADATA_SIZE,), np.float64).read_noblock()
     shmDType = float_to_dtype(shmMeta[3])
-    shmSize = int(shmMeta[2]//shmDType.itemsize)
     shmDims = []
     i = 0
     while int(shmMeta[4+i]) > 0:
@@ -616,7 +657,7 @@ def launchComponent(component, confKey, start = True):
     if start:
         obj.start()
     
-    l = Listener(obj, port= int(args.port))
-    while l.running:
-        l.listen()
+    listener = Listener(obj, port= int(args.port))
+    while listener.running:
+        listener.listen()
         time.sleep(1e-3)

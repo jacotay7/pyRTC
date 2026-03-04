@@ -66,10 +66,10 @@ Once the hardware classes have been established, a communication interface imple
 
 ### Shared Memory and Live Viewing 
 
-pyRTC is built using shared memory objects provided by the `multiprocessing` python package. Therefore, all data products shared between pyRTC components are available for soft real-time viewing and analysis. pyRTC comes with a real-time viewing script called `pyRTCView.py` which utilizes the pyQT5 package to produce a live feed of a specific shared memory object. For example, to view the images produced by the WavefrontSensor class run:
+pyRTC is built using shared memory objects provided by the `multiprocessing` python package. Therefore, all data products shared between pyRTC components are available for soft real-time viewing and analysis. pyRTC comes with a real-time viewing command called `pyrtc-view` which utilizes the pyQT5 package to produce a live feed of a specific shared memory object. For example, to view the images produced by the WavefrontSensor class run:
 
 ```
-python pyRTCView.py wfs
+pyrtc-view wfs
 ```
 
 We hope to expand this viewer into an example GUI in the future. 

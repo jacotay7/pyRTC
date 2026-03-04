@@ -1,19 +1,20 @@
-from pyRTC.WavefrontCorrector import *
-from pyRTC.WavefrontSensor import *
-from pyRTC.SlopesProcess import *
-from pyRTC.ScienceCamera import *
-from pyRTC.Pipeline import *
-from pyRTC.utils import *
+import argparse
+import os
+import time
+
+import numpy as np
+
+from pyRTC.Pipeline import Listener
+from pyRTC.ScienceCamera import ScienceCamera
+from pyRTC.WavefrontCorrector import WavefrontCorrector
+from pyRTC.WavefrontSensor import WavefrontSensor
+from pyRTC.utils import decrease_nice, read_yaml_file, set_affinity
 
 from OOPAO.Atmosphere import Atmosphere
 from OOPAO.DeformableMirror import DeformableMirror
-from OOPAO.MisRegistration import MisRegistration
 from OOPAO.Pyramid import Pyramid
 from OOPAO.Source import Source
 from OOPAO.Telescope import Telescope
-from OOPAO.calibration.ao_calibration import ao_calibration
-from OOPAO.calibration.compute_KL_modal_basis import compute_M2C
-from OOPAO.tools.displayTools import displayMap
 
 class _OOPAOWFSensor(WavefrontSensor):
 
@@ -301,7 +302,7 @@ if __name__ == "__main__":
 
     sim = OOPAOInterface(conf=conf)
     
-    l = Listener(sim, port= int(args.port))
-    while l.running:
-        l.listen()
+    listener = Listener(sim, port= int(args.port))
+    while listener.running:
+        listener.listen()
         time.sleep(1e-3)

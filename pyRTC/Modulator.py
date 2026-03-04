@@ -1,6 +1,5 @@
-from pyRTC.Pipeline import *
-from pyRTC.utils import *
-from pyRTC.pyRTCComponent import *
+from pyRTC.pyRTCComponent import pyRTCComponent
+from pyRTC.utils import setFromConfig
 
 class Modulator(pyRTCComponent):
     """

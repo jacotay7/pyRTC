@@ -7,7 +7,7 @@ loop:
   affinity: 2
   delay: 2
   method: push-pull
-  IMFile: "/home/whetstone/pyRTC/SHARP_LAB/calib/IM.npy"
+  IMFile: "/home/whetstone/pyRTC/examples/sharp_lab/calib/IM.npy"
   pGain: 0.28
   iGain: 0.066
   dGain: 0.078
@@ -36,7 +36,7 @@ wfs:
   width: 400 
   height: 400 
   darkCount: 2000
-  darkFile: "/home/whetstone/pyRTC/SHARP_LAB/calib/dark.npy"
+  darkFile: "/home/whetstone/pyRTC/examples/sharp_lab/calib/dark.npy"
   affinity: 3
   functions:
   - expose
@@ -44,8 +44,8 @@ wfs:
 slopes:
   type: SHWFS
   signalType: slopes
-  refSlopesFile: "/home/whetstone/pyRTC/SHARP_LAB/calib/ref.npy"
-  validSubApsFile: "/home/whetstone/pyRTC/SHARP_LAB/calib/validSubAps.npy"
+  refSlopesFile: "/home/whetstone/pyRTC/examples/sharp_lab/calib/ref.npy"
+  validSubApsFile: "/home/whetstone/pyRTC/examples/sharp_lab/calib/validSubAps.npy"
   subApSpacing: 15.54 #7.78
   subApOffsetX: 13
   subApOffsetY: 3
@@ -69,7 +69,7 @@ slopes:
 #   width: 192
 #   height: 192
 #   darkCount: 1000
-#   darkFile: "/home/whetstone/pyRTC/SHARP_LAB/calib/dark.npy"
+#   darkFile: "/home/whetstone/pyRTC/examples/sharp_lab/calib/dark.npy"
 #   affinity: 12
 #   flatNorm: True
 #   pupils: 
@@ -86,9 +86,9 @@ wfc:
   serial: "BAX118"
   numActuators: 97
   numModes: 94
-  flatFile: "/home/whetstone/pyRTC/SHARP_LAB/calib/wfcShape.npy"
-  saveFile: "/home/whetstone/pyRTC/SHARP_LAB/calib/wfcShape.npy"
-  m2cFile:  "/home/whetstone/pyRTC/SHARP_LAB/calib/m2c_kl.npy" 
+  flatFile: "/home/whetstone/pyRTC/examples/sharp_lab/calib/wfcShape.npy"
+  saveFile: "/home/whetstone/pyRTC/examples/sharp_lab/calib/wfcShape.npy"
+  m2cFile:  "/home/whetstone/pyRTC/examples/sharp_lab/calib/m2c_kl.npy" 
   floatingActuatorsFile: ""
   floatingInfluenceRadius: 1
   affinity: 5
@@ -108,8 +108,8 @@ psf:
   width: 128
   height: 128
   darkCount: 2000
-  darkFile: "/home/whetstone/pyRTC/SHARP_LAB/calib/psfDark.npy"
-  modelFile: "/home/whetstone/pyRTC/SHARP_LAB/calib/modelPSF.npy"
+  darkFile: "/home/whetstone/pyRTC/examples/sharp_lab/calib/psfDark.npy"
+  modelFile: "/home/whetstone/pyRTC/examples/sharp_lab/calib/modelPSF.npy"
   integration: 1
   affinity: 6
   functions:

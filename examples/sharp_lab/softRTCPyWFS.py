@@ -2,15 +2,14 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import time
-from pyRTC import *
-from pyRTC.hardware import *
-from pyRTC.utils import *
-from pyRTC.Pipeline import *
+from pyRTC import Loop, SlopesProcess
+from pyRTC.hardware import ALPAODM, PIModulator, XIMEA_WFS, spinCam
+from pyRTC.utils import read_yaml_file
 #%% CLEAR SHMs
 # shms = ["wfs= "wfsRaw= "signal= "signal2D= "wfc= "wfc2D= "psfShort= "psfLong"]
 # clear_shms(shms)
 # %% Load Config
-conf = read_yaml_file("/home/whetstone/pyRTC/SHARP_LAB/config_pywfs.yaml")
+conf = read_yaml_file("/home/whetstone/pyRTC/examples/sharp_lab/config_pywfs.yaml")
 # %% Launch WFS
 confWFS = conf["wfs"]
 wfs = XIMEA_WFS(conf=confWFS)
@@ -49,30 +48,30 @@ ncpaOptim = NCPAOptimizer(conf["optimizer"]["ncpa"], loop, slopes)
 if False:
     input("Sources Off?")
     wfs.takeDark()
-    wfs.darkFile = "/home/whetstone/pyRTC/SHARP_LAB/calib/darkPyWFS.npy"
+    wfs.darkFile = "/home/whetstone/pyRTC/examples/sharp_lab/calib/darkPyWFS.npy"
     wfs.saveDark()
     time.sleep(1)
     psf.takeDark()
-    psf.darkFile = "/home/whetstone/pyRTC/SHARP_LAB/calib/psfDark.npy"
+    psf.darkFile = "/home/whetstone/pyRTC/examples/sharp_lab/calib/psfDark.npy"
     psf.saveDark()
 
     input("Sources On?")
     input("Is Atmosphere Out?")
     wfc.flatten()
     psf.takeModelPSF()
-    psf.modelFile = "/home/whetstone/pyRTC/SHARP_LAB/calib/modelPSF.npy"
+    psf.modelFile = "/home/whetstone/pyRTC/examples/sharp_lab/calib/modelPSF.npy"
     psf.saveModelPSF()
 
 
     slopes.takeRefSlopes()
-    slopes.refSlopesFile = "/home/whetstone/pyRTC/SHARP_LAB/calib/refPyWFS.npy"
+    slopes.refSlopesFile = "/home/whetstone/pyRTC/examples/sharp_lab/calib/refPyWFS.npy"
     slopes.saveRefSlopes()
 
     #  STANDARD IM
     loop.IMMethod = "push-pull"
     loop.pokeAmp = 0.03
     loop.numItersIM = 100
-    loop.IMFile = "/home/whetstone/pyRTC/SHARP_LAB/calib/IM_PyWFS.npy"
+    loop.IMFile = "/home/whetstone/pyRTC/examples/sharp_lab/calib/IM_PyWFS.npy"
     wfc.flatten()
     loop.computeIM()
     loop.saveIM()
@@ -85,7 +84,7 @@ if False:
     loop.delay = 3
     loop.pokeAmp = 2e-2
     loop.numItersIM = 10000
-    loop.IMFile = "/home/whetstone/pyRTC/SHARP_LAB/calib/docrime_IM.npy"
+    loop.IMFile = "/home/whetstone/pyRTC/examples/sharp_lab/calib/docrime_IM.npy"
     wfc.flatten()
     loop.computeIM()
     loop.saveIM()
@@ -93,7 +92,7 @@ if False:
     time.sleep(1)
 
 # %% Compute CM
-loop.IMFile = "/home/whetstone/pyRTC/SHARP_LAB/calib/IM_PyWFS.npy"
+loop.IMFile = "/home/whetstone/pyRTC/examples/sharp_lab/calib/IM_PyWFS.npy"
 loop.numDroppedModes = 10
 loop.gain = 0.1
 loop.leakyGain = 0.01
@@ -132,12 +131,12 @@ for i in range(numOptim):
 
     wfc.saveShape()
     # slopes.takeRefSlopes()
-    # slopes.refSlopesFile= "/home/whetstone/pyRTC/SHARP_LAB/calib/ref.npy")
+    # slopes.refSlopesFile= "/home/whetstone/pyRTC/examples/sharp_lab/calib/ref.npy")
     # slopes.saveRefSlopes()
     psf.integrationLength= 2000
     time.sleep(2)
     psf.takeModelPSF()
-    psf.modelFile= "/home/whetstone/pyRTC/SHARP_LAB/calib/modelPSF_PyWFS.npy"
+    psf.modelFile= "/home/whetstone/pyRTC/examples/sharp_lab/calib/modelPSF_PyWFS.npy"
     psf.saveModelPSF()
     wfc.loadFlat()
 

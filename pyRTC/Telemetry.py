@@ -1,13 +1,11 @@
 """
 Wavefront Sensor Superclass
 """
-from pyRTC.Pipeline import ImageSHM, work
-from pyRTC.utils import *
-from pyRTC.pyRTCComponent import *
 import numpy as np
-import matplotlib.pyplot as plt
-from numba import jit
-from sys import platform
+
+from pyRTC.Pipeline import initExistingShm
+from pyRTC.pyRTCComponent import pyRTCComponent
+from pyRTC.utils import append_to_file, generate_filepath, setFromConfig
 
 class Telemetry(pyRTCComponent):
 
