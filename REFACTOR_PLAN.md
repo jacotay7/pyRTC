@@ -30,7 +30,7 @@
 - ⏳ WS2: Core/viewer separation work started indirectly via API stabilization; viewer cleanup now focused on CLI hardening/docs alignment.
 - ✅ WS3: Config validation layer implemented in `utils`, centrally enforced in `pyRTCComponent`, and covered by tests.
 - ⏳ WS4: System/notebook CI smoke tests now started (system + notebook surrogate tests added; dedicated smoke CI job added).
-- ⏳ WS5: Performance regression instrumentation not yet implemented.
+- ⏳ WS5: Performance instrumentation expanded to core compute kernels (`10x10`, `20x20`, `60x60`) with `p99_hz` metrics and baseline-enforced CI comparison; threshold policy tuning still pending.
 
 ## Workstreams
 

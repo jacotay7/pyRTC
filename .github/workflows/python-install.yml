@@ -66,3 +66,26 @@ jobs:
 
       - name: Run system and notebook smoke tests
         run: pytest tests/system tests/notebooks -q --no-cov
+
+      - name: Run performance smoke report
+        run: python benchmarks/perf_smoke.py --output benchmarks/perf_smoke_report.json
+
+      - name: Print performance dictionaries
+        run: |
+          python - <<'PY'
+          import json
+          with open('benchmarks/perf_smoke_report.json', 'r', encoding='utf-8') as f:
+              report = json.load(f)
+          print(json.dumps(report.get('measure_execution_time', {}), indent=2))
+          print(json.dumps(report.get('latency_math', {}), indent=2))
+          print(json.dumps(report.get('core_compute', {}), indent=2))
+          PY
+
+      - name: Compare against committed perf baseline
+        run: python benchmarks/check_perf_baseline.py --current benchmarks/perf_smoke_report.json --baseline benchmarks/perf_smoke_baseline.json
+
+      - name: Upload performance smoke artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: perf-smoke-report-py${{ matrix.python-version }}
+          path: benchmarks/perf_smoke_report.json

@@ -15,7 +15,7 @@ setup(
     author='Jacob Taylor',
     author_email='jacob.taylor@mail.utoronto.ca',
     license='GPL-3.0-or-later',
-    packages=find_packages(include=['pyRTC', 'pyRTC.*']),
+    packages=find_packages(include=['pyRTC', 'pyRTC.*', 'benchmarks', 'benchmarks.*']),
     include_package_data=True,
     python_requires='>=3.9',
     install_requires=[
@@ -63,6 +63,7 @@ setup(
             "pyrtc-clear-shms=pyRTC.scripts.clear_shms:main",
             "pyrtc-view-launch-all=pyRTC.scripts.view_launch_all:main",
             "pyrtc-measure-latency=pyRTC.scripts.measure_latency:main",
+            "pyrtc-core-bench=benchmarks.core_compute_bench:main",
         ]
     },
 
