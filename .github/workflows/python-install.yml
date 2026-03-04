@@ -76,9 +76,7 @@ jobs:
           import json
           with open('benchmarks/perf_smoke_report.json', 'r', encoding='utf-8') as f:
               report = json.load(f)
-          print(json.dumps(report.get('measure_execution_time', {}), indent=2))
-          print(json.dumps(report.get('latency_math', {}), indent=2))
-          print(json.dumps(report.get('core_compute', {}), indent=2))
+          print(json.dumps(report, indent=2))
           PY
 
       - name: Compare against committed perf baseline

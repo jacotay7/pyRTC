@@ -3,17 +3,6 @@ from benchmarks import check_perf_baseline
 
 def _sample_report(include_gpu=False):
     report = {
-        "measure_execution_time": {
-            "median": 1.0,
-            "iqr": 0.1,
-            "ci1": 0.8,
-            "ci99": 1.2,
-        },
-        "latency_math": {
-            "mean_latency_s": 0.01,
-            "p99_latency_s": 0.02,
-            "frame_shift": 0,
-        },
         "core_compute": {
             "profiles": {
                 "10x10": {
@@ -44,12 +33,12 @@ def _sample_report(include_gpu=False):
 
 def test_compare_against_baseline_success():
     current = _sample_report(include_gpu=True)
-    baseline = _sample_report(include_gpu=True)
+    baseline = _sample_report(include_gpu=True)["core_compute"]
 
     missing, comparison = check_perf_baseline.compare_against_baseline(current, baseline)
 
     assert missing == []
-    assert "measure_execution_time.median" in comparison
+    assert "core_compute.profiles.10x10.k.mean_s" in comparison
 
 
 def test_compare_against_baseline_detects_missing_metric():

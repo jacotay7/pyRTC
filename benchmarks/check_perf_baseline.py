@@ -11,37 +11,43 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _require_path(data: Dict, dotted_path: str):
+def _require_path(data: Dict, path_segments):
     node = data
-    for segment in dotted_path.split("."):
+    for segment in path_segments:
         if segment not in node:
-            raise KeyError(dotted_path)
+            raise KeyError(path_segments)
         node = node[segment]
     return node
 
 
+def _segments_to_key(path_segments):
+    return ".".join(path_segments)
+
+
+def _normalize_report_shape(data: Dict):
+    # Full perf smoke report shape
+    if "core_compute" in data:
+        return data
+    # Core-only baseline shape (meta/profiles/gpu_kernels at top level)
+    if "profiles" in data or "gpu_kernels" in data:
+        return {"core_compute": data}
+    return data
+
+
 def _required_metric_paths(current: Dict):
-    paths = [
-        "measure_execution_time.median",
-        "measure_execution_time.iqr",
-        "measure_execution_time.ci1",
-        "measure_execution_time.ci99",
-        "latency_math.mean_latency_s",
-        "latency_math.p99_latency_s",
-        "latency_math.frame_shift",
-    ]
+    paths = []
 
     profiles = current.get("core_compute", {}).get("profiles", {})
     for profile_name, kernels in profiles.items():
         for kernel_name in kernels.keys():
-            base = f"core_compute.profiles.{profile_name}.{kernel_name}"
+            base = ("core_compute", "profiles", profile_name, kernel_name)
             paths.extend(
                 [
-                    f"{base}.mean_s",
-                    f"{base}.median_s",
-                    f"{base}.p95_s",
-                    f"{base}.p99_s",
-                    f"{base}.p99_hz",
+                    (*base, "mean_s"),
+                    (*base, "median_s"),
+                    (*base, "p95_s"),
+                    (*base, "p99_s"),
+                    (*base, "p99_hz"),
                 ]
             )
 
@@ -51,14 +57,14 @@ def _required_metric_paths(current: Dict):
         for kernel_name in gpu_section.keys():
             if kernel_name == "status":
                 continue
-            base = f"core_compute.gpu_kernels.{kernel_name}"
+            base = ("core_compute", "gpu_kernels", kernel_name)
             paths.extend(
                 [
-                    f"{base}.mean_s",
-                    f"{base}.median_s",
-                    f"{base}.p95_s",
-                    f"{base}.p99_s",
-                    f"{base}.p99_hz",
+                    (*base, "mean_s"),
+                    (*base, "median_s"),
+                    (*base, "p95_s"),
+                    (*base, "p99_s"),
+                    (*base, "p99_hz"),
                 ]
             )
 
@@ -66,6 +72,9 @@ def _required_metric_paths(current: Dict):
 
 
 def compare_against_baseline(current: Dict, baseline: Dict):
+    current = _normalize_report_shape(current)
+    baseline = _normalize_report_shape(baseline)
+
     required = _required_metric_paths(current)
     missing = []
     comparison = {}
@@ -75,14 +84,14 @@ def compare_against_baseline(current: Dict, baseline: Dict):
             current_value = _require_path(current, path)
             baseline_value = _require_path(baseline, path)
         except KeyError:
-            missing.append(path)
+            missing.append(_segments_to_key(path))
             continue
 
         if isinstance(current_value, (int, float)) and isinstance(baseline_value, (int, float)):
             ratio = None
             if baseline_value != 0:
                 ratio = float(current_value) / float(baseline_value)
-            comparison[path] = {
+            comparison[_segments_to_key(path)] = {
                 "current": float(current_value),
                 "baseline": float(baseline_value),
                 "ratio": ratio,

@@ -57,6 +57,13 @@ def test_main_no_show(monkeypatch, tmp_path):
 
     monkeypatch.setattr(measure_latency, "initExistingShm", lambda name: (FakeShm(), None, None))
     monkeypatch.setattr(measure_latency.plt, "show", lambda: None)
+    monkeypatch.setattr(measure_latency, "plot_latency_histogram", lambda sys_latency, args: None)
+
+    def _fake_savefig(path):
+        with open(path, "wb") as f:
+            f.write(b"%PDF-FAKE")
+
+    monkeypatch.setattr(measure_latency.plt, "savefig", _fake_savefig)
 
     out = tmp_path / "lat.pdf"
     code = measure_latency.main(
