@@ -30,6 +30,20 @@ def _safe_percentile(values, pct: float) -> float:
     return sorted_vals[low] * (1.0 - weight) + sorted_vals[high] * weight
 
 
+def _safe_min(values) -> float:
+    arr = np.asarray(values, dtype=np.float64).reshape(-1)
+    if arr.size == 0:
+        return 0.0
+    return min(float(x) for x in arr)
+
+
+def _safe_max(values) -> float:
+    arr = np.asarray(values, dtype=np.float64).reshape(-1)
+    if arr.size == 0:
+        return 0.0
+    return max(float(x) for x in arr)
+
+
 def _build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Measure latency between two pyRTC shared-memory streams."
@@ -130,7 +144,7 @@ def plot_latency_histogram(sys_latency: np.ndarray, args) -> plt.Figure:
     plt.ylabel("Counts", size=16)
     plt.title(f"pyRTC Latency ({args.source_shm} -> {args.target_shm}, tag={args.tag})", size=18)
     plt.ylim(0.5, max(2.0, args.samples / 2))
-    plt.xlim(np.min(xticks) * 0.9, np.max(xticks) * 1.1)
+    plt.xlim(_safe_min(xticks) * 0.9, _safe_max(xticks) * 1.1)
     plt.grid(True, which="both", linestyle="--", linewidth=0.5)
     plt.legend()
     plt.tight_layout()
@@ -160,7 +174,8 @@ def main(argv=None) -> int:
         show_progress=not args.no_progress,
     )
 
-    print(np.min(source_counts - target_counts), np.max(source_counts - target_counts))
+    count_delta = source_counts - target_counts
+    print(_safe_min(count_delta), _safe_max(count_delta))
 
     sys_latency, frame_shift = compute_latency_seconds(source_write_times, target_write_times)
     print(f"Applied frame shift: {frame_shift}")
