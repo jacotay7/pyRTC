@@ -81,4 +81,4 @@ We ask that if you implement new features that may be of broader interest to the
 Contact
 ------------
 
-For feedback, collaboration, and feature requests you can contact me via e-mail at jacob.taylor@mail.utoronto.ca.
+For feedback, collaboration, and feature requests you can contact me via e-mail at jtaylor@keck.hawaii.edu.

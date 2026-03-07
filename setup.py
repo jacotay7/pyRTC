@@ -13,7 +13,7 @@ setup(
     long_description_content_type='text/markdown',
     url='https://github.com/jacotay7/pyRTC',
     author='Jacob Taylor',
-    author_email='jacob.taylor@mail.utoronto.ca',
+    author_email='jtaylor@keck.hawaii.edu',
     license='GPL-3.0-or-later',
     packages=find_packages(include=['pyRTC', 'pyRTC.*', 'benchmarks', 'benchmarks.*']),
     include_package_data=True,

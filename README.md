@@ -137,7 +137,7 @@ pyRTC is an open-source software intended to be built for and by the AO communit
 
 # Contact
 
-For feedback and feature requests you can contact me via e-mail at jacob.taylor@mail.utoronto.ca.
+For feedback and feature requests you can contact me via e-mail at jtaylor@keck.hawaii.edu.
 
 ## Citation
 
