@@ -72,7 +72,7 @@ The base component class starts configured functions in worker threads. A minima
 
 .. code-block:: python
 
-	from pyRTC import pyRTCComponent
+	from pyRTC.pyRTCComponent import pyRTCComponent
 
 	component = pyRTCComponent(
 		 {

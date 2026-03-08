@@ -1,12 +1,24 @@
 ﻿pyRTC.pyRTCComponent
 ====================
 
-.. automodule:: pyRTC.pyRTCComponent
+.. currentmodule:: pyRTC
+
+.. autoclass:: pyRTCComponent
 
    
-   .. rubric:: Classes
+   .. automethod:: __init__
+
+   
+   .. rubric:: Methods
 
    .. autosummary::
    
-      pyRTCComponent
+      ~pyRTCComponent.__init__
+      ~pyRTCComponent.start
+      ~pyRTCComponent.stop
+   
+   
+
+   
+   
    

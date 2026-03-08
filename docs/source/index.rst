@@ -22,8 +22,6 @@ These components can be composed in either a single-process development mode or 
 
 Github repository: https://github.com/jacotay7/pyRTC
 
-Paper (Under Review): https://joss.theoj.org/papers/823c5feae7710aaf4ceb86adeda8a621
-
 Main Features
 --------------
 

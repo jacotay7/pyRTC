@@ -18,7 +18,7 @@ The following example shows the typical `soft-RTC` pattern for science-camera se
 
 .. code-block:: python
 
-  from pyRTC import ScienceCamera
+  from pyRTC.ScienceCamera import ScienceCamera
   from pyRTC.utils import read_yaml_file
 
   conf = read_yaml_file("path/to/config.yaml")
@@ -36,7 +36,7 @@ If the science camera is tied to a specific vendor SDK or operational process bo
 
 .. code-block:: python
   
-  from pyRTC import hardwareLauncher
+  from pyRTC.Pipeline import hardwareLauncher
 
   config = 'path/to/config.yaml'
   port = 3003

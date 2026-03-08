@@ -4,7 +4,7 @@ import io
 import numpy as np
 from astropy.io import fits
 
-from pyRTC import utils
+import pyRTC.utils as utils
 
 
 def test_power_law_og_shape():

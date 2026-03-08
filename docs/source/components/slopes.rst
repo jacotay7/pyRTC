@@ -29,7 +29,7 @@ See below for how to launch a hard-RTC equivalent.
   """
 
   #%% Run in interactive python or jupyter notebook to keep process alive
-  from pyRTC import SlopesProcess
+  from pyRTC.SlopesProcess import SlopesProcess
   import matplotlib.pyplot as plt
   from pyRTC.utils import read_yaml_file
 
@@ -87,7 +87,7 @@ See above for how to launch a soft-RTC equivalent.
 
 .. code-block:: python
 
-  from pyRTC import hardwareLauncher
+  from pyRTC.Pipeline import hardwareLauncher
 
   """
   For the Hard-RTC, you will need to set-up a config before hand and store it in a yaml file.

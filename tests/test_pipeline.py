@@ -2,7 +2,7 @@ import os
 
 import numpy as np
 
-from pyRTC import Pipeline as pipeline
+import pyRTC.Pipeline as pipeline
 from pyRTC.logging_utils import configure_logging
 
 

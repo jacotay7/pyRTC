@@ -2,7 +2,9 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import time
-from pyRTC import Loop, SlopesProcess, configure_logging, get_logger
+from pyRTC.Loop import Loop
+from pyRTC.SlopesProcess import SlopesProcess
+from pyRTC.logging_utils import configure_logging, get_logger
 from pyRTC.hardware import ALPAODM, PIModulator, XIMEA_WFS, spinCam
 from pyRTC.utils import read_yaml_file
 

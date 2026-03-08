@@ -19,7 +19,7 @@ In practice, users usually subclass `Optimizer` and implement task-specific obje
 
 .. code-block:: python
 
-  from pyRTC import Optimizer
+  from pyRTC.Optimizer import Optimizer
 
   class MyOptimizer(Optimizer):
       def objective(self, trial):
@@ -44,7 +44,7 @@ For hardware-facing or supervisory workflows, the optimizer can also run in a se
 
 .. code-block:: python
   
-  from pyRTC import hardwareLauncher
+  from pyRTC.Pipeline import hardwareLauncher
 
   config = 'path/to/config.yaml'
   port = 3006

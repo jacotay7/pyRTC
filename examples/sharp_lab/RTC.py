@@ -16,7 +16,7 @@ import time
 
 import numpy as np
 
-from pyRTC import configure_logging, get_logger
+from pyRTC.logging_utils import configure_logging, get_logger
 from pyRTC.Pipeline import clear_shms, hardwareLauncher, initExistingShm
 from pyRTC.hardware import NCPAOptimizer, PIDOptimizer, loopOptimizer
 from pyRTC.utils import precise_delay, read_yaml_file

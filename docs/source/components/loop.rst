@@ -26,7 +26,7 @@ In this mode the control object lives in the same Python process as the rest of 
 .. code-block:: python
 
   import numpy as np
-  from pyRTC import Loop
+  from pyRTC.Loop import Loop
   from pyRTC.utils import read_yaml_file
 
   conf = read_yaml_file("path/to/config.yaml")
@@ -45,7 +45,7 @@ The hard-RTC path is appropriate when the loop needs to interact with hardware-f
 
 .. code-block:: python
   
-  from pyRTC import hardwareLauncher
+  from pyRTC.Pipeline import hardwareLauncher
 
   config = 'path/to/config.yaml'
   port = 3004
