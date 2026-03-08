@@ -62,6 +62,8 @@ These constraints should remain true throughout the roadmap:
 
 ## Issue 01
 
+Status: Completed on branch `issue-01-system-config-validation` and merged into `dev` on 2026-03-08.
+
 ### Title
 
 Add system-level configuration schema and `pyrtc-validate-config` CLI
@@ -178,6 +180,8 @@ Expected behavior:
 ---
 
 ## Issue 02
+
+Status: Implemented on branch `issue-02-component-capability-descriptors` on 2026-03-08.
 
 ### Title
 
