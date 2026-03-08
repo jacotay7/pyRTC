@@ -17,16 +17,19 @@ from pyRTC.WavefrontCorrector import WavefrontCorrector
 
 #Prevents camera output from messing with communication
 original_stdout = sys.stdout
-sys.stdout = open(os.devnull, 'w')
-''' Add '/Lib' or '/Lib64' to path '''
-if (8 * struct.calcsize("P")) == 32:
-    #Use x86 libraries.
-    from Lib.asdk import DM
-else:
-    #Use x86_64 libraries.
-    from Lib64.asdk import DM
-#Go back to communicating with the main program through stdout
-sys.stdout = original_stdout
+_devnull_stdout = open(os.devnull, 'w')
+try:
+    sys.stdout = _devnull_stdout
+    ''' Add '/Lib' or '/Lib64' to path '''
+    if (8 * struct.calcsize("P")) == 32:
+        #Use x86 libraries.
+        from Lib.asdk import DM
+    else:
+        #Use x86_64 libraries.
+        from Lib64.asdk import DM
+finally:
+    sys.stdout = original_stdout
+    _devnull_stdout.close()
 
 class ALPAODM(WavefrontCorrector):
 

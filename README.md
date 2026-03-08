@@ -148,6 +148,12 @@ python examples/synthetic_shwfs/run_soft_rtc.py --duration 15
 
 It publishes the normal `wfs`, `signal2D`, `wfc2D`, `psfShort`, and `psfLong` streams, so the standard viewer tools work unchanged while you evaluate the control flow and subclassing points.
 
+Recommended composite viewer command while the demo is running:
+
+```bash
+pyrtc-view wfs signal2D wfc2D psfShort psfLong --geometry 2x3
+```
+
 The documentation will live on Read the Docs. Placeholder entry points for now:
 
 - [Getting Started](https://pyrtc.readthedocs.io/en/latest/guides/getting_started.html)

@@ -14,8 +14,9 @@ if str(REPO_ROOT) not in sys.path:
 from pyRTC.SlopesProcess import SlopesProcess
 from pyRTC.WavefrontCorrector import WavefrontCorrector
 from pyRTC.Loop import Loop
+from pyRTC.Pipeline import ImageSHM
 from pyRTC.hardware.SyntheticSystems import SyntheticSHWFS, SyntheticScienceCamera
-from pyRTC.utils import read_yaml_file
+from pyRTC.utils import float_to_dtype, read_yaml_file
 
 
 DEFAULT_STREAMS = [
@@ -47,6 +48,87 @@ def clear_named_shms(names):
                 pass
             finally:
                 shm.close()
+
+
+def _existing_shm_spec(name):
+    try:
+        meta_shm = shared_memory.SharedMemory(name=name + "_meta")
+    except FileNotFoundError:
+        return None
+    except Exception:
+        return None
+
+    try:
+        metadata = np.ndarray((ImageSHM.METADATA_SIZE,), dtype=np.float64, buffer=meta_shm.buf).copy()
+    finally:
+        meta_shm.close()
+
+    shape = []
+    index = 0
+    while 4 + index < metadata.size and int(metadata[4 + index]) > 0:
+        shape.append(int(metadata[4 + index]))
+        index += 1
+    return tuple(shape), np.dtype(float_to_dtype(metadata[3]))
+
+
+def expected_stream_specs(config):
+    wfs_width = int(config["wfs"]["width"])
+    wfs_height = int(config["wfs"]["height"])
+    downsample = int(config["wfs"].get("downsampleFactor", 0))
+    image_shape = [wfs_width, wfs_height]
+    if downsample > 0:
+        image_shape[0] //= downsample
+        image_shape[1] //= downsample
+
+    subap_spacing = int(config["slopes"]["subApSpacing"])
+    num_regions = image_shape[0] // int(round(subap_spacing, 0))
+    signal2d_shape = (2 * num_regions, num_regions)
+    signal_shape = (int(np.prod(signal2d_shape)),)
+
+    specs = {
+        "wfsRaw": {"shape": (wfs_width, wfs_height), "dtype": np.dtype(np.uint16)},
+        "wfs": {"shape": tuple(image_shape), "dtype": np.dtype(np.int32)},
+        "signal": {"shape": signal_shape, "dtype": np.dtype(np.float32)},
+        "signal2D": {"shape": signal2d_shape, "dtype": np.dtype(np.float32)},
+        "wfc": {"shape": (int(config["wfc"]["numModes"]),), "dtype": np.dtype(np.float32)},
+        "wfc2D": {"shape": signal2d_shape, "dtype": np.dtype(np.float32)},
+    }
+
+    if "psf" in config:
+        psf_shape = (int(config["psf"]["width"]), int(config["psf"]["height"]))
+        specs.update(
+            {
+                "psfShort": {"shape": psf_shape, "dtype": np.dtype(np.int32)},
+                "psfLong": {"shape": psf_shape, "dtype": np.dtype(np.float64)},
+                "strehl": {"shape": (1,), "dtype": np.dtype(float)},
+                "tiptilt": {"shape": (1,), "dtype": np.dtype(float)},
+            }
+        )
+
+    return specs
+
+
+def ensure_expected_shms(config, force_rebuild=False):
+    specs = expected_stream_specs(config)
+    if force_rebuild:
+        clear_named_shms(list(specs))
+        return list(specs), []
+
+    rebuilt = []
+    reused = []
+    for name, spec in specs.items():
+        existing = _existing_shm_spec(name)
+        if existing is None:
+            rebuilt.append(name)
+            continue
+        if existing[0] != spec["shape"] or np.dtype(existing[1]) != np.dtype(spec["dtype"]):
+            rebuilt.append(name)
+        else:
+            reused.append(name)
+
+    if rebuilt:
+        clear_named_shms(rebuilt)
+    return rebuilt, reused
 
 
 def build_system(config):
@@ -136,28 +218,35 @@ def _build_arg_parser():
     parser.add_argument(
         "--no-clear-shms",
         action="store_true",
-        help="Skip clearing standard pyRTC shared-memory streams before launch.",
+        help="Skip compatibility checks and leave existing pyRTC shared-memory streams untouched.",
     )
     return parser
 
 
 def main(argv=None):
     args = _build_arg_parser().parse_args(argv)
-    if not args.no_clear_shms:
-        clear_named_shms(DEFAULT_STREAMS)
-
     config = read_yaml_file(args.config)
+    if args.no_clear_shms:
+        rebuilt = []
+        reused = []
+    else:
+        rebuilt, reused = ensure_expected_shms(config)
     system = build_system(config)
 
     print("Synthetic SHWFS soft-RTC demo")
     print(f"Config: {args.config}")
+    if args.no_clear_shms:
+        print("Skipping SHM compatibility checks")
+    elif rebuilt:
+        print("Rebuilt SHMs:", ", ".join(rebuilt))
+    else:
+        print("Reusing existing compatible SHMs")
+    if reused:
+        print("Reused SHMs:", ", ".join(reused))
     print("Viewer commands:")
-    print("  pyrtc-view wfs")
-    print("  pyrtc-view signal2D -0.8 0.8")
-    print("  pyrtc-view wfc2D -0.8 0.8")
+    print("  pyrtc-view wfs signal2D wfc2D psfShort psfLong --geometry 2x3")
     if system.get("psf") is not None:
-        print("  pyrtc-view psfShort")
-        print("  pyrtc-view psfLong")
+        print("  pyrtc-view psfShort psfLong --geometry row")
 
     start_system(system)
     start_time = time.perf_counter()

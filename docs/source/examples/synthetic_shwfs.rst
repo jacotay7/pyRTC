@@ -61,15 +61,19 @@ The exact numbers will vary by host, but the important pattern is:
 Viewer Commands
 ---------------
 
-Open these in separate terminals while the demo is running:
+The preferred way to inspect the demo is a single composite viewer window:
 
 .. code-block:: bash
 
-	pyrtc-view wfs
-	pyrtc-view signal2D -0.8 0.8
-	pyrtc-view wfc2D -0.8 0.8
-	pyrtc-view psfShort
-	pyrtc-view psfLong
+	pyrtc-view wfs signal2D wfc2D psfShort psfLong --geometry 2x3
+
+If you want a smaller science-camera-only view, open:
+
+.. code-block:: bash
+
+	pyrtc-view psfShort psfLong --geometry row
+
+The composite viewer auto-sizes to the stream dimensions, so it is usually a better default than opening many separate windows.
 
 Config Layout
 -------------

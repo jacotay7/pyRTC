@@ -1,3 +1,4 @@
+from pyRTC.scripts import view
 from pyRTC.scripts import clear_shms, view_launch_all
 
 
@@ -51,3 +52,35 @@ def test_view_launch_all_main_invokes_launcher(monkeypatch):
 
     assert code == 0
     assert launched["ok"]
+
+
+def test_view_split_targets_and_limits_supports_legacy_vmin_vmax():
+    shms, vmin, vmax = view._split_targets_and_limits(["signal2D", "-1", "1"])
+
+    assert shms == ["signal2D"]
+    assert vmin == -1.0
+    assert vmax == 1.0
+
+
+def test_view_split_targets_and_limits_supports_multiple_shms():
+    shms, vmin, vmax = view._split_targets_and_limits(["wfs", "signal2D", "wfc2D"])
+
+    assert shms == ["wfs", "signal2D", "wfc2D"]
+    assert vmin is None
+    assert vmax is None
+
+
+def test_view_resolve_grid_variants():
+    assert view._resolve_grid(3, "row") == (1, 3)
+    assert view._resolve_grid(3, "column") == (3, 1)
+    assert view._resolve_grid(5, "square") == (2, 3)
+    assert view._resolve_grid(5, "2x3") == (2, 3)
+
+
+def test_view_rejects_too_small_explicit_grid():
+    try:
+        view._resolve_grid(5, "2x2")
+    except ValueError as exc:
+        assert "does not have enough cells" in str(exc)
+    else:
+        raise AssertionError("Expected ValueError for undersized explicit grid")
