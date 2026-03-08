@@ -65,6 +65,21 @@ After installation, verify that the public package imports cleanly:
 
 	python -c "import pyRTC; print(pyRTC.__all__)"
 
+Validate a Config Before Launch
+-------------------------------
+
+Before starting a system, validate the full YAML file:
+
+.. code-block:: bash
+
+	pyrtc-validate-config examples/synthetic_shwfs/config.yaml
+
+For automation or GUI-oriented tooling, JSON output is also available:
+
+.. code-block:: bash
+
+	pyrtc-validate-config examples/synthetic_shwfs/config.yaml --format json
+
 Minimal Component Example
 -------------------------
 
