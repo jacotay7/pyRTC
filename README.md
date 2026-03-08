@@ -132,6 +132,12 @@ Verify the install:
 python -c "import pyRTC; print(pyRTC.__all__)"
 ```
 
+Validate a system config before launch:
+
+```bash
+pyrtc-validate-config examples/synthetic_shwfs/config.yaml
+```
+
 The best first end-to-end path today is the no-hardware synthetic Shack-Hartmann workflow under `examples/synthetic_shwfs/`.
 
 Key files:

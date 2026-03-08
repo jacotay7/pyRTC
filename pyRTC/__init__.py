@@ -7,6 +7,7 @@ utilities so users can build systems from a compact public API surface.
 """
 
 from .Loop import Loop
+from .config_schema import normalize_system_config, read_system_config, validate_system_config
 from .logging_utils import add_logging_cli_args, configure_logging, configure_logging_from_args, get_logger
 from .Modulator import Modulator
 from .Optimizer import Optimizer
@@ -40,10 +41,12 @@ __all__ = [
 	"Telemetry",
 	"WavefrontCorrector",
 	"WavefrontSensor",
+	"normalize_system_config",
 	"gpu_torch_available",
 	"get_logger",
 	"hardwareLauncher",
 	"initExistingShm",
+	"read_system_config",
 	"configure_logging",
 	"configure_logging_from_args",
 	"add_logging_cli_args",
@@ -51,5 +54,6 @@ __all__ = [
 	"normalize_gpu_device",
 	"pyRTCComponent",
 	"setFromConfig",
+	"validate_system_config",
 	"utils",
 ]
