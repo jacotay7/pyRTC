@@ -11,8 +11,12 @@ import sys
 
 import numpy as np
 
+from pyRTC.logging_utils import get_logger
 from pyRTC.Pipeline import launchComponent
 from pyRTC.WavefrontCorrector import WavefrontCorrector
+
+
+logger = get_logger(__name__)
 
 
 #Prevents camera output from messing with communication
@@ -34,35 +38,42 @@ finally:
 class ALPAODM(WavefrontCorrector):
 
     def __init__(self, conf) -> None:
-        #Initialize the pyRTC super class
-        super().__init__(conf)
+        try:
+            super().__init__(conf)
 
-        #Initialize connection to ALPAO DM
-        self.serial = conf["serial"]
-        self.dm = DM(self.serial)
-        self.CAP = conf["commandCap"]
-        #Ask for the number of actuators
-        self.numActuators = int(self.dm.Get('NBOfActuator'))
+            self.serial = conf["serial"]
+            self.dm = DM(self.serial)
+            self.CAP = conf["commandCap"]
+            self.numActuators = int(self.dm.Get('NBOfActuator'))
 
-        #Generate the ALPAO actuator layout for the number of actuators
-        layout = self.generateLayout()
-        self.setLayout(layout)
+            layout = self.generateLayout()
+            self.setLayout(layout)
 
-        if conf["floatingActuatorsFile"][-4:] == '.npy':
-            floatActuatorInds = np.load(conf["floatingActuatorsFile"])
-            self.deactivateActuators(floatActuatorInds)
+            floating_file = conf.get("floatingActuatorsFile", "")
+            if floating_file.endswith('.npy'):
+                floatActuatorInds = np.load(floating_file)
+                self.deactivateActuators(floatActuatorInds)
+                self.logger.info("Loaded floating actuators from %s", floating_file)
 
-        #flatten the mirror
-        self.flatten()
+            self.flatten()
+            self.logger.info("Initialized ALPAO DM serial=%s actuators=%s cap=%s", self.serial, self.numActuators, self.CAP)
+        except Exception:
+            logger.exception("Failed to initialize ALPAO DM")
+            raise
 
         return
 
     def generateLayout(self):
-
-        if self.numActuators == 97:
-            xx, yy = np.meshgrid(np.arange(11), np.arange(11))
-            layout = np.sqrt((xx - 5)**2 + (yy-5)**2) < 5.5
-        return layout
+        try:
+            if self.numActuators == 97:
+                xx, yy = np.meshgrid(np.arange(11), np.arange(11))
+                layout = np.sqrt((xx - 5)**2 + (yy - 5)**2) < 5.5
+                self.logger.info("Generated ALPAO 97-actuator layout")
+                return layout
+            raise ValueError(f"Unsupported ALPAO actuator count: {self.numActuators}")
+        except Exception:
+            self.logger.exception("Failed to generate ALPAO layout for actuators=%s", getattr(self, "numActuators", None))
+            raise
     
     def sendToHardware(self):
         #Do all of the normal updating of the super class
@@ -74,8 +85,17 @@ class ALPAODM(WavefrontCorrector):
         return
 
     def __del__(self):
-        super().__del__()
-        self.dm.Reset()
+        component_logger = getattr(self, "logger", logger)
+        try:
+            super().__del__()
+        finally:
+            dm = getattr(self, "dm", None)
+            if dm is not None:
+                try:
+                    dm.Reset()
+                    component_logger.info("Reset ALPAO DM")
+                except Exception:
+                    component_logger.exception("Failed while resetting ALPAO DM")
         return
     
 
