@@ -16,6 +16,12 @@ from pyRTC.SlopesProcess import computeSlopesPYWFSOptimNumba, computeSlopesPYWFS
 logger = get_logger(__name__)
 
 
+AO_SENSOR_LABELS = {
+    "pywfs": "PYWFS",
+    "shwfs": "SHWFS",
+}
+
+
 def _format_stats(stats: dict[str, float] | None) -> str:
     if not stats or "p99_hz" not in stats or "p99_s" not in stats:
         return "-"
@@ -26,15 +32,39 @@ def _format_stats(stats: dict[str, float] | None) -> str:
     return f"{hz:.0f} Hz / {us:.1f} us"
 
 
-def _log_benchmark_summary(results: dict[str, Any]) -> None:
-    logger.info("Synthetic AO loop benchmark summary:")
+def _render_table(headers: list[str], rows: list[list[str]]) -> str:
+    widths = [len(header) for header in headers]
+    for row in rows:
+        for index, cell in enumerate(row):
+            widths[index] = max(widths[index], len(cell))
+
+    def _fmt_row(row: list[str]) -> str:
+        return " | ".join(cell.ljust(widths[index]) for index, cell in enumerate(row))
+
+    separator = "-+-".join("-" * width for width in widths)
+    lines = [_fmt_row(headers), separator]
+    lines.extend(_fmt_row(row) for row in rows)
+    return "\n".join(lines)
+
+
+def _build_summary_table(results: dict[str, Any]) -> str:
+    rows: list[list[str]] = []
     for sensor_name, profiles in results.get("results", {}).items():
-        logger.info("  %s", sensor_name)
         for profile_name, variants in profiles.items():
             cpu_summary = _format_stats(variants.get("cpu"))
             gpu_stats = variants.get("gpu")
             gpu_summary = _format_stats(gpu_stats if isinstance(gpu_stats, dict) and "status" not in gpu_stats else None)
-            logger.info("    %s: CPU %s | GPU %s", profile_name, cpu_summary, gpu_summary)
+            rows.append([
+                AO_SENSOR_LABELS.get(sensor_name, sensor_name),
+                profile_name,
+                cpu_summary,
+                gpu_summary,
+            ])
+    return _render_table(["Sensor", "Size", "CPU p99", "GPU p99"], rows)
+
+
+def _log_benchmark_summary(results: dict[str, Any]) -> None:
+    logger.info("Synthetic AO loop benchmark summary:\n%s", _build_summary_table(results))
 
 
 def _safe_percentile(values, pct: float) -> float:

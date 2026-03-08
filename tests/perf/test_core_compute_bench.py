@@ -71,3 +71,25 @@ def test_core_compute_bench_main_without_output_succeeds(tmp_path, monkeypatch):
 
     assert code == 0
     assert not Path("benchmarks/core_compute_bench_report.json").exists()
+
+
+def test_core_compute_summary_table_contains_compact_headers():
+    report = {
+        "profiles": {
+            "10x10": {
+                "loop.leakyIntegratorNumba": {"p99_hz": 1000.0, "p99_s": 0.001},
+            }
+        },
+        "gpu_profiles": {
+            "10x10": {
+                "status": {"available": True},
+                "loop.leakIntegratorGPU": {"p99_hz": 2000.0, "p99_s": 0.0005},
+            }
+        },
+    }
+
+    table = core_compute_bench._build_summary_table(report)
+    assert "Size" in table
+    assert "Kernel" in table
+    assert "Loop integrator" in table
+    assert "10x10" in table

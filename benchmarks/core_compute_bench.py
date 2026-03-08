@@ -25,6 +25,16 @@ from pyRTC.WavefrontSensor import downsample_int32_image_jit, rotate_image_jit
 logger = get_logger(__name__)
 
 
+CORE_KERNEL_LABELS = {
+    "wavefront_sensor.downsample_int32_image_jit": "WFS downsample",
+    "wavefront_sensor.rotate_image_jit": "WFS rotate",
+    "wavefront_corrector.ModaltoZonalWithFlat": "WFC modal->zonal",
+    "loop.leakyIntegratorNumba": "Loop integrator",
+    "slopes.computeSlopesPYWFSOptimNumba": "PYWFS slopes",
+    "slopes.computeSlopesSHWFSOptimNumba": "SHWFS slopes",
+}
+
+
 def _format_stats(stats: dict[str, float] | None) -> str:
     if not stats or "p99_hz" not in stats or "p99_s" not in stats:
         return "-"
@@ -35,25 +45,49 @@ def _format_stats(stats: dict[str, float] | None) -> str:
     return f"{hz:.0f} Hz / {us:.1f} us"
 
 
-def _log_benchmark_summary(results: Dict[str, Any]) -> None:
+def _render_table(headers: list[str], rows: list[list[str]]) -> str:
+    widths = [len(header) for header in headers]
+    for row in rows:
+        for index, cell in enumerate(row):
+            widths[index] = max(widths[index], len(cell))
+
+    def _fmt_row(row: list[str]) -> str:
+        return " | ".join(cell.ljust(widths[index]) for index, cell in enumerate(row))
+
+    separator = "-+-".join("-" * width for width in widths)
+    lines = [_fmt_row(headers), separator]
+    lines.extend(_fmt_row(row) for row in rows)
+    return "\n".join(lines)
+
+
+def _build_summary_table(results: Dict[str, Any]) -> str:
     profiles = results.get("profiles", {})
     gpu_profiles = results.get("gpu_profiles", {})
-    logger.info("Core compute benchmark summary:")
+    rows: list[list[str]] = []
     for profile_name, kernels in profiles.items():
-        logger.info("  %s", profile_name)
         for kernel_name, stats in kernels.items():
-            summary = _format_stats(stats)
-            gpu_summary = ""
+            cpu_summary = _format_stats(stats)
+            gpu_summary = "-"
             gpu_profile = gpu_profiles.get(profile_name, {})
             if kernel_name == "loop.leakyIntegratorNumba":
                 gpu_stats = gpu_profile.get("loop.leakIntegratorGPU")
                 if gpu_profile.get("status", {}).get("available") is True and gpu_stats:
-                    gpu_summary = f" | GPU { _format_stats(gpu_stats) }"
+                    gpu_summary = _format_stats(gpu_stats)
             elif kernel_name == "slopes.computeSlopesPYWFSOptimNumba":
                 gpu_stats = gpu_profile.get("slopes.computeSlopesPYWFSTorch")
                 if gpu_profile.get("status", {}).get("available") is True and gpu_stats:
-                    gpu_summary = f" | GPU { _format_stats(gpu_stats) }"
-            logger.info("    %s: CPU %s%s", kernel_name, summary, gpu_summary)
+                    gpu_summary = _format_stats(gpu_stats)
+            rows.append([
+                profile_name,
+                CORE_KERNEL_LABELS.get(kernel_name, kernel_name),
+                cpu_summary,
+                gpu_summary,
+            ])
+    return _render_table(["Size", "Kernel", "CPU p99", "GPU p99"], rows)
+
+
+def _log_benchmark_summary(results: Dict[str, Any]) -> None:
+    logger.info("Core compute benchmark summary:\n%s", _build_summary_table(results))
 
 
 def _safe_percentile(values, pct: float) -> float:

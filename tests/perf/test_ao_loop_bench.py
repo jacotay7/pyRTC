@@ -88,3 +88,22 @@ def test_readme_table_supports_closed_loop_reports():
     assert "Synthetic AO Loop Benchmarks" in markdown
     assert "PYWFS full loop" in markdown
     assert "SHWFS full loop" in markdown
+
+
+def test_ao_loop_summary_table_contains_compact_headers():
+    report = {
+        "results": {
+            "pywfs": {
+                "10x10": {
+                    "cpu": {"p99_hz": 1000.0, "p99_s": 0.001},
+                    "gpu": {"p99_hz": 2000.0, "p99_s": 0.0005},
+                }
+            }
+        }
+    }
+
+    table = ao_loop_bench._build_summary_table(report)
+    assert "Sensor" in table
+    assert "Size" in table
+    assert "PYWFS" in table
+    assert "10x10" in table
