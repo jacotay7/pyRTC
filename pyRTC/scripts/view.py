@@ -3,8 +3,8 @@
 import argparse
 import sys
 
-from pyRTC import utils
 from pyRTC.logging_utils import add_logging_cli_args, configure_logging_from_args, get_logger
+import pyRTC.utils as utils
 
 from .viewer_helpers import (
     compute_window_size as _compute_window_size,

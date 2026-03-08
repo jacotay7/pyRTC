@@ -9,7 +9,8 @@ import math
 
 import numpy as np
 
-from pyRTC import ImageSHM, utils
+from pyRTC.Pipeline import ImageSHM
+import pyRTC.utils as utils
 
 
 def is_float_token(value: str) -> bool:

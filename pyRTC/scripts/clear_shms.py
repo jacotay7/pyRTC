@@ -2,8 +2,8 @@
 
 import argparse
 
-from pyRTC import Pipeline
 from pyRTC.logging_utils import add_logging_cli_args, configure_logging_from_args
+import pyRTC.Pipeline as Pipeline
 
 
 DEFAULT_SHM_NAMES = [

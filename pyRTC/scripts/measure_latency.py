@@ -10,8 +10,8 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 
-from pyRTC import initExistingShm
 from pyRTC.logging_utils import add_logging_cli_args, configure_logging_from_args
+from pyRTC.Pipeline import initExistingShm
 
 
 def _safe_mean(values) -> float:
