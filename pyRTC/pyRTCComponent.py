@@ -4,8 +4,12 @@ pyRTC Component Superclass
 import os
 import threading
 
+from pyRTC.logging_utils import ensure_logging_configured, get_logger
 from pyRTC.Pipeline import launchComponent, normalize_gpu_device, work
 from pyRTC.utils import setFromConfig, validate_component_config
+
+
+logger = get_logger(__name__)
 
 
 class pyRTCComponent:
@@ -57,31 +61,42 @@ class pyRTCComponent:
             - affinity (int, optional): The CPU affinity for the component. Default 0.
             - functions (list, optional): A list of functions to run in separate threads. Default is an empty list.
         """
-        validate_component_config(conf, [cls.__name__ for cls in self.__class__.mro()])
+        ensure_logging_configured(app_name="pyrtc", component_name=self.__class__.__name__)
+        self.logger = get_logger(f"{self.__class__.__module__}.{self.__class__.__name__}")
 
-        self.alive = True
-        self.running = False
-        self.affinity = setFromConfig(conf, "affinity", 0)
-        requested_gpu_device = setFromConfig(conf, "gpuDevice", None)
-        self.gpuDevice = normalize_gpu_device(requested_gpu_device, self.__class__.__name__)
+        try:
+            validate_component_config(conf, [cls.__name__ for cls in self.__class__.mro()])
 
-        # if self.gpuDevice is not None:
-        #     self.gpuDevice = torch.device(self.gpuDevice)
-        
-        functionsToRun = setFromConfig(conf, "functions", [])
-        self.workThreads = []
-        self.RELEASE_GIL = True
-        
-        if isinstance(functionsToRun, list) and len(functionsToRun) > 0:
-            for i, functionName in enumerate(functionsToRun):
-                threadAffinity = (self.affinity+i)%os.cpu_count()
-                # Launch a separate thread
-                workThread = threading.Thread(target=work, 
-                                            args = (self,functionName, threadAffinity), 
-                                            daemon=True)
-                # Start the thread
-                workThread.start()
-                self.workThreads.append(workThread)
+            self.alive = True
+            self.running = False
+            self.affinity = setFromConfig(conf, "affinity", 0)
+            requested_gpu_device = setFromConfig(conf, "gpuDevice", None)
+            self.gpuDevice = normalize_gpu_device(requested_gpu_device, self.__class__.__name__)
+
+            functionsToRun = setFromConfig(conf, "functions", [])
+            self.workThreads = []
+            self.RELEASE_GIL = True
+
+            if isinstance(functionsToRun, list) and len(functionsToRun) > 0:
+                for i, functionName in enumerate(functionsToRun):
+                    threadAffinity = (self.affinity + i) % os.cpu_count()
+                    workThread = threading.Thread(
+                        target=work,
+                        args=(self, functionName, threadAffinity),
+                        daemon=True,
+                    )
+                    workThread.start()
+                    self.workThreads.append(workThread)
+
+            self.logger.info(
+                "Initialized component affinity=%s gpuDevice=%s functions=%s",
+                self.affinity,
+                self.gpuDevice,
+                functionsToRun,
+            )
+        except Exception:
+            self.logger.exception("Failed to initialize component")
+            raise
 
         return
 
@@ -89,22 +104,39 @@ class pyRTCComponent:
         """
         Destructor to clean up the component.
         """
-        self.stop()
-        self.alive = False
+        component_logger = getattr(self, "logger", logger)
+        try:
+            self.stop()
+        except Exception:
+            component_logger.exception("Failed while stopping component during destruction")
+        finally:
+            self.alive = False
         return
 
     def start(self):
         """
         Start the registered real-time functions.
         """
-        self.running = True
+        component_logger = getattr(self, "logger", logger)
+        try:
+            self.running = True
+            component_logger.info("Started component")
+        except Exception:
+            component_logger.exception("Failed to start component")
+            raise
         return
 
     def stop(self):
         """
         Stops the registered real-time functions.
         """
-        self.running = False
+        component_logger = getattr(self, "logger", logger)
+        try:
+            self.running = False
+            component_logger.info("Stopped component")
+        except Exception:
+            component_logger.exception("Failed to stop component")
+            raise
         return
 
 if __name__ == "__main__":

@@ -239,64 +239,63 @@ class Loop(pyRTCComponent):
                 derivativeFilter : float, optional
                     Filter for the derivative term. Default is 0.1.
         """
-        super().__init__(conf) 
-        self.name = "Loop"
-        self.conf = conf
+        try:
+            super().__init__(conf)
+            self.name = "Loop"
+            self.conf = conf
         
         #Read wfs signal's metadata and open a stream to the shared memory
-        self.signalShm, self.signalShape, self.signalDType = initExistingShm("signal", gpuDevice = self.gpuDevice)
-        self.signalSize = int(np.prod(self.signalShape))
-        self.nullSignal = np.zeros(self.signalShape, dtype=self.signalDType)
+            self.signalShm, self.signalShape, self.signalDType = initExistingShm("signal", gpuDevice=self.gpuDevice)
+            self.signalSize = int(np.prod(self.signalShape))
+            self.nullSignal = np.zeros(self.signalShape, dtype=self.signalDType)
 
         #Read wfc metadata and open a stream to the shared memory
-        self.wfcShm, self.wfcShape, self.wfcDType = initExistingShm("wfc", gpuDevice = self.gpuDevice)
-        self.numModes = int(np.prod(self.wfcShape))
+            self.wfcShm, self.wfcShape, self.wfcDType = initExistingShm("wfc", gpuDevice=self.gpuDevice)
+            self.numModes = int(np.prod(self.wfcShape))
 
-        self.numDroppedModes = setFromConfig(self.conf, "numDroppedModes", 0)
-        self.numActiveModes = self.numModes - self.numDroppedModes
-        self.flat = np.zeros(self.numModes, dtype=self.wfcDType)
-        self.nullCorrection = np.zeros_like(self.flat)
+            self.numDroppedModes = setFromConfig(self.conf, "numDroppedModes", 0)
+            self.numActiveModes = self.numModes - self.numDroppedModes
+            self.flat = np.zeros(self.numModes, dtype=self.wfcDType)
+            self.nullCorrection = np.zeros_like(self.flat)
 
-        self.IM = np.zeros((self.signalSize, self.numModes),dtype=self.signalDType)
-        self.CM = np.zeros((self.numModes, self.signalSize),dtype=self.signalDType)
-        self.gain = setFromConfig(self.conf, "gain", 0.1)
-        self.leakyGain = setFromConfig(self.conf, "leakyGain", 0.0)
-        self.perturbAmp = 0
-        self.hardwareDelay = setFromConfig(self.conf, "hardwareDelay", 0.0)
-        self.pokeAmp = setFromConfig(self.conf, "pokeAmp", 1e-2)
-        self.numItersIM = setFromConfig(self.conf, "numItersIM", 100) 
-        self.delay = setFromConfig(self.conf, "delay", 0)
-        self.IMMethod = setFromConfig(self.conf, "IMMethod", "push-pull") 
-        self.IMFile = setFromConfig(self.conf, "IMFile", "")
+            self.IM = np.zeros((self.signalSize, self.numModes),dtype=self.signalDType)
+            self.CM = np.zeros((self.numModes, self.signalSize),dtype=self.signalDType)
+            self.gain = setFromConfig(self.conf, "gain", 0.1)
+            self.leakyGain = setFromConfig(self.conf, "leakyGain", 0.0)
+            self.perturbAmp = 0
+            self.hardwareDelay = setFromConfig(self.conf, "hardwareDelay", 0.0)
+            self.pokeAmp = setFromConfig(self.conf, "pokeAmp", 1e-2)
+            self.numItersIM = setFromConfig(self.conf, "numItersIM", 100)
+            self.delay = setFromConfig(self.conf, "delay", 0)
+            self.IMMethod = setFromConfig(self.conf, "IMMethod", "push-pull")
+            self.IMFile = setFromConfig(self.conf, "IMFile", "")
         
-        self.clDocrime = False     
-        self.numItersDC = 0   
-        tmp2 = self.flat.copy()
-        tmp2 = tmp2.reshape(tmp2.size,1) 
-        tmp = self.nullSignal.copy()
-        tmp = tmp.reshape(tmp.size,1)
-        self.docrimeCross = np.zeros_like(tmp@tmp2.T)
-        self.docrimeAuto = np.zeros_like(tmp2@tmp2.T)
-        self.docrimeBuffer = np.zeros((1+self.delay, *tmp2.shape), 
-                                dtype=self.wfcDType)
+            self.clDocrime = False
+            self.numItersDC = 0
+            tmp2 = self.flat.copy().reshape(self.flat.size, 1)
+            tmp = self.nullSignal.copy().reshape(self.nullSignal.size, 1)
+            self.docrimeCross = np.zeros_like(tmp @ tmp2.T)
+            self.docrimeAuto = np.zeros_like(tmp2 @ tmp2.T)
+            self.docrimeBuffer = np.zeros((1 + self.delay, *tmp2.shape), dtype=self.wfcDType)
         
-        """
-        Terms for PID integrator
-        """
-        self.pGain = setFromConfig(self.conf, "pGain", 0.1)
-        self.iGain = setFromConfig(self.conf, "iGain", 0.0)
-        self.dGain = setFromConfig(self.conf, "dGain", 0.0)
-        self.controlLimits = setFromConfig(self.conf, "controlLimits", [-np.inf, np.inf])
-        self.integralLimits = setFromConfig(self.conf, "integralLimits", [-np.inf, np.inf])
-        self.absoluteLimits = setFromConfig(self.conf, "absoluteLimits", [-np.inf, np.inf])
-        self.derivativeFilter = setFromConfig(self.conf, "derivativeFilter", 0.1)
-        self.integral = 0
+            self.pGain = setFromConfig(self.conf, "pGain", 0.1)
+            self.iGain = setFromConfig(self.conf, "iGain", 0.0)
+            self.dGain = setFromConfig(self.conf, "dGain", 0.0)
+            self.controlLimits = setFromConfig(self.conf, "controlLimits", [-np.inf, np.inf])
+            self.integralLimits = setFromConfig(self.conf, "integralLimits", [-np.inf, np.inf])
+            self.absoluteLimits = setFromConfig(self.conf, "absoluteLimits", [-np.inf, np.inf])
+            self.derivativeFilter = setFromConfig(self.conf, "derivativeFilter", 0.1)
+            self.integral = 0
 
-        self.previousWfError = np.zeros_like(self.wfcShm.read_noblock())
-        self.previousDerivative = np.zeros_like(self.previousWfError)
-        self.controlOutput = np.zeros_like(self.previousWfError)
+            self.previousWfError = np.zeros_like(self.wfcShm.read_noblock())
+            self.previousDerivative = np.zeros_like(self.previousWfError)
+            self.controlOutput = np.zeros_like(self.previousWfError)
 
-        self.loadIM()
+            self.loadIM()
+            self.logger.info("Initialized loop signalShape=%s wfcShape=%s numModes=%s", self.signalShape, self.wfcShape, self.numModes)
+        except Exception:
+            logger.exception("Failed to initialize loop")
+            raise
 
         return
 
@@ -309,8 +308,14 @@ class Loop(pyRTCComponent):
         gain : float
             Gain to set.
         """
-        self.gain = gain
-        self.gCM = self.gain*self.CM
+        component_logger = getattr(self, "logger", logger)
+        try:
+            self.gain = gain
+            self.gCM = self.gain * self.CM
+            component_logger.info("Set loop gain to %s", gain)
+        except Exception:
+            component_logger.exception("Failed to set loop gain to %s", gain)
+            raise
         return
 
     def setPeturbAmp(self, amp):
@@ -322,7 +327,13 @@ class Loop(pyRTCComponent):
         amp : float
             Amplitude to set.
         """
-        self.perturbAmp = amp
+        component_logger = getattr(self, "logger", logger)
+        try:
+            self.perturbAmp = amp
+            component_logger.info("Set perturbation amplitude to %s", amp)
+        except Exception:
+            component_logger.exception("Failed to set perturbation amplitude to %s", amp)
+            raise
         return
 
     def pushPullIM(self):
@@ -417,12 +428,18 @@ class Loop(pyRTCComponent):
         """
         Compute the interaction matrix using the specified method. Method specified using IMMethod, default is push-pull.
         """
-        if self.IMMethod == 'docrime':
-            self.docrimeIM()
-        else:
-            self.pushPullIM()
+        component_logger = getattr(self, "logger", logger)
+        try:
+            component_logger.info("Computing interaction matrix using method=%s", self.IMMethod)
+            if self.IMMethod == 'docrime':
+                self.docrimeIM()
+            else:
+                self.pushPullIM()
 
-        self.computeCM()
+            self.computeCM()
+        except Exception:
+            component_logger.exception("Failed to compute interaction matrix using method=%s", getattr(self, "IMMethod", None))
+            raise
         return
     
     def saveIM(self,filename=''):
@@ -434,9 +451,17 @@ class Loop(pyRTCComponent):
         filename : str, optional
             File to save the interaction matrix to. If not specified, uses the configured IMFile.
         """
-        if filename == '':
-            filename = self.IMFile
-        np.save(filename, self.IM)
+        component_logger = getattr(self, "logger", logger)
+        try:
+            if filename == '':
+                filename = self.IMFile
+            if filename == '':
+                raise ValueError("No interaction matrix filename provided")
+            np.save(filename, self.IM)
+            component_logger.info("Saved interaction matrix to %s", filename)
+        except Exception:
+            component_logger.exception("Failed to save interaction matrix to %s", filename or getattr(self, "IMFile", ""))
+            raise
 
     def loadIM(self,filename=''):
         """
@@ -447,34 +472,52 @@ class Loop(pyRTCComponent):
         filename : str, optional
             File to load the interaction matrix from. If not specified, uses the configured IMFile.
         """
-        if filename == '':
-            filename = self.IMFile
-        if filename == '':
-            self.IM = np.zeros_like(self.IM)
-        else:
-            self.IM = np.load(filename)
-        self.computeCM()
+        component_logger = getattr(self, "logger", logger)
+        try:
+            if filename == '':
+                filename = self.IMFile
+            if filename == '':
+                self.IM = np.zeros_like(self.IM)
+                component_logger.info("No interaction matrix file configured; using zeros")
+            else:
+                self.IM = np.load(filename)
+                component_logger.info("Loaded interaction matrix from %s", filename)
+            self.computeCM()
+        except Exception:
+            component_logger.exception("Failed to load interaction matrix from %s", filename or getattr(self, "IMFile", ""))
+            raise
 
     def flatten(self):
         """
         Send the flat correction to the wavefront corrector.
         """
-        self.sendToWfc(self.flat)
+        component_logger = getattr(self, "logger", logger)
+        try:
+            self.sendToWfc(self.flat)
+            component_logger.info("Flattened loop correction")
+        except Exception:
+            component_logger.exception("Failed to flatten loop correction")
+            raise
         return
     
     def computeCM(self):
         """
         Compute the control matrix from the interaction matrix.
         """
-        self.numActiveModes = self.numModes-self.numDroppedModes
-        if self.numActiveModes < 0:
-            logger.error("Invalid number of modes used in CM. Check numDroppedModes")
-            return
-        self.CM[:self.numActiveModes,:] = np.linalg.pinv(self.IM[:,:self.numActiveModes], rcond=0)
-        self.CM[self.numActiveModes:,:] = 0
-        self.gCM = self.gain*self.CM
-        self.fIM = np.copy(self.IM)
-        self.fIM[:,self.numActiveModes:] = 0
+        component_logger = getattr(self, "logger", logger)
+        try:
+            self.numActiveModes = self.numModes - self.numDroppedModes
+            if self.numActiveModes < 0:
+                raise ValueError("Invalid number of modes used in CM. Check numDroppedModes")
+            self.CM[:self.numActiveModes, :] = np.linalg.pinv(self.IM[:, :self.numActiveModes], rcond=0)
+            self.CM[self.numActiveModes:, :] = 0
+            self.gCM = self.gain * self.CM
+            self.fIM = np.copy(self.IM)
+            self.fIM[:, self.numActiveModes:] = 0
+            component_logger.info("Computed control matrix activeModes=%s droppedModes=%s", self.numActiveModes, self.numDroppedModes)
+        except Exception:
+            component_logger.exception("Failed to compute control matrix")
+            raise
         return 
         
     # @jit(nopython=True)
@@ -650,10 +693,15 @@ class Loop(pyRTCComponent):
 
     def solveDocrime(self):
 
-        self.clDCIM = (self.docrimeCross/self.numItersDC)@np.linalg.inv(self.docrimeAuto/self.numItersDC)
-        tmpFilePath = get_tmp_filepath(self.IMFile,uniqueStr="CL_docrime")
-        logger.info("Saving DOCRIME matrix to %s", tmpFilePath)
-        np.save(tmpFilePath, self.clDCIM)
+        component_logger = getattr(self, "logger", logger)
+        try:
+            self.clDCIM = (self.docrimeCross / self.numItersDC) @ np.linalg.inv(self.docrimeAuto / self.numItersDC)
+            tmpFilePath = get_tmp_filepath(self.IMFile, uniqueStr="CL_docrime")
+            component_logger.info("Saving DOCRIME matrix to %s", tmpFilePath)
+            np.save(tmpFilePath, self.clDCIM)
+        except Exception:
+            component_logger.exception("Failed to solve DOCRIME interaction matrix")
+            raise
 
         return
 

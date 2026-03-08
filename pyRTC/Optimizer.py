@@ -8,9 +8,13 @@ import time
 
 import optuna
 
+from pyRTC.logging_utils import get_logger
 from pyRTC.Pipeline import Listener
 from pyRTC.pyRTCComponent import pyRTCComponent
 from pyRTC.utils import decrease_nice, read_yaml_file, set_affinity, setFromConfig
+
+
+logger = get_logger(__name__)
 
 class Optimizer(pyRTCComponent):
     """
@@ -60,12 +64,17 @@ class Optimizer(pyRTCComponent):
 
         :param conf: Configuration dictionary containing necessary parameters.
         """
-        self.name = "Optimizer"
-        self.study = optuna.create_study(direction='maximize', 
-                                         sampler=optuna.samplers.CmaEsSampler())
-        self.numSteps = setFromConfig(conf, "numSteps", 100)
+        try:
+            self.name = "Optimizer"
+            self.study = optuna.create_study(direction='maximize', 
+                                             sampler=optuna.samplers.CmaEsSampler())
+            self.numSteps = setFromConfig(conf, "numSteps", 100)
 
-        super().__init__(conf)
+            super().__init__(conf)
+            self.logger.info("Initialized optimizer numSteps=%s", self.numSteps)
+        except Exception:
+            logger.exception("Failed to initialize optimizer")
+            raise
 
         return
     
@@ -87,9 +96,15 @@ class Optimizer(pyRTCComponent):
         This method runs the optimization process using the defined objective 
         function and the number of steps specified in the configuration.
         """
-        self.study.optimize(self.objective, 
-                            n_trials=self.numSteps)
-        self.applyOptimum()
+        component_logger = getattr(self, "logger", logger)
+        try:
+            component_logger.info("Starting optimization for %s trials", self.numSteps)
+            self.study.optimize(self.objective, n_trials=self.numSteps)
+            self.applyOptimum()
+            component_logger.info("Completed optimization")
+        except Exception:
+            component_logger.exception("Failed during optimization")
+            raise
         return
     
     def applyOptimum(self):
@@ -116,13 +131,25 @@ class Optimizer(pyRTCComponent):
         This method obtains the next trial from the study and applies it 
         using the applyTrial method.
         """
-        self.applyTrial(self.study.ask())
+        component_logger = getattr(self, "logger", logger)
+        try:
+            trial = self.study.ask()
+            component_logger.info("Applying next trial %s", trial)
+            self.applyTrial(trial)
+        except Exception:
+            component_logger.exception("Failed to apply next optimization trial")
+            raise
         return
 
     def resetStudy(self):
-
-        self.study = optuna.create_study(direction='maximize', 
-                                         sampler=optuna.samplers.CmaEsSampler())
+        component_logger = getattr(self, "logger", logger)
+        try:
+            self.study = optuna.create_study(direction='maximize', 
+                                             sampler=optuna.samplers.CmaEsSampler())
+            component_logger.info("Reset optimizer study")
+        except Exception:
+            component_logger.exception("Failed to reset optimizer study")
+            raise
 
         return
 

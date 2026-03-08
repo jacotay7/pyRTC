@@ -1,5 +1,7 @@
 import importlib
 
+import pytest
+
 from pyRTC.Modulator import Modulator
 from pyRTC.Optimizer import Optimizer
 from pyRTC.pyRTCComponent import pyRTCComponent
@@ -9,6 +11,21 @@ opt_mod = importlib.import_module("pyRTC.Optimizer")
 
 class DummyComponent(pyRTCComponent):
     pass
+
+
+class DummyModulator(Modulator):
+    def __init__(self, conf):
+        self.position = None
+        self.restarted = False
+        super().__init__(conf)
+
+    def set_position(self, position):
+        self.position = tuple(position)
+        return 1
+
+    def restart(self):
+        self.restarted = True
+        return 1
 
 
 def test_pyrtc_component_start_stop():
@@ -21,9 +38,15 @@ def test_pyrtc_component_start_stop():
 
 
 def test_modulator_name_default_and_custom():
-    m1 = Modulator({})
+    with pytest.raises(TypeError):
+        Modulator({})
+
+    m1 = DummyModulator({"functions": []})
     assert m1.name == "modulator"
-    m2 = Modulator({"name": "m"})
+    assert m1.goTo((1, 2)) == 1
+    assert m1.position == (1, 2)
+
+    m2 = DummyModulator({"name": "m", "functions": []})
     assert m2.name == "m"
 
 
