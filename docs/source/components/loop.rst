@@ -1,136 +1,75 @@
 .. loop:
 
-.. automodule:: pyRTC.Loop
+.. currentmodule:: pyRTC.Loop
 
 
 Loop
 ====
 
-In pyRTC, one of the core components is the wavefront sensor object. It typically starts the AO chain by running
-a continues capture sequence of images. This object is the producer of the `wfs` and `wfsRaw` shared memory objects
-which contain the dark subtracted and original image respectively. The images can then be processed by the slopesProcess
-class to compute the intermediate data product used for wavefront reconstruction.
+The `Loop` component is the control stage of the AO pipeline.
+It reads the processed wavefront signal, applies the configured control law, and writes the resulting correction vector to the wavefront-corrector stream.
+
+In practical terms, `Loop` is where you:
+
+- load or compute interaction and control matrices
+- select an integration strategy
+- tune gain or leak parameters
+- apply dropped-mode and delay behavior
+- manage correction updates sent to the wavefront corrector
 
 Soft-RTC Example
 ----------------
 
-The following is an example of how to initialize a Loop component in pyRTC. 
-
-Here we are in the `soft-RTC` mode of pyRTC, which holds all components in the same python process. 
-See below for how to launch a hard-RTC equivalent.
+The following example shows the general pattern for starting a loop in `soft-RTC` mode.
+In this mode the control object lives in the same Python process as the rest of the AO chain.
 
 .. code-block:: python
 
-  """
-  First we import the relevant wavefront sensor class. Typically, this will be a
-  specific hardware class which has been defined to work with the SDK of your camera.
-
-  As an example (see hardware/ximeaWFS.py):
-
-  from pyRTC.hardware import XIMEA_WFS
-
-  Here, I will just initialize the Wavefront Sensor Superclass as an example
-  """
-
-  #%% Run in interactive python or jupyter notebook to keep process alive
-  from pyRTC import WavefrontSensor
-  import matplotlib.pyplot as plt
+  import numpy as np
+  from pyRTC.Loop import Loop
   from pyRTC.utils import read_yaml_file
 
-  confWFS = {
-  "name": "example",
-  "width": 256,
-  "height": 256,
-  "darkCount": 1000,
-  "darkFile": "", #Here you can add a dark file, if existing "./EXAMPLE/calib/wfsDark.npy",
-  "affinity": 2,
-  "functions": ["expose"]
-  }
+  conf = read_yaml_file("path/to/config.yaml")
+  loop = Loop(conf["loop"])
 
-  """
-  Alternatively, read the config from a file
-
-  conf = read_yaml_file("./EXAMPLE/config.yaml")["wfs"]
-  """
-
-  #Initialize the WFS object
-  wfs = WavefrontSensor(confWFS)
-  #Start the functions regiserted to the loop (i.e, expose)
-  wfs.start()
-
-  img = wfs.read()
-
-
-  plt.imshow(img)
-  plt.show()
-
-
-  """
-  Monitor the SHM in realtime by running the viewer command in a terminal
-  pyrtc-view wfs &
-  """
+  # A calibrated system usually loads or computes IM first, then derives CM.
+  loop.IM = np.eye(loop.signalSize, loop.numModes, dtype=np.float32)
+  loop.computeCM()
+  loop.setGain(0.1)
+  loop.start()
 
 Hard-RTC Example
 ----------------
 
-The following is an example of how to initialize a Loop component in pyRTC. 
-
-Here we are in the `hard-RTC` mode of pyRTC, which holds all components in the separate python processes. 
-This circumvents the python Global Interpreter Lock.
-
-See above for how to launch a soft-RTC equivalent.
+The hard-RTC path is appropriate when the loop needs to interact with hardware-facing processes through shared memory while keeping process boundaries explicit.
 
 .. code-block:: python
   
-  from pyRTC import hardwareLauncher
+  from pyRTC.Pipeline import hardwareLauncher
 
-  """
-  For the Hard-RTC, you will need to set-up a config before hand and store it in a yaml file.
-
-  It should look something like:
-
-  wfs:
-    name: XIMEA
-    serial: "46052550"
-    binning: 1 
-    exposure: 2000
-    gain: 0
-    bitDepth: 10
-    left: 448 
-    top: 280 
-    width: 400 
-    height: 400 
-    darkCount: 2000
-    darkFile: "/home/whetstone/pyRTC/examples/sharp_lab/calib/dark.npy"
-    affinity: 3
-    functions:
-    - expose
-  """
   config = 'path/to/config.yaml'
-  port = 3000
+  port = 3004
 
-  #Initialize the hardware launcher for your WFS child hardware class
-  wfs = hardwareLauncher('path/to/pyRTC/hardware/myHardwareWfs.py',config,port)
-  """
-  Launch the process.
+  loop = hardwareLauncher('path/to/pyRTC/Loop.py', config, port)
+  loop.launch()
 
-  This will run the hardware file, which should establish a connection with the current process.
-  This is accomplished with the Listener class (see hardware folder for examples).
+  # Once launched, controller methods and properties can be accessed remotely.
+  loop.run("computeCM")
+  loop.setProperty("gain", 0.1)
+  print(loop.getProperty("gain"))
 
-  The functions registered in the config to the real-time loop will automatically be started.
-  """
-  wfs.launch()
+Control Notes
+-------------
 
-  """
-  Once the connection has been made successfully, you can run any function in the hardware class
-  using the run function. You can also get and set properties of the hardware using getProperty()
-  and setProperty() respectively.
-  """
-  wfs.run("expose")
+The loop class supports several control-related concepts that matter operationally:
 
-  wfs.setProperty("exposure", 100)
+- `gain` and `leakyGain` for integrator behavior
+- `numDroppedModes` for excluding poorly behaved modes
+- interaction-matrix and control-matrix workflows
+- optional GPU-assisted paths when PyTorch is available
+- delay and limit settings for controller tuning
 
-  print(wfs.getProperty("exposure"))
+In production use, the loop is usually one of the last components you tune after stream shapes, calibration files, and hardware-facing behavior are already stable.
 
 
 Parameters
@@ -141,3 +80,4 @@ Parameters
   :inherited-members:
   :undoc-members:
   :show-inheritance:
+  :no-index:

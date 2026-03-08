@@ -1,11 +1,25 @@
+"""Site-specific soft-RTC orchestration example for the SHARP lab setup.
+
+This example runs the SHARP lab control chain in one Python process for local
+debugging and calibration work. It is useful as a reference for sequencing the
+main AO components, but the hard-coded paths and hardware dependencies make it a
+lab-specific example rather than a general onboarding script.
+"""
+
 # %% Imports
 import numpy as np
 import matplotlib.pyplot as plt
 import time
-from pyRTC import Loop, SlopesProcess
+from pyRTC.Loop import Loop
+from pyRTC.SlopesProcess import SlopesProcess
+from pyRTC.logging_utils import configure_logging, get_logger
 from pyRTC.Pipeline import ImageSHM, initExistingShm
 from pyRTC.hardware import ALPAODM, NCPAOptimizer, XIMEA_WFS, spinCam
 from pyRTC.utils import read_yaml_file
+
+
+configure_logging(app_name="pyrtc-sharp-lab", component_name="softRTC")
+logger = get_logger(__name__)
 #%% CLEAR SHMs
 # from pyRTC.Pipeline import clear_shms
 # shms = ["wfs", "wfsRaw", "signal", "signal2D", "wfc", "wfc2D", "psfShort", "psfLong"]
@@ -25,25 +39,30 @@ confWFS = conf["wfs"]
 wfs = XIMEA_WFS(conf=confWFS)
 time.sleep(0.5)
 wfs.start()
+logger.info("Started soft-RTC wavefront sensor")
 # %% Launch slopes
 confSlopes = conf["slopes"]
 slopes = SlopesProcess(conf=confSlopes)
 slopes.start()
 time.sleep(0.5)
+logger.info("Started slopes process")
 # %% Launch WFC
 confWFC = conf["wfc"]
 wfc = ALPAODM(conf=confWFC)
 time.sleep(0.5)
 wfc.start()
+logger.info("Started deformable mirror")
 # %% Launch PSF
 confPSF = conf["psf"]
 psf = spinCam(conf=confPSF)
 time.sleep(0.5)
 psf.start()
+logger.info("Started science camera")
 # %% Launch loop
 confLoop = conf["loop"]
 loop = Loop(conf=confLoop)
 time.sleep(1)
+logger.info("Initialized loop controller")
 
 # %% Recalibrate
 

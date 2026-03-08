@@ -1,38 +1,38 @@
-# Import specific functions or classes from submodules
-__all__ = []
+from importlib import import_module
 
-try:
-    from .ALPAODM import ALPAODM as ALPAODM
-    __all__.append('ALPAODM')
-except Exception:
-    print("ALPAO python SDK installation not found")
-try:
-    from .SpinnakerScienceCam import spinCam as spinCam
-    __all__.append('spinCam')
-except Exception:
-    print("Spinnaker python SDK installation not found")
-try:
-    from .ximeaWFS import XIMEA_WFS as XIMEA_WFS
-    __all__.append('XIMEA_WFS')
-except Exception:
-    print("ximea python SDK installation not found")
-try:
-    from .PIModulator import PIModulator as PIModulator
-    __all__.append('PIModulator')
-except Exception:
-    print("PI python SDK installation not found")
-# try:
-#     from .OOPAOInterface import OOPAOInterface
-#     __all__.append('OOPAOInterface')
-# except:
-#     print("OOPAO installation not found")
 
-from .NCPAOptimizer import NCPAOptimizer as NCPAOptimizer
-from .PIDOptimizer import PIDOptimizer as PIDOptimizer
-from .loopHyperparamsOptimizer import loopOptimizer as loopOptimizer
+_EXPORTS = {
+    "ALPAODM": (".ALPAODM", "ALPAODM"),
+    "spinCam": (".SpinnakerScienceCam", "spinCam"),
+    "XIMEA_WFS": (".ximeaWFS", "XIMEA_WFS"),
+    "PIModulator": (".PIModulator", "PIModulator"),
+    "NCPAOptimizer": (".NCPAOptimizer", "NCPAOptimizer"),
+    "PIDOptimizer": (".PIDOptimizer", "PIDOptimizer"),
+    "SyntheticSHWFS": (".SyntheticSystems", "SyntheticSHWFS"),
+    "SyntheticScienceCamera": (".SyntheticSystems", "SyntheticScienceCamera"),
+    "loopOptimizer": (".loopHyperparamsOptimizer", "loopOptimizer"),
+}
 
-__all__.extend([
-            'NCPAOptimizer', 
-            'PIDOptimizer',
-            'loopOptimizer'
-           ])
+__all__ = list(_EXPORTS)
+
+
+def __getattr__(name):
+    if name not in _EXPORTS:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+    module_name, attr_name = _EXPORTS[name]
+    try:
+        module = import_module(module_name, __name__)
+    except Exception as exc:
+        raise ImportError(
+            f"Unable to import pyRTC.hardware.{name}. This usually means the required "
+            f"vendor SDK or optional dependency is not installed. Original error: {exc}"
+        ) from exc
+
+    value = getattr(module, attr_name)
+    globals()[name] = value
+    return value
+
+
+def __dir__():
+    return sorted(set(globals()) | set(__all__))

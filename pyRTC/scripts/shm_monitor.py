@@ -1,13 +1,18 @@
+"""Simple real-time plotter for a scalar shared-memory stream."""
+
 import argparse
 import time
 
 import matplotlib.pyplot as plt
 import numpy as np
 
-from pyRTC import initExistingShm
+from pyRTC.logging_utils import add_logging_cli_args, configure_logging_from_args
+from pyRTC.Pipeline import initExistingShm
 
 
 def rolling_average(data, window_size):
+    """Return a moving average series for plotting."""
+
     n = len(data)
     if n < window_size:
         return []
@@ -29,15 +34,20 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--interval", type=float, default=0.1, help="seconds between updates")
     parser.add_argument("--window-size", type=int, default=10, help="rolling average window size")
     parser.add_argument("--max-size", type=int, default=1000, help="maximum samples to keep")
+    add_logging_cli_args(parser)
     return parser
 
 
 def main(argv=None) -> int:
+    """Attach to a SHM stream and plot a rolling summary interactively."""
+
     parser = _build_arg_parser()
     args = parser.parse_args(argv)
+    logger = configure_logging_from_args(args, app_name="pyrtc-shm-monitor", component_name=args.shm)
 
     shm_name = args.shm
     shm, _, _ = initExistingShm(shm_name)
+    logger.info("Monitoring SHM %s interval=%s window_size=%s max_size=%s", shm_name, args.interval, args.window_size, args.max_size)
 
     update_interval = args.interval
     window_size = args.window_size

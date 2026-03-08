@@ -1,7 +1,11 @@
 import json
 from pathlib import Path
 
-from pyRTC import Loop, ScienceCamera, SlopesProcess, WavefrontCorrector, WavefrontSensor
+from pyRTC.Loop import Loop
+from pyRTC.ScienceCamera import ScienceCamera
+from pyRTC.SlopesProcess import SlopesProcess
+from pyRTC.WavefrontCorrector import WavefrontCorrector
+from pyRTC.WavefrontSensor import WavefrontSensor
 from pyRTC.utils import read_yaml_file
 
 

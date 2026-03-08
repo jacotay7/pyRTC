@@ -1,17 +1,19 @@
+"""Convenience launcher for a default set of viewer windows."""
+
 import argparse
 import subprocess
 
+from pyRTC.logging_utils import add_logging_cli_args, configure_logging_from_args
+
 
 DEFAULT_VIEW_COMMANDS = [
-    ["pyrtc-view", "psfShort"],
-    ["pyrtc-view", "psfLong"],
-    ["pyrtc-view", "signal2D", "-1", "1"],
-    ["pyrtc-view", "wfc2D", "-0.5", "0.5"],
-    ["pyrtc-view", "wfs"],
+    ["pyrtc-view", "wfs", "signal2D", "wfc2D", "psfShort", "psfLong", "--geometry", "2x3"],
 ]
 
 
 def launch_all(commands=None, popen_fn=subprocess.Popen):
+    """Spawn the configured viewer commands and return the child processes."""
+
     if commands is None:
         commands = DEFAULT_VIEW_COMMANDS
     processes = []
@@ -21,12 +23,18 @@ def launch_all(commands=None, popen_fn=subprocess.Popen):
 
 
 def _build_arg_parser() -> argparse.ArgumentParser:
-    return argparse.ArgumentParser(description="Launch default pyRTC viewer windows.")
+    parser = argparse.ArgumentParser(description="Launch default pyRTC viewer windows.")
+    add_logging_cli_args(parser)
+    return parser
 
 
 def main(argv=None) -> int:
+    """Run the default viewer-launch workflow from the command line."""
+
     parser = _build_arg_parser()
-    parser.parse_args(argv)
+    args = parser.parse_args(argv)
+    logger = configure_logging_from_args(args, app_name="pyrtc-view-launch-all", component_name="viewer")
+    logger.info("Launching default viewer commands")
     launch_all()
     return 0
 

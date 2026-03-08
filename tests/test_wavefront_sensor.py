@@ -13,7 +13,7 @@ def test_downsample_and_rotate_helpers():
 
 
 def test_wavefront_sensor_basic(monkeypatch, tmp_path):
-    from conftest import DummySHM
+    from testsupport import DummySHM
 
     monkeypatch.setattr(wfs_mod, "ImageSHM", DummySHM)
 

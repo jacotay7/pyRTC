@@ -2,7 +2,7 @@ import importlib
 
 import numpy as np
 
-from conftest import DummySHM
+from testsupport import DummySHM
 
 
 loop_mod = importlib.import_module("pyRTC.Loop")

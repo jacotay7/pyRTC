@@ -1,6 +1,9 @@
+import os
+
 import numpy as np
 
-from pyRTC import Pipeline as pipeline
+import pyRTC.Pipeline as pipeline
+from pyRTC.logging_utils import configure_logging
 
 
 def _cleanup_shm(obj):
@@ -74,3 +77,43 @@ def test_hardware_launcher_write_and_read():
     hl.read = _read
     assert hl.getProperty("x") == 42
     assert calls[0]["type"] == "get"
+
+
+def test_hardware_launcher_inherits_logging_env(monkeypatch, tmp_path):
+    configure_logging(
+        app_name="pyrtc-test-launcher",
+        component_name="parent",
+        level="DEBUG",
+        log_dir=tmp_path,
+        color=False,
+        console=False,
+    )
+
+    captured = {}
+
+    class _DummyProcess:
+        pass
+
+    class _DummySocket:
+        def settimeout(self, timeout):
+            captured["timeout"] = timeout
+
+        def connect(self, address):
+            captured["address"] = address
+
+    def _fake_popen(command, stdin=None, stdout=None, text=None, bufsize=None, env=None):
+        captured["command"] = command
+        captured["env"] = env
+        return _DummyProcess()
+
+    monkeypatch.setattr(pipeline, "Popen", _fake_popen)
+    monkeypatch.setattr(pipeline.socket, "socket", lambda *args, **kwargs: _DummySocket())
+    monkeypatch.setattr(pipeline.time, "sleep", lambda _seconds: None)
+
+    launcher = pipeline.hardwareLauncher("child.py", "config.yaml", 4567, timeout=1.5)
+    launcher.launch()
+
+    assert captured["command"][0] == os.sys.executable
+    assert captured["address"] == ("127.0.0.1", 4567)
+    assert captured["env"]["PYRTC_LOG_LEVEL"] == "DEBUG"
+    assert os.path.basename(captured["env"]["PYRTC_LOG_DIR"]) == os.path.basename(str(tmp_path))

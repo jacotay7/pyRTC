@@ -1,13 +1,21 @@
+"""Compare benchmark reports against committed performance baselines."""
+
 import argparse
 import json
 from pathlib import Path
 from typing import Dict
+
+from pyRTC.logging_utils import add_logging_cli_args, configure_logging_from_args, get_logger
+
+
+logger = get_logger(__name__)
 
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Compare perf smoke report against committed baseline.")
     parser.add_argument("--current", type=str, default="benchmarks/perf_smoke_report.json", help="Current report path")
     parser.add_argument("--baseline", type=str, default="benchmarks/perf_smoke_baseline.json", help="Baseline report path")
+    add_logging_cli_args(parser)
     return parser
 
 
@@ -31,6 +39,9 @@ def _normalize_report_shape(data: Dict):
     # Core-only baseline shape (meta/profiles/gpu_kernels at top level)
     if "profiles" in data or "gpu_kernels" in data:
         return {"core_compute": data}
+    # Closed-loop AO benchmark report shape
+    if data.get("meta", {}).get("benchmark_type") == "synthetic_closed_loop":
+        return data
     return data
 
 
@@ -68,10 +79,37 @@ def _required_metric_paths(current: Dict):
                 ]
             )
 
+    if current.get("meta", {}).get("benchmark_type") == "synthetic_closed_loop":
+        loop_results = current.get("results", {})
+        for sensor_name, profiles in loop_results.items():
+            for profile_name, variants in profiles.items():
+                for variant_name, stats in variants.items():
+                    if not isinstance(stats, dict):
+                        continue
+                    if stats.get("status", {}).get("available") is False:
+                        continue
+                    base = ("results", sensor_name, profile_name, variant_name)
+                    paths.extend(
+                        [
+                            (*base, "mean_s"),
+                            (*base, "median_s"),
+                            (*base, "p95_s"),
+                            (*base, "p99_s"),
+                            (*base, "p99_hz"),
+                        ]
+                    )
+
     return paths
 
 
 def compare_against_baseline(current: Dict, baseline: Dict):
+    """Compare shared metrics between two benchmark reports.
+
+    The function normalizes the supported report shapes, verifies that required
+    metrics exist in both reports, and returns both the missing keys and numeric
+    comparison ratios for metrics that can be compared.
+    """
+
     current = _normalize_report_shape(current)
     baseline = _normalize_report_shape(baseline)
 
@@ -103,6 +141,11 @@ def compare_against_baseline(current: Dict, baseline: Dict):
 def main(argv=None) -> int:
     parser = _build_parser()
     args = parser.parse_args(argv)
+    configure_logging_from_args(
+        args,
+        app_name="pyrtc-check-perf-baseline",
+        component_name="benchmarks.check_perf_baseline",
+    )
 
     current_path = Path(args.current)
     baseline_path = Path(args.baseline)
@@ -120,14 +163,14 @@ def main(argv=None) -> int:
 
     missing, comparison = compare_against_baseline(current, baseline)
 
-    print(json.dumps(comparison, indent=2))
+    logger.info("Baseline comparison details:\n%s", json.dumps(comparison, indent=2))
 
     if missing:
         raise SystemExit(
             "Missing baseline metrics for comparison:\n" + "\n".join(sorted(missing))
         )
 
-    print("Baseline comparison succeeded: all required metrics found.")
+    logger.info("Baseline comparison succeeded: all required metrics found.")
     return 0
 
 

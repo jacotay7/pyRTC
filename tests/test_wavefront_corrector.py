@@ -13,7 +13,7 @@ def test_modal_to_zonal_with_flat():
 
 
 def test_wavefront_corrector_core(monkeypatch, tmp_path):
-    from conftest import DummySHM
+    from testsupport import DummySHM
 
     monkeypatch.setattr(wfc_mod, "ImageSHM", DummySHM)
 

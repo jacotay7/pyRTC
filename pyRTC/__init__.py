@@ -1,4 +1,13 @@
+"""Public package exports for pyRTC.
+
+pyRTC provides the building blocks needed to assemble an adaptive-optics real-
+time controller in Python. The package root re-exports the main component base
+classes, orchestration helpers, shared-memory transport primitives, and logging
+utilities so users can build systems from a compact public API surface.
+"""
+
 from .Loop import Loop
+from .logging_utils import add_logging_cli_args, configure_logging, configure_logging_from_args, get_logger
 from .Modulator import Modulator
 from .Optimizer import Optimizer
 from .Pipeline import (
@@ -32,8 +41,12 @@ __all__ = [
 	"WavefrontCorrector",
 	"WavefrontSensor",
 	"gpu_torch_available",
+	"get_logger",
 	"hardwareLauncher",
 	"initExistingShm",
+	"configure_logging",
+	"configure_logging_from_args",
+	"add_logging_cli_args",
 	"launchComponent",
 	"normalize_gpu_device",
 	"pyRTCComponent",

@@ -1,136 +1,63 @@
 .. scicam:
 
-.. automodule:: pyRTC.ScienceCamera
+.. currentmodule:: pyRTC.ScienceCamera
 
 
 Science Camera
 ==============
 
-In pyRTC, one of the core components is the wavefront sensor object. It typically starts the AO chain by running
-a continues capture sequence of images. This object is the producer of the `wfs` and `wfsRaw` shared memory objects
-which contain the dark subtracted and original image respectively. The images can then be processed by the slopesProcess
-class to compute the intermediate data product used for wavefront reconstruction.
+The `ScienceCamera` component represents the imaging path used to evaluate science output from the AO system.
+Unlike the wavefront sensor, this component is typically used to observe performance metrics such as PSF structure, long-exposure integration, tip-tilt behavior, and Strehl-related quantities.
+
+The class manages the shared-memory outputs associated with science imaging, including short- and long-exposure PSF products.
 
 Soft-RTC Example
 ----------------
 
-The following is an example of how to initialize a ScienceCamera component in pyRTC. 
-
-Here we are in the `soft-RTC` mode of pyRTC, which holds all components in the same python process. 
-See below for how to launch a hard-RTC equivalent.
+The following example shows the typical `soft-RTC` pattern for science-camera setup.
 
 .. code-block:: python
 
-  """
-  First we import the relevant wavefront sensor class. Typically, this will be a
-  specific hardware class which has been defined to work with the SDK of your camera.
-
-  As an example (see hardware/ximeaWFS.py):
-
-  from pyRTC.hardware import XIMEA_WFS
-
-  Here, I will just initialize the Wavefront Sensor Superclass as an example
-  """
-
-  #%% Run in interactive python or jupyter notebook to keep process alive
-  from pyRTC import WavefrontSensor
-  import matplotlib.pyplot as plt
+  from pyRTC.ScienceCamera import ScienceCamera
   from pyRTC.utils import read_yaml_file
 
-  confWFS = {
-  "name": "example",
-  "width": 256,
-  "height": 256,
-  "darkCount": 1000,
-  "darkFile": "", #Here you can add a dark file, if existing "./EXAMPLE/calib/wfsDark.npy",
-  "affinity": 2,
-  "functions": ["expose"]
-  }
+  conf = read_yaml_file("path/to/config.yaml")
+  sci = ScienceCamera(conf["psf"])
+  sci.start()
 
-  """
-  Alternatively, read the config from a file
-
-  conf = read_yaml_file("./EXAMPLE/config.yaml")["wfs"]
-  """
-
-  #Initialize the WFS object
-  wfs = WavefrontSensor(confWFS)
-  #Start the functions regiserted to the loop (i.e, expose)
-  wfs.start()
-
-  img = wfs.read()
-
-
-  plt.imshow(img)
-  plt.show()
-
-
-  """
-  Monitor the SHM in realtime by running the viewer command in a terminal
-  pyrtc-view wfs &
-  """
+  # The short-exposure and long-exposure products are written to shared memory.
+  sci.expose()
+  sci.integrate()
 
 Hard-RTC Example
 ----------------
 
-The following is an example of how to initialize a ScienceCamera component in pyRTC. 
-
-Here we are in the `hard-RTC` mode of pyRTC, which holds all components in the separate python processes. 
-This circumvents the python Global Interpreter Lock.
-
-See above for how to launch a soft-RTC equivalent.
+If the science camera is tied to a specific vendor SDK or operational process boundary, it can also be launched in `hard-RTC` mode.
 
 .. code-block:: python
   
-  from pyRTC import hardwareLauncher
+  from pyRTC.Pipeline import hardwareLauncher
 
-  """
-  For the Hard-RTC, you will need to set-up a config before hand and store it in a yaml file.
-
-  It should look something like:
-
-  wfs:
-    name: XIMEA
-    serial: "46052550"
-    binning: 1 
-    exposure: 2000
-    gain: 0
-    bitDepth: 10
-    left: 448 
-    top: 280 
-    width: 400 
-    height: 400 
-    darkCount: 2000
-    darkFile: "/home/whetstone/pyRTC/examples/sharp_lab/calib/dark.npy"
-    affinity: 3
-    functions:
-    - expose
-  """
   config = 'path/to/config.yaml'
-  port = 3000
+  port = 3003
 
-  #Initialize the hardware launcher for your WFS child hardware class
-  wfs = hardwareLauncher('path/to/pyRTC/hardware/myHardwareWfs.py',config,port)
-  """
-  Launch the process.
+  sci = hardwareLauncher('path/to/pyRTC/hardware/myScienceCamera.py', config, port)
+  sci.launch()
+  sci.run("integrate")
 
-  This will run the hardware file, which should establish a connection with the current process.
-  This is accomplished with the Listener class (see hardware folder for examples).
+Operational Notes
+-----------------
 
-  The functions registered in the config to the real-time loop will automatically be started.
-  """
-  wfs.launch()
+The science camera is usually responsible for image-quality observables rather than control observables.
+Common configuration and workflow concerns include:
 
-  """
-  Once the connection has been made successfully, you can run any function in the hardware class
-  using the run function. You can also get and set properties of the hardware using getProperty()
-  and setProperty() respectively.
-  """
-  wfs.run("expose")
+- short- vs long-exposure output products
+- dark-frame handling
+- model PSF loading
+- ROI, gain, binning, and exposure settings
+- downstream analysis such as Strehl and centroid-derived metrics
 
-  wfs.setProperty("exposure", 100)
-
-  print(wfs.getProperty("exposure"))
+This class is often subclassed for site-specific cameras under `pyRTC.hardware`.
 
 
 Parameters
@@ -141,3 +68,4 @@ Parameters
   :inherited-members:
   :undoc-members:
   :show-inheritance:
+  :no-index:

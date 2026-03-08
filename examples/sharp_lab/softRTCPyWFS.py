@@ -2,9 +2,15 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import time
-from pyRTC import Loop, SlopesProcess
+from pyRTC.Loop import Loop
+from pyRTC.SlopesProcess import SlopesProcess
+from pyRTC.logging_utils import configure_logging, get_logger
 from pyRTC.hardware import ALPAODM, PIModulator, XIMEA_WFS, spinCam
 from pyRTC.utils import read_yaml_file
+
+
+configure_logging(app_name="pyrtc-sharp-lab", component_name="softRTCPyWFS")
+logger = get_logger(__name__)
 #%% CLEAR SHMs
 # shms = ["wfs= "wfsRaw= "signal= "signal2D= "wfc= "wfc2D= "psfShort= "psfLong"]
 # clear_shms(shms)
@@ -15,29 +21,35 @@ confWFS = conf["wfs"]
 wfs = XIMEA_WFS(conf=confWFS)
 time.sleep(0.5)
 wfs.start()
+logger.info("Started PyWFS wavefront sensor")
 # %% Launch Modulator (PyWFS)
 confMod = conf["modulator"]
 mod = PIModulator(conf=confMod)
 time.sleep(0.5)
 mod.start()
+logger.info("Started modulator")
 
 # %% Launch slopes
 slopes = SlopesProcess(conf=conf["slopes"])
 slopes.start()
 time.sleep(0.5)
+logger.info("Started slopes process")
 # %% Launch WFC
 confWFC = conf["wfc"]
 wfc = ALPAODM(conf=confWFC)
 time.sleep(0.5)
 wfc.start()
+logger.info("Started deformable mirror")
 # %% Launch PSF
 confPSF = conf["psf"]
 psf = spinCam(conf=confPSF)
 time.sleep(0.5)
 psf.start()
+logger.info("Started science camera")
 # %% Launch loop
 loop = Loop(conf=conf["loop"])
 time.sleep(1)
+logger.info("Initialized loop controller")
 # %%
 from pyRTC.hardware.NCPAOptimizer import NCPAOptimizer
 ncpaOptim = NCPAOptimizer(conf["optimizer"]["ncpa"], loop, slopes)
@@ -185,6 +197,10 @@ plt.axvline(x=indexA, color = 'r')
 indexB = find_threshold_average(b,theshold)
 plt.axvline(x=indexB, color = 'r')
 plt.show()
-print(indexA, indexB)
-print(indexA+ im.shape[0]//2, indexB+im.shape[0]//2)
+logger.info("Quadrant centroid estimate: (%s, %s)", indexA, indexB)
+logger.info(
+    "Image-space centroid estimate: (%s, %s)",
+    indexA + im.shape[0] // 2,
+    indexB + im.shape[0] // 2,
+)
 # %%

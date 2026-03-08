@@ -42,7 +42,7 @@ sys.path.insert(0, os.path.abspath(".."))
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
-project = 'pyRTC-AO'
+project = 'pyrtc'
 copyright = '2024, Jacob Taylor'
 author = 'Jacob Taylor'
 release = '1.0.0'
@@ -66,6 +66,8 @@ extensions = [
     # 'sphinx.ext.intersphinx',
     # 'sphinx.ext.doctest'
 ]
+
+autosummary_generate = True
 
 autodoc_typehints = "description"
 
@@ -140,7 +142,7 @@ html_static_path = ["_static"]
 # -- Options for HTMLHelp output ---------------------------------------------
 
 # Output file base name for HTML help builder.
-htmlhelp_basename = "pyRTC-AOdoc"
+htmlhelp_basename = "pyrtcdoc"
 
 
 # -- Options for LaTeX output ------------------------------------------------

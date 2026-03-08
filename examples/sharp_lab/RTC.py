@@ -1,3 +1,13 @@
+"""Site-specific hard-RTC orchestration example for the SHARP lab setup.
+
+This script is a laboratory operations notebook translated into a Python file.
+It launches vendor-backed hardware components, performs calibration tasks, and
+exercises several optimizer workflows for a specific instrument environment.
+
+The paths, SDK assumptions, and prompts are installation-specific; treat it as
+an internal example rather than a portable tutorial.
+"""
+
 # %% IMPORTS
 #Import pyRTC classes
 import matplotlib.pyplot as plt
@@ -6,9 +16,15 @@ import time
 
 import numpy as np
 
+from pyRTC.logging_utils import configure_logging, get_logger
 from pyRTC.Pipeline import clear_shms, hardwareLauncher, initExistingShm
 from pyRTC.hardware import NCPAOptimizer, PIDOptimizer, loopOptimizer
 from pyRTC.utils import precise_delay, read_yaml_file
+
+
+configure_logging(app_name="pyrtc-sharp-lab", component_name="RTC")
+logger = get_logger(__name__)
+
 os.chdir("/home/whetstone/pyRTC/examples/sharp_lab")
 RECALIBRATE = False
 CLEAR_SHMS =  False
@@ -25,23 +41,28 @@ N = np.random.randint(3000,6000)
 # %% Launch DM
 wfc = hardwareLauncher("../pyRTC/hardware/ALPAODM.py", config, N)
 wfc.launch()
+logger.info("Launched deformable mirror process on port %s", N)
 
 # %% Launch WFS
 wfs = hardwareLauncher("../pyRTC/hardware/ximeaWFS.py", config, N+1)
 wfs.launch()
+logger.info("Launched wavefront sensor process on port %s", N + 1)
 
 # %% Launch slopes
 slopes = hardwareLauncher("../pyRTC/SlopesProcess.py", config, N+2)
 slopes.launch()
+logger.info("Launched slopes process on port %s", N + 2)
 
 # %% Launch PSF Cam
 psfCam = hardwareLauncher("../pyRTC/hardware/SpinnakerScienceCam.py", config, N+10)
 psfCam.launch()
+logger.info("Launched science camera process on port %s", N + 10)
 
 # %% Launch Loop Class
 loop = hardwareLauncher("../pyRTC/Loop.py", config, N+4)
 # loop = hardwareLauncher("../pyRTC/hardware/predictLoop.py", config)
 loop.launch()
+logger.info("Launched control loop process on port %s", N + 4)
 
 # %% OPTIMIZERS
 pidOptim = PIDOptimizer(read_yaml_file(config)["optimizer"]["pid"], loop)

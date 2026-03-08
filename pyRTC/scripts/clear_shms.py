@@ -1,6 +1,9 @@
+"""CLI utility for removing standard pyRTC shared-memory segments."""
+
 import argparse
 
-from pyRTC import Pipeline
+from pyRTC.logging_utils import add_logging_cli_args, configure_logging_from_args
+import pyRTC.Pipeline as Pipeline
 
 
 DEFAULT_SHM_NAMES = [
@@ -23,12 +26,17 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         default=DEFAULT_SHM_NAMES,
         help="Optional SHM names to clear; defaults to standard pyRTC streams",
     )
+    add_logging_cli_args(parser)
     return parser
 
 
 def main(argv=None) -> int:
+    """Parse the requested SHM names and clear them through ``pyRTC.Pipeline``."""
+
     parser = _build_arg_parser()
     args = parser.parse_args(argv)
+    logger = configure_logging_from_args(args, app_name="pyrtc-clear-shms", component_name="clear_shms")
+    logger.info("Clearing SHMs: %s", args.shms)
     Pipeline.clear_shms(args.shms)
     return 0
 

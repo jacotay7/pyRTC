@@ -1,3 +1,13 @@
+"""General utility helpers shared across pyRTC.
+
+The utilities in this module cover several small but widely used concerns:
+configuration validation, file-path helpers, timing helpers, dtype encoding,
+basic numerical helpers, and lightweight socket/process convenience functions.
+
+They are kept here because they are broadly reusable across components and do
+not belong to a single subsystem.
+"""
+
 import yaml
 import sys
 import select
@@ -12,6 +22,11 @@ import time
 import logging
 from typing import Any, Iterable, Mapping, Optional
 
+from pyRTC.logging_utils import get_logger
+
+
+logger = get_logger(__name__)
+
 NP_DATA_TYPES = [
     np.int8, np.int16, np.int32, np.int64,
     np.uint8, np.uint16, np.uint32, np.uint64,
@@ -25,6 +40,7 @@ NP_DATA_TYPES = [
 
 
 class ConfigValidationError(ValueError):
+    """Raised when a component configuration does not meet pyRTC expectations."""
     pass
 
 
@@ -103,6 +119,16 @@ def validate_loop_config(conf: Any) -> None:
 
 
 def validate_component_config(conf: Any, mro_names: Iterable[str]) -> None:
+    """Dispatch configuration validation based on the component class hierarchy.
+
+    Parameters
+    ----------
+    conf : Any
+        Candidate configuration object for one component.
+    mro_names : Iterable[str]
+        Class names from the component's method-resolution order. The helper
+        uses these names to decide which specialized validators should run.
+    """
     _require_mapping(conf, "component")
 
     mro_name_set = set(mro_names)
@@ -121,6 +147,11 @@ def precise_delay(microseconds):
 
 # Function to measure execution time
 def measure_execution_time(f, args, numIters=10):
+    """Measure repeated execution-time statistics for a callable.
+
+    The return value is tailored to the repository's lightweight performance
+    smoke checks: median, interquartile range, and approximate low/high bounds.
+    """
    
     #init once
     f(*args)
@@ -160,19 +191,19 @@ def measure_execution_time(f, args, numIters=10):
 def change_directory(directory):
     try:
         os.chdir(directory)
-        print(f"Successfully changed the current directory to: {os.getcwd()}")
+        logger.info("Successfully changed the current directory to %s", os.getcwd())
     except FileNotFoundError:
-        print(f"Error: The directory '{directory}' does not exist.")
+        logger.error("The directory '%s' does not exist", directory)
     except PermissionError:
-        print(f"Error: Permission denied to access the directory '{directory}'.")
+        logger.error("Permission denied to access the directory '%s'", directory)
     except Exception as e:
-        print(f"An unexpected error occurred: {e}")
+        logger.exception("Unexpected error while changing directory: %s", e)
     return
 
 def add_to_path(directory):
     # Check if the directory exists
     if not os.path.isdir(directory):
-        print(f"Error: The directory '{directory}' does not exist.")
+        logger.error("The directory '%s' does not exist", directory)
         return
 
     # Add the directory to the PATH environment variable
@@ -180,9 +211,9 @@ def add_to_path(directory):
     if directory not in current_path:
         new_path = f"{directory}:{current_path}"
         os.environ['PATH'] = new_path
-        print(f"Directory '{directory}' added to PATH.")
+        logger.info("Directory '%s' added to PATH", directory)
     else:
-        print(f"Directory '{directory}' is already in PATH.")
+        logger.info("Directory '%s' is already in PATH", directory)
 
     return
 
@@ -443,6 +474,12 @@ def set_affinity(affinity):
 
 
 def setFromConfig(conf, name, default):
+    """Return a config value or a typed default.
+
+    When a default is provided, this helper asserts that any override found in
+    the configuration matches the default's type. That makes many YAML mistakes
+    fail early during component startup instead of surfacing later.
+    """
     if name in conf.keys():
         val = conf[name]
     else:
@@ -490,7 +527,12 @@ def float_to_dtype(dtype_float):
     return np.dtype(NP_DATA_TYPES[int(dtype_float)])
 
 def bind_socket(host, start_port, max_attempts=5):
-    """Attempts to bind a socket on a range of ports, handling OSError exceptions."""
+    """Bind a TCP socket, retrying across a short range of ports.
+
+    This is primarily used by hard-RTC launcher/listener code so child hardware
+    processes can recover from a busy preferred port without embedding their own
+    retry logic.
+    """
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)  # Allow reuse of socket addresses
 
@@ -498,14 +540,14 @@ def bind_socket(host, start_port, max_attempts=5):
         try:
             # Attempt to bind the socket
             sock.bind((host, start_port + attempt))
-            print(f"Successfully bound to {host}:{start_port + attempt}")
+            logger.info("Bound socket to %s:%s", host, start_port + attempt)
             return sock
         except OSError as e:
-            print(f"Failed to bind to {host}:{start_port + attempt}: {e}")
+            logger.warning("Failed to bind to %s:%s: %s", host, start_port + attempt, e)
             if e.errno == socket.errno.EADDRINUSE:
-                print("Address already in use. Trying next port...")
+                logger.info("Address already in use. Trying next port.")
             else:
-                print("An unexpected error occurred. Stopping attempts.")
+                logger.error("Unexpected socket bind failure. Stopping attempts.")
                 break
     else:
         # After all attempts, if no binding was successful, raise an exception
@@ -528,9 +570,10 @@ def decrease_nice():
 def set_affinity_and_priority(thread_id, cpu_cores):
     set_affinity(cpu_cores)
     decrease_nice()
-    print(f"Thread {thread_id}: Priority set to REALTIME")
+    logger.info("Thread %s: priority set to REALTIME", thread_id)
 
 def read_yaml_file(file_path):
+    """Load a YAML file and return the parsed Python object."""
     with open(file_path, 'r') as file:
         conf = yaml.safe_load(file)
     return conf
