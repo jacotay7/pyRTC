@@ -186,6 +186,50 @@ Before starting larger work:
 - avoid mixing unrelated refactors with functional changes
 - be explicit about platform and dependency assumptions
 
+Component Descriptors
+---------------------
+
+`pyRTC` now exposes machine-readable component descriptors for the built-in core components.
+These descriptors are intended to support:
+
+- config validation
+- future manager and GUI form generation
+- stream introspection
+- future plugin discovery
+
+Useful entry points from Python are:
+
+.. code-block:: python
+
+   import pyRTC
+
+   catalog = pyRTC.build_descriptor_catalog()
+   loop_descriptor = pyRTC.get_component_descriptor("loop")
+   wfs_descriptor = pyRTC.WavefrontSensor.describe()
+   hardware_delay = loop_descriptor["hardwareDelay"]
+   default_gain = loop_descriptor["gain"]["default"]
+
+In the REPL, descriptors now render as a compact summary rather than a full dataclass dump, and they support dict-like field lookup by config key.
+This means calls such as `pyRTC.Loop.describe()["hardwareDelay"]` and `pyRTC.Loop.describe()["gain"]["default"]` work naturally.
+
+Each descriptor includes:
+
+- top-level config section name
+- component class path
+- required and optional config fields
+- worker functions intended for the `functions` list
+- input and output stream metadata
+- calibration artifact hints
+
+When adding new built-in components, update `pyRTC/component_descriptors.py` and keep the descriptor aligned with the actual config and stream contract.
+Future third-party integrations can also register descriptors programmatically without changing manager-specific code:
+
+.. code-block:: python
+
+   pyRTC.register_component_descriptor(custom_descriptor)
+
+Descriptor-driven validation is intentionally generic and should be paired with component-specific validation for domain rules that cannot be captured as simple field metadata.
+
 When opening a pull request:
 
 - state the motivation clearly

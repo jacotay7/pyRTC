@@ -87,6 +87,14 @@ def test_validate_system_config_rejects_invalid_function_name():
         validate_system_config(conf)
 
 
+def test_validate_system_config_rejects_descriptor_type_mismatch():
+    conf = read_system_config(SYNTHETIC_CONFIG_PATH, validate=False)
+    conf["psf"]["darkCount"] = "16"
+
+    with pytest.raises(ConfigValidationError, match="darkCount"):
+        validate_system_config(conf)
+
+
 def test_validate_system_config_rejects_too_many_dropped_modes():
     conf = read_system_config(SYNTHETIC_CONFIG_PATH, validate=False)
     conf["loop"]["numDroppedModes"] = conf["wfc"]["numModes"]

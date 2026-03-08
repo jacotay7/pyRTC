@@ -13,12 +13,11 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any, Mapping
 
-from pyRTC.Loop import Loop
-from pyRTC.ScienceCamera import ScienceCamera
-from pyRTC.SlopesProcess import SlopesProcess
-from pyRTC.Telemetry import Telemetry
-from pyRTC.WavefrontCorrector import WavefrontCorrector
-from pyRTC.WavefrontSensor import WavefrontSensor
+from pyRTC.component_descriptors import (
+    get_component_descriptor,
+    list_component_sections,
+    validate_config_with_descriptor,
+)
 from pyRTC.utils import (
     ConfigValidationError,
     read_yaml_file,
@@ -29,18 +28,12 @@ from pyRTC.utils import (
 
 
 REQUIRED_COMPONENT_SECTIONS = ("wfs", "slopes", "loop", "wfc")
-OPTIONAL_TOP_LEVEL_SECTIONS = ("psf", "telemetry", "manager", "streams", "metadata")
+OPTIONAL_COMPONENT_SECTIONS = tuple(
+    section for section in list_component_sections() if section not in REQUIRED_COMPONENT_SECTIONS
+)
+OPTIONAL_TOP_LEVEL_SECTIONS = ("manager", "streams", "metadata")
 ALLOWED_MANAGER_MODES = {"soft-rtc", "hard-rtc"}
 ALLOWED_RESTART_POLICIES = {"never", "on-failure", "always"}
-
-SECTION_CLASS_MAP = {
-    "wfs": WavefrontSensor,
-    "slopes": SlopesProcess,
-    "loop": Loop,
-    "wfc": WavefrontCorrector,
-    "psf": ScienceCamera,
-    "telemetry": Telemetry,
-}
 
 
 def _require_mapping(conf: Any, component: str) -> Mapping[str, Any]:
@@ -85,7 +78,7 @@ def _validate_required_section_mappings(conf: Mapping[str, Any]) -> None:
             f"system: missing required top-level section(s): {', '.join(missing)}"
         )
 
-    for section_name in REQUIRED_COMPONENT_SECTIONS + OPTIONAL_TOP_LEVEL_SECTIONS:
+    for section_name in REQUIRED_COMPONENT_SECTIONS + OPTIONAL_COMPONENT_SECTIONS + OPTIONAL_TOP_LEVEL_SECTIONS:
         if section_name in conf:
             _require_mapping(conf[section_name], section_name)
 
@@ -98,15 +91,21 @@ def _validate_functions_section(section_name: str, section_conf: Mapping[str, An
     if not isinstance(functions, list):
         raise ConfigValidationError(f"{section_name}: 'functions' must be a list of method names")
 
-    component_cls = SECTION_CLASS_MAP.get(section_name)
-    if component_cls is None:
+    descriptor = get_component_descriptor(section_name)
+    if descriptor is None:
         return
 
+    allowed_functions = set(descriptor.worker_functions)
     for function_name in functions:
         if not isinstance(function_name, str) or not function_name.strip():
             raise ConfigValidationError(
                 f"{section_name}: all 'functions' entries must be non-empty strings"
             )
+
+        if function_name in allowed_functions:
+            continue
+
+        component_cls = descriptor.component_class
         if not hasattr(component_cls, function_name):
             raise ConfigValidationError(
                 f"{section_name}: function '{function_name}' is not defined on {component_cls.__name__}"
@@ -211,7 +210,7 @@ def _validate_manager_config(conf: Any) -> None:
     if "componentModes" in conf:
         component_modes = _require_mapping(conf["componentModes"], "manager.componentModes")
         for section_name, launch_mode in component_modes.items():
-            if section_name not in SECTION_CLASS_MAP:
+            if get_component_descriptor(section_name) is None:
                 raise ConfigValidationError(
                     f"manager.componentModes: unknown component section '{section_name}'"
                 )
@@ -223,7 +222,7 @@ def _validate_manager_config(conf: Any) -> None:
     if "ports" in conf:
         ports = _require_mapping(conf["ports"], "manager.ports")
         for section_name, port in ports.items():
-            if section_name not in SECTION_CLASS_MAP:
+            if get_component_descriptor(section_name) is None:
                 raise ConfigValidationError(f"manager.ports: unknown component section '{section_name}'")
             _coerce_int(port, "manager.ports", section_name, minimum=1)
 
@@ -247,7 +246,7 @@ def _validate_streams_config(conf: Any) -> None:
                 _coerce_int(axis, f"streams.{stream_name}", "shape axis", minimum=1)
         if "dtype" in stream_conf and (not isinstance(stream_conf["dtype"], str) or not stream_conf["dtype"].strip()):
             raise ConfigValidationError(f"streams.{stream_name}: 'dtype' must be a non-empty string")
-        if "producer" in stream_conf and stream_conf["producer"] not in SECTION_CLASS_MAP:
+        if "producer" in stream_conf and get_component_descriptor(stream_conf["producer"]) is None:
             raise ConfigValidationError(
                 f"streams.{stream_name}: 'producer' must reference a known component section"
             )
@@ -256,7 +255,7 @@ def _validate_streams_config(conf: Any) -> None:
             if not isinstance(consumers, list):
                 raise ConfigValidationError(f"streams.{stream_name}: 'consumers' must be a list")
             for consumer in consumers:
-                if consumer not in SECTION_CLASS_MAP:
+                if get_component_descriptor(consumer) is None:
                     raise ConfigValidationError(
                         f"streams.{stream_name}: consumer '{consumer}' is not a known component section"
                     )
@@ -355,6 +354,13 @@ def validate_system_config(conf: Any, *, config_path: str | Path | None = None) 
     normalized = normalize_system_config(conf)
     _validate_required_section_mappings(normalized)
 
+    for section_name in list_component_sections():
+        if section_name in normalized:
+            try:
+                validate_config_with_descriptor(section_name, normalized[section_name])
+            except (TypeError, ValueError) as exc:
+                raise ConfigValidationError(str(exc)) from exc
+
     validate_wfs_config(normalized["wfs"])
     _validate_slopes_config(normalized["slopes"])
     validate_loop_config(normalized["loop"])
@@ -371,7 +377,7 @@ def validate_system_config(conf: Any, *, config_path: str | Path | None = None) 
     if "metadata" in normalized:
         _validate_metadata_config(normalized["metadata"])
 
-    for section_name in SECTION_CLASS_MAP:
+    for section_name in list_component_sections():
         if section_name in normalized:
             _validate_functions_section(section_name, normalized[section_name])
 

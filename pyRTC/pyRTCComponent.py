@@ -108,6 +108,14 @@ class pyRTCComponent:
 
         return
 
+    @classmethod
+    def describe(cls):
+        """Return the nearest built-in component descriptor for this class."""
+
+        from pyRTC.component_descriptors import describe_component_class
+
+        return describe_component_class(cls)
+
     def __del__(self):
         """
         Destructor to clean up the component.
