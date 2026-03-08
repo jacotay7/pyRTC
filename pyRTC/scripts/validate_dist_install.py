@@ -1,7 +1,6 @@
 """Validate that a built wheel installs and imports in a clean environment."""
 
 import argparse
-import shutil
 import subprocess
 import sys
 import tempfile

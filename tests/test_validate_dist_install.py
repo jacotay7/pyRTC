@@ -1,5 +1,3 @@
-from pathlib import Path
-
 import pyRTC.scripts.validate_dist_install as validate_dist_install
 
 

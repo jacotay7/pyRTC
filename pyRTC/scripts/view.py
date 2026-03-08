@@ -3,16 +3,17 @@
 import argparse
 import sys
 
-from pyRTC.logging_utils import add_logging_cli_args, configure_logging_from_args, get_logger
+from pyRTC.logging_utils import add_logging_cli_args, configure_logging_from_args
 import pyRTC.utils as utils
 
-from .viewer_helpers import (
-    compute_window_size as _compute_window_size,
-    normalize_frame as _normalize_frame,
-    read_shm_metadata as _read_shm_metadata,
-    resolve_grid as _resolve_grid,
-    split_targets_and_limits as _split_targets_and_limits,
-)
+from . import viewer_helpers as _viewer_helpers
+
+
+_compute_window_size = _viewer_helpers.compute_window_size
+_normalize_frame = _viewer_helpers.normalize_frame
+_read_shm_metadata = _viewer_helpers.read_shm_metadata
+_resolve_grid = _viewer_helpers.resolve_grid
+_split_targets_and_limits = _viewer_helpers.split_targets_and_limits
 
 
 def _build_arg_parser() -> argparse.ArgumentParser:

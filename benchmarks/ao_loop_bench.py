@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """Synthetic closed-loop benchmark suite for pyRTC AO pipelines.
 
 This module measures end-to-end loop iterations for representative pyramid and

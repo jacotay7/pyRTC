@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """Low-level kernel benchmark suite for pyRTC compute hotspots.
 
 The benchmarks in this module measure the p99 throughput and latency of the

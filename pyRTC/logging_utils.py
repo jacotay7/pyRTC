@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """Shared logging configuration helpers for pyRTC.
 
 This module defines the common logging surface used by library code, scripts,

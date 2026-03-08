@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """Render benchmark JSON reports into README-ready markdown tables."""
 
 import argparse
@@ -14,6 +16,20 @@ LOOP_ROWS = [
     ("pywfs", "PYWFS full loop"),
     ("shwfs", "SHWFS full loop"),
 ]
+
+CPU_KERNELS = [
+    ("wavefront_sensor.downsample_int32_image_jit", "WFS downsample"),
+    ("wavefront_sensor.rotate_image_jit", "WFS rotate"),
+    ("wavefront_corrector.ModaltoZonalWithFlat", "WFC modal->zonal"),
+    ("loop.leakyIntegratorNumba", "Loop integrator"),
+    ("slopes.computeSlopesPYWFSOptimNumba", "PYWFS slopes"),
+    ("slopes.computeSlopesSHWFSOptimNumba", "SHWFS slopes"),
+]
+
+GPU_KERNELS = {
+    "loop.leakyIntegratorNumba": "loop.leakIntegratorGPU",
+    "slopes.computeSlopesPYWFSOptimNumba": "slopes.computeSlopesPYWFSTorch",
+}
 
 
 def _load_report(path: Path):
