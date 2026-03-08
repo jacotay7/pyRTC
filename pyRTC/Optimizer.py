@@ -1,5 +1,9 @@
-"""
-A Superclass for Peformance Optimizer
+"""Base optimization component for slow control-plane tuning tasks.
+
+The optimizer layer in pyRTC is used for tasks such as loop gain tuning or
+hardware-assisted aberration optimization. These workflows are intentionally
+outside the steady-state real-time pipeline, which makes them a good fit for an
+Optuna-based trial/study abstraction.
 """
 import argparse
 import os
@@ -18,28 +22,22 @@ logger = get_logger(__name__)
 
 class Optimizer(pyRTCComponent):
     """
-    The Optimizer component for is for general optimization tasks 
-    in pyRTC. This class should be used by defining a child class held in pyRTC.hardware, 
-    which overwrites the relevant functions which actual hardware connectivity code. 
-    The child class can call its parent implementations in order to make use of the code 
-    which sets the relevant parameters, write to shared memory, etc... or they can overwrite 
-    them completely. See hardware/NCPAOptimizer.py for an example.
+    Abstract Optuna-backed optimization driver.
 
-    This class is designed to perform optimization using Optuna's 
-    CmaEsSampler and manages the optimization process including 
-    the application of optimum values and trial management.
+    ``Optimizer`` is meant to be subclassed by hardware- or algorithm-specific
+    optimizers in :mod:`pyRTC.hardware`. The base class owns the Optuna study,
+    default CMA-ES sampler choice, and the helper methods used to run a full
+    study or advance one trial at a time.
 
-    :param conf: Configuration dictionary containing necessary parameters.
-
-    **Config Parameters**:
-    - **numSteps** (*int*): The number of steps/trials to perform during optimization. Default is 100.
+    Subclasses are responsible for defining the objective function and for
+    applying candidate parameters to the system under test.
 
     Attributes
     ----------
     name : str
         Name of the optimizer component.
     study : optuna.Study
-        The study object from Optuna, initialized with a CmaEsSampler.
+        The Optuna study object, initialized with a CMA-ES sampler.
     numSteps : int
         Number of steps/trials to perform during optimization.
 
@@ -60,9 +58,13 @@ class Optimizer(pyRTCComponent):
 
     def __init__(self, conf) -> None:
         """
-        Initializes the Optimizer with the given configuration.
+        Initialize the optimizer study and runtime configuration.
 
-        :param conf: Configuration dictionary containing necessary parameters.
+        Parameters
+        ----------
+        conf : dict
+            Optimizer configuration. The base class uses ``numSteps`` while
+            subclasses may require additional problem-specific keys.
         """
         try:
             self.name = "Optimizer"

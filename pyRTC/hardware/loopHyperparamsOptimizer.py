@@ -1,3 +1,11 @@
+"""Loop hyperparameter optimizer.
+
+The optimizer in this module tunes coarse loop-level control settings such as
+gain, leak, and the number of dropped modes. It is intended for calibration and
+commissioning workflows where operators want to search a small parameter space
+around a known-stable reconstructor.
+"""
+
 import argparse
 import os
 import sys
@@ -14,6 +22,13 @@ from pyRTC.utils import decrease_nice, read_yaml_file, setFromConfig, set_affini
 logger = get_logger(__name__)
 
 class loopOptimizer(Optimizer):
+    """Optimizer for high-level AO loop hyperparameters.
+
+    This class evaluates candidate integrator-style loop settings against the
+    shared-memory Strehl stream. It is broader than ``PIDOptimizer`` because it
+    includes reconstructor-side parameters, such as mode truncation, that require
+    reloading the interaction matrix after each trial.
+    """
 
     def __init__(self, conf, loop) -> None:
         try:

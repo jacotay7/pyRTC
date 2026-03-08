@@ -1,3 +1,11 @@
+"""Shared logging configuration helpers for pyRTC.
+
+This module defines the common logging surface used by library code, scripts,
+benchmarks, and hard-RTC child processes. It centralizes environment-variable
+handling, console/file handler configuration, and small CLI helpers so every
+entry point can opt into the same operational logging model.
+"""
+
 import argparse
 import logging
 import os
@@ -32,6 +40,12 @@ _RESET = "\033[0m"
 
 
 class _ColorFormatter(logging.Formatter):
+    """Formatter that optionally colorizes the rendered log level.
+
+    Console and file handlers in pyRTC share the same structured message format.
+    This formatter only changes the log-level field when color is enabled, which
+    keeps terminal output easier to scan without affecting file logs.
+    """
     def __init__(self, use_color: bool):
         super().__init__(
             fmt="%(asctime)s | %(levelname)-8s | %(processName)s | %(name)s | %(message)s",

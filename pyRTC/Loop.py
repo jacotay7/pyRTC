@@ -1,3 +1,11 @@
+"""Adaptive optics loop control kernels and the main loop component.
+
+This module contains the numerical update kernels and the high-level
+``Loop`` component that turn measured residuals into new correction commands.
+It is the control-plane heart of pyRTC: interaction matrices, control matrices,
+integrators, and command dispatch all come together here.
+"""
+
 import os 
 os.environ["OMP_NUM_THREADS"] = "1"
 os.environ["OPENBLAS_NUM_THREADS"] = "1" 
@@ -46,6 +54,8 @@ def leakIntegratorGPU(slopes:np.ndarray,
                                 leak:float,
                                 numActiveModes:int
                                 ):
+    """Run the leaky-integrator control update on a CUDA-backed torch matrix."""
+
     if not gpu_torch_available():
         raise ImportError("leakIntegratorGPU requires PyTorch. Install with 'pip install pyRTC[gpu]' or 'pip install torch'.")
 
@@ -59,12 +69,16 @@ def leakIntegratorGPU(slopes:np.ndarray,
 @jit(nopython=True, nogil=True, cache=True, fastmath=True)
 def compCorrection(CM=np.array([[]], dtype=np.float32),  
                     slopes=np.array([], dtype=np.float32)):
+    """Apply a control matrix to a slope vector and return the correction."""
+
     return np.dot(CM,slopes)
 
 @jit(nopython=True, nogil=True, cache=True, fastmath=True)
 def updateCorrection(correction=np.array([], dtype=np.float32), 
                      gCM=np.array([[]], dtype=np.float32),  
                      slopes=np.array([], dtype=np.float32)):
+    """Update an existing correction using a pre-scaled control matrix."""
+
     return correction - np.dot(gCM,slopes)
 
 # @jit(nopython=True)
@@ -76,7 +90,16 @@ def updateCorrection(correction=np.array([], dtype=np.float32),
 
 class Loop(pyRTCComponent):
     """
-    A pyRTCComponent which controls the AO loop.
+    Real-time controller that closes the adaptive optics loop.
+
+    ``Loop`` reads the current residual signal from the slopes pipeline,
+    combines that signal with the calibrated control model, and writes the next
+    correction vector to the wavefront-corrector stream. It also owns the
+    operator-facing calibration state used to load or build interaction and
+    control matrices and to tune classical integrator settings.
+
+    In day-to-day use, this is the component that embodies the chosen control
+    law for the system.
 
     Config
     ------

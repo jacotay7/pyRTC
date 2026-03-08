@@ -1,3 +1,11 @@
+"""Abstract base class for beam and waveform modulators.
+
+Modulators sit outside the steady-state real-time AO loop but still need a
+consistent lifecycle and motion interface. This module defines that shared
+contract so concrete vendor integrations can expose a uniform API for startup,
+shutdown, restarts, and position changes.
+"""
+
 from abc import ABC, abstractmethod
 
 from pyRTC.logging_utils import get_logger
@@ -9,8 +17,14 @@ logger = get_logger(__name__)
 
 class Modulator(pyRTCComponent, ABC):
     """
-    A placeholder class for any modulator specific logic. See hardware/PIModulator for an 
-    implementation.
+    Common lifecycle and positioning interface for modulator devices.
+
+    Concrete subclasses are expected to bind this abstract interface to a real
+    hardware controller or simulator. The base class handles configuration and
+    logging while subclasses implement the actual move/restart behavior.
+
+    New code should use :meth:`set_position`; :meth:`goTo` is retained as a
+    compatibility alias for older call sites.
     """
     def __init__(self, conf) -> None:
         try:

@@ -1,3 +1,5 @@
+"""Simple real-time plotter for a scalar shared-memory stream."""
+
 import argparse
 import time
 
@@ -9,6 +11,8 @@ from pyRTC.logging_utils import add_logging_cli_args, configure_logging_from_arg
 
 
 def rolling_average(data, window_size):
+    """Return a moving average series for plotting."""
+
     n = len(data)
     if n < window_size:
         return []
@@ -35,6 +39,8 @@ def _build_arg_parser() -> argparse.ArgumentParser:
 
 
 def main(argv=None) -> int:
+    """Attach to a SHM stream and plot a rolling summary interactively."""
+
     parser = _build_arg_parser()
     args = parser.parse_args(argv)
     logger = configure_logging_from_args(args, app_name="pyrtc-shm-monitor", component_name=args.shm)

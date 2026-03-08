@@ -1,6 +1,11 @@
+"""Wavefront-corrector abstractions and modal-to-zonal mapping helpers.
+
+This module defines the base class used by pyRTC deformable mirrors and other
+corrective devices. It manages command streams, flat handling, actuator masks,
+and optional 2D layout views, while leaving hardware transport details to the
+concrete adapter subclasses.
 """
-Wavefront Corrector Superclass
-"""
+
 import os 
 os.environ["OMP_NUM_THREADS"] = "1"
 os.environ["OPENBLAS_NUM_THREADS"] = "1" 
@@ -25,16 +30,18 @@ logger = get_logger(__name__)
 def ModaltoZonalWithFlat(correction=np.array([],dtype=np.float32), 
                        M2C=np.array([[]],dtype=np.float32),
                        flat=np.array([],dtype=np.float32)):
+    """Project a modal correction into actuator space and add the flat shape."""
+
     return M2C@correction + flat
 
 class WavefrontCorrector(pyRTCComponent):
     """
-    A pyRTCComponent which represents a Wavefront Corrector (DM, SLM, other). This is a general class which is 
-    reponsible for all components of wavefront correcting which are common to all wavefront correctors. This
-    class should be used by defining a child class held in pyRTC.hardware, which overwrites
-    the relevant functions which actual hardware connectivity code. The child class can call its parent
-    implementations in order to make use of the code which sets the relevant parameters, write to shared
-    memory, etc... or they can overwrite them completely. See hardware/ALPAODM.py for an example.
+    Base class for deformable mirrors and other wavefront-correction devices.
+
+    ``WavefrontCorrector`` is responsible for the control-plane machinery around
+    command generation: SHM output, flat shapes, mode-to-command transforms,
+    floating actuator handling, and delayed command buffers. Subclasses are left
+    to implement the device-specific transport in ``sendToHardware``.
 
     Config
     ------

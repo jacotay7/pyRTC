@@ -1,3 +1,13 @@
+"""General utility helpers shared across pyRTC.
+
+The utilities in this module cover several small but widely used concerns:
+configuration validation, file-path helpers, timing helpers, dtype encoding,
+basic numerical helpers, and lightweight socket/process convenience functions.
+
+They are kept here because they are broadly reusable across components and do
+not belong to a single subsystem.
+"""
+
 import yaml
 import sys
 import select
@@ -30,6 +40,7 @@ NP_DATA_TYPES = [
 
 
 class ConfigValidationError(ValueError):
+    """Raised when a component configuration does not meet pyRTC expectations."""
     pass
 
 
@@ -108,6 +119,16 @@ def validate_loop_config(conf: Any) -> None:
 
 
 def validate_component_config(conf: Any, mro_names: Iterable[str]) -> None:
+    """Dispatch configuration validation based on the component class hierarchy.
+
+    Parameters
+    ----------
+    conf : Any
+        Candidate configuration object for one component.
+    mro_names : Iterable[str]
+        Class names from the component's method-resolution order. The helper
+        uses these names to decide which specialized validators should run.
+    """
     _require_mapping(conf, "component")
 
     mro_name_set = set(mro_names)
@@ -126,6 +147,11 @@ def precise_delay(microseconds):
 
 # Function to measure execution time
 def measure_execution_time(f, args, numIters=10):
+    """Measure repeated execution-time statistics for a callable.
+
+    The return value is tailored to the repository's lightweight performance
+    smoke checks: median, interquartile range, and approximate low/high bounds.
+    """
    
     #init once
     f(*args)
@@ -448,6 +474,12 @@ def set_affinity(affinity):
 
 
 def setFromConfig(conf, name, default):
+    """Return a config value or a typed default.
+
+    When a default is provided, this helper asserts that any override found in
+    the configuration matches the default's type. That makes many YAML mistakes
+    fail early during component startup instead of surfacing later.
+    """
     if name in conf.keys():
         val = conf[name]
     else:
@@ -495,7 +527,12 @@ def float_to_dtype(dtype_float):
     return np.dtype(NP_DATA_TYPES[int(dtype_float)])
 
 def bind_socket(host, start_port, max_attempts=5):
-    """Attempts to bind a socket on a range of ports, handling OSError exceptions."""
+    """Bind a TCP socket, retrying across a short range of ports.
+
+    This is primarily used by hard-RTC launcher/listener code so child hardware
+    processes can recover from a busy preferred port without embedding their own
+    retry logic.
+    """
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)  # Allow reuse of socket addresses
 
@@ -536,6 +573,7 @@ def set_affinity_and_priority(thread_id, cpu_cores):
     logger.info("Thread %s: priority set to REALTIME", thread_id)
 
 def read_yaml_file(file_path):
+    """Load a YAML file and return the parsed Python object."""
     with open(file_path, 'r') as file:
         conf = yaml.safe_load(file)
     return conf

@@ -1,3 +1,10 @@
+"""Helper utilities for the live shared-memory viewer.
+
+This module keeps the viewer entrypoint and Qt widgets focused on UI concerns by
+collecting small helpers for SHM metadata access, frame reshaping, geometry
+resolution, and stream polling.
+"""
+
 import math
 
 import numpy as np
@@ -102,6 +109,13 @@ def format_shape(shape):
 
 
 class StreamConnection:
+    """Tracks one SHM stream and its metadata for viewer refreshes.
+
+    The viewer uses this wrapper to keep data access, cached frames, update
+    counters, and derived display strings in one place. It avoids scattering SHM
+    metadata handling logic throughout the UI layer.
+    """
+
     def __init__(self, shm_name):
         self.name = shm_name
         self.metadata_shm, shm_shape, shm_dtype = read_shm_metadata(shm_name)

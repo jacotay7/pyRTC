@@ -1,3 +1,10 @@
+"""Synthetic closed-loop benchmark suite for pyRTC AO pipelines.
+
+This module measures end-to-end loop iterations for representative pyramid and
+Shack-Hartmann synthetic systems on CPU and, when available, GPU. The output is
+used for README-facing performance reporting and baseline regression checks.
+"""
+
 import argparse
 import json
 import time
@@ -427,6 +434,8 @@ def run_ao_loop_benchmarks(
     include_gpu: bool = True,
     system_sizes=None,
 ):
+    """Benchmark full synthetic AO loop iterations across sensor types and sizes."""
+
     if system_sizes is None:
         system_sizes = [10, 20, 60]
 

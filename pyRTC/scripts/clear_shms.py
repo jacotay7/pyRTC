@@ -1,3 +1,5 @@
+"""CLI utility for removing standard pyRTC shared-memory segments."""
+
 import argparse
 
 from pyRTC import Pipeline
@@ -29,6 +31,8 @@ def _build_arg_parser() -> argparse.ArgumentParser:
 
 
 def main(argv=None) -> int:
+    """Parse the requested SHM names and clear them through ``pyRTC.Pipeline``."""
+
     parser = _build_arg_parser()
     args = parser.parse_args(argv)
     logger = configure_logging_from_args(args, app_name="pyrtc-clear-shms", component_name="clear_shms")

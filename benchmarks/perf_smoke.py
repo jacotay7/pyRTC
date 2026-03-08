@@ -1,3 +1,11 @@
+"""Lightweight performance smoke checks for release validation.
+
+This module combines a few fast-running timing checks with an optional pass over
+the core compute benchmark suite. It is intended for CI and release workflows
+that need coarse performance coverage without paying the cost of the full
+benchmark stack.
+"""
+
 import argparse
 import json
 import platform
@@ -94,6 +102,8 @@ def run_perf_smoke(
     core_include_gpu: bool = True,
     core_system_sizes=None,
 ):
+    """Run the smoke benchmarks and return a JSON-serializable report."""
+
     if core_system_sizes is None:
         core_system_sizes = [10, 20, 60]
 

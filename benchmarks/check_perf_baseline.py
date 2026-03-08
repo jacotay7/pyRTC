@@ -1,3 +1,5 @@
+"""Compare benchmark reports against committed performance baselines."""
+
 import argparse
 import json
 from pathlib import Path
@@ -101,6 +103,13 @@ def _required_metric_paths(current: Dict):
 
 
 def compare_against_baseline(current: Dict, baseline: Dict):
+    """Compare shared metrics between two benchmark reports.
+
+    The function normalizes the supported report shapes, verifies that required
+    metrics exist in both reports, and returns both the missing keys and numeric
+    comparison ratios for metrics that can be compared.
+    """
+
     current = _normalize_report_shape(current)
     baseline = _normalize_report_shape(baseline)
 

@@ -1,5 +1,9 @@
-"""
-Wavefront Sensor Superclass
+"""Telemetry capture utilities for pyRTC shared-memory streams.
+
+The telemetry component records finite stretches of data from existing pyRTC
+streams and stores them as raw binary files on disk. It is intended for
+operator-facing and maintainer-facing tasks such as debugging, calibration, and
+offline analysis rather than long-term archival storage.
 """
 import numpy as np
 
@@ -12,6 +16,16 @@ from pyRTC.utils import append_to_file, generate_filepath, setFromConfig
 logger = get_logger(__name__)
 
 class Telemetry(pyRTCComponent):
+    """Persist a bounded capture from an existing pyRTC stream.
+
+    ``Telemetry`` attaches to named shared-memory streams that are already being
+    produced elsewhere in the running RTC, writes a configurable number of
+    frames to disk, and keeps enough bookkeeping to reconstruct known captures
+    with the correct dtype and dimensions later.
+
+    Typical uses include saving wavefront sensor frames, residual signals, or
+    command vectors during tuning and diagnostics.
+    """
 
     def __init__(self, conf) -> None:
         try:

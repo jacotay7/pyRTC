@@ -1,5 +1,9 @@
-"""
-pyRTC Component Superclass
+"""Base class for threaded pyRTC runtime components.
+
+Most pyRTC subsystems share the same lifecycle model: validate configuration,
+normalize optional GPU settings, spawn one or more worker threads from YAML,
+and expose lightweight start/stop controls. This module provides that shared
+behavior.
 """
 import os
 import threading
@@ -14,13 +18,17 @@ logger = get_logger(__name__)
 
 class pyRTCComponent:
     """
-    A base class for real-time control components.
+    Common threaded component base used throughout pyRTC.
 
-    This class provides a framework for real-time control components, allowing for the 
-    management of threads and CPU affinity settings. You can register a function to the 
-    real-time pipeline in the config by including their name under the key "functions". These
-    function will then be spawned into their own thread and controlled by the start and stop
-    functions. Note: any return value from registered functions is not used or stored.
+    The base class standardizes the repeated mechanics shared by the wavefront
+    sensor, slopes processor, loop controller, telemetry recorder, and many
+    hardware-facing helpers. Components list runtime methods under the
+    configuration key ``functions`` and the base class starts one worker thread
+    per listed method.
+
+    Those worker functions are assumed to matter for their side effects rather
+    than their return values. They usually produce, consume, or transform shared-
+    memory streams inside the running RTC.
 
     For examples:
 
@@ -32,9 +40,13 @@ class pyRTCComponent:
     Config Parameters
     -----------------
     affinity : int
-        The CPU affinity for the component. Default is 0.
+        Base CPU affinity for the component. Additional worker functions are
+        assigned subsequent cores when possible.
     functions : list
-        A list of functions to run in separate threads. Default is an empty list.
+        Bound method names to run in worker threads.
+    gpuDevice : str, optional
+        Requested GPU device identifier. When PyTorch is unavailable this is
+        normalized back to CPU mode.
 
     Attributes
     ----------
@@ -43,12 +55,8 @@ class pyRTCComponent:
     running : bool
         Indicates whether the component is currently running.
 
-    Methods
-    -------
-    start():
-        Start the registered real-time functions.
-    stop():
-        Stop the registered real-time functions.
+    The class intentionally does not define component-specific data flow. It is
+    only responsible for the shared runtime lifecycle.
     """
     def __init__(self, conf) -> None:
         """

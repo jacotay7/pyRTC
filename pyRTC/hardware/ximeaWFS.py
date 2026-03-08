@@ -1,3 +1,11 @@
+"""XIMEA wavefront-sensor camera adapter.
+
+This module provides the camera-facing portion of a Shack-Hartmann-style
+wavefront sensor built on XIMEA hardware. It maps pyRTC configuration and frame
+acquisition semantics onto the ``xiapi`` SDK so the rest of the pipeline can
+interact with the device through the standard ``WavefrontSensor`` interface.
+"""
+
 import time
 
 from pyRTC.logging_utils import get_logger
@@ -9,6 +17,13 @@ from ximea import xiapi
 logger = get_logger(__name__)
 
 class XIMEA_WFS(WavefrontSensor):
+    """Wavefront-sensor adapter for a XIMEA camera.
+
+    The class handles device connection, runtime camera configuration, and
+    frame capture for XIMEA-backed sensors. It intentionally focuses on the raw
+    image transport layer; slope extraction and other wavefront-sensing logic
+    remain in the normal pyRTC processing components.
+    """
 
     def __init__(self, conf):
         try:

@@ -1,3 +1,9 @@
+"""Latency-measurement CLI for pyRTC shared-memory streams.
+
+The script samples producer and consumer stream timestamps, estimates end-to-end
+pipeline latency, and optionally writes a histogram plot for offline review.
+"""
+
 import argparse
 from pathlib import Path
 
@@ -75,6 +81,8 @@ def _build_arg_parser() -> argparse.ArgumentParser:
 
 
 def collect_timestamps(source_shm, target_shm, samples: int, show_progress: bool = True):
+    """Collect timestamp and counter samples from a source and target stream."""
+
     source_write_times = np.empty(samples, dtype=np.float64)
     target_write_times = np.empty(samples, dtype=np.float64)
     source_counts = np.empty(samples, dtype=np.float64)
@@ -103,6 +111,8 @@ def collect_timestamps(source_shm, target_shm, samples: int, show_progress: bool
 
 
 def compute_latency_seconds(source_write_times: np.ndarray, target_write_times: np.ndarray):
+    """Estimate latency samples and compensate for simple frame misalignment."""
+
     sys_latency = target_write_times - source_write_times
     frame_shift = 0
 
@@ -114,6 +124,8 @@ def compute_latency_seconds(source_write_times: np.ndarray, target_write_times: 
 
 
 def plot_latency_histogram(sys_latency: np.ndarray, args) -> plt.Figure:
+    """Render a log-scaled histogram that highlights high-percentile latency."""
+
     low, high = args.xrange
     bins = np.logspace(np.log10(low), np.log10(high), args.bins)
 
@@ -160,6 +172,8 @@ def _default_output_path(args) -> Path:
 
 
 def main(argv=None) -> int:
+    """Run the latency measurement workflow from the command line."""
+
     parser = _build_arg_parser()
     args = parser.parse_args(argv)
     logger = configure_logging_from_args(args, app_name="pyrtc-measure-latency", component_name=args.tag)

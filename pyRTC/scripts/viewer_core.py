@@ -1,3 +1,11 @@
+"""Qt-based shared-memory viewer used by the ``pyrtc-view`` CLI.
+
+The viewer code in this module turns one or more pyRTC shared-memory streams
+into a configurable mosaic of live 2D image panels. It is intentionally UI-
+centric: the classes here manage layout, theming, refresh cadence, and per-panel
+display controls rather than any AO-specific signal processing.
+"""
+
 from dataclasses import dataclass
 import logging
 
@@ -30,6 +38,8 @@ from .viewer_helpers import StreamConnection, compute_window_size, normalize_geo
 
 @dataclass(frozen=True)
 class ViewerTheme:
+    """Container for the colors used by a viewer theme preset."""
+
     name: str
     window_bg: str
     panel_bg: str
@@ -77,6 +87,8 @@ THEMES = {
 
 
 class AddPlotPlaceholder(QFrame):
+    """Empty grid cell that lets the user attach another SHM stream."""
+
     def __init__(self, add_callback):
         super().__init__()
         self.add_callback = add_callback
@@ -112,6 +124,8 @@ class AddPlotPlaceholder(QFrame):
 
 
 class EdgeArrowButton(QToolButton):
+    """Small edge-mounted button used to grow the mosaic layout."""
+
     def __init__(self, label: str, callback):
         super().__init__()
         self.setText(label)
@@ -129,6 +143,13 @@ class EdgeArrowButton(QToolButton):
 
 
 class Stream2DWidget(QFrame):
+    """Live panel for a single shared-memory stream.
+
+    Each panel owns one ``StreamConnection`` and is responsible for rendering
+    the latest frame, tracking basic stream status such as FPS and paused state,
+    and exposing per-panel presentation controls like colorbars and scaling.
+    """
+
     def __init__(
         self,
         connection: StreamConnection,
@@ -447,6 +468,13 @@ class Stream2DWidget(QFrame):
 
 
 class MosaicViewerWindow(QMainWindow):
+    """Top-level window that arranges multiple stream panels in a grid.
+
+    The window manages global viewer state such as theme selection, refresh
+    cadence, grid geometry, and bulk operations across all panels. It is the
+    main application object behind ``pyrtc-view``.
+    """
+
     def __init__(
         self,
         shm_names,
@@ -807,6 +835,8 @@ class MosaicViewerWindow(QMainWindow):
 
 
 def launch_mosaic_viewer(argv, shm_names, fps, geometry, pixel_scale, static_vmin, static_vmax, theme_name):
+    """Create the Qt application, size the window, and start the event loop."""
+
     app = QApplication(argv)
     window = MosaicViewerWindow(
         shm_names,

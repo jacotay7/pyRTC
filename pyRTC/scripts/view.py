@@ -1,3 +1,5 @@
+"""Command-line entrypoint for the pyRTC mosaic viewer."""
+
 import argparse
 import sys
 
@@ -14,6 +16,8 @@ from .viewer_helpers import (
 
 
 def _build_arg_parser() -> argparse.ArgumentParser:
+    """Build the CLI parser for live SHM viewing."""
+
     parser = argparse.ArgumentParser(description="View a pyRTC shared-memory stream in real time.")
     parser.add_argument(
         "items",
@@ -47,6 +51,8 @@ def _build_arg_parser() -> argparse.ArgumentParser:
 
 
 def main(argv=None) -> int:
+    """Parse viewer arguments, validate them, and launch the Qt viewer."""
+
     parser = _build_arg_parser()
     args = parser.parse_args(argv)
     logger = configure_logging_from_args(args, app_name="pyrtc-view", component_name="viewer")

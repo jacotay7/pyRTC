@@ -1,3 +1,11 @@
+"""Low-level kernel benchmark suite for pyRTC compute hotspots.
+
+The benchmarks in this module measure the p99 throughput and latency of the
+individual kernels that dominate synthetic AO-loop runtime. These results are
+useful for profiling regressions and for understanding which building blocks are
+worth accelerating on GPU.
+"""
+
 import argparse
 import json
 import os
@@ -400,6 +408,8 @@ def run_core_compute_benchmarks(
     quick: bool = False,
     system_sizes=None,
 ):
+    """Run the configured kernel benchmarks and return a structured report."""
+
     if system_sizes is None:
         system_sizes = [10, 20, 60]
 

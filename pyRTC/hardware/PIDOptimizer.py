@@ -1,3 +1,11 @@
+"""PID gain optimizer for a running control loop.
+
+The optimizer in this module tunes proportional, integral, and derivative loop
+gains against a live performance metric exposed through shared memory. It is a
+slow control-plane tool rather than a real-time component and is intended for
+supervised commissioning or laboratory retuning.
+"""
+
 import argparse
 import os
 import sys
@@ -14,6 +22,14 @@ from pyRTC.utils import decrease_nice, read_yaml_file, setFromConfig, set_affini
 logger = get_logger(__name__)
 
 class PIDOptimizer(Optimizer):
+    """Optuna-based tuner for PID-style loop gains.
+
+    The optimizer evaluates candidate ``pGain``, ``iGain``, and ``dGain``
+    settings by applying them to an existing loop object, restarting the loop,
+    and averaging several measurements from shared-memory telemetry. It can also
+    mirror the proportional gain into ``leakyGain`` when operating in a POL-like
+    configuration.
+    """
 
     def __init__(self, conf, loop) -> None:
         try:

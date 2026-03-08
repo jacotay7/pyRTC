@@ -1,5 +1,9 @@
-"""
-Slopes Superclass
+"""Slope-processing kernels and the pyRTC slope extraction component.
+
+This module turns wavefront-sensor camera frames into the residual slope or
+signal vectors consumed by the AO loop. It includes optimized CPU and GPU
+helpers for pyramid and Shack-Hartmann processing plus the ``SlopesProcess``
+component that manages calibration data and SHM publication.
 """
 import os
 os.environ["OMP_NUM_THREADS"] = "1"
@@ -33,6 +37,13 @@ def computeSlopesPYWFSTorch(image: Any,
                             numPixelsInPupils: int, 
                             slopes: Any,
                             refSlopes: Any):
+    """Compute normalized pyramid-WFS slopes on a torch device.
+
+    The function extracts the four pupil images selected by the provided masks,
+    forms differential x/y slope channels, normalizes by the mean total pupil
+    flux, and subtracts the stored reference slopes.
+    """
+
     if not gpu_torch_available():
         raise ImportError("computeSlopesPYWFSTorch requires PyTorch. Install with 'pip install pyRTC[gpu]' or 'pip install torch'.")
 
@@ -121,6 +132,8 @@ def computeSlopesPYWFSOptimNumba(image:np.ndarray,
                             slopes:np.ndarray,
                             refSlopes:np.ndarray,
                         ):
+    """Compute pyramid-WFS slopes using a Numba-optimized CPU kernel."""
+
     # Mask Pupils out of image and convert to floats
     p1_count, p2_count, p3_count, p4_count = 0, 0, 0, 0
     for i in range(len(image)):
@@ -171,6 +184,12 @@ def computeSlopesSHWFSOptimNumba(image:np.ndarray,
                                  offsetY:int,
                                  intN:int,
                                  ):
+    """Compute Shack-Hartmann centroid slopes with a Numba kernel.
+
+    The image is traversed lenslet by lenslet, thresholded locally, and reduced
+    into x/y centroid offsets relative to the unaberrated reference slopes.
+    """
+
     
     # Convert image to the same dtype as unaberratedSlopes
     image = image.astype(np.float32)

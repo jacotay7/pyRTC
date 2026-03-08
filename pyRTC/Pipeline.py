@@ -1,5 +1,10 @@
-"""
-Pipeline Superclasss
+"""Shared-memory transport and hard-RTC process helpers for pyRTC.
+
+This module contains the infrastructure that lets pyRTC components exchange
+frames and command vectors through named shared-memory blocks, optionally mirror
+those blocks onto CUDA tensors for compatible deployments, and launch hardware-
+facing child processes that communicate with the main RTC over a small
+localhost-based JSON protocol.
 """
 import argparse
 import json 
@@ -99,6 +104,17 @@ def work(obj, functionName, affinity):
     return
 
 class ImageSHM:
+    """Named shared-memory array with metadata and optional GPU mirror state.
+
+    ``ImageSHM`` is the transport primitive used throughout pyRTC. Each stream
+    has a CPU shared-memory block, a small metadata block containing shape,
+    dtype, and timing information, and optionally a GPU-backed tensor mirror in
+    hard-RTC deployments where CUDA sharing is supported.
+
+    Producers create the stream and update it with NumPy arrays. Consumers
+    reconstruct the stream by name and read either safe copies or direct views,
+    depending on their performance and synchronization needs.
+    """
 
     METADATA_SIZE = 10
     def __init__(self, name, shape, dtype, gpuDevice=None, consumer=True) -> None:
@@ -441,6 +457,16 @@ def clear_shms(names):
 
 
 class hardwareLauncher:
+    """Launch and supervise a hardware-side child process.
+
+    The launcher is the client-side helper for pyRTC's hard-RTC deployment
+    model. It starts a Python subprocess, waits for the child to expose a socket
+    listener, and then sends simple JSON messages to get or set properties,
+    invoke helper methods, or request shutdown.
+
+    Logging-related environment variables are propagated so parent and child
+    processes share the same operator-facing logging policy.
+    """
 
     def __init__(self, hardwareFile, configFile, port, timeout=None) -> None:
         self.hardwareFile = hardwareFile
@@ -536,6 +562,13 @@ class hardwareLauncher:
     
 
 class Listener:
+    """Server-side control socket for a launched hardware object.
+
+    ``Listener`` is the child-process counterpart to :class:`hardwareLauncher`.
+    It binds a localhost socket, accepts the RTC-side connection, and services a
+    narrow JSON RPC surface for property access, method calls, and clean
+    shutdown.
+    """
 
     def __init__(self, hardware, port) -> None:
         self.hardware = hardware

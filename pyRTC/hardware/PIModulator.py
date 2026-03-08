@@ -1,3 +1,11 @@
+"""PI tip-tilt modulation stage adapter.
+
+This module implements the pyRTC ``Modulator`` interface for Physik
+Instrumente stages driven through ``pipython``. The adapter configures a pair
+of PI wave generators to trace a circular modulation pattern that can be used to
+drive a pyramid wavefront sensor.
+"""
+
 import os
 
 from pipython import GCSDevice, pitools
@@ -7,6 +15,13 @@ from pyRTC.Pipeline import launchComponent
 from pyRTC.utils import setFromConfig
 
 class PIModulator(Modulator):
+    """Hardware modulator for a two-axis PI motion stage.
+
+    The class converts pyRTC modulation parameters into PI wave-table and
+    wave-generator commands. It encapsulates USB device discovery, servo setup,
+    optional auto-zeroing, circle generation, and the start/stop lifecycle used
+    when the modulator is run as a standalone component.
+    """
 
     def __init__(self, conf) -> None:
         try:

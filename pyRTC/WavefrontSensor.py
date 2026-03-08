@@ -1,6 +1,11 @@
+"""Wavefront-sensor abstractions and common image pre-processing kernels.
+
+This module defines the base class used by pyRTC wavefront-sensor adapters and
+includes small image-processing helpers that are hot enough to warrant Numba
+acceleration. Hardware-specific sensors subclass ``WavefrontSensor`` and reuse
+its SHM publication, dark handling, and optional geometric pre-processing.
 """
-Wavefront Sensor Superclass
-"""
+
 import matplotlib.pyplot as plt
 import numpy as np
 from numba import jit, prange
@@ -122,12 +127,13 @@ def rotate_image_jit(image, angle_rad):
 
 class WavefrontSensor(pyRTCComponent):
     """
-    A pyRTCComponent which represents a Wavefront Sensor (camera). This is a general class which is 
-    reponsible for all components of wavefront sensing which are common to all wavefront sensors. This
-    class should be used by defining a child class held in pyRTC.hardware, which overwrites
-    the relevant functions which actual hardware connectivity code. The child class can call its parent
-    implementations in order to make use of the code which sets the relevant parameters, write to shared
-    memory, etc... or they can overwrite them completely. See hardware/ximeaWFS.py for an example.
+    Base class for cameras that feed the wavefront-sensing pipeline.
+
+    The class owns the common control-plane behavior for wavefront-sensor image
+    sources: configuration, dark subtraction, optional downsampling and
+    rotation, and publication of both raw and processed frames. Concrete sensor
+    adapters in ``pyRTC.hardware`` are responsible for talking to vendor SDKs
+    and filling ``self.data`` before delegating back to the base implementation.
 
     Config
     ------

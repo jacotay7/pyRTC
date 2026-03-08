@@ -1,3 +1,5 @@
+"""Render benchmark JSON reports into README-ready markdown tables."""
+
 import argparse
 import json
 from pathlib import Path
@@ -72,6 +74,8 @@ def _build_closed_loop_markdown(report: dict) -> str:
 
 
 def build_markdown(report: dict) -> str:
+    """Convert either core-compute or closed-loop reports into markdown."""
+
     if report.get("meta", {}).get("benchmark_type") == "synthetic_closed_loop":
         return _build_closed_loop_markdown(report)
 

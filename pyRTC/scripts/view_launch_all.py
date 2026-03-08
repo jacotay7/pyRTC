@@ -1,3 +1,5 @@
+"""Convenience launcher for a default set of viewer windows."""
+
 import argparse
 import subprocess
 
@@ -10,6 +12,8 @@ DEFAULT_VIEW_COMMANDS = [
 
 
 def launch_all(commands=None, popen_fn=subprocess.Popen):
+    """Spawn the configured viewer commands and return the child processes."""
+
     if commands is None:
         commands = DEFAULT_VIEW_COMMANDS
     processes = []
@@ -25,6 +29,8 @@ def _build_arg_parser() -> argparse.ArgumentParser:
 
 
 def main(argv=None) -> int:
+    """Run the default viewer-launch workflow from the command line."""
+
     parser = _build_arg_parser()
     args = parser.parse_args(argv)
     logger = configure_logging_from_args(args, app_name="pyrtc-view-launch-all", component_name="viewer")

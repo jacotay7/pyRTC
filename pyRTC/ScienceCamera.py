@@ -1,6 +1,11 @@
+"""Science-camera abstractions and common image-quality telemetry.
+
+This module defines the base class used by pyRTC science-camera adapters. It
+handles the shared-memory products that downstream tools expect, including short
+and long exposure PSFs, Strehl ratio estimates, and tip-tilt telemetry, while
+leaving camera-specific acquisition details to hardware subclasses.
 """
-Science Camera Superclass
-"""
+
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -15,12 +20,13 @@ logger = get_logger(__name__)
 
 class ScienceCamera(pyRTCComponent):
     """
-    A pyRTCComponent which represents a Science Camera. This is a general class which is 
-    reponsible for all components of imaging which are common to all Science Cameras. This
-    class should be used by defining a child class held in pyRTC.hardware, which overwrites
-    the relevant functions which actual hardware connectivity code. The child class can call its parent
-    implementations in order to make use of the code which sets the relevant parameters, write to shared
-    memory, etc... or they can overwrite them completely. See hardware/SpinnakerScienceCam.py for an example.
+    Base class for cameras that produce science images and image-quality metrics.
+
+    ``ScienceCamera`` centralizes the parts of imaging that are shared across
+    real and synthetic science-camera backends: SHM publication, dark/model PSF
+    handling, long-exposure accumulation, and simple Strehl/tip-tilt telemetry.
+    Subclasses are expected to implement the device-facing acquisition logic and
+    then call the parent methods so the standard pyRTC products stay updated.
 
     Config
     ------

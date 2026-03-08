@@ -1,3 +1,11 @@
+"""FLIR/Spinnaker science-camera adapter.
+
+The implementation in this module connects a Spinnaker-compatible camera to the
+pyRTC ``ScienceCamera`` abstraction. It applies runtime configuration such as
+ROI, exposure, gain, gamma, and pixel format through the vendor API, then
+publishes frames into the normal pyRTC science-camera pipeline.
+"""
+
 import numpy as np
 
 from pyRTC.logging_utils import get_logger
@@ -10,6 +18,13 @@ from rotpy.system import SpinSystem
 logger = get_logger(__name__)
 
 class spinCam(ScienceCamera):
+    """Science-camera wrapper for cameras exposed through ``rotpy``.
+
+    This adapter is intended for hardware deployments that use the FLIR
+    Spinnaker stack. It owns camera startup and shutdown, mirrors pyRTC camera
+    settings into the device node map, and converts acquired frames into the
+    numpy arrays expected by downstream pyRTC consumers.
+    """
 
     def __init__(self, conf):
         try:

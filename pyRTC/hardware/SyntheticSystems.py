@@ -1,3 +1,11 @@
+"""Synthetic hardware components for onboarding and test flows.
+
+The classes in this module emulate a minimal Shack-Hartmann sensor path and a
+science camera without requiring external SDKs or laboratory hardware. They are
+designed to exercise the normal pyRTC control pipeline rather than to model a
+particular instrument with high optical fidelity.
+"""
+
 import time
 
 import numpy as np
@@ -9,6 +17,8 @@ from pyRTC.utils import setFromConfig
 
 
 def _numeric_from_config(conf, key, default):
+    """Read a numeric config value and fail fast on non-numeric input."""
+
     value = conf.get(key, default)
     if not isinstance(value, (int, float)):
         raise TypeError(f"{key} must be numeric, got {type(value).__name__}")

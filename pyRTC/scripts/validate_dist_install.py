@@ -1,3 +1,5 @@
+"""Validate that a built wheel installs and imports in a clean environment."""
+
 import argparse
 import shutil
 import subprocess
@@ -12,6 +14,8 @@ logger = get_logger(__name__)
 
 
 def find_built_wheel(dist_dir: Path) -> Path:
+    """Return the newest built ``pyrtcao`` wheel in a distribution directory."""
+
     wheels = sorted(dist_dir.glob("pyrtcao-*.whl"))
     if not wheels:
         raise FileNotFoundError(f"No built wheel matching 'pyrtcao-*.whl' found in {dist_dir}")
@@ -25,6 +29,8 @@ def python_in_venv(venv_dir: Path) -> Path:
 
 
 def build_validation_commands(venv_dir: Path, wheel_path: Path) -> list[list[str]]:
+    """Construct the commands used to verify a built wheel in a fresh venv."""
+
     python_exe = str(python_in_venv(venv_dir))
     return [
         [sys.executable, "-m", "venv", str(venv_dir)],
@@ -67,6 +73,8 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv=None) -> int:
+    """Create a temporary or persistent venv and validate the built wheel."""
+
     parser = build_parser()
     args = parser.parse_args(argv)
     configure_logging_from_args(args, app_name="pyrtc-validate-dist", component_name="validate_dist_install")

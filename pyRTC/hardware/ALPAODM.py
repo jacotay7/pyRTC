@@ -1,3 +1,12 @@
+"""ALPAO deformable-mirror adapter.
+
+This module exposes a pyRTC-compatible wavefront-corrector implementation for
+ALPAO mirrors driven through the vendor SDK. The adapter translates pyRTC modal
+or zonal correction vectors into the actuator command format expected by the
+device and centralizes mirror-specific initialization such as layout discovery,
+command clipping, and optional floating-actuator masking.
+"""
+
 import os 
 os.environ["OMP_NUM_THREADS"] = "1"
 os.environ["OPENBLAS_NUM_THREADS"] = "1" 
@@ -36,6 +45,14 @@ finally:
     _devnull_stdout.close()
 
 class ALPAODM(WavefrontCorrector):
+    """Wavefront-corrector adapter for an ALPAO deformable mirror.
+
+    The class wraps the ALPAO SDK object and presents it through the standard
+    ``WavefrontCorrector`` interface used by the rest of pyRTC. It is
+    responsible for discovering the mirror geometry, applying safety limits to
+    outgoing commands, handling optional floating-actuator masks, and resetting
+    the device on teardown.
+    """
 
     def __init__(self, conf) -> None:
         try:

@@ -1,3 +1,11 @@
+"""Non-common-path aberration optimizer.
+
+This module contains an optimizer that searches for modal corrections which
+maximize a science-camera quality metric, typically Strehl ratio. It supports
+both open-loop correction by writing directly to the wavefront-corrector shared
+memory and closed-loop correction by perturbing reference slopes.
+"""
+
 import argparse
 import os
 import sys
@@ -14,6 +22,14 @@ from pyRTC.utils import decrease_nice, get_tmp_filepath, read_yaml_file, setFrom
 logger = get_logger(__name__)
 
 class NCPAOptimizer(Optimizer):
+    """Optimizer that searches modal NCPA corrections.
+
+    The class explores a configurable modal range and evaluates each trial using
+    science-camera telemetry. In open-loop mode it writes correction vectors
+    directly to the deformable-mirror command stream; in closed-loop mode it
+    synthesizes updated reference slopes so the existing reconstructor absorbs
+    the NCPA compensation.
+    """
 
     def __init__(self, conf, loop, slopes) -> None:
         try:

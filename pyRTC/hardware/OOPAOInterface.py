@@ -1,3 +1,11 @@
+"""Bridge between pyRTC components and an OOPAO optical simulation.
+
+This module adapts the OOPAO telescope, atmosphere, deformable-mirror, pyramid
+sensor, and PSF-camera objects into the pyRTC component interfaces. It is used
+for simulation-backed development and validation where the control stack should
+behave as if it were driving real hardware.
+"""
+
 import argparse
 import os
 import time
@@ -21,6 +29,12 @@ from OOPAO.Telescope import Telescope
 logger = get_logger(__name__)
 
 class _OOPAOWFSensor(WavefrontSensor):
+    """Wavefront-sensor wrapper around an OOPAO pyramid sensor.
+
+    The wrapper advances the simulated atmosphere when required, propagates the
+    guide star through the telescope and deformable mirror, and exposes the
+    resulting detector frame through the standard pyRTC ``WavefrontSensor`` API.
+    """
 
     def __init__(self, wfsConf, tel, ngs, atm, dm, wfs) -> None:
         
@@ -54,6 +68,12 @@ class _OOPAOWFSensor(WavefrontSensor):
         self.tel-self.atm
 
 class _OOPAOWFCorrector(WavefrontCorrector):
+    """Wavefront-corrector wrapper for an OOPAO deformable mirror.
+
+    This adapter maps pyRTC command vectors onto the OOPAO deformable-mirror
+    coefficient array so the simulated optical train responds to control-loop
+    updates exactly where a physical mirror would in a deployed system.
+    """
 
     def __init__(self, correctorConf, tel, dm) -> None:
     
@@ -83,6 +103,13 @@ class _OOPAOWFCorrector(WavefrontCorrector):
 
 
 class _OOPAOScienceCamera(ScienceCamera):
+    """Science-camera wrapper around the OOPAO PSF path.
+
+    The class reuses the current atmosphere and deformable-mirror state to
+    synthesize a PSF image that can be consumed by pyRTC exactly like a hardware
+    science camera. It is intentionally simulation-facing and does not attempt
+    to hide OOPAO-specific PSF generation details.
+    """
 
     def __init__(self, scienceConf, tel, src, atm, dm) -> None:
         self.tel = tel
@@ -124,6 +151,15 @@ class _OOPAOScienceCamera(ScienceCamera):
         self.tel-self.atm
 
 class OOPAOInterface():
+    """Assembles a complete pyRTC-compatible OOPAO simulation stack.
+
+    ``OOPAOInterface`` creates the simulated telescope, atmosphere, guide star,
+    deformable mirror, pyramid sensor, and science camera, then wraps the key
+    pieces in pyRTC component adapters. The resulting objects can be launched or
+    driven through the same orchestration code used for physical hardware,
+    making the class useful for algorithm development, documentation examples,
+    and end-to-end synthetic tests.
+    """
 
     def __init__(self, conf, param=None) -> None:
 
@@ -213,6 +249,8 @@ class OOPAOInterface():
 
 
 def _initializeDummyParameterFile():
+    """Return a small default OOPAO parameter dictionary for local simulation."""
+
     from OOPAO.tools.tools import createFolder
 
     # initialize the dictionaries
