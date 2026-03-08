@@ -75,8 +75,8 @@ Current testing state:
 - Public API import coverage exists.
 - Config validation coverage exists for bad configuration paths.
 - Focused regression coverage exists for the synthetic example, viewer CLI, logging helpers, pipeline launcher behavior, hardware adapter shims, and benchmark/report entry points.
-- Package-install verification from built artifacts is still a release-gap and should be treated as separate from source-tree tests.
 - Built-wheel validation now exists as both CI workflow coverage and a reusable maintainer script.
+- A dedicated GitHub Actions smoke workflow now exists for `windows-latest` and `macos-latest` on Python 3.12, but support claims should stay conservative until those runs are green consistently.
 
 ### 5. Runtime Logging and Error Handling
 
