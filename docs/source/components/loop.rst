@@ -1,6 +1,6 @@
 .. loop:
 
-.. automodule:: pyRTC.Loop
+.. currentmodule:: pyRTC.Loop
 
 
 Loop
@@ -80,3 +80,4 @@ Parameters
   :inherited-members:
   :undoc-members:
   :show-inheritance:
+  :no-index:

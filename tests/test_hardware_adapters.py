@@ -7,7 +7,7 @@ import pytest
 
 
 def test_ximea_wfs_init_and_controls(monkeypatch):
-    from conftest import DummySHM
+    from testsupport import DummySHM
 
     fake_wfs_module = importlib.import_module("pyRTC.WavefrontSensor")
     monkeypatch.setattr(fake_wfs_module, "ImageSHM", DummySHM)
@@ -78,7 +78,7 @@ def test_ximea_wfs_init_and_controls(monkeypatch):
 
 
 def test_spinnaker_science_camera_init_and_controls(monkeypatch):
-    from conftest import DummySHM
+    from testsupport import DummySHM
 
     fake_science_module = importlib.import_module("pyRTC.ScienceCamera")
     monkeypatch.setattr(fake_science_module, "ImageSHM", DummySHM)
@@ -181,7 +181,7 @@ def test_spinnaker_science_camera_init_and_controls(monkeypatch):
 
 
 def test_alpao_dm_init_and_layout(monkeypatch, tmp_path):
-    from conftest import DummySHM
+    from testsupport import DummySHM
 
     fake_wfc_module = importlib.import_module("pyRTC.WavefrontCorrector")
     monkeypatch.setattr(fake_wfc_module, "ImageSHM", DummySHM)

@@ -1,6 +1,6 @@
 .. wfs:
 
-.. automodule:: pyRTC.WavefrontSensor
+.. currentmodule:: pyRTC.WavefrontSensor
 
 
 Wavefront Sensor
@@ -136,3 +136,4 @@ Parameters
   :inherited-members:
   :undoc-members:
   :show-inheritance:
+  :no-index:

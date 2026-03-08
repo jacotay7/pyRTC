@@ -1,6 +1,6 @@
 .. wfs:
 
-.. automodule:: pyRTC.WavefrontCorrector
+.. currentmodule:: pyRTC.WavefrontCorrector
 
 Wavefront Corrector
 ====================
@@ -128,3 +128,4 @@ Parameters
   :inherited-members:
   :undoc-members:
   :show-inheritance:
+  :no-index:

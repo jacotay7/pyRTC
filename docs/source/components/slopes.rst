@@ -1,6 +1,6 @@
 .. wfs:
 
-.. automodule:: pyRTC.SlopesProcess
+.. currentmodule:: pyRTC.SlopesProcess
 
 
 Slopes Process
@@ -145,3 +145,4 @@ Parameters
   :inherited-members:
   :undoc-members:
   :show-inheritance:
+  :no-index:

@@ -1,6 +1,6 @@
 .. scicam:
 
-.. automodule:: pyRTC.ScienceCamera
+.. currentmodule:: pyRTC.ScienceCamera
 
 
 Science Camera
@@ -68,3 +68,4 @@ Parameters
   :inherited-members:
   :undoc-members:
   :show-inheritance:
+  :no-index:

@@ -1,6 +1,6 @@
 .. wfs:
 
-.. automodule:: pyRTC.Optimizer
+.. currentmodule:: pyRTC.Optimizer
 
 
 Optimizer
@@ -71,3 +71,4 @@ Parameters
 .. autoclass:: Optimizer
   :members:
   :inherited-members:
+  :no-index:

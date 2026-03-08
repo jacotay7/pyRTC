@@ -2,7 +2,7 @@ import importlib
 
 import numpy as np
 
-from conftest import DummySHM
+from testsupport import DummySHM
 
 
 synthetic_mod = importlib.import_module("pyRTC.hardware.SyntheticSystems")

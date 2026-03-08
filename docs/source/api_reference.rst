@@ -21,7 +21,6 @@ Module Index
    :toctree: generated
    :nosignatures:
 
-   pyRTCComponent
    Pipeline
    utils
 
