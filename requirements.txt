@@ -1,0 +1,10 @@
+numpy>=1.26,<2.3
+matplotlib
+PyYAML
+numba
+scipy
+psutil
+optuna
+cmaes
+numexpr
+astropy

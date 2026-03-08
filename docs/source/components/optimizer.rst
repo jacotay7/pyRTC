@@ -1,136 +1,68 @@
 .. wfs:
 
-.. automodule:: pyRTC.Optimizer
+.. currentmodule:: pyRTC.Optimizer
 
 
 Optimizer
 =========
 
-In pyRTC, one of the core components is the wavefront sensor object. It typically starts the AO chain by running
-a continues capture sequence of images. This object is the producer of the `wfs` and `wfsRaw` shared memory objects
-which contain the dark subtracted and original image respectively. The images can then be processed by the slopesProcess
-class to compute the intermediate data product used for wavefront reconstruction.
+The `Optimizer` component provides a general framework for closed-loop or supervisory optimization tasks in `pyRTC`.
+It is intended for workflows where a control parameter or system configuration needs to be tuned over repeated trials.
+
+Internally, the base class uses Optuna with a CMA-ES sampler and is designed to be subclassed for concrete optimization tasks such as NCPA tuning or loop hyperparameter search.
 
 Soft-RTC Example
 ----------------
 
-The following is an example of how to initialize a Optimizer component in pyRTC. 
-
-Here we are in the `soft-RTC` mode of pyRTC, which holds all components in the same python process. 
-See below for how to launch a hard-RTC equivalent.t.
+The following example shows the general `soft-RTC` pattern for an optimizer object.
+In practice, users usually subclass `Optimizer` and implement task-specific objective and application methods.
 
 .. code-block:: python
 
-  """
-  First we import the relevant wavefront sensor class. Typically, this will be a
-  specific hardware class which has been defined to work with the SDK of your camera.
+  from pyRTC.Optimizer import Optimizer
 
-  As an example (see hardware/ximeaWFS.py):
+  class MyOptimizer(Optimizer):
+      def objective(self, trial):
+          # Evaluate the current system state and return a scalar score.
+          return 0.0
 
-  from pyRTC.hardware import XIMEA_WFS
+      def applyTrial(self, trial):
+          # Push the candidate parameters into the system.
+          return
 
-  Here, I will just initialize the Wavefront Sensor Superclass as an example
-  """
+      def applyOptimum(self):
+          # Apply the best known parameters once optimization is done.
+          return
 
-  #%% Run in interactive python or jupyter notebook to keep process alive
-  from pyRTC import WavefrontSensor
-  import matplotlib.pyplot as plt
-  from pyRTC.utils import read_yaml_file
-
-  confWFS = {
-  "name": "example",
-  "width": 256,
-  "height": 256,
-  "darkCount": 1000,
-  "darkFile": "", #Here you can add a dark file, if existing "./EXAMPLE/calib/wfsDark.npy",
-  "affinity": 2,
-  "functions": ["expose"]
-  }
-
-  """
-  Alternatively, read the config from a file
-
-  conf = read_yaml_file("./EXAMPLE/config.yaml")["wfs"]
-  """
-
-  #Initialize the WFS object
-  wfs = WavefrontSensor(confWFS)
-  #Start the functions regiserted to the loop (i.e, expose)
-  wfs.start()
-
-  img = wfs.read()
-
-
-  plt.imshow(img)
-  plt.show()
-
-
-  """
-  Monitor the SHM in realtime by running the pyRTCView script in a terminal
-  python pyRTCView.py wfs &
-  """
+  optimizer = MyOptimizer({"numSteps": 20, "functions": []})
+  optimizer.optimize()
 
 Hard-RTC Example
 ----------------
 
-The following is an example of how to initialize a Optimizer component in pyRTC. 
-
-Here we are in the `hard-RTC` mode of pyRTC, which holds all components in the separate python processes. 
-This circumvents the python Global Interpreter Lock.
-
-See above for how to launch a soft-RTC equivalent.
+For hardware-facing or supervisory workflows, the optimizer can also run in a separate process.
 
 .. code-block:: python
   
-  from pyRTC import hardwareLauncher
+  from pyRTC.Pipeline import hardwareLauncher
 
-  """
-  For the Hard-RTC, you will need to set-up a config before hand and store it in a yaml file.
-
-  It should look something like:
-
-  wfs:
-    name: XIMEA
-    serial: "46052550"
-    binning: 1 
-    exposure: 2000
-    gain: 0
-    bitDepth: 10
-    left: 448 
-    top: 280 
-    width: 400 
-    height: 400 
-    darkCount: 2000
-    darkFile: "/home/whetstone/pyRTC/SHARP_LAB/calib/dark.npy"
-    affinity: 3
-    functions:
-    - expose
-  """
   config = 'path/to/config.yaml'
-  port = 3000
+  port = 3006
 
-  #Initialize the hardware launcher for your WFS child hardware class
-  wfs = hardwareLauncher('path/to/pyRTC/hardware/myHardwareWfs.py',config,port)
-  """
-  Launch the process.
+  optimizer = hardwareLauncher('path/to/pyRTC/hardware/myOptimizer.py', config, port)
+  optimizer.launch()
+  optimizer.run("optimize")
 
-  This will run the hardware file, which should establish a connection with the current process.
-  This is accomplished with the Listener class (see hardware folder for examples).
+Implementation Notes
+--------------------
 
-  The functions registered in the config to the real-time loop will automatically be started.
-  """
-  wfs.launch()
+The base class is intentionally generic. A real optimizer subclass usually defines:
 
-  """
-  Once the connection has been made successfully, you can run any function in the hardware class
-  using the run function. You can also get and set properties of the hardware using getProperty()
-  and setProperty() respectively.
-  """
-  wfs.run("expose")
+- how a trial is applied to the running system
+- how the objective value is measured
+- how the best result is committed once optimization ends
 
-  wfs.setProperty("exposure", 100)
-
-  print(wfs.getProperty("exposure"))
+The examples under `pyRTC.hardware` are the right starting point for system-specific tuning logic.
 
 
 Parameters
@@ -139,3 +71,4 @@ Parameters
 .. autoclass:: Optimizer
   :members:
   :inherited-members:
+  :no-index:

@@ -1,21 +1,46 @@
+"""Shared-memory transport and hard-RTC process helpers for pyRTC.
+
+This module contains the infrastructure that lets pyRTC components exchange
+frames and command vectors through named shared-memory blocks, optionally mirror
+those blocks onto CUDA tensors for compatible deployments, and launch hardware-
+facing child processes that communicate with the main RTC over a small
+localhost-based JSON protocol.
 """
-Pipeline Superclasss
-"""
+import argparse
+import json 
+import logging
+import os
+import socket
+import struct
+import sys
+import time
+
 from multiprocessing import shared_memory, resource_tracker
 from subprocess import PIPE, Popen
-import numpy as np
-import time
-import sys
-import argparse
-import socket
-import json 
-import struct
-import logging
 
-from pyRTC.utils import *
+import numpy as np
+
+from pyRTC.logging_utils import add_logging_cli_args, configure_logging_from_args, ensure_logging_configured, get_logger
+from pyRTC.utils import (
+    bind_socket,
+    dtype_to_float,
+    float_to_dtype,
+    precise_delay,
+    read_yaml_file,
+    setFromConfig,
+    set_affinity_and_priority,
+)
+
+
+logger = get_logger(__name__)
+
+TORCH_AVAILABLE = False
+torch = None
+dtype_mapping = {}
 
 try:
     import torch
+    TORCH_AVAILABLE = True
     # Mapping dictionary
     dtype_mapping = {
         np.float32: torch.float32,
@@ -31,8 +56,25 @@ try:
         np.dtype("uint8"): torch.uint8,
         np.dtype("uint16"): torch.uint16,
     }
-except:
-    pass
+except Exception:
+    TORCH_AVAILABLE = False
+
+
+def gpu_torch_available() -> bool:
+    return TORCH_AVAILABLE
+
+
+def normalize_gpu_device(gpuDevice, context: str = ""):
+    if gpuDevice is None:
+        return None
+    if not TORCH_AVAILABLE:
+        prefix = f"{context}: " if context else ""
+        logging.log(
+            level=logging.WARNING,
+            msg=f"{prefix}gpuDevice was requested but PyTorch is not installed; defaulting to CPU mode.",
+        )
+        return None
+    return gpuDevice
 
 def work(obj, functionName, affinity):
     """
@@ -62,6 +104,17 @@ def work(obj, functionName, affinity):
     return
 
 class ImageSHM:
+    """Named shared-memory array with metadata and optional GPU mirror state.
+
+    ``ImageSHM`` is the transport primitive used throughout pyRTC. Each stream
+    has a CPU shared-memory block, a small metadata block containing shape,
+    dtype, and timing information, and optionally a GPU-backed tensor mirror in
+    hard-RTC deployments where CUDA sharing is supported.
+
+    Producers create the stream and update it with NumPy arrays. Consumers
+    reconstruct the stream by name and read either safe copies or direct views,
+    depending on their performance and synchronization needs.
+    """
 
     METADATA_SIZE = 10
     def __init__(self, name, shape, dtype, gpuDevice=None, consumer=True) -> None:
@@ -75,15 +128,15 @@ class ImageSHM:
         self.count = 0
         self.lastWriteTime = 0
         self.lastReadTime = 0
-        self.areData = not ("meta" in name)
-        self.gpuDevice = gpuDevice
+        self.areData = "meta" not in name
+        self.gpuDevice = normalize_gpu_device(gpuDevice, name)
 
         try:
             self.shm = shared_memory.SharedMemory(name= name, create=True, size=self.arr.nbytes)
-            print(f"Creating New Shared Memory Object {self.name}")
-        except:
+            logger.debug("Creating shared memory object %s", self.name)
+        except Exception:
             self.shm = shared_memory.SharedMemory(name=name)
-            print(f"Opening Existing Shared Memory Object {self.name}")
+            logger.debug("Opening existing shared memory object %s", self.name)
 
         #Doesn't work in windows
         if sys.platform != 'win32':
@@ -95,10 +148,10 @@ class ImageSHM:
             #Create/Open an associated metadata SHM 
             try:
                 self.metadataShm = shared_memory.SharedMemory(name= name+"_meta", create=True, size=self.metadata.nbytes)
-                print(f"Creating New Shared Memory Object {self.name}"+"_meta")
-            except:
+                logger.debug("Creating shared memory object %s_meta", self.name)
+            except Exception:
                 self.metadataShm = shared_memory.SharedMemory(name= name+"_meta")
-                print(f"Opening Existing Shared Memory Object {self.name}"+"_meta")
+                logger.debug("Opening existing shared memory object %s_meta", self.name)
             if sys.platform != 'win32':
                 resource_tracker.unregister(self.metadataShm._name, 'shared_memory')
             self.metadata = np.ndarray(self.metadata.shape, dtype=self.metadata.dtype, buffer=self.metadataShm.buf)
@@ -106,7 +159,10 @@ class ImageSHM:
 
             if self.gpuDevice is not None:
                 self.torchDtype = dtype_mapping.get(self.dtype, None)
-                assert(self.torchDtype is not None)
+                if self.torchDtype is None:
+                    self.gpuDevice = None
+                    logging.log(level=logging.WARNING, msg=f"{self.name}: dtype {self.dtype} not supported for GPU SHM; defaulting to CPU mode.")
+                    return
                 
                 #If we expect the SHM to already exist
                 if consumer:
@@ -121,6 +177,9 @@ class ImageSHM:
         self.close()
 
     def createGPUMemSHM(self):
+
+        if self.gpuDevice is None or not TORCH_AVAILABLE:
+            return None
 
         # Create a GPU tensor
         self.shmGPU = torch.empty(self.shape, dtype=self.torchDtype, device=self.gpuDevice)
@@ -166,7 +225,7 @@ class ImageSHM:
         # try:
         gpuHandleShm = shared_memory.SharedMemory(
             name=self.name + "_gpu_handle", create=True, size=total_size)
-        print(f"Creating New Shared Memory Object {self.name}_gpu_handle")
+        logger.debug("Creating shared memory object %s_gpu_handle", self.name)
         # except FileExistsError:
         #     gpuHandleShm = shared_memory.SharedMemory(name=self.name + "_gpu_handle")
         #     print(f"Opening Existing Shared Memory Object {self.name}_gpu_handle")
@@ -179,8 +238,6 @@ class ImageSHM:
         # Write header
         buf[offset:offset + struct.calcsize(header_format)] = header
         offset += struct.calcsize(header_format)
-
-        print(offset, handle_length, type(offset), type(handle_length), handle_bytes, type(offset + handle_length))
 
         # Write handle_bytes
         buf[offset:offset + handle_length] = handle_bytes
@@ -197,11 +254,14 @@ class ImageSHM:
         return self.shmGPU
 
     def initGPUMemFromSHM(self):
+        if self.gpuDevice is None or not TORCH_AVAILABLE:
+            return
+
         # Open the shared memory segment
         try:
             gpuHandleShm = shared_memory.SharedMemory(name=self.name + "_gpu_handle")
-            print(f"Opened Shared Memory Object {self.name}_gpu_handle")
-        except:
+            logger.debug("Opened shared memory object %s_gpu_handle", self.name)
+        except Exception:
             self.gpuDevice=None
             logging.log(level=logging.WARNING, msg=f"{self.name}: Trying to initialize GPU memory which does not exist. Defaulting to CPU")
             return
@@ -263,7 +323,7 @@ class ImageSHM:
         return
 
     def close(self):
-        print(f"Closing {self.name}")
+        logger.debug("Closing shared memory object %s", self.name)
         self.shm.close()
         return
 
@@ -283,7 +343,7 @@ class ImageSHM:
                 #copy the tensor to the GPU shm
                 self.shmGPU.copy_(arr)
                 #copy a CPU numpy version to the CPU shm
-                np.copyto(self.arr, arr.detach().cpu().numpy())
+                np.copyto(self.arr, arr.cpu().numpy())
             elif isinstance(arr, np.ndarray):
                 #copy a CPU numpy version to the CPU shm
                 np.copyto(self.arr, arr)
@@ -392,15 +452,25 @@ def clear_shms(names):
         try:
             shm = ImageSHM(n+"_gpu_handle",(1,),np.uint8)
             shm.shm.unlink()
-        except:
+        except Exception:
             pass
 
 
 class hardwareLauncher:
+    """Launch and supervise a hardware-side child process.
+
+    The launcher is the client-side helper for pyRTC's hard-RTC deployment
+    model. It starts a Python subprocess, waits for the child to expose a socket
+    listener, and then sends simple JSON messages to get or set properties,
+    invoke helper methods, or request shutdown.
+
+    Logging-related environment variables are propagated so parent and child
+    processes share the same operator-facing logging policy.
+    """
 
     def __init__(self, hardwareFile, configFile, port, timeout=None) -> None:
         self.hardwareFile = hardwareFile
-        self.command = ["python", hardwareFile, "-c", f"{configFile}", "-p", f"{port}"]
+        self.command = [sys.executable, hardwareFile, "-c", f"{configFile}", "-p", f"{port}"]
         self.running = False
         # Client configuration
         self.host = '127.0.0.1'  # localhost
@@ -410,14 +480,15 @@ class hardwareLauncher:
         return
     
     def launch(self):
+        ensure_logging_configured(app_name="pyrtc-hardware-launcher", component_name=self.hardwareFile)
         if not self.running:
-            print(f"Launching Process: {self.hardwareFile}")
-            self.process = Popen(self.command,stdin=PIPE,stdout=PIPE, text=True, bufsize=1)
+            logger.info("Launching process %s", self.hardwareFile)
+            self.process = Popen(self.command,stdin=PIPE,stdout=PIPE, text=True, bufsize=1, env=os.environ.copy())
             self.running = True
 
             # Create a socket object
             self.processSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            print(f"Waiting for Process at {self.host}:{self.port}")
+            logger.info("Waiting for process at %s:%s", self.host, self.port)
             connected = False
             restTime = 2
             while not connected:
@@ -427,13 +498,13 @@ class hardwareLauncher:
                     self.processSocket.connect((self.host, self.port))
                     connected = True
                 except Exception as e:
-                    print(f"Connection failed: {e}")
-                    print("Retrying in {} seconds...".format(restTime))
+                    logger.warning("Connection failed: %s", e)
+                    logger.info("Retrying in %s seconds", restTime)
 
             if isinstance(self.timeout,float) or isinstance(self.timeout,int):
                 self.processSocket.settimeout(self.timeout)
 
-            print("Connected")
+            logger.info("Connected to child process socket")
 
         return
     
@@ -460,7 +531,7 @@ class hardwareLauncher:
             self.write(message)
             reply = self.read()
             #If there are issues with the reply format
-            if type(reply) != type(dict()) or "status" not in reply.keys():
+            if not isinstance(reply, dict) or "status" not in reply.keys():
                 return -1
             #If there was an issue on the process end
             if reply["status"] == 'BAD':
@@ -491,6 +562,13 @@ class hardwareLauncher:
     
 
 class Listener:
+    """Server-side control socket for a launched hardware object.
+
+    ``Listener`` is the child-process counterpart to :class:`hardwareLauncher`.
+    It binds a localhost socket, accepts the RTC-side connection, and services a
+    narrow JSON RPC surface for property access, method calls, and clean
+    shutdown.
+    """
 
     def __init__(self, hardware, port) -> None:
         self.hardware = hardware
@@ -511,7 +589,7 @@ class Listener:
         # except OSError as
         # Listen for incoming connections
         server_socket.listen()
-        print(f"{hardware.name}: Awaiting RTC connection")
+        logger.info("%s: awaiting RTC connection", hardware.name)
         #Connect to the RTC process that spawned you
         self.RTCsocket, self.RTCaddress = server_socket.accept()
 
@@ -521,11 +599,16 @@ class Listener:
         return
     
     def listen(self):
-
-        #Read request from the RTC
-        request = self.read()
+        try:
+            request = self.read()
+        except Exception:
+            logger.exception("Failed to read listener request")
+            self.write(self.BadMessage)
+            return
         if "type" not in request:
             self.write(self.BadMessage)
+            logger.error("Listener request missing type field: %s", request)
+            return
 
         #Sort behaviour by request type
         requestType = request["type"]
@@ -534,7 +617,8 @@ class Listener:
                 self.hardware.__del__()
                 self.running = False
                 self.write(self.OKMessage)
-            except:
+            except Exception:
+                logger.exception("Listener shutdown request failed")
                 self.write(self.BadMessage)
         elif requestType == "get":
             try:
@@ -543,7 +627,8 @@ class Listener:
                 message = self.OKMessage.copy()
                 message["property"] = property
                 self.write(message)
-            except:
+            except Exception:
+                logger.exception("Listener get request failed for %s", request.get("property"))
                 self.write(self.BadMessage)
         elif requestType == "set":
             try:
@@ -552,7 +637,8 @@ class Listener:
                 property = getattr(self.hardware, propertyName)
                 setattr(self.hardware, propertyName, type(property)(propertyValue))
                 self.write(self.OKMessage)
-            except:
+            except Exception:
+                logger.exception("Listener set request failed for %s", request.get("property"))
                 self.write(self.BadMessage)
         elif requestType == "run":
             try:
@@ -567,9 +653,11 @@ class Listener:
                 else:
                     function()
                 self.write(self.OKMessage)
-            except:
+            except Exception:
+                logger.exception("Listener run request failed for %s", request.get("function"))
                 self.write(self.BadMessage)
         else:
+            logger.error("Unknown listener request type: %s", requestType)
             self.write(self.BadMessage)
 
     def write(self, message):
@@ -585,7 +673,6 @@ def initExistingShm(shmName, gpuDevice=None):
     #Read wfc metadata and open a stream to the shared memory
     shmMeta = ImageSHM(shmName+"_meta", (ImageSHM.METADATA_SIZE,), np.float64).read_noblock()
     shmDType = float_to_dtype(shmMeta[3])
-    shmSize = int(shmMeta[2]//shmDType.itemsize)
     shmDims = []
     i = 0
     while int(shmMeta[4+i]) > 0:
@@ -603,20 +690,26 @@ def launchComponent(component, confKey, start = True):
     # Add command-line argument for the config file
     parser.add_argument("-c", "--config", required=True, help="Path to the config file")
     parser.add_argument("-p", "--port", required=True, help="Port for communication")
+    add_logging_cli_args(parser)
 
     # Parse command-line arguments
     args = parser.parse_args()
+    configure_logging_from_args(args, app_name=f"pyrtc-{confKey}", component_name=confKey)
 
     conf = read_yaml_file(args.config)[confKey]
 
     set_affinity_and_priority("", setFromConfig(conf, "affinity", 0))
 
-    obj = component(conf=conf)
-    obj.RELEASE_GIL = False
-    if start:
-        obj.start()
-    
-    l = Listener(obj, port= int(args.port))
-    while l.running:
-        l.listen()
-        time.sleep(1e-3)
+    try:
+        obj = component(conf=conf)
+        obj.RELEASE_GIL = False
+        if start:
+            obj.start()
+
+        listener = Listener(obj, port= int(args.port))
+        while listener.running:
+            listener.listen()
+            time.sleep(1e-3)
+    except Exception:
+        logger.exception("Failed to launch component %s", confKey)
+        raise

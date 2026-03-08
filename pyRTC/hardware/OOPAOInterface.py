@@ -1,21 +1,40 @@
-from pyRTC.WavefrontCorrector import *
-from pyRTC.WavefrontSensor import *
-from pyRTC.SlopesProcess import *
-from pyRTC.ScienceCamera import *
-from pyRTC.Pipeline import *
-from pyRTC.utils import *
+"""Bridge between pyRTC components and an OOPAO optical simulation.
+
+This module adapts the OOPAO telescope, atmosphere, deformable-mirror, pyramid
+sensor, and PSF-camera objects into the pyRTC component interfaces. It is used
+for simulation-backed development and validation where the control stack should
+behave as if it were driving real hardware.
+"""
+
+import argparse
+import os
+import time
+
+import numpy as np
+
+from pyRTC.logging_utils import get_logger
+from pyRTC.Pipeline import Listener
+from pyRTC.ScienceCamera import ScienceCamera
+from pyRTC.WavefrontCorrector import WavefrontCorrector
+from pyRTC.WavefrontSensor import WavefrontSensor
+from pyRTC.utils import decrease_nice, read_yaml_file, set_affinity
 
 from OOPAO.Atmosphere import Atmosphere
 from OOPAO.DeformableMirror import DeformableMirror
-from OOPAO.MisRegistration import MisRegistration
 from OOPAO.Pyramid import Pyramid
 from OOPAO.Source import Source
 from OOPAO.Telescope import Telescope
-from OOPAO.calibration.ao_calibration import ao_calibration
-from OOPAO.calibration.compute_KL_modal_basis import compute_M2C
-from OOPAO.tools.displayTools import displayMap
+
+
+logger = get_logger(__name__)
 
 class _OOPAOWFSensor(WavefrontSensor):
+    """Wavefront-sensor wrapper around an OOPAO pyramid sensor.
+
+    The wrapper advances the simulated atmosphere when required, propagates the
+    guide star through the telescope and deformable mirror, and exposes the
+    resulting detector frame through the standard pyRTC ``WavefrontSensor`` API.
+    """
 
     def __init__(self, wfsConf, tel, ngs, atm, dm, wfs) -> None:
         
@@ -49,6 +68,12 @@ class _OOPAOWFSensor(WavefrontSensor):
         self.tel-self.atm
 
 class _OOPAOWFCorrector(WavefrontCorrector):
+    """Wavefront-corrector wrapper for an OOPAO deformable mirror.
+
+    This adapter maps pyRTC command vectors onto the OOPAO deformable-mirror
+    coefficient array so the simulated optical train responds to control-loop
+    updates exactly where a physical mirror would in a deployed system.
+    """
 
     def __init__(self, correctorConf, tel, dm) -> None:
     
@@ -78,6 +103,13 @@ class _OOPAOWFCorrector(WavefrontCorrector):
 
 
 class _OOPAOScienceCamera(ScienceCamera):
+    """Science-camera wrapper around the OOPAO PSF path.
+
+    The class reuses the current atmosphere and deformable-mirror state to
+    synthesize a PSF image that can be consumed by pyRTC exactly like a hardware
+    science camera. It is intentionally simulation-facing and does not attempt
+    to hide OOPAO-specific PSF generation details.
+    """
 
     def __init__(self, scienceConf, tel, src, atm, dm) -> None:
         self.tel = tel
@@ -119,6 +151,15 @@ class _OOPAOScienceCamera(ScienceCamera):
         self.tel-self.atm
 
 class OOPAOInterface():
+    """Assembles a complete pyRTC-compatible OOPAO simulation stack.
+
+    ``OOPAOInterface`` creates the simulated telescope, atmosphere, guide star,
+    deformable mirror, pyramid sensor, and science camera, then wraps the key
+    pieces in pyRTC component adapters. The resulting objects can be launched or
+    driven through the same orchestration code used for physical hardware,
+    making the class useful for algorithm development, documentation examples,
+    and end-to-end synthetic tests.
+    """
 
     def __init__(self, conf, param=None) -> None:
 
@@ -208,6 +249,8 @@ class OOPAOInterface():
 
 
 def _initializeDummyParameterFile():
+    """Return a small default OOPAO parameter dictionary for local simulation."""
+
     from OOPAO.tools.tools import createFolder
 
     # initialize the dictionaries
@@ -215,7 +258,7 @@ def _initializeDummyParameterFile():
     
     ###%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% ATMOSPHERE PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     
-    param['r0'                   ] = 0.15                                            # value of r0 in the visible in [m]
+    param['r0'                   ] = 0.3                                            # value of r0 in the visible in [m]
     param['L0'                   ] = 30                                             # value of L0 in the visible in [m]
     param['fractionnalR0'        ] = [0.45,0.1,0.1,0.25,0.1]                        # Cn2 profile
     param['windSpeed'            ] = [10,12,11,15,20]                               # wind speed of the different layers in [m.s-1]
@@ -229,7 +272,7 @@ def _initializeDummyParameterFile():
     param['nPixelPerSubap'       ] = 4                                              # sampling of the PWFS subapertures
     param['resolution'           ] = param['nSubaperture']*param['nPixelPerSubap']  # resolution of the telescope driven by the PWFS
     param['sizeSubaperture'      ] = param['diameter']/param['nSubaperture']        # size of a sub-aperture projected in the M1 space
-    param['samplingTime'         ] = 1/300                                         # loop sampling time in [s]
+    param['samplingTime'         ] = 1/1000                                         # loop sampling time in [s]
     param['centralObstruction'   ] = 0.112                                          # central obstruction in percentage of the diameter
     param['nMissingSegments'     ] = 0                                              # number of missing segments on the M1 pupil
     param['m1_reflectivity'      ] = 1                                              # reflectivity of the 798 segments
@@ -237,8 +280,8 @@ def _initializeDummyParameterFile():
     ###%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% NGS PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     
     param['magnitude'            ] = 8                                              # magnitude of the guide star
-    param['opticalBand'          ] = 'R'                                            # optical band of the guide star
-    param['sourceBand'          ] = 'J'
+    param['opticalBand'          ] = 'I'                                            # optical band of the guide star
+    param['sourceBand'          ] = 'K'
 
     ###%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% DM PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
     param['nActuator'            ] = param['nSubaperture']+1                        # number of actuators 
@@ -274,8 +317,8 @@ def _initializeDummyParameterFile():
     param['pathOutput'            ] = 'data_cl/'
     
 
-    print('Reading/Writting calibration data from ' + param['pathInput'])
-    print('Writting output data in ' + param['pathOutput'])
+    logger.info('Reading/Writting calibration data from %s', param['pathInput'])
+    logger.info('Writting output data in %s', param['pathOutput'])
 
     createFolder(param['pathOutput'])
     
@@ -301,7 +344,7 @@ if __name__ == "__main__":
 
     sim = OOPAOInterface(conf=conf)
     
-    l = Listener(sim, port= int(args.port))
-    while l.running:
-        l.listen()
+    listener = Listener(sim, port= int(args.port))
+    while listener.running:
+        listener.listen()
         time.sleep(1e-3)

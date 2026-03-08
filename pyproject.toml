@@ -1,0 +1,105 @@
+[build-system]
+requires = ["setuptools>=77", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pyrtcao"
+version = "1.0.0"
+description = "Adaptive optics real-time control software written in Python."
+readme = { file = "README.md", content-type = "text/markdown" }
+requires-python = ">=3.9"
+license = "GPL-3.0-or-later"
+license-files = ["LICENSE"]
+authors = [
+	{ name = "Jacob Taylor", email = "jtaylor@keck.hawaii.edu" },
+]
+keywords = [
+	"adaptive optics",
+	"real-time control",
+	"astronomy",
+	"wavefront sensing",
+	"wavefront control",
+]
+classifiers = [
+	"Development Status :: 5 - Production/Stable",
+	"Intended Audience :: Science/Research",
+	"Operating System :: POSIX :: Linux",
+	"Programming Language :: Python :: 3",
+	"Programming Language :: Python :: 3.9",
+	"Programming Language :: Python :: 3.10",
+	"Programming Language :: Python :: 3.11",
+	"Programming Language :: Python :: 3.12",
+	"Programming Language :: Python :: 3.13",
+	"Topic :: Scientific/Engineering",
+	"Topic :: Scientific/Engineering :: Astronomy",
+]
+dependencies = [
+	"numpy>=1.26,<2.3",
+	"matplotlib",
+	"PyYAML",
+	"numba",
+	"scipy",
+	"psutil",
+	"optuna",
+	"cmaes",
+	"numexpr",
+	"astropy",
+]
+
+[project.urls]
+Documentation = "https://pyrtc.readthedocs.io/en/latest/"
+Source = "https://github.com/jacotay7/pyRTC"
+Tracker = "https://github.com/jacotay7/pyRTC/issues"
+
+[project.optional-dependencies]
+gpu = [
+	"torch",
+]
+torch = [
+	"torch",
+]
+viewer = [
+	"PyQt5",
+	"tqdm",
+]
+hardware = [
+	"pipython",
+	"rotpy",
+	"ximea",
+]
+docs = [
+	"sphinx",
+	"sphinx-autobuild",
+	"sphinx-rtd-theme",
+	"sphinxcontrib.spelling",
+	"sphinx_copybutton",
+]
+
+[project.scripts]
+pyrtc-view = "pyRTC.scripts.view:main"
+pyrtc-shm-monitor = "pyRTC.scripts.shm_monitor:main"
+pyrtc-clear-shms = "pyRTC.scripts.clear_shms:main"
+pyrtc-view-launch-all = "pyRTC.scripts.view_launch_all:main"
+pyrtc-measure-latency = "pyRTC.scripts.measure_latency:main"
+pyrtc-core-bench = "benchmarks.core_compute_bench:main"
+pyrtc-ao-loop-bench = "benchmarks.ao_loop_bench:main"
+
+[tool.setuptools.packages.find]
+include = ["pyRTC", "pyRTC.*", "benchmarks", "benchmarks.*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+exclude = [
+	"build",
+	"dist",
+	"docs/source/_build",
+	"__pycache__",
+]
+
+[tool.ruff.lint]
+select = ["E", "F"]
+ignore = ["E402", "E501"]
+
+[tool.ruff.lint.per-file-ignores]
+"pyRTC/hardware/*.py" = ["E722"]
