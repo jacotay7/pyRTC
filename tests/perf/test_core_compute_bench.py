@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 
 from benchmarks import core_compute_bench
 
@@ -52,3 +53,21 @@ def test_core_compute_bench_main_writes_json(tmp_path):
     payload = json.loads(output.read_text(encoding="utf-8"))
     assert "profiles" in payload
     assert "meta" in payload
+
+
+def test_core_compute_bench_main_without_output_succeeds(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+
+    code = core_compute_bench.main(
+        [
+            "--quick",
+            "--cpu-only",
+            "--iterations",
+            "1",
+            "--warmup",
+            "1",
+        ]
+    )
+
+    assert code == 0
+    assert not Path("benchmarks/core_compute_bench_report.json").exists()

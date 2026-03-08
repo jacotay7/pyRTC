@@ -25,6 +25,37 @@ from pyRTC.WavefrontSensor import downsample_int32_image_jit, rotate_image_jit
 logger = get_logger(__name__)
 
 
+def _format_stats(stats: dict[str, float] | None) -> str:
+    if not stats or "p99_hz" not in stats or "p99_s" not in stats:
+        return "-"
+    hz = float(stats["p99_hz"])
+    us = float(stats["p99_s"]) * 1e6
+    if hz >= 1000.0:
+        return f"{hz / 1000.0:.1f} kHz / {us:.1f} us"
+    return f"{hz:.0f} Hz / {us:.1f} us"
+
+
+def _log_benchmark_summary(results: Dict[str, Any]) -> None:
+    profiles = results.get("profiles", {})
+    gpu_profiles = results.get("gpu_profiles", {})
+    logger.info("Core compute benchmark summary:")
+    for profile_name, kernels in profiles.items():
+        logger.info("  %s", profile_name)
+        for kernel_name, stats in kernels.items():
+            summary = _format_stats(stats)
+            gpu_summary = ""
+            gpu_profile = gpu_profiles.get(profile_name, {})
+            if kernel_name == "loop.leakyIntegratorNumba":
+                gpu_stats = gpu_profile.get("loop.leakIntegratorGPU")
+                if gpu_profile.get("status", {}).get("available") is True and gpu_stats:
+                    gpu_summary = f" | GPU { _format_stats(gpu_stats) }"
+            elif kernel_name == "slopes.computeSlopesPYWFSOptimNumba":
+                gpu_stats = gpu_profile.get("slopes.computeSlopesPYWFSTorch")
+                if gpu_profile.get("status", {}).get("available") is True and gpu_stats:
+                    gpu_summary = f" | GPU { _format_stats(gpu_stats) }"
+            logger.info("    %s: CPU %s%s", kernel_name, summary, gpu_summary)
+
+
 def _safe_percentile(values, pct: float) -> float:
     vals = sorted(float(x) for x in values)
     if not vals:
@@ -395,8 +426,8 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Benchmark core pyRTC compute kernels (JIT + optional GPU paths)."
     )
-    parser.add_argument("--iterations", type=int, default=50, help="Timed iterations per kernel")
-    parser.add_argument("--warmup", type=int, default=5, help="Warmup iterations per kernel")
+    parser.add_argument("--iterations", type=int, default=2000, help="Timed iterations per kernel")
+    parser.add_argument("--warmup", type=int, default=200, help="Warmup iterations per kernel")
     parser.add_argument("--quick", action="store_true", help="Run smaller/faster problem sizes")
     parser.add_argument("--cpu-only", action="store_true", help="Skip GPU kernel benchmarks")
     parser.add_argument(
@@ -409,8 +440,8 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--output",
         type=str,
-        default="benchmarks/core_compute_bench_report.json",
-        help="Output JSON path",
+        default=None,
+        help="Optional JSON output path",
     )
     add_logging_cli_args(parser)
     return parser
@@ -429,9 +460,13 @@ def main(argv=None) -> int:
         system_sizes=args.system_sizes,
     )
 
-    output_path = Path(args.output)
-    output_path.write_text(json.dumps(results, indent=2), encoding="utf-8")
-    logger.info("Wrote core benchmark report to %s", output_path)
+    _log_benchmark_summary(results)
+
+    if args.output:
+        output_path = Path(args.output)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(json.dumps(results, indent=2), encoding="utf-8")
+        logger.info("Wrote core benchmark report to %s", output_path)
     return 0
 
 

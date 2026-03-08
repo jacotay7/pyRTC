@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 
 from benchmarks import ao_loop_bench, readme_benchmark_table
 
@@ -39,6 +40,23 @@ def test_ao_loop_bench_main_writes_json(tmp_path):
     payload = json.loads(output.read_text(encoding="utf-8"))
     assert payload["meta"]["benchmark_type"] == "synthetic_closed_loop"
     assert "results" in payload
+
+
+def test_ao_loop_bench_main_without_output_succeeds(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+
+    code = ao_loop_bench.main(
+        [
+            "--cpu-only",
+            "--iterations",
+            "1",
+            "--warmup",
+            "1",
+        ]
+    )
+
+    assert code == 0
+    assert not Path("benchmarks/ao_loop_bench_report.json").exists()
 
 
 def test_readme_table_supports_closed_loop_reports():
