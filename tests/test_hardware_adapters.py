@@ -3,6 +3,7 @@ import sys
 import types
 
 import numpy as np
+import pytest
 
 
 def test_ximea_wfs_init_and_controls(monkeypatch):
@@ -225,3 +226,33 @@ def test_alpao_dm_init_and_layout(monkeypatch, tmp_path):
     assert dm.CAP == 0.5
     dm.__del__()
     assert dm.dm.reset is True
+
+
+@pytest.mark.parametrize(
+    ("symbol_name", "module_name", "missing_dependency"),
+    [
+        ("XIMEA_WFS", ".ximeaWFS", "ximea"),
+        ("spinCam", ".SpinnakerScienceCam", "rotpy"),
+        ("ALPAODM", ".ALPAODM", "Lib64.asdk"),
+        ("PIModulator", ".PIModulator", "pipython"),
+    ],
+)
+def test_hardware_lazy_import_reports_missing_dependency(monkeypatch, symbol_name, module_name, missing_dependency):
+    hardware = importlib.import_module("pyRTC.hardware")
+    hardware.__dict__.pop(symbol_name, None)
+
+    original_import_module = hardware.import_module
+
+    def _fake_import_module(requested_module_name, package=None):
+        if requested_module_name == module_name and package == hardware.__name__:
+            raise ModuleNotFoundError(f"No module named '{missing_dependency}'")
+        return original_import_module(requested_module_name, package)
+
+    monkeypatch.setattr(hardware, "import_module", _fake_import_module)
+
+    with pytest.raises(ImportError) as excinfo:
+        getattr(hardware, symbol_name)
+
+    message = str(excinfo.value)
+    assert f"Unable to import pyRTC.hardware.{symbol_name}" in message
+    assert missing_dependency in message

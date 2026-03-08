@@ -77,8 +77,9 @@ The repo is being prepared for a `1.0.0` release. The current release policy is 
 - PyPI distribution name: `pyrtcao`
 - Python import name: `pyRTC`
 - CLI prefix: `pyrtc-*`
-- Verified CI surface: Linux, Python 3.9-3.13
-- GPU behavior: optional, best-effort unless explicitly validated for your environment
+- Primary supported release surface for `1.0.x`: Linux, Python 3.9-3.13
+- macOS and Windows: smoke-tested in GitHub Actions, but not part of the primary supported deployment story for `1.0.0`
+- GPU behavior: benchmark-validated on a Linux CUDA host for synthetic loop workloads, but still target-environment validation required for operational use
 - Hardware integrations: examples and reference implementations, not universal plug-and-play support
 
 ## Core Capabilities
@@ -248,8 +249,9 @@ Hard-RTC child processes inherit these settings automatically through the launch
 ## Stability and Support Notes
 
 - The package is being prepared for a stable community-facing release, but not every platform or hardware stack is validated equally.
-- Linux is the primary tested environment today.
-- GPU and vendor-specific hardware support should be validated in the target environment before operational use.
+- Linux is the primary supported environment for `1.0.x`.
+- macOS and Windows have smoke workflow coverage, but release validation and deployment guidance remain Linux-first.
+- GPU support is validated in this repo through synthetic CPU/GPU benchmark coverage and should still be checked in the target environment before operational use.
 - Example scripts and hardware adapters are intended to shorten development time, not replace system-specific commissioning.
 
 ## Contributing and Development

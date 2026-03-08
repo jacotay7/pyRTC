@@ -91,12 +91,12 @@ Generate a benchmark report:
 
 .. code-block:: bash
 
-   python -m benchmarks.perf_smoke \
-     --output benchmarks/readme_benchmark_report.json \
-       --log-dir logs \
-     --core-iterations 500 \
-     --core-warmup 50 \
-     --core-system-sizes 10 20 60
+    pyrtc-ao-loop-bench \
+       --output benchmarks/readme_benchmark_report.json \
+       --iterations 300 \
+       --warmup 30 \
+       --system-sizes 10 20 60 \
+       --log-dir logs
 
 Generate markdown tables for the README:
 
@@ -105,6 +105,14 @@ Generate markdown tables for the README:
    python benchmarks/readme_benchmark_table.py \
      --report benchmarks/readme_benchmark_report.json \
      --output benchmarks/readme_benchmark_table.md
+
+Compare the current host report against the committed baseline:
+
+.. code-block:: bash
+
+    python benchmarks/check_perf_baseline.py \
+       --current benchmarks/readme_benchmark_report.json \
+       --baseline benchmarks/ao_loop_bench_baseline.json
 
 Logging Workflow
 ----------------
@@ -133,6 +141,32 @@ Per-command overrides:
    python -m benchmarks.perf_smoke --log-file perf.log
 
 Prefer `PYRTC_LOG_DIR` for multiprocess runs so parent and child processes write separate files.
+
+Error-Handling Policy
+---------------------
+
+For `1.0.x`, prefer explicit, conservative behavior in non-real-time paths.
+
+Raise exceptions when:
+
+- required configuration is missing or invalid
+- file loads or saves fail for requested user-visible artifacts
+- startup or hardware-attachment steps fail and the component cannot provide its documented behavior
+- a requested optional feature cannot be enabled safely
+
+Warn and continue when:
+
+- the code is falling back from GPU to CPU for a supported code path
+- a convenience feature cannot be enabled but the main component behavior still works
+- the software can continue safely with a documented default or degraded mode
+
+Log and suppress only when:
+
+- cleanup or teardown is best-effort
+- a background diagnostic or optional observer path fails without affecting core control-plane behavior
+- repeated operator-facing noise would be less useful than a single earlier warning
+
+Avoid adding per-iteration exception handling or routine logging inside the steady-state real-time loop. Put detailed logging around setup, calibration, file I/O, control-plane state changes, and error boundaries instead.
 
 Contribution Expectations
 -------------------------
@@ -181,13 +215,20 @@ The most stable public surface for `1.0.x` is:
 - runtime import as `pyRTC`
 - the core AO component model
 - the documented shared-memory and configuration concepts
+- Linux-based development and deployment workflows
 
 Areas that still need target-environment validation before operational use:
 
 - vendor SDK integrations
-- GPU-specific execution paths
+- GPU-specific execution paths beyond the documented synthetic benchmark coverage
 - multi-process deployment details
 - platform-specific driver and device behavior
+
+Current platform stance for `1.0.0`:
+
+- Linux is the primary supported operating system.
+- macOS and Windows smoke jobs are useful compatibility signal, but they are not the primary release target.
+- Hardware adapters remain environment-specific integrations, not universal support guarantees.
 
 Issue Reporting
 ---------------

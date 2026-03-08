@@ -66,17 +66,20 @@ Current onboarding choice:
 - [x] Add package-install tests against the built distribution
 - [ ] Expand coverage targets beyond the current narrow list
 - [x] Add explicit tests for the stable public API surface
-- [ ] Add negative-path tests for missing optional dependencies and bad configs
-- [ ] Decide the support stance for GPU code paths and test it accordingly
-- [ ] Either test Windows/macOS or narrow support claims before release
+- [x] Add negative-path tests for missing optional dependencies and bad configs
+- [x] Decide the support stance for GPU code paths and test it accordingly
+- [x] Either test Windows/macOS or narrow support claims before release
 
 Current testing state:
 
 - Public API import coverage exists.
 - Config validation coverage exists for bad configuration paths.
 - Focused regression coverage exists for the synthetic example, viewer CLI, logging helpers, pipeline launcher behavior, hardware adapter shims, and benchmark/report entry points.
+- Negative-path coverage now exists for bad configs, GPU fallback behavior, and lazy hardware import failures when optional vendor dependencies are absent.
 - Built-wheel validation now exists as both CI workflow coverage and a reusable maintainer script.
-- A dedicated GitHub Actions smoke workflow now exists for `windows-latest` and `macos-latest` on Python 3.12, but support claims should stay conservative until those runs are green consistently.
+- A dedicated GitHub Actions smoke workflow now exists for `windows-latest` and `macos-latest` on Python 3.12.
+- Closed-loop synthetic AO benchmark coverage now exists for CPU and GPU paths at `10x10`, `20x20`, and `60x60`, with committed host baselines and CLI entry points.
+- The `1.0.x` support boundary is now documented as Linux-first. macOS and Windows smoke coverage is useful signal, but not part of the primary supported deployment story for `1.0.0`.
 
 ### 5. Runtime Logging and Error Handling
 
@@ -95,7 +98,8 @@ Current logging state:
 - Shared logger configuration exists in `pyRTC/logging_utils.py`.
 - User-facing scripts, benchmark entry points, primary component superclasses, major hardware adapters, and hardware optimizers now use the shared logger.
 - Hard-RTC child processes inherit logging configuration through launcher environment propagation.
-- The remaining work is policy and coverage cleanup, not logging-system bootstrapping.
+- Explicit maintainer guidance now exists for when non-real-time paths should raise, warn, or log-and-continue.
+- The remaining work is mostly negative-path coverage cleanup, not logging-system bootstrapping.
 
 Implementation constraints:
 
@@ -135,10 +139,8 @@ Implementation constraints:
 ### Known Gaps
 
 - Trusted publishing still needs to be configured in GitHub, TestPyPI, and PyPI before the publish workflow can be used.
-- The current support claims are still broader than the verified CI surface.
-- Built-wheel installation testing is still not part of the validated release path.
-- Support posture for GPU paths, non-Linux platforms, and hardware-specific integrations still needs a firmer release statement.
-- Logging policy is implemented technically, but the repo still needs explicit maintainership guidance about when to raise, warn, or suppress in non-real-time control paths.
+- macOS and Windows smoke coverage should be observed in CI before treating those jobs as strong release evidence.
+- GPU benchmarking now exists, but real deployment behavior still needs target-environment validation before operational use.
 
 
 
@@ -150,22 +152,23 @@ Implementation constraints:
 4. Major viewer overhaul with better layouting, controls, and stability.
 5. Shared logging rollout across scripts, benchmark tools, core superclasses, launchers, and primary hardware-facing components.
 6. Focused regression tests covering logging, onboarding flows, viewer behavior, package public API, and mocked hardware adapters.
+7. Built-wheel validation helper, CI integration, and local end-to-end release validation.
+8. Cross-platform smoke workflow for macOS and Windows.
+9. Closed-loop synthetic CPU/GPU AO benchmarking with committed README-facing artifacts and host baselines.
+10. Linux-first support policy tightening across README, docs, and metadata.
 
 ## What Is Next
 
-1. Decide and document the exact `1.0.x` support boundary for Linux, GPU paths, and hardware integrations, then align README/docs/metadata to it.
-2. Finish the logging/error policy documentation so contributors know which non-real-time failures should raise, warn, or be logged-and-continue.
-3. Expand negative-path coverage for optional dependency failures and hardware-adapter import/runtime failure modes.
-4. Either add real validation for non-Linux platforms or narrow user-facing support claims before publishing `1.0.0`.
-5. Finish the remaining citation/release-adjacent docs once the paper and release artifacts are finalized.
+1. Observe the new macOS and Windows smoke jobs and fix or explicitly defer any failures they reveal.
+2. TestPyPI dry run with trusted publishing configured.
+3. Finish the remaining citation/release-adjacent docs once the paper and release artifacts are finalized.
+4. Final release-doc cleanup and publish readiness review.
 
 ## Recommended Implementation Order From Here
 
-1. Support policy tightening for platforms, GPU paths, and hardware integrations
-2. Negative-path testing for optional dependencies and adapter failures
-3. Logging/error-handling policy guidance for contributors and maintainers
-4. TestPyPI dry run with trusted publishing configured
-5. Final release-doc cleanup, citation guidance, and publish readiness review
+1. Cross-platform smoke follow-up from real CI runs
+2. TestPyPI dry run with trusted publishing configured
+3. Final release-doc cleanup, citation guidance, and publish readiness review
 
 ## Notes
 

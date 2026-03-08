@@ -14,7 +14,8 @@ For the first stable release series:
 - PyPI distribution name: ``pyrtcao``
 - Python import name: ``pyRTC``
 - Command-line prefix: ``pyrtc-*``
-- Verified CI surface: Linux on Python 3.9 through 3.13
+- Primary supported release surface: Linux on Python 3.9 through 3.13
+- macOS and Windows currently have smoke-workflow coverage only
 
 The package is organized around reusable AO components such as wavefront sensors, slope processors, loop controllers, wavefront correctors, science cameras, and telemetry producers.
 These components can be composed in either a single-process development mode or a multi-process hardware-facing mode using shared-memory streams.
@@ -32,7 +33,7 @@ pyRTC is an open-source, community-driven Python package for real-time control o
 - **Abstraction of Core AO System Components:** Facilitate support for a broad range of AO system architectures.
 - **Open Library of API Examples:** Provide a library of examples for common hardware APIs used by the community to save time implementing basic hardware interactions.
 - **Real-Time Monitoring and Interface Flexibility:** Support real-time access to intermediate data products, text-based user interaction, and straightforward integration with user-built GUIs.
-- **Cross-Platform Compatibility:** Ensure broad usability across different operating systems.
+- **Portable Development Workflow:** Keep the simulator and component model usable across environments while treating Linux as the primary operational target for `1.0.x`.
 
 .. toctree::
   :maxdepth: 1
