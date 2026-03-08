@@ -1,6 +1,9 @@
 import argparse
 import json
+import os
 import platform
+import shutil
+import subprocess
 import time
 from pathlib import Path
 from typing import Any, Callable, Dict
@@ -31,6 +34,67 @@ def _safe_percentile(values, pct: float) -> float:
         return vals[low]
     weight = rank - low
     return vals[low] * (1.0 - weight) + vals[high] * weight
+
+
+def _run_command_lines(command: list[str]) -> list[str]:
+    try:
+        completed = subprocess.run(command, check=True, capture_output=True, text=True)
+    except Exception:
+        return []
+    return [line.strip() for line in completed.stdout.splitlines() if line.strip()]
+
+
+def collect_system_info() -> Dict[str, Any]:
+    info: Dict[str, Any] = {
+        "platform": platform.platform(),
+        "python": platform.python_version(),
+        "cpu_model": platform.processor() or "unknown",
+        "cpu_count": int(os.cpu_count() or 0),
+    }
+
+    lscpu_path = shutil.which("lscpu")
+    if lscpu_path:
+        for line in _run_command_lines([lscpu_path]):
+            if line.startswith("Model name:"):
+                info["cpu_model"] = line.split(":", 1)[1].strip()
+            elif line.startswith("CPU(s):") and "NUMA" not in line:
+                try:
+                    info["cpu_count"] = int(line.split(":", 1)[1].strip())
+                except ValueError:
+                    pass
+
+    gpu_info = {
+        "available": False,
+    }
+    if gpu_torch_available():
+        try:
+            import torch
+
+            gpu_info["torch_version"] = torch.__version__
+            gpu_info["cuda_runtime"] = torch.version.cuda
+            gpu_info["available"] = bool(torch.cuda.is_available())
+            if torch.cuda.is_available():
+                gpu_info["device_name"] = str(torch.cuda.get_device_name(0))
+        except Exception:
+            pass
+
+    nvidia_smi_path = shutil.which("nvidia-smi")
+    if nvidia_smi_path:
+        lines = _run_command_lines(
+            [nvidia_smi_path, "--query-gpu=name,driver_version,memory.total", "--format=csv,noheader"]
+        )
+        if lines:
+            parts = [part.strip() for part in lines[0].split(",")]
+            gpu_info["available"] = True
+            if len(parts) >= 1:
+                gpu_info.setdefault("device_name", parts[0])
+            if len(parts) >= 2:
+                gpu_info["driver_version"] = parts[1]
+            if len(parts) >= 3:
+                gpu_info["memory_total"] = parts[2]
+
+    info["gpu"] = gpu_info
+    return info
 
 
 def _time_kernel(func: Callable[[], Any], iterations: int, warmup: int) -> Dict[str, float]:
@@ -201,10 +265,7 @@ def _bench_gpu_kernels(iterations: int, warmup: int, signal_size: int, num_modes
         warmup=warmup,
     )
 
-    side = int(np.sqrt(signal_size))
-    if side * side != signal_size:
-        side += 1
-    length = side * side
+    length = max(signal_size, 4 * pixels_per_pupil)
     image = torch.tensor((rng.rand(length) * 5000).astype(np.float32), device="cuda")
 
     p1_mask_np, p2_mask_np, p3_mask_np, p4_mask_np = _build_pywfs_masks(length, pixels_per_pupil)
@@ -277,8 +338,7 @@ def run_core_compute_benchmarks(
 
     results = {
         "meta": {
-            "platform": platform.platform(),
-            "python": platform.python_version(),
+            "system_info": collect_system_info(),
             "iterations": iterations,
             "warmup": warmup,
             "quick": quick,
@@ -299,6 +359,19 @@ def run_core_compute_benchmarks(
         )
 
     if include_gpu:
+        results["gpu_profiles"] = {}
+        for size in profile_sizes:
+            signal_size = 2 * size * size
+            num_modes = size * size
+            pixels_per_pupil = size * size
+            results["gpu_profiles"][f"{size}x{size}"] = _bench_gpu_kernels(
+                iterations=max(5, iterations // 2),
+                warmup=max(1, warmup // 2),
+                signal_size=signal_size,
+                num_modes=num_modes,
+                pixels_per_pupil=pixels_per_pupil,
+            )
+
         gpu_grid = max(profile_sizes)
         signal_size = 2 * gpu_grid * gpu_grid
         num_modes = gpu_grid * gpu_grid

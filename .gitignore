@@ -55,3 +55,4 @@ Thumbs.db
 *.npy
 *.png
 coverage.xml
+wheel-test-env

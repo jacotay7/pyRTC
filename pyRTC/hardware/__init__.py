@@ -29,10 +29,14 @@ except Exception:
 
 from .NCPAOptimizer import NCPAOptimizer as NCPAOptimizer
 from .PIDOptimizer import PIDOptimizer as PIDOptimizer
+from .SyntheticSystems import SyntheticSHWFS as SyntheticSHWFS
+from .SyntheticSystems import SyntheticScienceCamera as SyntheticScienceCamera
 from .loopHyperparamsOptimizer import loopOptimizer as loopOptimizer
 
 __all__.extend([
             'NCPAOptimizer', 
             'PIDOptimizer',
+            'SyntheticSHWFS',
+            'SyntheticScienceCamera',
             'loopOptimizer'
            ])

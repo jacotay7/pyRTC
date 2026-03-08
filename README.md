@@ -1,148 +1,231 @@
-# What is pyRTC?
+# pyrtc
 
-Adaptive optics (AO) is a technology that rapidly detects and corrects optical aberrations to significantly improve the resolution of an optical system. AO has been applied to imaging problems in fields such as astronomy, ophthalmology, and microscopy, as well as various military and industrial applications. AO systems operate using a so-called `real-time controller' (RTC), a term used by the community to describe software responsible for converting optical aberration measurements into corresponding corrections. 
+`pyrtc` is an adaptive optics real-time control toolkit written in Python.
 
-pyRTC is an open-source, community-driven Python package for real-time control of AO systems, built with the following core goals:
+The user-facing name stays `pyrtc`.
+For packaging only, the published PyPI package name is `pyrtcao`, while the Python import name remains `pyRTC`:
 
-- **Customizable High-Performance AO Pipeline:** Provide an efficient RTC pipeline with potential for full user customization.
-- **Abstraction of Core AO System Components:** Facilitate support for a broad range of AO system architectures.
-- **Open Library of API Examples:** Provide a library of examples for common hardware APIs used by the community to save time implementing basic hardware interactions.
-- **Real-Time Monitoring and Interface Flexibility:** Support real-time access to intermediate data products, text-based user interaction, and straightforward integration with user-built GUIs.
-- **Cross-Platform Compatibility:** Ensure broad usability across different operating systems.
-
-# Why should you use pyRTC?
-
-pyRTC was built as a middle ground between performance and usability. Therefore, pyRTC can is intended for a wider range of applications, including:
-
-- Moderate performance adaptive optics applications (approximately 1 kHz speed for a few hundred modes).
-- AO Lab environments
-- Test systems for hardware/software at on-sky speeds.
-- Any neural network/AI-based controller built in Python.
-
-# Installation
-
-To install pyRTC, start by cloning the repository: 
-
+```bash
+pip install pyrtcao
 ```
+
+```python
+import pyRTC
+```
+
+Documentation placeholder: [https://pyrtc.readthedocs.io/en/latest/](https://pyrtc.readthedocs.io/en/latest/)
+
+Developer Guide placeholder: [https://pyrtc.readthedocs.io/en/latest/guides/developers_guide.html](https://pyrtc.readthedocs.io/en/latest/guides/developers_guide.html)
+
+## Performance
+
+The benchmark section is intentionally near the top because performance is a primary design constraint for `pyrtc`.
+These measurements were captured on the current GPU-enabled host with:
+
+```bash
+python -m benchmarks.perf_smoke --output benchmarks/readme_benchmark_report.json --core-iterations 500 --core-warmup 50 --core-system-sizes 10 20 60
+python benchmarks/readme_benchmark_table.py --report benchmarks/readme_benchmark_report.json --output benchmarks/readme_benchmark_table.md
+```
+
+### Benchmark Host
+
+| Component | Value |
+| --- | --- |
+| CPU | AMD Ryzen 9 9950X3D 16-Core Processor |
+| CPU Threads | 32 |
+| GPU | NVIDIA GeForce RTX 5090 |
+| GPU Memory | 32607 MiB |
+| NVIDIA Driver | 580.126.09 |
+| Python | 3.12.0 |
+| Torch | 2.10.0+cu128 |
+| CUDA | 12.8 |
+
+### Core Compute Benchmarks
+
+Values are reported as `p99 throughput / p99 latency`.
+
+| Kernel | 10x10 CPU | 10x10 GPU | 20x20 CPU | 20x20 GPU | 60x60 CPU | 60x60 GPU |
+| --- | --- | --- | --- | --- | --- | --- |
+| WFS downsample | 1587.2 kHz / 0.6 us | - | 861.8 kHz / 1.2 us | - | 159.7 kHz / 6.3 us | - |
+| WFS rotate | 628.9 kHz / 1.6 us | - | 289.8 kHz / 3.5 us | - | 38.8 kHz / 25.8 us | - |
+| WFC modal->zonal | 1063.5 kHz / 0.9 us | - | 186.9 kHz / 5.4 us | - | 1.4 kHz / 729.2 us | - |
+| Loop leaky integrator | 763.1 kHz / 1.3 us | 28.4 kHz / 35.3 us | 82.4 kHz / 12.1 us | 29.6 kHz / 33.8 us | 543 Hz / 1841.9 us | 11.6 kHz / 86.3 us |
+| PYWFS slopes | 546.4 kHz / 1.8 us | 8.7 kHz / 114.6 us | 222.7 kHz / 4.5 us | 8.6 kHz / 116.0 us | 30.6 kHz / 32.7 us | 7.7 kHz / 129.2 us |
+| SHWFS slopes | 625.0 kHz / 1.6 us | - | 432.9 kHz / 2.3 us | - | 64.5 kHz / 15.5 us | - |
+
+For this host, the main pattern is what you would expect: CPU kernels dominate the small problems because launch overhead matters, while the GPU becomes much more interesting once the control matrix and state size are large enough.
+
+The benchmark artifacts committed for this host are:
+
+- `benchmarks/readme_benchmark_report.json`
+- `benchmarks/readme_benchmark_table.md`
+
+## What It Is For
+
+Adaptive optics (AO) systems measure optical aberrations and apply corrections quickly enough to recover image quality in dynamic environments. `pyrtc` is aimed at the software layer that connects those measurements, reconstructions, and corrections.
+
+The project is designed for:
+
+- laboratory AO systems and hardware integration work
+- simulated AO development and algorithm prototyping
+- moderate-performance real-time control in Python
+- controller research, including machine-learning-assisted control paths
+
+## Release Posture
+
+The repo is being prepared for a `1.0.0` release. The current release policy is conservative:
+
+- User-facing project name: `pyrtc`
+- PyPI distribution name: `pyrtcao`
+- Python import name: `pyRTC`
+- CLI prefix: `pyrtc-*`
+- Verified CI surface: Linux, Python 3.9-3.13
+- GPU behavior: optional, best-effort unless explicitly validated for your environment
+- Hardware integrations: examples and reference implementations, not universal plug-and-play support
+
+## Core Capabilities
+
+- Component-based AO pipeline built around wavefront sensing, slope processing, control, correction, telemetry, and science imaging
+- Soft-RTC mode for single-process development and simulation workflows
+- Hard-RTC mode for process-isolated hardware integration via shared memory and launcher utilities
+- Optional viewer and benchmarking tools for stream inspection and performance checks
+- Example hardware adapters and simulation-oriented examples under `pyRTC/hardware` and `examples/`
+
+## Installation
+
+### From PyPI
+
+```bash
+pip install pyrtcao
+```
+
+Optional extras:
+
+```bash
+pip install pyrtcao[docs]
+pip install pyrtcao[gpu]
+pip install pyrtcao[viewer]
+```
+
+### From Source
+
+```bash
 git clone https://github.com/jacotay7/pyRTC.git
-```
-
-Navigate to the folder, and install with pip.
-
-```
 cd pyRTC
 pip install .
 ```
 
-Optionally, install with docs libraries:
+Optional source extras:
 
-```
-cd pyRTC
+```bash
 pip install .[docs]
-```
-
-Optionally, install with GPU dependencies (PyTorch):
-
-```
-cd pyRTC
 pip install .[gpu]
+pip install .[viewer]
 ```
 
-If GPU mode is configured in a component (`gpuDevice` in config) but PyTorch is not installed,
-pyRTC now automatically falls back to CPU mode with a warning instead of failing import/startup.
+If GPU mode is configured through `gpuDevice` but PyTorch is unavailable, supported paths fall back to CPU mode with a warning instead of failing immediately.
 
-### Performance Smoke Report
+## Quick Start
 
-To generate a lightweight performance report (CI-safe, non hard real-time), run:
+Verify the install:
 
+```bash
+python -c "import pyRTC; print(pyRTC.__all__)"
 ```
+
+The best first end-to-end path today is the no-hardware synthetic Shack-Hartmann workflow under `examples/synthetic_shwfs/`.
+
+Key files:
+
+- `examples/synthetic_shwfs/config.yaml`
+- `examples/synthetic_shwfs/run_soft_rtc.py`
+
+Run it with:
+
+```bash
+python examples/synthetic_shwfs/run_soft_rtc.py --duration 15
+```
+
+It publishes the normal `wfs`, `signal2D`, `wfc2D`, `psfShort`, and `psfLong` streams, so the standard viewer tools work unchanged while you evaluate the control flow and subclassing points.
+
+The documentation will live on Read the Docs. Placeholder entry points for now:
+
+- [Getting Started](https://pyrtc.readthedocs.io/en/latest/guides/getting_started.html)
+- [Architecture Guide](https://pyrtc.readthedocs.io/en/latest/guides/architecture.html)
+- [Developer Guide](https://pyrtc.readthedocs.io/en/latest/guides/developers_guide.html)
+- [Synthetic SHWFS Example](https://pyrtc.readthedocs.io/en/latest/examples/synthetic_shwfs.html)
+- [PYWFS Example](https://pyrtc.readthedocs.io/en/latest/examples/pywfs.html)
+
+## Architecture Overview
+
+`pyrtc` is organized around a small set of component abstractions:
+
+- `WavefrontSensor`
+- `SlopesProcess`
+- `Loop`
+- `WavefrontCorrector`
+- `ScienceCamera`
+- `Telemetry`
+
+These components exchange data through shared-memory streams and can be assembled in two main ways:
+
+- `soft-RTC`: all relevant components run in one Python process
+- `hard-RTC`: hardware-facing pieces run in separate Python processes and communicate through launchers/shared memory
+
+Use `soft-RTC` first unless you have a clear need for process isolation or hardware-driver separation.
+
+## Examples and Hardware
+
+Real AO deployments are hardware-specific. The repo includes two kinds of support for that:
+
+- abstract core classes for the AO pipeline
+- example integrations in `pyRTC/hardware`
+
+These hardware files should be treated as reference implementations and starting points, not as a guarantee that every SDK and device combination will work unchanged.
+
+For no-hardware exploration, start with the synthetic SHWFS example. For a richer simulated optical path, the OOPAO-based example remains available, but it is an external dependency and should be treated as the second example, not the first one.
+
+## Tools and Benchmarks
+
+Viewer and CLI tools:
+
+```bash
+pyrtc-view wfs
+pyrtc-shm-monitor
+pyrtc-clear-shms
+pyrtc-measure-latency signal wfc
+```
+
+Performance smoke report:
+
+```bash
 python benchmarks/perf_smoke.py --output perf_smoke_report.json
 ```
 
-This writes a JSON summary with timing metrics for core utility paths that can be stored as a CI artifact.
-By default, it also attempts core compute kernel benchmarks (and GPU kernels when available),
-falling back to CPU-only sections automatically when GPU paths are unavailable.
+Core compute benchmark:
 
-### Core Compute Benchmarks (JIT/GPU Kernels)
-
-To benchmark core compute kernels in `SlopesProcess`, `Loop`, `WavefrontSensor`, and `WavefrontCorrector`:
-
-```
+```bash
 pyrtc-core-bench --quick --cpu-only --output core_compute_bench_report.json
 ```
 
-Run without `--cpu-only` to include GPU kernels when CUDA/PyTorch are available:
+Run without `--cpu-only` to include GPU kernels when CUDA and PyTorch are available.
 
-```
-pyrtc-core-bench --quick --output core_compute_bench_report.json
-```
+## Stability and Support Notes
 
-This reports per-kernel timing statistics (`mean`, `median`, `p95`, `p99`) in JSON.
+- The package is being prepared for a stable community-facing release, but not every platform or hardware stack is validated equally.
+- Linux is the primary tested environment today.
+- GPU and vendor-specific hardware support should be validated in the target environment before operational use.
+- Example scripts and hardware adapters are intended to shorten development time, not replace system-specific commissioning.
 
-# Getting Started 
+## Contributing and Development
 
+Maintainer and contributor workflow guidance is being consolidated into the docs.
+For now, use the Developer Guide placeholder link near the top of this README.
 
-## Documentation
+The tracked release plan for the first stable version lives in `RELEASE_1_0_PLAN.md`.
 
-You can build the docs locally by following these steps:
+The GitHub Actions publish workflow lives in `.github/workflows/publish-package.yml`.
 
-First, install the required packages, this can be done by:
+## Contact
 
-```
-cd pyRTC
-pip install .[docs]
-```
-
-See Installation Instructions for more info.
-
-Next, navigate to the pyRTC folder and build the docs:
-
-```
-cd ~/pyRTC/docs/source
-make html
-```
-
-The docs will be built in the `docs/source/_build/html` folder. You can run them locally with:
-
-```
-sphinx-autobuild . _build/html
-```
-
-This process can also be done using the including `build_and_run.sh` script located in the `docs/source` folder.
-
-```
-cd ~/pyRTC/docs/source
-./build_and_run.sh
-```
-
-## Hardware
-
-Since each AO system utilizes a unique hardware configuration, every new AO system will require a programmer to write interfacing code to control the hardware. This is unavoidable. Therefore, one of pyRTC's goals is compile a fairly complete set of API implementations for common hardware components like ALPAO DM's, PI modulators, and FLIR cameras so that community members will have easy access to existing exemplars. However, there is a significantly prohibitive cost associated with buying one of each possible hardware component an AO research might need to interact with. Therefore, we will rely on the community to provide their pyRTC implementations for their hardware components so that the whole community can benefit.
-
-`pyRTC/hardware` hosts examples of specific hardware implementations we have created to date, which hopefully more to be added over time.
-
-## Simluating Hardware
-
-In order to test pyRTC without access to the specific AO hardware required, we have provided some examples of how to run pyRTC with a simulated AO system.
-
-For our examples we will be using the open-source AO simulation software OOPAO developed by Héritier, C. et al. (https://github.com/cheritier/OOPAO/tree/master). Please refer to their repository for installation instructions. 
-
-## Examples
-
-We have provided an example of how to set up a single conjugate AO (SCAO) system using a Pyramid Wavefront Sensor. This example uses the OOPAO simulation software to simulate the hardware components of an AO system so that pyRTC can be tested without the need of real AO hardware. All examples can be found under the `examples` folder.
-
-# Contributing
-
-pyRTC is an open-source software intended to be built for and by the AO community. Please use pyRTC freely and create new branches for your systems. We ask that if you implement new features that may be of broader interest to the community while integrating pyRTC into your AO system, please contribute to the code base by opening up an issue or pull request on github.   
-
-# Contact
-
-For feedback and feature requests you can contact me via e-mail at jtaylor@keck.hawaii.edu.
-
-## Citation
-
-Please cite us if you use this code for your paper:
-
-```
-add paper info
-```
+For feedback, collaboration, and feature requests: `jtaylor@keck.hawaii.edu`
