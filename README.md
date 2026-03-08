@@ -13,9 +13,9 @@ pip install pyrtcao
 import pyRTC
 ```
 
-Documentation placeholder: [https://pyrtc.readthedocs.io/en/latest/](https://pyrtc.readthedocs.io/en/latest/)
+Documentation: [https://pyrtc-ao.readthedocs.io/en/latest/](https://pyrtc-ao.readthedocs.io/en/latest/)
 
-Developer Guide placeholder: [https://pyrtc.readthedocs.io/en/latest/guides/developers_guide.html](https://pyrtc.readthedocs.io/en/latest/guides/developers_guide.html)
+Developer Guide: [https://pyrtc-ao.readthedocs.io/en/latest/guides/developers_guide.html](https://pyrtc-ao.readthedocs.io/en/latest/guides/developers_guide.html)
 
 ## Performance
 
