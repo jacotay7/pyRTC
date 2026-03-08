@@ -264,7 +264,7 @@ For release validation from a source checkout, the built-wheel smoke path is aut
 ```bash
 python -m build
 python -m twine check dist/*
-python -m pyRTC.scripts.validate_dist_install --dist-dir dist
+python pyRTC/scripts/validate_dist_install.py --dist-dir dist
 ```
 
 The tracked release plan for the first stable version lives in `RELEASE_1_0_PLAN.md`.

@@ -42,7 +42,7 @@ jobs:
         run: python -m twine check dist/*
 
       - name: Verify built wheel installs cleanly
-        run: python -m pyRTC.scripts.validate_dist_install --dist-dir dist
+        run: python pyRTC/scripts/validate_dist_install.py --dist-dir dist
 
       - name: Run ruff lint checks
         run: ruff check pyRTC tests benchmarks
@@ -85,7 +85,7 @@ jobs:
         run: python -m twine check dist/*
 
       - name: Verify built wheel installs cleanly
-        run: python -m pyRTC.scripts.validate_dist_install --dist-dir dist
+        run: python pyRTC/scripts/validate_dist_install.py --dist-dir dist
 
       - name: Run system and notebook smoke tests
         run: pytest tests/system tests/notebooks -q --no-cov

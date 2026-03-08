@@ -22,7 +22,7 @@ CI/release surface for the `1.0.x` line. The published distribution name is
 - Shared logging system in `pyRTC.logging_utils` covering scripts, benchmarks,
 	launchers, component base classes, and key hardware/control-plane paths.
 - Maintainer-facing built-wheel validation helper at
-	`python -m pyRTC.scripts.validate_dist_install --dist-dir dist`.
+	`python pyRTC/scripts/validate_dist_install.py --dist-dir dist`.
 - Cross-platform smoke workflows for macOS and Windows plus Python-versioned
 	Linux install/test coverage for Python 3.9 through 3.13.
 - Docs-build validation in CI and repository-level Read the Docs
