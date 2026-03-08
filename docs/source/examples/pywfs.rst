@@ -23,7 +23,8 @@ Files
 
 The main example assets live under `examples/scao/`:
 
-- `pywfs_example_OOPAO.ipynb`: notebook walkthrough
+- `run_soft_rtc.py`: script-driven soft-RTC walkthrough with logging and status output
+- `pywfs_example_OOPAO.ipynb`: notebook walkthrough of the same setup
 - `pywfs_OOPAO_config.yaml`: example configuration
 
 What the Config Shows
@@ -66,13 +67,27 @@ This is the configuration pattern to copy when building a simulator-backed syste
 Running the Example
 -------------------
 
-1. Install `pyRTC` and the simulator dependencies required by OOPAO.
-2. Open `examples/scao/pywfs_example_OOPAO.ipynb`.
-3. Verify the notebook can import `pyRTC` and `pyRTC.hardware.OOPAOInterface`.
-4. Load the example YAML configuration.
-5. Start the component chain from the notebook and inspect the generated streams.
+The recommended first path is the script version because it keeps the setup reproducible and prints status updates while the loop is running.
 
-If you prefer script-driven work, use the YAML file as the source of truth and translate the notebook steps into a Python driver script for your environment.
+.. code-block:: bash
+
+	python examples/scao/run_soft_rtc.py --duration 10
+
+By default the script:
+
+- clears the standard pyRTC streams
+- builds the OOPAO wavefront sensor, deformable mirror, and science camera wrappers
+- computes a quick interaction matrix with the atmosphere removed
+- closes the loop for the requested duration
+
+Useful variants:
+
+.. code-block:: bash
+
+	python examples/scao/run_soft_rtc.py --skip-im --duration 5
+	python examples/scao/run_soft_rtc.py --no-kl-basis --duration 5
+
+If you prefer interactive exploration, open `examples/scao/pywfs_example_OOPAO.ipynb` after the script workflow is familiar. The notebook walks through the same stages cell by cell.
 
 Recommended Validation Steps
 ----------------------------
@@ -88,7 +103,7 @@ Viewer commands:
 
 .. code-block:: bash
 
-	 pyrtc-view wfs
+	 pyrtc-view wfs signal2D wfc2D psfShort psfLong --geometry 2x3
 	 pyrtc-view signal2D -1 1
 	 pyrtc-view wfc2D -0.5 0.5
 
@@ -97,6 +112,7 @@ Notes and Limitations
 
 - This example depends on OOPAO and is not the zero-dependency first run.
 - It is best suited to Linux-based development environments.
+- The script path is better for repeatable setup; the notebook path is better for step-by-step debugging and inspection.
 - Treat it as the reference simulation path, not as a drop-in hardware deployment recipe.
 
 Next Steps

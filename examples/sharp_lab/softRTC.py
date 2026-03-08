@@ -1,3 +1,11 @@
+"""Site-specific soft-RTC orchestration example for the SHARP lab setup.
+
+This example runs the SHARP lab control chain in one Python process for local
+debugging and calibration work. It is useful as a reference for sequencing the
+main AO components, but the hard-coded paths and hardware dependencies make it a
+lab-specific example rather than a general onboarding script.
+"""
+
 # %% Imports
 import numpy as np
 import matplotlib.pyplot as plt

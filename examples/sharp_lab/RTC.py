@@ -1,3 +1,13 @@
+"""Site-specific hard-RTC orchestration example for the SHARP lab setup.
+
+This script is a laboratory operations notebook translated into a Python file.
+It launches vendor-backed hardware components, performs calibration tasks, and
+exercises several optimizer workflows for a specific instrument environment.
+
+The paths, SDK assumptions, and prompts are installation-specific; treat it as
+an internal example rather than a portable tutorial.
+"""
+
 # %% IMPORTS
 #Import pyRTC classes
 import matplotlib.pyplot as plt

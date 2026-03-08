@@ -67,6 +67,8 @@ extensions = [
     # 'sphinx.ext.doctest'
 ]
 
+autosummary_generate = True
+
 autodoc_typehints = "description"
 
 if enable_spell_check:

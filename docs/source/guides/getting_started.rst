@@ -126,6 +126,13 @@ For a practical first run, use the synthetic Shack-Hartmann example described in
 That path needs no hardware and no external simulator, but it still exercises the standard `WavefrontSensor -> SlopesProcess -> Loop -> WavefrontCorrector` chain and publishes the same viewer-friendly streams you will use later with real devices.
 
 After that, move to the OOPAO-based path in :doc:`../examples/pywfs` if you want a richer simulated optical model.
+The script-driven entry point is:
+
+.. code-block:: bash
+
+	python examples/scao/run_soft_rtc.py --duration 10
+
+Use the companion notebook only once you want to step through the same workflow interactively.
 
 Viewer and Utility Commands
 ---------------------------

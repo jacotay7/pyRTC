@@ -56,6 +56,12 @@ pyRTC is an open-source, community-driven Python package for real-time control o
 
 .. toctree::
   :maxdepth: 1
+  :caption: API Reference
+
+  api_reference
+
+.. toctree::
+  :maxdepth: 1
   :caption: Examples
 
   examples/synthetic_shwfs
