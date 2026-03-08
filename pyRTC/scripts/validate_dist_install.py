@@ -1,15 +1,35 @@
 """Validate that a built wheel installs and imports in a clean environment."""
 
 import argparse
+import logging
 import subprocess
 import sys
 import tempfile
 from pathlib import Path
 
-from pyRTC.logging_utils import add_logging_cli_args, configure_logging_from_args, get_logger
+logger = logging.getLogger("pyrtc.validate_dist_install")
 
 
-logger = get_logger(__name__)
+def add_logging_cli_args(parser: argparse.ArgumentParser) -> argparse.ArgumentParser:
+    parser.add_argument(
+        "--log-level",
+        default="INFO",
+        help="Log level override (DEBUG, INFO, WARNING, ERROR, CRITICAL).",
+    )
+    return parser
+
+
+def configure_logging_from_args(args) -> None:
+    level_name = str(getattr(args, "log_level", "INFO")).strip().upper()
+    level = getattr(logging, level_name, None)
+    if not isinstance(level, int):
+        raise ValueError(f"Invalid log level: {args.log_level}")
+
+    logging.basicConfig(
+        level=level,
+        format="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
 
 
 def find_built_wheel(dist_dir: Path) -> Path:
@@ -76,7 +96,7 @@ def main(argv=None) -> int:
 
     parser = build_parser()
     args = parser.parse_args(argv)
-    configure_logging_from_args(args, app_name="pyrtc-validate-dist", component_name="validate_dist_install")
+    configure_logging_from_args(args)
 
     dist_dir = Path(args.dist_dir).expanduser().resolve()
     wheel_path = find_built_wheel(dist_dir)

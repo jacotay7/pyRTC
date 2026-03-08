@@ -13,9 +13,9 @@ pip install pyrtcao
 import pyRTC
 ```
 
-Documentation placeholder: [https://pyrtc.readthedocs.io/en/latest/](https://pyrtc.readthedocs.io/en/latest/)
+Documentation: [https://pyrtc-ao.readthedocs.io/en/latest/](https://pyrtc-ao.readthedocs.io/en/latest/)
 
-Developer Guide placeholder: [https://pyrtc.readthedocs.io/en/latest/guides/developers_guide.html](https://pyrtc.readthedocs.io/en/latest/guides/developers_guide.html)
+Developer Guide: [https://pyrtc-ao.readthedocs.io/en/latest/guides/developers_guide.html](https://pyrtc-ao.readthedocs.io/en/latest/guides/developers_guide.html)
 
 ## Performance
 
@@ -264,7 +264,7 @@ For release validation from a source checkout, the built-wheel smoke path is aut
 ```bash
 python -m build
 python -m twine check dist/*
-python -m pyRTC.scripts.validate_dist_install --dist-dir dist
+python pyRTC/scripts/validate_dist_install.py --dist-dir dist
 ```
 
 The tracked release plan for the first stable version lives in `RELEASE_1_0_PLAN.md`.
