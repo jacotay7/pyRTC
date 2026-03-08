@@ -47,7 +47,7 @@ dependencies = [
 ]
 
 [project.urls]
-Documentation = "https://github.com/jacotay7/pyRTC/tree/main/docs"
+Documentation = "https://pyrtc.readthedocs.io/en/latest/"
 Source = "https://github.com/jacotay7/pyRTC"
 Tracker = "https://github.com/jacotay7/pyRTC/issues"
 
