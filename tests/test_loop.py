@@ -98,3 +98,32 @@ def test_loop_methods_without_full_init(tmp_path):
     loop.docrimeAuto = np.eye(4, dtype=np.float32)
     loop.docrimeCross = np.ones((6, 4), dtype=np.float32)
     loop.solveDocrime()
+
+
+def test_standard_integrator_uses_nonblocking_wfc_read():
+    loop = loop_mod.Loop.__new__(loop_mod.Loop)
+    loop.RELEASE_GIL = True
+    loop.gCM = np.eye(4, dtype=np.float32) * 0.25
+    loop.nullCorrection = np.zeros(4, dtype=np.float32)
+    loop.numActiveModes = 3
+
+    class _Signal:
+        def read(self, SAFE=False, RELEASE_GIL=True):
+            return np.ones(4, dtype=np.float32)
+
+    class _Wfc:
+        def read(self, SAFE=False):
+            raise AssertionError("standardIntegrator should not block on wfc.read()")
+
+        def read_noblock(self, SAFE=False):
+            return np.zeros(4, dtype=np.float32)
+
+    sent = {}
+    loop.signalShm = _Signal()
+    loop.wfcShm = _Wfc()
+    loop.sendToWfc = lambda correction, slopes=None: sent.setdefault("correction", correction.copy())
+
+    loop.standardIntegrator()
+
+    assert "correction" in sent
+    assert np.max(np.abs(sent["correction"])) > 0

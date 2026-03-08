@@ -3,11 +3,7 @@ import subprocess
 
 
 DEFAULT_VIEW_COMMANDS = [
-    ["pyrtc-view", "psfShort"],
-    ["pyrtc-view", "psfLong"],
-    ["pyrtc-view", "signal2D", "-1", "1"],
-    ["pyrtc-view", "wfc2D", "-0.5", "0.5"],
-    ["pyrtc-view", "wfs"],
+    ["pyrtc-view", "wfs", "signal2D", "wfc2D", "psfShort", "psfLong", "--geometry", "2x3"],
 ]
 
 

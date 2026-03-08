@@ -85,3 +85,30 @@ def test_hardware_package_import_is_lazy(capsys):
     assert captured.out == ""
     assert "pyRTC.hardware.ALPAODM" not in sys.modules
     assert hardware.SyntheticSHWFS.__name__ == "SyntheticSHWFS"
+
+
+def test_synthetic_example_drives_wfc2d_nonzero():
+    module = _load_example_module()
+    config = module.read_yaml_file(str(REPO_ROOT / "examples" / "synthetic_shwfs" / "config.yaml"))
+    module.ensure_expected_shms(config, force_rebuild=True)
+    system = module.build_system(config)
+
+    try:
+        module.start_system(system)
+        deadline = module.time.perf_counter() + 1.0
+        wfc_abs_max = 0.0
+        wfc2d_abs_max = 0.0
+        while module.time.perf_counter() < deadline:
+            wfc = system["loop"].wfcShm.read_noblock(SAFE=False)
+            wfc2d = system["wfc"].correctionVector2D.read_noblock()
+            wfc_abs_max = max(wfc_abs_max, float(np.max(np.abs(wfc))))
+            wfc2d_abs_max = max(wfc2d_abs_max, float(np.max(np.abs(wfc2d))))
+            if wfc_abs_max > 0.0 and wfc2d_abs_max > 0.0:
+                break
+            module.time.sleep(0.05)
+    finally:
+        module.stop_system(system)
+        module.clear_named_shms(list(module.expected_stream_specs(config)))
+
+    assert wfc_abs_max > 0.0
+    assert wfc2d_abs_max > 0.0
