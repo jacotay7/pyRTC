@@ -76,16 +76,22 @@ def main(argv=None) -> int:
     utils.set_affinity(args.affinity)
     logger.info("Launching viewer for streams=%s geometry=%s fps=%s", shm_names, args.geometry, args.fps)
 
-    return launch_mosaic_viewer(
-        sys.argv,
-        shm_names,
-        args.fps,
-        args.geometry,
-        args.pixel_scale,
-        static_vmin,
-        static_vmax,
-        args.theme,
-    )
+    try:
+        return launch_mosaic_viewer(
+            sys.argv,
+            shm_names,
+            args.fps,
+            args.geometry,
+            args.pixel_scale,
+            static_vmin,
+            static_vmax,
+            args.theme,
+        )
+    except ImportError as exc:
+        logger.exception("Viewer dependencies are unavailable")
+        raise SystemExit(
+            "pyrtc-view requires viewer dependencies. Install with: pip install pyRTC[viewer]"
+        ) from exc
 
 
 if __name__ == "__main__":

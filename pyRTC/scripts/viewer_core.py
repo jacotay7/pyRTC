@@ -8,30 +8,68 @@ display controls rather than any AO-specific signal processing.
 
 from dataclasses import dataclass
 import logging
+from types import SimpleNamespace
 
 import numpy as np
-from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.colors import LogNorm, Normalize
-from matplotlib.figure import Figure
-from PyQt5.QtCore import Qt, QTimer
-from PyQt5.QtGui import QKeySequence
-from PyQt5.QtWidgets import (
-    QAction,
-    QApplication,
-    QFrame,
-    QGridLayout,
-    QHBoxLayout,
-    QInputDialog,
-    QLabel,
-    QMainWindow,
-    QMenu,
-    QPushButton,
-    QScrollArea,
-    QSizePolicy,
-    QToolButton,
-    QVBoxLayout,
-    QWidget,
-)
+
+try:
+    from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
+    from matplotlib.figure import Figure
+    from PyQt5.QtCore import Qt, QTimer
+    from PyQt5.QtGui import QKeySequence
+    from PyQt5.QtWidgets import (
+        QAction,
+        QApplication,
+        QFrame,
+        QGridLayout,
+        QHBoxLayout,
+        QInputDialog,
+        QLabel,
+        QMainWindow,
+        QMenu,
+        QPushButton,
+        QScrollArea,
+        QSizePolicy,
+        QToolButton,
+        QVBoxLayout,
+        QWidget,
+    )
+    _VIEWER_BACKEND_IMPORT_ERROR = None
+except ImportError as exc:
+    _VIEWER_BACKEND_IMPORT_ERROR = exc
+
+    class _QtUnavailableBase:
+        def __init__(self, *args, **kwargs):
+            raise ImportError(
+                "pyrtc-view requires viewer dependencies. Install with: pip install pyRTC[viewer]"
+            ) from _VIEWER_BACKEND_IMPORT_ERROR
+
+    class _UnavailableQSizePolicy:
+        Expanding = 0
+        Fixed = 0
+
+    class _UnavailableQKeySequence:
+        ZoomIn = "Ctrl++"
+        ZoomOut = "Ctrl+-"
+
+    FigureCanvas = _QtUnavailableBase
+    Figure = _QtUnavailableBase
+    QAction = QApplication = QFrame = QGridLayout = QHBoxLayout = QInputDialog = QLabel = QMainWindow = QMenu = (  # type: ignore[assignment]
+        QPushButton
+    ) = QScrollArea = QToolButton = QVBoxLayout = QWidget = QTimer = _QtUnavailableBase
+    QSizePolicy = _UnavailableQSizePolicy()
+    QKeySequence = _UnavailableQKeySequence
+    Qt = SimpleNamespace(
+        AlignCenter=0,
+        AlignVCenter=0,
+        AlignHCenter=0,
+        AlignLeft=0,
+        RichText=0,
+        ScrollBarAsNeeded=0,
+        PreciseTimer=0,
+        WidgetWithChildrenShortcut=0,
+    )
 
 from .viewer_helpers import StreamConnection, compute_window_size, normalize_geometry_value, resolve_grid
 
@@ -86,10 +124,18 @@ THEMES = {
 }
 
 
+def _require_viewer_backend() -> None:
+    if _VIEWER_BACKEND_IMPORT_ERROR is not None:
+        raise ImportError(
+            "pyrtc-view requires viewer dependencies. Install with: pip install pyRTC[viewer]"
+        ) from _VIEWER_BACKEND_IMPORT_ERROR
+
+
 class AddPlotPlaceholder(QFrame):
     """Empty grid cell that lets the user attach another SHM stream."""
 
     def __init__(self, add_callback):
+        _require_viewer_backend()
         super().__init__()
         self.add_callback = add_callback
         self.theme = THEMES["dark"]
@@ -127,6 +173,7 @@ class EdgeArrowButton(QToolButton):
     """Small edge-mounted button used to grow the mosaic layout."""
 
     def __init__(self, label: str, callback):
+        _require_viewer_backend()
         super().__init__()
         self.setText(label)
         self.setCheckable(True)
@@ -162,6 +209,7 @@ class Stream2DWidget(QFrame):
         log_scale=False,
         font_size=14,
     ):
+        _require_viewer_backend()
         super().__init__()
         self.connection = connection
         self.remove_callback = remove_callback
@@ -488,6 +536,7 @@ class MosaicViewerWindow(QMainWindow):
         show_stats=True,
         show_range=True,
     ):
+        _require_viewer_backend()
         super().__init__()
         self.fps = max(1, int(fps))
         self.theme_name = theme_name if theme_name in THEMES else "dark"
@@ -837,6 +886,7 @@ class MosaicViewerWindow(QMainWindow):
 def launch_mosaic_viewer(argv, shm_names, fps, geometry, pixel_scale, static_vmin, static_vmax, theme_name):
     """Create the Qt application, size the window, and start the event loop."""
 
+    _require_viewer_backend()
     app = QApplication(argv)
     window = MosaicViewerWindow(
         shm_names,
