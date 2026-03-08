@@ -8,19 +8,10 @@ from pyRTC.logging_utils import add_logging_cli_args, configure_logging_from_arg
 logger = get_logger(__name__)
 
 
-CPU_KERNELS = [
-    ("wavefront_sensor.downsample_int32_image_jit", "WFS downsample"),
-    ("wavefront_sensor.rotate_image_jit", "WFS rotate"),
-    ("wavefront_corrector.ModaltoZonalWithFlat", "WFC modal->zonal"),
-    ("loop.leakyIntegratorNumba", "Loop leaky integrator"),
-    ("slopes.computeSlopesPYWFSOptimNumba", "PYWFS slopes"),
-    ("slopes.computeSlopesSHWFSOptimNumba", "SHWFS slopes"),
+LOOP_ROWS = [
+    ("pywfs", "PYWFS full loop"),
+    ("shwfs", "SHWFS full loop"),
 ]
-
-GPU_KERNELS = {
-    "loop.leakyIntegratorNumba": "loop.leakIntegratorGPU",
-    "slopes.computeSlopesPYWFSOptimNumba": "slopes.computeSlopesPYWFSTorch",
-}
 
 
 def _load_report(path: Path):
@@ -37,7 +28,53 @@ def _fmt_metric(stats: dict | None) -> str:
     return f"{hz:.0f} Hz / {us:.1f} us"
 
 
+def _build_closed_loop_markdown(report: dict) -> str:
+    meta = report.get("meta", {})
+    system = meta.get("system_info", {})
+    gpu = system.get("gpu", {})
+    results = report.get("results", {})
+    sizes = list(meta.get("system_sizes", []))
+
+    lines = []
+    lines.append("### Benchmark Host")
+    lines.append("")
+    lines.append("| Component | Value |")
+    lines.append("| --- | --- |")
+    lines.append(f"| CPU | {system.get('cpu_model', 'unknown')} |")
+    lines.append(f"| CPU Threads | {system.get('cpu_count', 'unknown')} |")
+    lines.append(f"| GPU | {gpu.get('device_name', 'not detected')} |")
+    lines.append(f"| GPU Memory | {gpu.get('memory_total', '-')} |")
+    lines.append(f"| NVIDIA Driver | {gpu.get('driver_version', '-')} |")
+    lines.append(f"| Python | {system.get('python', meta.get('python', '-'))} |")
+    lines.append(f"| Torch | {gpu.get('torch_version', '-')} |")
+    lines.append(f"| CUDA | {gpu.get('cuda_runtime', '-')} |")
+    lines.append("")
+    lines.append("### Synthetic AO Loop Benchmarks")
+    lines.append("")
+    lines.append("Values are reported as `p99 throughput / p99 latency`.")
+    lines.append("")
+    lines.append("| Loop | 10x10 CPU | 10x10 GPU | 20x20 CPU | 20x20 GPU | 60x60 CPU | 60x60 GPU |")
+    lines.append("| --- | --- | --- | --- | --- | --- | --- |")
+
+    for sensor_key, label in LOOP_ROWS:
+        row = [label]
+        sensor_results = results.get(sensor_key, {})
+        for size in sizes:
+            profile = sensor_results.get(f"{size}x{size}", {})
+            row.append(_fmt_metric(profile.get("cpu")))
+            gpu_stats = profile.get("gpu")
+            if isinstance(gpu_stats, dict) and "status" in gpu_stats:
+                gpu_stats = None
+            row.append(_fmt_metric(gpu_stats))
+        lines.append("| " + " | ".join(row) + " |")
+
+    return "\n".join(lines) + "\n"
+
+
 def build_markdown(report: dict) -> str:
+    if report.get("meta", {}).get("benchmark_type") == "synthetic_closed_loop":
+        return _build_closed_loop_markdown(report)
+
     core = report.get("core_compute", report)
     meta = core.get("meta", {})
     system = meta.get("system_info", {})

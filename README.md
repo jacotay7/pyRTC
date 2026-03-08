@@ -20,12 +20,14 @@ Developer Guide placeholder: [https://pyrtc.readthedocs.io/en/latest/guides/deve
 ## Performance
 
 The benchmark section is intentionally near the top because performance is a primary design constraint for `pyrtc`.
-These measurements were captured on the current GPU-enabled host with:
+These measurements were captured on the current GPU-enabled host with the closed-loop synthetic benchmark harness:
 
 ```bash
-python -m benchmarks.perf_smoke --output benchmarks/readme_benchmark_report.json --core-iterations 500 --core-warmup 50 --core-system-sizes 10 20 60
+python -m benchmarks.ao_loop_bench --output benchmarks/readme_benchmark_report.json --iterations 300 --warmup 30 --system-sizes 10 20 60
 python benchmarks/readme_benchmark_table.py --report benchmarks/readme_benchmark_report.json --output benchmarks/readme_benchmark_table.md
 ```
+
+The benchmark drives deterministic modal disturbances through synthetic `PYWFS` and `SHWFS` image formation, slope reduction, and a dense control update. That makes the reported numbers much closer to a real single-iteration AO control path than the earlier kernel-only table.
 
 ### Benchmark Host
 
@@ -40,20 +42,16 @@ python benchmarks/readme_benchmark_table.py --report benchmarks/readme_benchmark
 | Torch | 2.10.0+cu128 |
 | CUDA | 12.8 |
 
-### Core Compute Benchmarks
+### Synthetic AO Loop Benchmarks
 
 Values are reported as `p99 throughput / p99 latency`.
 
-| Kernel | 10x10 CPU | 10x10 GPU | 20x20 CPU | 20x20 GPU | 60x60 CPU | 60x60 GPU |
+| Loop | 10x10 CPU | 10x10 GPU | 20x20 CPU | 20x20 GPU | 60x60 CPU | 60x60 GPU |
 | --- | --- | --- | --- | --- | --- | --- |
-| WFS downsample | 1587.2 kHz / 0.6 us | - | 861.8 kHz / 1.2 us | - | 159.7 kHz / 6.3 us | - |
-| WFS rotate | 628.9 kHz / 1.6 us | - | 289.8 kHz / 3.5 us | - | 38.8 kHz / 25.8 us | - |
-| WFC modal->zonal | 1063.5 kHz / 0.9 us | - | 186.9 kHz / 5.4 us | - | 1.4 kHz / 729.2 us | - |
-| Loop leaky integrator | 763.1 kHz / 1.3 us | 28.4 kHz / 35.3 us | 82.4 kHz / 12.1 us | 29.6 kHz / 33.8 us | 543 Hz / 1841.9 us | 11.6 kHz / 86.3 us |
-| PYWFS slopes | 546.4 kHz / 1.8 us | 8.7 kHz / 114.6 us | 222.7 kHz / 4.5 us | 8.6 kHz / 116.0 us | 30.6 kHz / 32.7 us | 7.7 kHz / 129.2 us |
-| SHWFS slopes | 625.0 kHz / 1.6 us | - | 432.9 kHz / 2.3 us | - | 64.5 kHz / 15.5 us | - |
+| PYWFS full loop | 58.1 kHz / 17.2 us | 4.5 kHz / 219.9 us | 26.6 kHz / 37.6 us | 4.6 kHz / 218.5 us | 270 Hz / 3703.4 us | 3.0 kHz / 335.2 us |
+| SHWFS full loop | 78.2 kHz / 12.8 us | 5.1 kHz / 195.0 us | 26.6 kHz / 37.6 us | 5.1 kHz / 196.7 us | 268 Hz / 3730.7 us | 3.5 kHz / 289.7 us |
 
-For this host, the main pattern is what you would expect: CPU kernels dominate the small problems because launch overhead matters, while the GPU becomes much more interesting once the control matrix and state size are large enough.
+For this host, the important pattern is the one we care about operationally: CPU wins the small `10x10` and `20x20` synthetic loops because launch overhead dominates, but the GPU is about an order of magnitude faster once the loop reaches the `60x60` regime. That crossover now shows up for both pyramid and Shack-Hartmann synthetic loops in the README numbers.
 
 The benchmark artifacts committed for this host are:
 
@@ -219,6 +217,14 @@ Performance smoke report:
 python benchmarks/perf_smoke.py --output perf_smoke_report.json --log-dir logs
 ```
 
+Synthetic closed-loop AO benchmark:
+
+```bash
+pyrtc-ao-loop-bench --output ao_loop_bench_report.json --iterations 300 --warmup 30 --system-sizes 10 20 60
+python benchmarks/readme_benchmark_table.py --report ao_loop_bench_report.json --output ao_loop_benchmark_table.md
+python benchmarks/check_perf_baseline.py --current ao_loop_bench_report.json --baseline benchmarks/ao_loop_bench_baseline.json
+```
+
 Core compute benchmark:
 
 ```bash
@@ -226,6 +232,8 @@ pyrtc-core-bench --quick --cpu-only --output core_compute_bench_report.json --lo
 ```
 
 Run without `--cpu-only` to include GPU kernels when CUDA and PyTorch are available.
+
+The committed closed-loop baseline for the README host is [benchmarks/ao_loop_bench_baseline.json](benchmarks/ao_loop_bench_baseline.json).
 
 The shared logging environment variables are:
 

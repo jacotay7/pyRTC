@@ -82,6 +82,7 @@ pyrtc-clear-shms = "pyRTC.scripts.clear_shms:main"
 pyrtc-view-launch-all = "pyRTC.scripts.view_launch_all:main"
 pyrtc-measure-latency = "pyRTC.scripts.measure_latency:main"
 pyrtc-core-bench = "benchmarks.core_compute_bench:main"
+pyrtc-ao-loop-bench = "benchmarks.ao_loop_bench:main"
 
 [tool.setuptools.packages.find]
 include = ["pyRTC", "pyRTC.*", "benchmarks", "benchmarks.*"]

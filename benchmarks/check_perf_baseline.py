@@ -37,6 +37,9 @@ def _normalize_report_shape(data: Dict):
     # Core-only baseline shape (meta/profiles/gpu_kernels at top level)
     if "profiles" in data or "gpu_kernels" in data:
         return {"core_compute": data}
+    # Closed-loop AO benchmark report shape
+    if data.get("meta", {}).get("benchmark_type") == "synthetic_closed_loop":
+        return data
     return data
 
 
@@ -73,6 +76,26 @@ def _required_metric_paths(current: Dict):
                     (*base, "p99_hz"),
                 ]
             )
+
+    if current.get("meta", {}).get("benchmark_type") == "synthetic_closed_loop":
+        loop_results = current.get("results", {})
+        for sensor_name, profiles in loop_results.items():
+            for profile_name, variants in profiles.items():
+                for variant_name, stats in variants.items():
+                    if not isinstance(stats, dict):
+                        continue
+                    if stats.get("status", {}).get("available") is False:
+                        continue
+                    base = ("results", sensor_name, profile_name, variant_name)
+                    paths.extend(
+                        [
+                            (*base, "mean_s"),
+                            (*base, "median_s"),
+                            (*base, "p95_s"),
+                            (*base, "p99_s"),
+                            (*base, "p99_hz"),
+                        ]
+                    )
 
     return paths
 
