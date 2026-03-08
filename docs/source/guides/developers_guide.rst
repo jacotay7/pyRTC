@@ -51,12 +51,13 @@ Validate the built wheel in a clean environment:
 
 .. code-block:: bash
 
-   python -m venv wheel-test-env
-   . wheel-test-env/bin/activate
-   python -m pip install --upgrade pip
-   python -m pip install dist/pyrtcao-*.whl
-   python -c "import pyRTC; print('built wheel import OK')"
-   deactivate
+   python -m pyRTC.scripts.validate_dist_install --dist-dir dist
+
+If you want to keep the validation environment for inspection instead of using a temporary venv:
+
+.. code-block:: bash
+
+   python -m pyRTC.scripts.validate_dist_install --dist-dir dist --venv-dir wheel-test-env
 
 Documentation Workflow
 ----------------------
@@ -92,7 +93,7 @@ Generate a benchmark report:
 
    python -m benchmarks.perf_smoke \
      --output benchmarks/readme_benchmark_report.json \
-   --log-dir logs \
+       --log-dir logs \
      --core-iterations 500 \
      --core-warmup 50 \
      --core-system-sizes 10 20 60
@@ -216,12 +217,7 @@ Before publishing a release candidate:
       ruff check pyRTC tests benchmarks
       python -m build
       python -m twine check dist/*
-      python -m venv wheel-test-env
-      . wheel-test-env/bin/activate
-      python -m pip install --upgrade pip
-      python -m pip install dist/pyrtcao-*.whl
-      python -c "import pyRTC; print('built wheel import OK')"
-      deactivate
+      python -m pyRTC.scripts.validate_dist_install --dist-dir dist
       cd docs/source && make html
 
 5. Upload to TestPyPI first.

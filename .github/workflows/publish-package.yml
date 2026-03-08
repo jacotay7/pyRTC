@@ -42,6 +42,9 @@ jobs:
       - name: Validate package metadata
         run: python -m twine check dist/*
 
+      - name: Verify built wheel installs cleanly
+        run: python -m pyRTC.scripts.validate_dist_install --dist-dir dist
+
       - name: Upload dist artifacts
         uses: actions/upload-artifact@v4
         with:

@@ -249,6 +249,14 @@ Hard-RTC child processes inherit these settings automatically through the launch
 Maintainer and contributor workflow guidance is being consolidated into the docs.
 For now, use the Developer Guide placeholder link near the top of this README.
 
+For release validation from a source checkout, the built-wheel smoke path is automated:
+
+```bash
+python -m build
+python -m twine check dist/*
+python -m pyRTC.scripts.validate_dist_install --dist-dir dist
+```
+
 The tracked release plan for the first stable version lives in `RELEASE_1_0_PLAN.md`.
 
 The GitHub Actions publish workflow lives in `.github/workflows/publish-package.yml`.

@@ -42,12 +42,7 @@ jobs:
         run: python -m twine check dist/*
 
       - name: Verify built wheel installs cleanly
-        run: |
-          python -m venv wheel-test-env
-          . wheel-test-env/bin/activate
-          python -m pip install --upgrade pip
-          python -m pip install dist/pyrtcao-*.whl
-          python -c "import pyRTC; print('built wheel import OK')"
+        run: python -m pyRTC.scripts.validate_dist_install --dist-dir dist
 
       - name: Run ruff lint checks
         run: ruff check pyRTC tests benchmarks
@@ -88,6 +83,9 @@ jobs:
 
       - name: Validate package metadata
         run: python -m twine check dist/*
+
+      - name: Verify built wheel installs cleanly
+        run: python -m pyRTC.scripts.validate_dist_install --dist-dir dist
 
       - name: Run system and notebook smoke tests
         run: pytest tests/system tests/notebooks -q --no-cov

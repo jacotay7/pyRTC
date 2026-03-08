@@ -63,24 +63,39 @@ Current onboarding choice:
 ### 4. Testing and Compatibility
 
 - [x] Keep current Linux coverage green
-- [ ] Add package-install tests against the built distribution
+- [x] Add package-install tests against the built distribution
 - [ ] Expand coverage targets beyond the current narrow list
-- [ ] Add explicit tests for the stable public API surface
+- [x] Add explicit tests for the stable public API surface
 - [ ] Add negative-path tests for missing optional dependencies and bad configs
 - [ ] Decide the support stance for GPU code paths and test it accordingly
 - [ ] Either test Windows/macOS or narrow support claims before release
 
+Current testing state:
+
+- Public API import coverage exists.
+- Config validation coverage exists for bad configuration paths.
+- Focused regression coverage exists for the synthetic example, viewer CLI, logging helpers, pipeline launcher behavior, hardware adapter shims, and benchmark/report entry points.
+- Package-install verification from built artifacts is still a release-gap and should be treated as separate from source-tree tests.
+- Built-wheel validation now exists as both CI workflow coverage and a reusable maintainer script.
+
 ### 5. Runtime Logging and Error Handling
 
-- [ ] Design and document one shared logging configuration model for library code, scripts, and multi-process hard-RTC components
-- [ ] Provide colored, timestamped terminal logging with clear log levels by default for user-facing scripts
-- [ ] Provide optional file logging with a straightforward default log directory and filename strategy
-- [ ] Support configuring log level and log folder through environment variables and script-level/runtime overrides
-- [ ] Default to `INFO` and avoid debug spam from functions that run continuously in the real-time pipeline
-- [ ] Ensure logger configuration can be propagated cleanly to child processes in hard-RTC / multi-process mode
-- [ ] Add a low-overhead pattern for error reporting around control-plane code without adding per-iteration exception/logging overhead to hot real-time loops
+- [x] Design and document one shared logging configuration model for library code, scripts, and multi-process hard-RTC components
+- [x] Provide colored, timestamped terminal logging with clear log levels by default for user-facing scripts
+- [x] Provide optional file logging with a straightforward default log directory and filename strategy
+- [x] Support configuring log level and log folder through environment variables and script-level/runtime overrides
+- [x] Default to `INFO` and avoid debug spam from functions that run continuously in the real-time pipeline
+- [x] Ensure logger configuration can be propagated cleanly to child processes in hard-RTC / multi-process mode
+- [x] Add a low-overhead pattern for error reporting around control-plane code without adding per-iteration exception/logging overhead to hot real-time loops
 - [ ] Define explicit guidance for which errors should raise, which should warn, and which should be logged and suppressed in non-real-time paths
-- [ ] Add targeted logging/error-handling tests for script entry points, environment-variable configuration, and multi-process startup behavior
+- [x] Add targeted logging/error-handling tests for script entry points, environment-variable configuration, and multi-process startup behavior
+
+Current logging state:
+
+- Shared logger configuration exists in `pyRTC/logging_utils.py`.
+- User-facing scripts, benchmark entry points, primary component superclasses, major hardware adapters, and hardware optimizers now use the shared logger.
+- Hard-RTC child processes inherit logging configuration through launcher environment propagation.
+- The remaining work is policy and coverage cleanup, not logging-system bootstrapping.
 
 Implementation constraints:
 
@@ -113,24 +128,44 @@ Implementation constraints:
 - The public package surface is intentionally exported in `pyRTC/__init__.py`.
 - The test suite currently passes locally on Linux with Python 3.12.
 - The repository already includes smoke and performance-oriented checks.
+- There is now a credible no-hardware onboarding path via `examples/synthetic_shwfs/`.
+- The shared-memory viewer and related scripts are substantially more usable than the earlier baseline.
+- Logging is now materially more consistent across scripts, components, and multi-process control-plane behavior.
 
 ### Known Gaps
 
 - Trusted publishing still needs to be configured in GitHub, TestPyPI, and PyPI before the publish workflow can be used.
 - The current support claims are still broader than the verified CI surface.
-- Logging and error-handling behavior are not yet standardized across scripts, library components, and multi-process hard-RTC runs.
+- Built-wheel installation testing is still not part of the validated release path.
+- Support posture for GPU paths, non-Linux platforms, and hardware-specific integrations still needs a firmer release statement.
+- Logging policy is implemented technically, but the repo still needs explicit maintainership guidance about when to raise, warn, or suppress in non-real-time control paths.
 
 
 
-## Recommended Implementation Order
+## Recently Completed
 
-1. Packaging rename and metadata cleanup
-2. README rewrite and package naming clarification
-3. Docs completion for getting started and examples
-4. Release workflow and TestPyPI dry run
-5. Example cleanup and installation verification
-6. Shared logging and error-handling implementation
-7. Support policy, changelog, and contributor docs
+1. Packaging and naming cleanup for the `pyrtcao` distribution while preserving `import pyRTC`.
+2. README and docs rewrite around install, architecture, examples, and developer workflow.
+3. Canonical no-hardware onboarding example under `examples/synthetic_shwfs/`.
+4. Major viewer overhaul with better layouting, controls, and stability.
+5. Shared logging rollout across scripts, benchmark tools, core superclasses, launchers, and primary hardware-facing components.
+6. Focused regression tests covering logging, onboarding flows, viewer behavior, package public API, and mocked hardware adapters.
+
+## What Is Next
+
+1. Decide and document the exact `1.0.x` support boundary for Linux, GPU paths, and hardware integrations, then align README/docs/metadata to it.
+2. Finish the logging/error policy documentation so contributors know which non-real-time failures should raise, warn, or be logged-and-continue.
+3. Expand negative-path coverage for optional dependency failures and hardware-adapter import/runtime failure modes.
+4. Either add real validation for non-Linux platforms or narrow user-facing support claims before publishing `1.0.0`.
+5. Finish the remaining citation/release-adjacent docs once the paper and release artifacts are finalized.
+
+## Recommended Implementation Order From Here
+
+1. Support policy tightening for platforms, GPU paths, and hardware integrations
+2. Negative-path testing for optional dependencies and adapter failures
+3. Logging/error-handling policy guidance for contributors and maintainers
+4. TestPyPI dry run with trusted publishing configured
+5. Final release-doc cleanup, citation guidance, and publish readiness review
 
 ## Notes
 
