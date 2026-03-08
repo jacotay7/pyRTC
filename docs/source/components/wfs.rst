@@ -1,6 +1,6 @@
 .. wfs:
 
-.. automodule:: pyRTC.WavefrontSensor
+.. currentmodule:: pyRTC.WavefrontSensor
 
 
 Wavefront Sensor
@@ -31,7 +31,7 @@ of pyRTC, which holds all components in the same python process. See below for h
   """
 
   #%% Run in interactive python or jupyter notebook to keep process alive
-  from pyRTC import WavefrontSensor
+  from pyRTC.WavefrontSensor import WavefrontSensor
   import matplotlib.pyplot as plt
   from pyRTC.utils import read_yaml_file
 
@@ -64,8 +64,8 @@ of pyRTC, which holds all components in the same python process. See below for h
 
 
   """
-  Monitor the SHM in realtime by running the pyRTCView script in a terminal
-  python pyRTCView.py wfs &
+  Monitor the SHM in realtime by running the viewer command in a terminal
+  pyrtc-view wfs &
   """
 
 Hard-RTC Example
@@ -77,7 +77,7 @@ See above for how to launch a soft-RTC equivalent.
 
 .. code-block:: python
   
-  from pyRTC import hardwareLauncher
+  from pyRTC.Pipeline import hardwareLauncher
 
   """
   For the Hard-RTC, you will need to set-up a config before hand and store it in a yaml file.
@@ -96,7 +96,7 @@ See above for how to launch a soft-RTC equivalent.
     width: 400 
     height: 400 
     darkCount: 2000
-    darkFile: "/home/whetstone/pyRTC/SHARP_LAB/calib/dark.npy"
+    darkFile: "/home/whetstone/pyRTC/examples/sharp_lab/calib/dark.npy"
     affinity: 3
     functions:
     - expose
@@ -136,3 +136,4 @@ Parameters
   :inherited-members:
   :undoc-members:
   :show-inheritance:
+  :no-index:

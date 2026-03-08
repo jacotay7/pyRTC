@@ -1,3 +1,13 @@
+"""General utility helpers shared across pyRTC.
+
+The utilities in this module cover several small but widely used concerns:
+configuration validation, file-path helpers, timing helpers, dtype encoding,
+basic numerical helpers, and lightweight socket/process convenience functions.
+
+They are kept here because they are broadly reusable across components and do
+not belong to a single subsystem.
+"""
+
 import yaml
 import sys
 import select
@@ -10,8 +20,12 @@ import socket
 from datetime import datetime
 import time 
 import logging
-import matplotlib
-logging.getLogger('matplotlib').setLevel(logging.WARNING)
+from typing import Any, Iterable, Mapping, Optional
+
+from pyRTC.logging_utils import get_logger
+
+
+logger = get_logger(__name__)
 
 NP_DATA_TYPES = [
     np.int8, np.int16, np.int32, np.int64,
@@ -20,10 +34,110 @@ NP_DATA_TYPES = [
     np.complex64, np.complex128, #np.complex256,       # np.complex256 availability depends on the system
     np.bool_,
     np.object_,
-#    np.string_,
-#    np.unicode_,
+    np.bytes_, np.str_,
     np.datetime64, np.timedelta64
 ]
+
+
+class ConfigValidationError(ValueError):
+    """Raised when a component configuration does not meet pyRTC expectations."""
+    pass
+
+
+def _require_mapping(conf: Any, component: str) -> Mapping[str, Any]:
+    if not isinstance(conf, Mapping):
+        raise ConfigValidationError(f"{component}: config must be a mapping/dict, got {type(conf).__name__}")
+    return conf
+
+
+def _validate_optional_numeric(conf: Mapping[str, Any], key: str, component: str, minimum: Optional[float] = None):
+    if key not in conf:
+        return
+    value = conf[key]
+    if not isinstance(value, (int, float)):
+        raise ConfigValidationError(f"{component}: '{key}' must be numeric, got {type(value).__name__}")
+    if minimum is not None and value < minimum:
+        raise ConfigValidationError(f"{component}: '{key}' must be >= {minimum}, got {value}")
+
+
+def validate_wfs_config(conf: Any) -> None:
+    component = "wfs"
+    conf = _require_mapping(conf, component)
+
+    _validate_optional_numeric(conf, "width", component, minimum=1)
+    _validate_optional_numeric(conf, "height", component, minimum=1)
+    _validate_optional_numeric(conf, "darkCount", component, minimum=0)
+    _validate_optional_numeric(conf, "downsampleFactor", component, minimum=0)
+    _validate_optional_numeric(conf, "rotationAngle", component)
+
+
+def validate_wfc_config(conf: Any) -> None:
+    component = "wfc"
+    conf = _require_mapping(conf, component)
+
+    required = ["name", "numActuators", "numModes"]
+    missing = [key for key in required if key not in conf]
+    if missing:
+        missing_str = ", ".join(missing)
+        raise ConfigValidationError(f"{component}: missing required config key(s): {missing_str}")
+
+    if not isinstance(conf["name"], str) or not conf["name"].strip():
+        raise ConfigValidationError(f"{component}: 'name' must be a non-empty string")
+
+    if not isinstance(conf["numActuators"], int) or conf["numActuators"] <= 0:
+        raise ConfigValidationError(f"{component}: 'numActuators' must be a positive int, got {conf['numActuators']}")
+
+    if not isinstance(conf["numModes"], int) or conf["numModes"] <= 0:
+        raise ConfigValidationError(f"{component}: 'numModes' must be a positive int, got {conf['numModes']}")
+
+    _validate_optional_numeric(conf, "floatingInfluenceRadius", component, minimum=0)
+    _validate_optional_numeric(conf, "frameDelay", component, minimum=0)
+
+
+def validate_loop_config(conf: Any) -> None:
+    component = "loop"
+    conf = _require_mapping(conf, component)
+
+    _validate_optional_numeric(conf, "numDroppedModes", component, minimum=0)
+    _validate_optional_numeric(conf, "gain", component)
+    _validate_optional_numeric(conf, "leakyGain", component)
+    _validate_optional_numeric(conf, "hardwareDelay", component, minimum=0)
+    _validate_optional_numeric(conf, "pokeAmp", component, minimum=0)
+    _validate_optional_numeric(conf, "numItersIM", component, minimum=1)
+    _validate_optional_numeric(conf, "delay", component, minimum=0)
+    _validate_optional_numeric(conf, "pGain", component)
+    _validate_optional_numeric(conf, "iGain", component)
+    _validate_optional_numeric(conf, "dGain", component)
+    _validate_optional_numeric(conf, "derivativeFilter", component)
+
+    for key in ["controlLimits", "integralLimits", "absoluteLimits"]:
+        if key not in conf:
+            continue
+        value = conf[key]
+        if not isinstance(value, (list, tuple)) or len(value) != 2:
+            raise ConfigValidationError(f"{component}: '{key}' must be a list/tuple of length 2")
+
+
+def validate_component_config(conf: Any, mro_names: Iterable[str]) -> None:
+    """Dispatch configuration validation based on the component class hierarchy.
+
+    Parameters
+    ----------
+    conf : Any
+        Candidate configuration object for one component.
+    mro_names : Iterable[str]
+        Class names from the component's method-resolution order. The helper
+        uses these names to decide which specialized validators should run.
+    """
+    _require_mapping(conf, "component")
+
+    mro_name_set = set(mro_names)
+    if "Loop" in mro_name_set:
+        validate_loop_config(conf)
+    if "WavefrontSensor" in mro_name_set:
+        validate_wfs_config(conf)
+    if "WavefrontCorrector" in mro_name_set:
+        validate_wfc_config(conf)
 
 
 def precise_delay(microseconds):
@@ -33,6 +147,11 @@ def precise_delay(microseconds):
 
 # Function to measure execution time
 def measure_execution_time(f, args, numIters=10):
+    """Measure repeated execution-time statistics for a callable.
+
+    The return value is tailored to the repository's lightweight performance
+    smoke checks: median, interquartile range, and approximate low/high bounds.
+    """
    
     #init once
     f(*args)
@@ -44,30 +163,47 @@ def measure_execution_time(f, args, numIters=10):
         f(*args)
         end_time = time.time()
         exTimes[i] = (end_time - start_time)
-    
-    median = np.median(exTimes)
-    iqr = np.percentile(exTimes, 75)-np.percentile(exTimes, 25)
-    CI_1 = np.percentile(exTimes, 0.5)
-    CI_99 = np.percentile(exTimes, 99.5)
+
+    sorted_times = np.sort(exTimes)
+
+    def _percentile_from_sorted(sorted_arr, pct):
+        if sorted_arr.size == 0:
+            return np.float64(0.0)
+        if sorted_arr.size == 1:
+            return np.float64(sorted_arr[0])
+        rank = (pct / 100.0) * (sorted_arr.size - 1)
+        low = int(np.floor(rank))
+        high = int(np.ceil(rank))
+        if low == high:
+            return np.float64(sorted_arr[low])
+        weight = rank - low
+        return np.float64(sorted_arr[low] * (1.0 - weight) + sorted_arr[high] * weight)
+
+    median = _percentile_from_sorted(sorted_times, 50.0)
+    q1 = _percentile_from_sorted(sorted_times, 25.0)
+    q3 = _percentile_from_sorted(sorted_times, 75.0)
+    iqr = q3 - q1
+    CI_1 = _percentile_from_sorted(sorted_times, 0.5)
+    CI_99 = _percentile_from_sorted(sorted_times, 99.5)
 
     return median, iqr, CI_1, CI_99
 
 def change_directory(directory):
     try:
         os.chdir(directory)
-        print(f"Successfully changed the current directory to: {os.getcwd()}")
+        logger.info("Successfully changed the current directory to %s", os.getcwd())
     except FileNotFoundError:
-        print(f"Error: The directory '{directory}' does not exist.")
+        logger.error("The directory '%s' does not exist", directory)
     except PermissionError:
-        print(f"Error: Permission denied to access the directory '{directory}'.")
+        logger.error("Permission denied to access the directory '%s'", directory)
     except Exception as e:
-        print(f"An unexpected error occurred: {e}")
+        logger.exception("Unexpected error while changing directory: %s", e)
     return
 
 def add_to_path(directory):
     # Check if the directory exists
     if not os.path.isdir(directory):
-        print(f"Error: The directory '{directory}' does not exist.")
+        logger.error("The directory '%s' does not exist", directory)
         return
 
     # Add the directory to the PATH environment variable
@@ -75,9 +211,9 @@ def add_to_path(directory):
     if directory not in current_path:
         new_path = f"{directory}:{current_path}"
         os.environ['PATH'] = new_path
-        print(f"Directory '{directory}' added to PATH.")
+        logger.info("Directory '%s' added to PATH", directory)
     else:
-        print(f"Directory '{directory}' is already in PATH.")
+        logger.info("Directory '%s' is already in PATH", directory)
 
     return
 
@@ -191,24 +327,16 @@ def get_tmp_filepath(file_path, uniqueStr = 'tmp'):
     return new_file_path
 
 def centroid(array):
-    # Each point contributes to the centroid proportionally to its value.
-    total = array.sum() + 1e-4
-    y_indices, x_indices = np.indices(array.shape)
-    x_centroid = (x_indices * array).sum() / total
-    y_centroid = (y_indices * array).sum() / total
-    return np.array([x_centroid, y_centroid])
+    arr = np.asarray(array, dtype=np.float64)
+    total = np.add.reduce(arr.ravel(), dtype=np.float64) + 1e-4
+    y_indices, x_indices = np.indices(arr.shape, dtype=np.float64)
+    x_weighted = np.add.reduce((x_indices * arr).ravel(), dtype=np.float64)
+    y_weighted = np.add.reduce((y_indices * arr).ravel(), dtype=np.float64)
+    return np.array([x_weighted / total, y_weighted / total], dtype=np.float64)
 
 def add_to_buffer(buffer, vec):
-    if isinstance(buffer,np.ndarray):
-        buffer[:-1] = buffer[1:]
-        buffer[-1] = vec
-    else: #For torch tensors
-        tmp = buffer[1:].clone()
-        # Clone the slice of buffer[1:] to avoid memory overlap
-        buffer[:-1].copy_(tmp)
-        # Replace the last element with the new vector
-        buffer[-1].copy_(vec)
-        del tmp
+    buffer[:-1] = buffer[1:]
+    buffer[-1] = vec
     return
 
 def next_power_of_two(n):
@@ -285,13 +413,37 @@ def compute_fwhm_dark_subtracted_image(image):
     return fwhm_value
 
 def clean_image_for_strehl(img, median_filter_size = 3, gaussian_sigma = 1):
+    corrected_img = np.asarray(img)
 
-    corrected_img = median_filter(img, size=median_filter_size)  # Hot pixel correction
-    corrected_img = gaussian_filter(corrected_img, sigma=gaussian_sigma)  # Smoothing
-    
+    if median_filter_size is not None and median_filter_size > 1:
+        corrected_img = median_filter(
+            corrected_img,
+            size=median_filter_size,
+            output=None,
+            mode='reflect',
+            cval=0.0,
+            origin=0,
+        )
+
+    if gaussian_sigma is not None and gaussian_sigma > 0:
+        corrected_img = gaussian_filter(
+            corrected_img,
+            sigma=gaussian_sigma,
+            order=0,
+            output=None,
+            mode='reflect',
+            cval=0.0,
+            truncate=4.0,
+        )
+
     return corrected_img
 
 def gaussian_2d_grid(i, j, sigma, grid_size):
+    i = int(np.asarray(i).reshape(-1)[0])
+    j = int(np.asarray(j).reshape(-1)[0])
+    sigma = float(np.asarray(sigma).reshape(-1)[0])
+    grid_size = int(np.asarray(grid_size).reshape(-1)[0])
+
     grid = np.zeros((grid_size, grid_size))
     if sigma == 0:
         return grid
@@ -322,6 +474,12 @@ def set_affinity(affinity):
 
 
 def setFromConfig(conf, name, default):
+    """Return a config value or a typed default.
+
+    When a default is provided, this helper asserts that any override found in
+    the configuration matches the default's type. That makes many YAML mistakes
+    fail early during component startup instead of surfacing later.
+    """
     if name in conf.keys():
         val = conf[name]
     else:
@@ -330,7 +488,7 @@ def setFromConfig(conf, name, default):
     debugStr = f"There is a type mismatch between the default value for config variable {name} and the given value: {type(val).__name__} != {type(default).__name__}"
 
     if default is not None:
-        assert type(val) == type(default), debugStr
+        assert isinstance(val, type(default)), debugStr
 
     return val
 
@@ -369,7 +527,12 @@ def float_to_dtype(dtype_float):
     return np.dtype(NP_DATA_TYPES[int(dtype_float)])
 
 def bind_socket(host, start_port, max_attempts=5):
-    """Attempts to bind a socket on a range of ports, handling OSError exceptions."""
+    """Bind a TCP socket, retrying across a short range of ports.
+
+    This is primarily used by hard-RTC launcher/listener code so child hardware
+    processes can recover from a busy preferred port without embedding their own
+    retry logic.
+    """
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)  # Allow reuse of socket addresses
 
@@ -377,14 +540,14 @@ def bind_socket(host, start_port, max_attempts=5):
         try:
             # Attempt to bind the socket
             sock.bind((host, start_port + attempt))
-            print(f"Successfully bound to {host}:{start_port + attempt}")
+            logger.info("Bound socket to %s:%s", host, start_port + attempt)
             return sock
         except OSError as e:
-            print(f"Failed to bind to {host}:{start_port + attempt}: {e}")
+            logger.warning("Failed to bind to %s:%s: %s", host, start_port + attempt, e)
             if e.errno == socket.errno.EADDRINUSE:
-                print("Address already in use. Trying next port...")
+                logger.info("Address already in use. Trying next port.")
             else:
-                print("An unexpected error occurred. Stopping attempts.")
+                logger.error("Unexpected socket bind failure. Stopping attempts.")
                 break
     else:
         # After all attempts, if no binding was successful, raise an exception
@@ -398,7 +561,7 @@ def decrease_nice():
         try:
             p = psutil.Process(os.getpid())
             p.nice(-20)  # Unix uses a numeric value (lower means higher priority)
-        except:
+        except Exception:
             logging.log(level=logging.WARNING, msg="Unable to adjust nice level.\
                          Give your user sudo privledges without passowrd to use this feature.")
     return
@@ -407,9 +570,10 @@ def decrease_nice():
 def set_affinity_and_priority(thread_id, cpu_cores):
     set_affinity(cpu_cores)
     decrease_nice()
-    print(f"Thread {thread_id}: Priority set to REALTIME")
+    logger.info("Thread %s: priority set to REALTIME", thread_id)
 
 def read_yaml_file(file_path):
+    """Load a YAML file and return the parsed Python object."""
     with open(file_path, 'r') as file:
         conf = yaml.safe_load(file)
     return conf

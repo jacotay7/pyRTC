@@ -1,0 +1,56 @@
+wfs:
+  name: SyntheticSHWFS
+  width: 32
+  height: 32
+  darkCount: 16
+  frameRateHz: 200.0
+  subApSpacing: 8
+  subApOffsetX: 0
+  subApOffsetY: 0
+  numModes: 32
+  disturbanceAmplitude: 0.3
+  disturbanceFrequencyHz: 1.2
+  disturbanceDriftHz: 0.5
+  spotFlux: 4200.0
+  backgroundLevel: 120.0
+  readNoise: 3.0
+  functions:
+    - expose
+
+slopes:
+  type: SHWFS
+  signalType: slopes
+  subApSpacing: 8
+  subApOffsetX: 0
+  subApOffsetY: 0
+  imageNoise: 2.0
+  contrast: 3
+  functions:
+    - computeSignal
+
+wfc:
+  name: SyntheticWFC
+  numActuators: 32
+  numModes: 32
+  functions:
+    - sendToHardware
+
+loop:
+  gain: 0.35
+  numDroppedModes: 0
+  functions:
+    - standardIntegrator
+
+psf:
+  name: SyntheticScienceCamera
+  width: 64
+  height: 64
+  darkCount: 16
+  integration: 10
+  frameRateHz: 50.0
+  peakFlux: 24000.0
+  baseSigmaPx: 1.8
+  residualBlurGain: 2.2
+  functions:
+    - expose
+    - integrate

@@ -1,40 +1,43 @@
-"""
-A Superclass for Peformance Optimizer
-"""
-from pyRTC.Pipeline import *
-from pyRTC.utils import *
-from pyRTC.pyRTCComponent import *
+"""Base optimization component for slow control-plane tuning tasks.
 
+The optimizer layer in pyRTC is used for tasks such as loop gain tuning or
+hardware-assisted aberration optimization. These workflows are intentionally
+outside the steady-state real-time pipeline, which makes them a good fit for an
+Optuna-based trial/study abstraction.
+"""
 import argparse
-import sys
 import os
+import sys
 import time
+
 import optuna
+
+from pyRTC.logging_utils import get_logger
+from pyRTC.Pipeline import Listener
+from pyRTC.pyRTCComponent import pyRTCComponent
+from pyRTC.utils import decrease_nice, read_yaml_file, set_affinity, setFromConfig
+
+
+logger = get_logger(__name__)
 
 class Optimizer(pyRTCComponent):
     """
-    The Optimizer component for is for general optimization tasks 
-    in pyRTC. This class should be used by defining a child class held in pyRTC.hardware, 
-    which overwrites the relevant functions which actual hardware connectivity code. 
-    The child class can call its parent implementations in order to make use of the code 
-    which sets the relevant parameters, write to shared memory, etc... or they can overwrite 
-    them completely. See hardware/NCPAOptimizer.py for an example.
+    Abstract Optuna-backed optimization driver.
 
-    This class is designed to perform optimization using Optuna's 
-    CmaEsSampler and manages the optimization process including 
-    the application of optimum values and trial management.
+    ``Optimizer`` is meant to be subclassed by hardware- or algorithm-specific
+    optimizers in :mod:`pyRTC.hardware`. The base class owns the Optuna study,
+    default CMA-ES sampler choice, and the helper methods used to run a full
+    study or advance one trial at a time.
 
-    :param conf: Configuration dictionary containing necessary parameters.
-
-    **Config Parameters**:
-    - **numSteps** (*int*): The number of steps/trials to perform during optimization. Default is 100.
+    Subclasses are responsible for defining the objective function and for
+    applying candidate parameters to the system under test.
 
     Attributes
     ----------
     name : str
         Name of the optimizer component.
     study : optuna.Study
-        The study object from Optuna, initialized with a CmaEsSampler.
+        The Optuna study object, initialized with a CMA-ES sampler.
     numSteps : int
         Number of steps/trials to perform during optimization.
 
@@ -55,24 +58,25 @@ class Optimizer(pyRTCComponent):
 
     def __init__(self, conf) -> None:
         """
-        Initializes the Optimizer with the given configuration.
+        Initialize the optimizer study and runtime configuration.
 
-        :param conf: Configuration dictionary containing necessary parameters.
+        Parameters
+        ----------
+        conf : dict
+            Optimizer configuration. The base class uses ``numSteps`` while
+            subclasses may require additional problem-specific keys.
         """
-        self.name = "Optimizer"
-        self.sampler = setFromConfig(conf, "sampler", "tpe")
-        if self.sampler == 'cmaes':    
+        try:
+            self.name = "Optimizer"
             self.study = optuna.create_study(direction='maximize', 
-                                            sampler=optuna.samplers.CmaEsSampler())
-        if self.sampler == 'torch':    
-            self.study = optuna.create_study(direction='maximize', 
-                                            sampler=optuna.samplers.BoTorchSampler())
-        else:
-            self.study = optuna.create_study(direction='maximize', 
-                                            sampler=optuna.samplers.TPESampler())
-        self.numSteps = setFromConfig(conf, "numSteps", 100)
+                                             sampler=optuna.samplers.CmaEsSampler())
+            self.numSteps = setFromConfig(conf, "numSteps", 100)
 
-        super().__init__(conf)
+            super().__init__(conf)
+            self.logger.info("Initialized optimizer numSteps=%s", self.numSteps)
+        except Exception:
+            logger.exception("Failed to initialize optimizer")
+            raise
 
         return
     
@@ -94,9 +98,15 @@ class Optimizer(pyRTCComponent):
         This method runs the optimization process using the defined objective 
         function and the number of steps specified in the configuration.
         """
-        self.study.optimize(self.objective, 
-                            n_trials=self.numSteps)
-        self.applyOptimum()
+        component_logger = getattr(self, "logger", logger)
+        try:
+            component_logger.info("Starting optimization for %s trials", self.numSteps)
+            self.study.optimize(self.objective, n_trials=self.numSteps)
+            self.applyOptimum()
+            component_logger.info("Completed optimization")
+        except Exception:
+            component_logger.exception("Failed during optimization")
+            raise
         return
     
     def applyOptimum(self):
@@ -123,13 +133,25 @@ class Optimizer(pyRTCComponent):
         This method obtains the next trial from the study and applies it 
         using the applyTrial method.
         """
-        self.applyTrial(self.study.ask())
+        component_logger = getattr(self, "logger", logger)
+        try:
+            trial = self.study.ask()
+            component_logger.info("Applying next trial %s", trial)
+            self.applyTrial(trial)
+        except Exception:
+            component_logger.exception("Failed to apply next optimization trial")
+            raise
         return
 
     def resetStudy(self):
-
-        self.study = optuna.create_study(direction='maximize', 
-                                         sampler=optuna.samplers.CmaEsSampler())
+        component_logger = getattr(self, "logger", logger)
+        try:
+            self.study = optuna.create_study(direction='maximize', 
+                                             sampler=optuna.samplers.CmaEsSampler())
+            component_logger.info("Reset optimizer study")
+        except Exception:
+            component_logger.exception("Failed to reset optimizer study")
+            raise
 
         return
 
@@ -162,7 +184,7 @@ if __name__ == "__main__":
     # Go back to communicating with the main program through stdout
     sys.stdout = original_stdout
 
-    l = Listener(component, port = int(args.port))
-    while l.running:
-        l.listen()
+    listener = Listener(component, port = int(args.port))
+    while listener.running:
+        listener.listen()
         time.sleep(1e-3)

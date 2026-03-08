@@ -1,6 +1,6 @@
 .. wfs:
 
-.. automodule:: pyRTC.SlopesProcess
+.. currentmodule:: pyRTC.SlopesProcess
 
 
 Slopes Process
@@ -29,7 +29,7 @@ See below for how to launch a hard-RTC equivalent.
   """
 
   #%% Run in interactive python or jupyter notebook to keep process alive
-  from pyRTC import SlopesProcess
+  from pyRTC.SlopesProcess import SlopesProcess
   import matplotlib.pyplot as plt
   from pyRTC.utils import read_yaml_file
 
@@ -41,8 +41,8 @@ See below for how to launch a hard-RTC equivalent.
   confSlopes = {
     "type": "SHWFS",
     "signalType": "slopes",
-    "refSlopesFile": "", #"/home/whetstone/pyRTC/SHARP_LAB/calib/ref.npy",
-    "validSubApsFile": "", #"/home/whetstone/pyRTC/SHARP_LAB/calib/validSubAps.npy",
+    "refSlopesFile": "", #"/home/whetstone/pyRTC/examples/sharp_lab/calib/ref.npy",
+    "validSubApsFile": "", #"/home/whetstone/pyRTC/examples/sharp_lab/calib/validSubAps.npy",
     "subApSpacing": 16,
     "subApOffsetX": 0,
     "subApOffsetY": 0,
@@ -71,8 +71,8 @@ See below for how to launch a hard-RTC equivalent.
   plt.show()
 
   """
-  Monitor the SHM in realtime by running the pyRTCView script in a terminal
-  python pyRTCView.py signal2D &
+  Monitor the SHM in realtime by running the viewer command in a terminal
+  pyrtc-view signal2D &
   """
 
 Hard-RTC Example
@@ -87,7 +87,7 @@ See above for how to launch a soft-RTC equivalent.
 
 .. code-block:: python
 
-  from pyRTC import hardwareLauncher
+  from pyRTC.Pipeline import hardwareLauncher
 
   """
   For the Hard-RTC, you will need to set-up a config before hand and store it in a yaml file.
@@ -97,8 +97,8 @@ See above for how to launch a soft-RTC equivalent.
   slopes:
     type: SHWFS
     signalType: slopes
-    refSlopesFile: "/home/whetstone/pyRTC/SHARP_LAB/calib/ref.npy"
-    validSubApsFile: "/home/whetstone/pyRTC/SHARP_LAB/calib/validSubAps.npy"
+    refSlopesFile: "/home/whetstone/pyRTC/examples/sharp_lab/calib/ref.npy"
+    validSubApsFile: "/home/whetstone/pyRTC/examples/sharp_lab/calib/validSubAps.npy"
     subApSpacing: 16
     subApOffsetX: 8
     subApOffsetY: 4
@@ -145,3 +145,4 @@ Parameters
   :inherited-members:
   :undoc-members:
   :show-inheritance:
+  :no-index:

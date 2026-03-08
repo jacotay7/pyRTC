@@ -1,6 +1,6 @@
 .. wfs:
 
-.. automodule:: pyRTC.WavefrontCorrector
+.. currentmodule:: pyRTC.WavefrontCorrector
 
 Wavefront Corrector
 ====================
@@ -32,7 +32,7 @@ See below for how to launch a hard-RTC equivalent.
   """
 
   #%% Run in interactive python or jupyter notebook to keep process alive
-  from pyRTC import WavefrontCorrector
+  from pyRTC.WavefrontCorrector import WavefrontCorrector
   import matplotlib.pyplot as plt
   from pyRTC.utils import read_yaml_file
 
@@ -71,7 +71,7 @@ See above for how to launch a soft-RTC equivalent.
 
 .. code-block:: python
   
-  from pyRTC import hardwareLauncher
+  from pyRTC.Pipeline import hardwareLauncher
 
   """
   For the Hard-RTC, you will need to set-up a config before hand and store it in a yaml file.
@@ -83,9 +83,9 @@ See above for how to launch a soft-RTC equivalent.
     serial: "BAX118"
     numActuators: 97
     numModes: 94
-    flatFile: "./SHARP_LAB/calib/wfcShape.npy"
-    saveFile: "./SHARP_LAB/calib/wfcShape.npy"
-    m2cFile: "./SHARP_LAB/calib/m2c_kl.npy" 
+    flatFile: "./examples/sharp_lab/calib/wfcShape.npy"
+    saveFile: "./examples/sharp_lab/calib/wfcShape.npy"
+    m2cFile: "./examples/sharp_lab/calib/m2c_kl.npy" 
     affinity: 5
     commandCap: 0.8
     hardwareDelay: 0.001 #seconds
@@ -128,3 +128,4 @@ Parameters
   :inherited-members:
   :undoc-members:
   :show-inheritance:
+  :no-index:
