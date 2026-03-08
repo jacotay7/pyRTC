@@ -1,4 +1,5 @@
 from .Loop import Loop
+from .logging_utils import add_logging_cli_args, configure_logging, configure_logging_from_args, get_logger
 from .Modulator import Modulator
 from .Optimizer import Optimizer
 from .Pipeline import (
@@ -32,8 +33,12 @@ __all__ = [
 	"WavefrontCorrector",
 	"WavefrontSensor",
 	"gpu_torch_available",
+	"get_logger",
 	"hardwareLauncher",
 	"initExistingShm",
+	"configure_logging",
+	"configure_logging_from_args",
+	"add_logging_cli_args",
 	"launchComponent",
 	"normalize_gpu_device",
 	"pyRTCComponent",

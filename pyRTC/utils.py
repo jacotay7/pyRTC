@@ -12,6 +12,11 @@ import time
 import logging
 from typing import Any, Iterable, Mapping, Optional
 
+from pyRTC.logging_utils import get_logger
+
+
+logger = get_logger(__name__)
+
 NP_DATA_TYPES = [
     np.int8, np.int16, np.int32, np.int64,
     np.uint8, np.uint16, np.uint32, np.uint64,
@@ -160,19 +165,19 @@ def measure_execution_time(f, args, numIters=10):
 def change_directory(directory):
     try:
         os.chdir(directory)
-        print(f"Successfully changed the current directory to: {os.getcwd()}")
+        logger.info("Successfully changed the current directory to %s", os.getcwd())
     except FileNotFoundError:
-        print(f"Error: The directory '{directory}' does not exist.")
+        logger.error("The directory '%s' does not exist", directory)
     except PermissionError:
-        print(f"Error: Permission denied to access the directory '{directory}'.")
+        logger.error("Permission denied to access the directory '%s'", directory)
     except Exception as e:
-        print(f"An unexpected error occurred: {e}")
+        logger.exception("Unexpected error while changing directory: %s", e)
     return
 
 def add_to_path(directory):
     # Check if the directory exists
     if not os.path.isdir(directory):
-        print(f"Error: The directory '{directory}' does not exist.")
+        logger.error("The directory '%s' does not exist", directory)
         return
 
     # Add the directory to the PATH environment variable
@@ -180,9 +185,9 @@ def add_to_path(directory):
     if directory not in current_path:
         new_path = f"{directory}:{current_path}"
         os.environ['PATH'] = new_path
-        print(f"Directory '{directory}' added to PATH.")
+        logger.info("Directory '%s' added to PATH", directory)
     else:
-        print(f"Directory '{directory}' is already in PATH.")
+        logger.info("Directory '%s' is already in PATH", directory)
 
     return
 
@@ -498,14 +503,14 @@ def bind_socket(host, start_port, max_attempts=5):
         try:
             # Attempt to bind the socket
             sock.bind((host, start_port + attempt))
-            print(f"Successfully bound to {host}:{start_port + attempt}")
+            logger.info("Bound socket to %s:%s", host, start_port + attempt)
             return sock
         except OSError as e:
-            print(f"Failed to bind to {host}:{start_port + attempt}: {e}")
+            logger.warning("Failed to bind to %s:%s: %s", host, start_port + attempt, e)
             if e.errno == socket.errno.EADDRINUSE:
-                print("Address already in use. Trying next port...")
+                logger.info("Address already in use. Trying next port.")
             else:
-                print("An unexpected error occurred. Stopping attempts.")
+                logger.error("Unexpected socket bind failure. Stopping attempts.")
                 break
     else:
         # After all attempts, if no binding was successful, raise an exception
@@ -528,7 +533,7 @@ def decrease_nice():
 def set_affinity_and_priority(thread_id, cpu_cores):
     set_affinity(cpu_cores)
     decrease_nice()
-    print(f"Thread {thread_id}: Priority set to REALTIME")
+    logger.info("Thread %s: priority set to REALTIME", thread_id)
 
 def read_yaml_file(file_path):
     with open(file_path, 'r') as file:

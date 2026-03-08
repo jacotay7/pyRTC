@@ -144,12 +144,46 @@ The performance benchmark entry point is also available after installation:
 
 	pyrtc-core-bench --quick --cpu-only --output core_compute_bench_report.json
 
+Logging
+-------
+
+The main CLI tools and example entry points use the shared `pyRTC` logger.
+By default they log at `INFO` level to the console with timestamps.
+
+Useful one-off overrides:
+
+.. code-block:: bash
+
+	pyrtc-view wfs --log-level DEBUG
+	pyrtc-shm-monitor --log-dir logs
+	pyrtc-measure-latency signal wfc --log-file latency.log
+
+You can also set logging once in the shell for multi-process runs:
+
+.. code-block:: bash
+
+	export PYRTC_LOG_LEVEL=INFO
+	export PYRTC_LOG_DIR=./logs
+	export PYRTC_LOG_COLOR=1
+	python examples/synthetic_shwfs/run_soft_rtc.py --duration 15
+
+Supported environment variables are:
+
+- `PYRTC_LOG_LEVEL`
+- `PYRTC_LOG_DIR`
+- `PYRTC_LOG_FILE`
+- `PYRTC_LOG_COLOR`
+- `PYRTC_LOG_CONSOLE`
+
+When you use `hard-RTC`, child processes inherit the logging environment automatically.
+
 Troubleshooting
 ---------------
 
 - If GPU mode is configured but PyTorch is unavailable, `pyRTC` falls back to CPU mode for supported paths.
 - If viewer commands fail, install the viewer extra: `pip install pyrtcao[viewer]`
 - If a component fails at startup, check the YAML keys first; several components validate required config fields eagerly.
+- If a multi-process run is hard to diagnose, set `PYRTC_LOG_DIR=./logs` before launching so each process writes a separate file.
 - For first-time development, stay on Linux unless you have validated your target platform locally.
 
 Next Steps

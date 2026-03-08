@@ -1,6 +1,8 @@
 import argparse
 import subprocess
 
+from pyRTC.logging_utils import add_logging_cli_args, configure_logging_from_args
+
 
 DEFAULT_VIEW_COMMANDS = [
     ["pyrtc-view", "wfs", "signal2D", "wfc2D", "psfShort", "psfLong", "--geometry", "2x3"],
@@ -17,12 +19,16 @@ def launch_all(commands=None, popen_fn=subprocess.Popen):
 
 
 def _build_arg_parser() -> argparse.ArgumentParser:
-    return argparse.ArgumentParser(description="Launch default pyRTC viewer windows.")
+    parser = argparse.ArgumentParser(description="Launch default pyRTC viewer windows.")
+    add_logging_cli_args(parser)
+    return parser
 
 
 def main(argv=None) -> int:
     parser = _build_arg_parser()
-    parser.parse_args(argv)
+    args = parser.parse_args(argv)
+    logger = configure_logging_from_args(args, app_name="pyrtc-view-launch-all", component_name="viewer")
+    logger.info("Launching default viewer commands")
     launch_all()
     return 0
 

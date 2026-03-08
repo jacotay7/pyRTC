@@ -12,6 +12,7 @@ import numpy as np
 
 from pyRTC.Loop import leakIntegratorGPU, leakyIntegratorNumba
 from pyRTC.Pipeline import gpu_torch_available
+from pyRTC.logging_utils import add_logging_cli_args, configure_logging_from_args, get_logger
 from pyRTC.SlopesProcess import (
     computeSlopesPYWFSOptimNumba,
     computeSlopesPYWFSTorch,
@@ -19,6 +20,9 @@ from pyRTC.SlopesProcess import (
 )
 from pyRTC.WavefrontCorrector import ModaltoZonalWithFlat
 from pyRTC.WavefrontSensor import downsample_int32_image_jit, rotate_image_jit
+
+
+logger = get_logger(__name__)
 
 
 def _safe_percentile(values, pct: float) -> float:
@@ -408,12 +412,14 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         default="benchmarks/core_compute_bench_report.json",
         help="Output JSON path",
     )
+    add_logging_cli_args(parser)
     return parser
 
 
 def main(argv=None) -> int:
     parser = _build_arg_parser()
     args = parser.parse_args(argv)
+    configure_logging_from_args(args, app_name="pyrtc-core-bench", component_name="benchmarks.core_compute_bench")
 
     results = run_core_compute_benchmarks(
         iterations=args.iterations,
@@ -425,7 +431,7 @@ def main(argv=None) -> int:
 
     output_path = Path(args.output)
     output_path.write_text(json.dumps(results, indent=2), encoding="utf-8")
-    print(f"Wrote core benchmark report to {output_path}")
+    logger.info("Wrote core benchmark report to %s", output_path)
     return 0
 
 

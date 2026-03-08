@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from pyRTC import initExistingShm
+from pyRTC.logging_utils import add_logging_cli_args, configure_logging_from_args
 
 
 def _safe_mean(values) -> float:
@@ -69,6 +70,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         default=None,
         help="Output figure path (default: jitter_<source>_to_<target>_<tag>.pdf)",
     )
+    add_logging_cli_args(parser)
     return parser
 
 
@@ -160,8 +162,10 @@ def _default_output_path(args) -> Path:
 def main(argv=None) -> int:
     parser = _build_arg_parser()
     args = parser.parse_args(argv)
+    logger = configure_logging_from_args(args, app_name="pyrtc-measure-latency", component_name=args.tag)
 
     if args.samples < 2:
+        logger.error("--samples must be at least 2")
         raise SystemExit("--samples must be at least 2")
 
     source_shm, _, _ = initExistingShm(args.source_shm)
@@ -175,16 +179,17 @@ def main(argv=None) -> int:
     )
 
     count_delta = source_counts - target_counts
-    print(_safe_min(count_delta), _safe_max(count_delta))
+    logger.info("Count delta range min=%s max=%s", _safe_min(count_delta), _safe_max(count_delta))
 
     sys_latency, frame_shift = compute_latency_seconds(source_write_times, target_write_times)
-    print(f"Applied frame shift: {frame_shift}")
-    print(f"Mean latency: {_safe_mean(sys_latency) * 1e6:.2f} us")
+    logger.info("Applied frame shift: %s", frame_shift)
+    logger.info("Mean latency: %.2f us", _safe_mean(sys_latency) * 1e6)
 
     plot_latency_histogram(sys_latency, args)
 
     output_path = Path(args.output) if args.output else _default_output_path(args)
     plt.savefig(output_path)
+    logger.info("Saved latency plot to %s", output_path)
 
     if not args.no_show:
         plt.show()

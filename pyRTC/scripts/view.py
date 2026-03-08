@@ -2,6 +2,7 @@ import argparse
 import sys
 
 from pyRTC import utils
+from pyRTC.logging_utils import add_logging_cli_args, configure_logging_from_args, get_logger
 
 from .viewer_helpers import (
     compute_window_size as _compute_window_size,
@@ -41,16 +42,19 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         default="dark",
         help="Viewer theme",
     )
+    add_logging_cli_args(parser)
     return parser
 
 
 def main(argv=None) -> int:
     parser = _build_arg_parser()
     args = parser.parse_args(argv)
+    logger = configure_logging_from_args(args, app_name="pyrtc-view", component_name="viewer")
 
     try:
         from .viewer_core import launch_mosaic_viewer
     except ImportError as exc:
+        logger.exception("Viewer dependencies are unavailable")
         raise SystemExit(
             "pyrtc-view requires viewer dependencies. Install with: pip install pyRTC[viewer]"
         ) from exc
@@ -59,9 +63,11 @@ def main(argv=None) -> int:
         shm_names, static_vmin, static_vmax = _split_targets_and_limits(args.items)
         _resolve_grid(len(shm_names), args.geometry)
     except ValueError as exc:
+        logger.error("Invalid viewer arguments: %s", exc)
         raise SystemExit(str(exc)) from exc
 
     utils.set_affinity(args.affinity)
+    logger.info("Launching viewer for streams=%s geometry=%s fps=%s", shm_names, args.geometry, args.fps)
 
     return launch_mosaic_viewer(
         sys.argv,

@@ -2,6 +2,11 @@ import argparse
 import json
 from pathlib import Path
 
+from pyRTC.logging_utils import add_logging_cli_args, configure_logging_from_args, get_logger
+
+
+logger = get_logger(__name__)
+
 
 CPU_KERNELS = [
     ("wavefront_sensor.downsample_int32_image_jit", "WFS downsample"),
@@ -84,12 +89,18 @@ def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description="Generate README markdown tables from a benchmark JSON report.")
     parser.add_argument("--report", default="benchmarks/readme_benchmark_report.json", help="Benchmark JSON path")
     parser.add_argument("--output", default="benchmarks/readme_benchmark_table.md", help="Markdown output path")
+    add_logging_cli_args(parser)
     args = parser.parse_args(argv)
+    configure_logging_from_args(
+        args,
+        app_name="pyrtc-readme-benchmark-table",
+        component_name="benchmarks.readme_benchmark_table",
+    )
 
     report = _load_report(Path(args.report))
     markdown = build_markdown(report)
     Path(args.output).write_text(markdown, encoding="utf-8")
-    print(f"Wrote README benchmark markdown to {args.output}")
+    logger.info("Wrote README benchmark markdown to %s", args.output)
     return 0
 
 

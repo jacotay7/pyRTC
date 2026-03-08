@@ -109,6 +109,20 @@ For first deployments:
 - add hardware one component at a time
 - keep GPU assumptions optional until validated on the target machine
 
+Observability
+-------------
+
+`pyRTC` now uses a shared logging configuration across the main scripts, launchers, and selected control-plane library paths.
+The design goal is to make startup, orchestration, and operator-visible failures easy to diagnose without adding avoidable overhead to the real-time loop.
+
+The practical consequence is:
+
+- startup and launcher events should appear in console or file logs
+- `hard-RTC` child processes inherit logging settings from the parent environment
+- hot-path worker functions avoid per-iteration logging unless you add it deliberately for local debugging
+
+For deployment debugging, prefer `PYRTC_LOG_DIR` over a single shared `PYRTC_LOG_FILE` so each process writes its own log.
+
 Stability Guidance for 1.0
 --------------------------
 

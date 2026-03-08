@@ -14,9 +14,12 @@ import numpy as np
 import matplotlib.pyplot as plt
 from numba import jit
 
+from pyRTC.logging_utils import get_logger
 from pyRTC.Pipeline import ImageSHM, launchComponent
 from pyRTC.pyRTCComponent import pyRTCComponent
 from pyRTC.utils import gaussian_2d_grid, setFromConfig
+
+logger = get_logger(__name__)
 
 @jit(nopython=True)
 def ModaltoZonalWithFlat(correction=np.array([],dtype=np.float32), 
@@ -239,7 +242,7 @@ class WavefrontCorrector(pyRTCComponent):
             self.setM2C(self.M2C)
 
         else:
-            print("No Layout Set for DM")
+            logger.warning("No layout set for DM")
 
         return
     

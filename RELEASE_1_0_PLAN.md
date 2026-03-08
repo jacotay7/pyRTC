@@ -49,11 +49,16 @@ This is the lowest-risk path for `1.0.0` because it avoids a disruptive package-
 
 ### 3. Examples and User Onboarding
 
-- [ ] Identify one canonical quick-start example
-- [ ] Ensure there is one installable, package-user-friendly example
-- [ ] Clean up placeholders under `examples/`
-- [ ] Document external example dependencies such as OOPAO clearly
-- [ ] Provide a no-hardware verification path
+- [x] Identify one canonical quick-start example
+- [x] Ensure there is one installable, package-user-friendly example
+- [x] Clean up placeholders under `examples/`
+- [x] Document external example dependencies such as OOPAO clearly
+- [x] Provide a no-hardware verification path
+
+Current onboarding choice:
+
+- Canonical first-run example: `examples/synthetic_shwfs/`
+- Secondary simulator-backed example with external dependency: `examples/scao/` via OOPAO
 
 ### 4. Testing and Compatibility
 
@@ -65,7 +70,26 @@ This is the lowest-risk path for `1.0.0` because it avoids a disruptive package-
 - [ ] Decide the support stance for GPU code paths and test it accordingly
 - [ ] Either test Windows/macOS or narrow support claims before release
 
-### 5. Tooling and Release Operations
+### 5. Runtime Logging and Error Handling
+
+- [ ] Design and document one shared logging configuration model for library code, scripts, and multi-process hard-RTC components
+- [ ] Provide colored, timestamped terminal logging with clear log levels by default for user-facing scripts
+- [ ] Provide optional file logging with a straightforward default log directory and filename strategy
+- [ ] Support configuring log level and log folder through environment variables and script-level/runtime overrides
+- [ ] Default to `INFO` and avoid debug spam from functions that run continuously in the real-time pipeline
+- [ ] Ensure logger configuration can be propagated cleanly to child processes in hard-RTC / multi-process mode
+- [ ] Add a low-overhead pattern for error reporting around control-plane code without adding per-iteration exception/logging overhead to hot real-time loops
+- [ ] Define explicit guidance for which errors should raise, which should warn, and which should be logged and suppressed in non-real-time paths
+- [ ] Add targeted logging/error-handling tests for script entry points, environment-variable configuration, and multi-process startup behavior
+
+Implementation constraints:
+
+- Real-time loop functions should not pay recurring logging or exception-handling costs in the steady-state hot path.
+- Debug logging in high-frequency pipeline functions should be opt-in and structured so it can be disabled completely in normal operation.
+- Terminal and file logs should use the same shared logger configuration so soft-RTC and hard-RTC runs produce consistent records.
+- Multi-process runs should preserve enough component/process identity in log output to debug startup, wiring, and failure modes.
+
+### 6. Tooling and Release Operations
 
 - [x] Add a release checklist to the repo
 - [x] Add a changelog for `1.0.0`
@@ -74,7 +98,7 @@ This is the lowest-risk path for `1.0.0` because it avoids a disruptive package-
 - [x] Add docs build validation to CI
 - [x] Expand lint coverage beyond a hard-coded file list
 
-### 6. Community and Maintenance Readiness
+### 7. Community and Maintenance Readiness
 
 - [x] Consolidate maintainer workflow into the docs Developer Guide
 - [x] Define what is considered stable in `1.0.0`
@@ -94,6 +118,7 @@ This is the lowest-risk path for `1.0.0` because it avoids a disruptive package-
 
 - Trusted publishing still needs to be configured in GitHub, TestPyPI, and PyPI before the publish workflow can be used.
 - The current support claims are still broader than the verified CI surface.
+- Logging and error-handling behavior are not yet standardized across scripts, library components, and multi-process hard-RTC runs.
 
 
 
@@ -104,10 +129,12 @@ This is the lowest-risk path for `1.0.0` because it avoids a disruptive package-
 3. Docs completion for getting started and examples
 4. Release workflow and TestPyPI dry run
 5. Example cleanup and installation verification
-6. Support policy, changelog, and contributor docs
+6. Shared logging and error-handling implementation
+7. Support policy, changelog, and contributor docs
 
 ## Notes
 
 - For `1.0.0`, prefer compatibility and clarity over broad refactors.
 - Avoid renaming the import package unless there is a strong reason to accept a breaking change now.
 - Treat GPU support, hardware integrations, and platform claims conservatively unless they are validated by tests.
+- Treat logging and error handling as control-plane concerns first: improve debuggability and operator visibility without adding noise or measurable overhead to the steady-state real-time loop.

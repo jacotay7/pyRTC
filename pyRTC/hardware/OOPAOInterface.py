@@ -4,6 +4,7 @@ import time
 
 import numpy as np
 
+from pyRTC.logging_utils import get_logger
 from pyRTC.Pipeline import Listener
 from pyRTC.ScienceCamera import ScienceCamera
 from pyRTC.WavefrontCorrector import WavefrontCorrector
@@ -15,6 +16,9 @@ from OOPAO.DeformableMirror import DeformableMirror
 from OOPAO.Pyramid import Pyramid
 from OOPAO.Source import Source
 from OOPAO.Telescope import Telescope
+
+
+logger = get_logger(__name__)
 
 class _OOPAOWFSensor(WavefrontSensor):
 
@@ -275,8 +279,8 @@ def _initializeDummyParameterFile():
     param['pathOutput'            ] = 'data_cl/'
     
 
-    print('Reading/Writting calibration data from ' + param['pathInput'])
-    print('Writting output data in ' + param['pathOutput'])
+    logger.info('Reading/Writting calibration data from %s', param['pathInput'])
+    logger.info('Writting output data in %s', param['pathOutput'])
 
     createFolder(param['pathOutput'])
     

@@ -3,9 +3,13 @@ Wavefront Sensor Superclass
 """
 import numpy as np
 
+from pyRTC.logging_utils import get_logger
 from pyRTC.Pipeline import initExistingShm
 from pyRTC.pyRTCComponent import pyRTCComponent
 from pyRTC.utils import append_to_file, generate_filepath, setFromConfig
+
+
+logger = get_logger(__name__)
 
 class Telemetry(pyRTCComponent):
 
@@ -50,6 +54,6 @@ class Telemetry(pyRTCComponent):
             return np.fromfile(filename, dtype=dtype)
     
         else:
-            print("File not part of current capture, please provide a dtype")
+            logger.error("File not part of current capture, please provide a dtype")
 
         return

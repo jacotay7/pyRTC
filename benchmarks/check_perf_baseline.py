@@ -3,11 +3,17 @@ import json
 from pathlib import Path
 from typing import Dict
 
+from pyRTC.logging_utils import add_logging_cli_args, configure_logging_from_args, get_logger
+
+
+logger = get_logger(__name__)
+
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Compare perf smoke report against committed baseline.")
     parser.add_argument("--current", type=str, default="benchmarks/perf_smoke_report.json", help="Current report path")
     parser.add_argument("--baseline", type=str, default="benchmarks/perf_smoke_baseline.json", help="Baseline report path")
+    add_logging_cli_args(parser)
     return parser
 
 
@@ -103,6 +109,11 @@ def compare_against_baseline(current: Dict, baseline: Dict):
 def main(argv=None) -> int:
     parser = _build_parser()
     args = parser.parse_args(argv)
+    configure_logging_from_args(
+        args,
+        app_name="pyrtc-check-perf-baseline",
+        component_name="benchmarks.check_perf_baseline",
+    )
 
     current_path = Path(args.current)
     baseline_path = Path(args.baseline)
@@ -120,14 +131,14 @@ def main(argv=None) -> int:
 
     missing, comparison = compare_against_baseline(current, baseline)
 
-    print(json.dumps(comparison, indent=2))
+    logger.info("Baseline comparison details:\n%s", json.dumps(comparison, indent=2))
 
     if missing:
         raise SystemExit(
             "Missing baseline metrics for comparison:\n" + "\n".join(sorted(missing))
         )
 
-    print("Baseline comparison succeeded: all required metrics found.")
+    logger.info("Baseline comparison succeeded: all required metrics found.")
     return 0
 
 

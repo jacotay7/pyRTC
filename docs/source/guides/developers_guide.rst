@@ -92,6 +92,7 @@ Generate a benchmark report:
 
    python -m benchmarks.perf_smoke \
      --output benchmarks/readme_benchmark_report.json \
+   --log-dir logs \
      --core-iterations 500 \
      --core-warmup 50 \
      --core-system-sizes 10 20 60
@@ -103,6 +104,34 @@ Generate markdown tables for the README:
    python benchmarks/readme_benchmark_table.py \
      --report benchmarks/readme_benchmark_report.json \
      --output benchmarks/readme_benchmark_table.md
+
+Logging Workflow
+----------------
+
+The main scripts, benchmark entry points, and hardware launcher paths use the shared `pyRTC` logging helpers.
+
+Default behavior:
+
+- console logging enabled
+- level `INFO`
+- color enabled when the terminal supports it
+
+Useful controls:
+
+.. code-block:: bash
+
+   export PYRTC_LOG_LEVEL=INFO
+   export PYRTC_LOG_DIR=./logs
+   python examples/synthetic_shwfs/run_soft_rtc.py --duration 15
+
+Per-command overrides:
+
+.. code-block:: bash
+
+   pyrtc-view wfs --log-level DEBUG
+   python -m benchmarks.perf_smoke --log-file perf.log
+
+Prefer `PYRTC_LOG_DIR` for multiprocess runs so parent and child processes write separate files.
 
 Contribution Expectations
 -------------------------

@@ -7,8 +7,12 @@ from pathlib import Path
 import numpy as np
 from benchmarks.core_compute_bench import run_core_compute_benchmarks
 
+from pyRTC.logging_utils import add_logging_cli_args, configure_logging_from_args, get_logger
 from pyRTC.scripts.measure_latency import compute_latency_seconds
 from pyRTC.utils import measure_execution_time
+
+
+logger = get_logger(__name__)
 
 
 def _noop(_x):
@@ -76,6 +80,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--core-system-sizes", type=int, nargs="+", default=[10, 20, 60], help="Core benchmark system sizes as NxN grids")
     parser.add_argument("--core-full", action="store_true", help="Use larger benchmark problem sizes instead of quick mode")
     parser.add_argument("--core-cpu-only", action="store_true", help="Disable GPU attempts for core compute benchmarks")
+    add_logging_cli_args(parser)
     return parser
 
 
@@ -115,6 +120,7 @@ def run_perf_smoke(
 def main(argv=None) -> int:
     parser = _build_parser()
     args = parser.parse_args(argv)
+    configure_logging_from_args(args, app_name="pyrtc-perf-smoke", component_name="benchmarks.perf_smoke")
 
     report = run_perf_smoke(
         num_iters=args.num_iters,
@@ -129,7 +135,7 @@ def main(argv=None) -> int:
 
     output_path = Path(args.output)
     output_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
-    print(f"Wrote performance smoke report to {output_path}")
+    logger.info("Wrote performance smoke report to %s", output_path)
     return 0
 
 

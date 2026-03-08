@@ -6,6 +6,7 @@ import sys
 
 import numpy as np
 
+from pyRTC.logging_utils import add_logging_cli_args, configure_logging_from_args, get_logger
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
@@ -17,6 +18,9 @@ from pyRTC.Loop import Loop
 from pyRTC.Pipeline import ImageSHM
 from pyRTC.hardware.SyntheticSystems import SyntheticSHWFS, SyntheticScienceCamera
 from pyRTC.utils import float_to_dtype, read_yaml_file
+
+
+logger = get_logger("examples.synthetic_shwfs")
 
 
 DEFAULT_STREAMS = [
@@ -220,11 +224,13 @@ def _build_arg_parser():
         action="store_true",
         help="Skip compatibility checks and leave existing pyRTC shared-memory streams untouched.",
     )
+    add_logging_cli_args(parser)
     return parser
 
 
 def main(argv=None):
     args = _build_arg_parser().parse_args(argv)
+    configure_logging_from_args(args, app_name="pyrtc-synthetic-shwfs", component_name="soft_rtc")
     config = read_yaml_file(args.config)
     if args.no_clear_shms:
         rebuilt = []
@@ -233,20 +239,20 @@ def main(argv=None):
         rebuilt, reused = ensure_expected_shms(config)
     system = build_system(config)
 
-    print("Synthetic SHWFS soft-RTC demo")
-    print(f"Config: {args.config}")
+    logger.info("Synthetic SHWFS soft-RTC demo")
+    logger.info("Config: %s", args.config)
     if args.no_clear_shms:
-        print("Skipping SHM compatibility checks")
+        logger.info("Skipping SHM compatibility checks")
     elif rebuilt:
-        print("Rebuilt SHMs:", ", ".join(rebuilt))
+        logger.info("Rebuilt SHMs: %s", ", ".join(rebuilt))
     else:
-        print("Reusing existing compatible SHMs")
+        logger.info("Reusing existing compatible SHMs")
     if reused:
-        print("Reused SHMs:", ", ".join(reused))
-    print("Viewer commands:")
-    print("  pyrtc-view wfs signal2D wfc2D psfShort psfLong --geometry 2x3")
+        logger.info("Reused SHMs: %s", ", ".join(reused))
+    logger.info("Viewer commands:")
+    logger.info("  pyrtc-view wfs signal2D wfc2D psfShort psfLong --geometry 2x3")
     if system.get("psf") is not None:
-        print("  pyrtc-view psfShort psfLong --geometry row")
+        logger.info("  pyrtc-view psfShort psfLong --geometry row")
 
     start_system(system)
     start_time = time.perf_counter()
@@ -260,7 +266,7 @@ def main(argv=None):
             now = time.perf_counter()
             elapsed_seconds = now - start_time
             if now - last_status_time >= args.status_interval:
-                print(
+                logger.info(
                     status_line(
                         system,
                         elapsed_seconds,
@@ -276,7 +282,7 @@ def main(argv=None):
             if args.duration > 0 and elapsed_seconds >= args.duration:
                 break
     except KeyboardInterrupt:
-        print("Stopping synthetic demo")
+        logger.info("Stopping synthetic demo")
     finally:
         stop_system(system)
 

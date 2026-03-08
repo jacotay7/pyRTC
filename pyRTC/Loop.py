@@ -12,9 +12,12 @@ import time
 from typing import Any
 from numba import jit
 
+from pyRTC.logging_utils import get_logger
 from pyRTC.Pipeline import gpu_torch_available, initExistingShm, launchComponent
 from pyRTC.pyRTCComponent import pyRTCComponent
 from pyRTC.utils import add_to_buffer, get_tmp_filepath, setFromConfig
+
+logger = get_logger(__name__)
 
 @jit(nopython=True, nogil=True, cache=True, fastmath=True)
 def leakyIntegratorNumba(slopes: np.ndarray, 
@@ -465,7 +468,7 @@ class Loop(pyRTCComponent):
         """
         self.numActiveModes = self.numModes-self.numDroppedModes
         if self.numActiveModes < 0:
-            print("Invalid Number of Modes used in CM. Check numDroppedModes")
+            logger.error("Invalid number of modes used in CM. Check numDroppedModes")
             return
         self.CM[:self.numActiveModes,:] = np.linalg.pinv(self.IM[:,:self.numActiveModes], rcond=0)
         self.CM[self.numActiveModes:,:] = 0
@@ -649,7 +652,7 @@ class Loop(pyRTCComponent):
 
         self.clDCIM = (self.docrimeCross/self.numItersDC)@np.linalg.inv(self.docrimeAuto/self.numItersDC)
         tmpFilePath = get_tmp_filepath(self.IMFile,uniqueStr="CL_docrime")
-        print(f"Saving DOCRIME matrix to: {tmpFilePath}")
+        logger.info("Saving DOCRIME matrix to %s", tmpFilePath)
         np.save(tmpFilePath, self.clDCIM)
 
         return

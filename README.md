@@ -146,6 +146,17 @@ Run it with:
 python examples/synthetic_shwfs/run_soft_rtc.py --duration 15
 ```
 
+Every primary CLI and example entry point now uses the shared `pyRTC` logger. By default you get timestamped `INFO` logs on the console. You can override that per run with `--log-level DEBUG`, write per-process logs with `--log-dir logs/`, or force one exact file with `--log-file session.log`.
+
+The same settings can be exported for multi-process or repeated runs:
+
+```bash
+export PYRTC_LOG_LEVEL=INFO
+export PYRTC_LOG_DIR=./logs
+export PYRTC_LOG_COLOR=1
+python examples/synthetic_shwfs/run_soft_rtc.py --duration 15
+```
+
 It publishes the normal `wfs`, `signal2D`, `wfc2D`, `psfShort`, and `psfLong` streams, so the standard viewer tools work unchanged while you evaluate the control flow and subclassing points.
 
 Recommended composite viewer command while the demo is running:
@@ -196,25 +207,35 @@ For no-hardware exploration, start with the synthetic SHWFS example. For a riche
 Viewer and CLI tools:
 
 ```bash
-pyrtc-view wfs
-pyrtc-shm-monitor
-pyrtc-clear-shms
-pyrtc-measure-latency signal wfc
+pyrtc-view wfs --log-level INFO
+pyrtc-shm-monitor --log-dir logs
+pyrtc-clear-shms --log-level DEBUG
+pyrtc-measure-latency signal wfc --log-file latency.log
 ```
 
 Performance smoke report:
 
 ```bash
-python benchmarks/perf_smoke.py --output perf_smoke_report.json
+python benchmarks/perf_smoke.py --output perf_smoke_report.json --log-dir logs
 ```
 
 Core compute benchmark:
 
 ```bash
-pyrtc-core-bench --quick --cpu-only --output core_compute_bench_report.json
+pyrtc-core-bench --quick --cpu-only --output core_compute_bench_report.json --log-level INFO
 ```
 
 Run without `--cpu-only` to include GPU kernels when CUDA and PyTorch are available.
+
+The shared logging environment variables are:
+
+- `PYRTC_LOG_LEVEL`: default log level, usually `INFO` or `DEBUG`
+- `PYRTC_LOG_DIR`: write one log file per process into a directory
+- `PYRTC_LOG_FILE`: write to one exact file path for single-process runs
+- `PYRTC_LOG_COLOR`: set to `0` to disable ANSI colors
+- `PYRTC_LOG_CONSOLE`: set to `0` to disable console logging when file logs are enough
+
+Hard-RTC child processes inherit these settings automatically through the launcher, so one `PYRTC_LOG_DIR` is enough to collect parent and child logs together.
 
 ## Stability and Support Notes
 

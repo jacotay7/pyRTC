@@ -14,6 +14,7 @@ import numpy as np
 from typing import Any
 from numba import jit
 
+from pyRTC.logging_utils import get_logger
 from pyRTC.Pipeline import ImageSHM, gpu_torch_available, initExistingShm, launchComponent
 from pyRTC.pyRTCComponent import pyRTCComponent
 from pyRTC.utils import (
@@ -21,6 +22,8 @@ from pyRTC.utils import (
     generate_circular_aperture_mask,
     setFromConfig,
 )
+
+logger = get_logger(__name__)
 
 def computeSlopesPYWFSTorch(image: Any,
                             p1Mask: Any,
@@ -427,13 +430,16 @@ class SlopesProcess(pyRTCComponent):
             self.signalSize = np.sum(self.validSubAps)
             self.signalShape = (self.signalSize,)
 
-            print(f'subApSpacing: {self.subApSpacing}')
-            print(f'numRegions: {self.numRegions}')
-            print(f'offsetX: {self.offsetX}')
-            print(f'offsetY: {self.offsetY}')
-            print(f'signalSize: {self.signalSize}')
-            print(f'signalShape: {self.signalShape}')
-            print(f'signalDType: {self.signalDType}')
+            logger.info(
+                "SHWFS slopes configured subApSpacing=%s numRegions=%s offsetX=%s offsetY=%s signalSize=%s signalShape=%s signalDType=%s",
+                self.subApSpacing,
+                self.numRegions,
+                self.offsetX,
+                self.offsetY,
+                self.signalSize,
+                self.signalShape,
+                self.signalDType,
+            )
 
             self.signal = ImageSHM("signal", self.signalShape, self.signalDType, gpuDevice = self.gpuDevice, consumer=False)
             self.signal2D = ImageSHM("signal2D", self.signal2DShape, self.signalDType, gpuDevice = self.gpuDevice, consumer=False)
@@ -653,7 +659,7 @@ class SlopesProcess(pyRTCComponent):
         if img[img < 0].size > 0:
             self.imageNoise = compute_fwhm_dark_subtracted_image(img)/2
         else:
-            print("Image is not dark subtracted")
+            logger.warning("Image is not dark subtracted")
         return
 
     def setPupils(self, pupilLocs, pupilRadius):
