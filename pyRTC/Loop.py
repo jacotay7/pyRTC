@@ -14,6 +14,7 @@ os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
 os.environ["NUMEXPR_NUM_THREADS"] = "1" 
 os.environ['NUMBA_NUM_THREADS'] = '1'
 
+import math
 import matplotlib.pyplot as plt
 import numpy as np
 import time
@@ -577,8 +578,9 @@ class Loop(pyRTCComponent):
             leading_x = indices[: knee_index + 1]
             leading_y = log_values[: knee_index + 1]
 
-            x_mean = float(np.mean(leading_x))
-            y_mean = float(np.mean(leading_y))
+            sample_count = float(leading_x.size)
+            x_mean = math.fsum(float(value) for value in leading_x) / sample_count
+            y_mean = math.fsum(float(value) for value in leading_y) / sample_count
             centered_x = leading_x - x_mean
             centered_y = leading_y - y_mean
             variance_x = float(np.dot(centered_x, centered_x))
@@ -588,7 +590,10 @@ class Loop(pyRTCComponent):
             slope = float(np.dot(centered_x, centered_y) / variance_x)
             intercept = float(y_mean - slope * x_mean)
             fit_y = slope * leading_x + intercept
-            rmse = float(np.sqrt(np.mean((leading_y - fit_y) ** 2)))
+            fit_residual = leading_y - fit_y
+            rmse = math.sqrt(
+                math.fsum(float(value) * float(value) for value in fit_residual) / sample_count
+            )
 
             predicted_next = slope * indices[knee_index + 1] + intercept
             downward_departure = predicted_next - log_values[knee_index + 1]
