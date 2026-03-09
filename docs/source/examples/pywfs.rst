@@ -23,7 +23,7 @@ Files
 
 The main example assets live under `examples/scao/`:
 
-- `run_soft_rtc.py`: script-driven soft-RTC walkthrough with logging and status output
+- `pywfs_oopao_soft_rtc_example.py`: notebook-style soft-RTC walkthrough with logging and status output
 - `pywfs_example_OOPAO.ipynb`: notebook walkthrough of the same setup
 - `pywfs_OOPAO_config.yaml`: example configuration
 
@@ -71,7 +71,7 @@ The recommended first path is the script version because it keeps the setup repr
 
 .. code-block:: bash
 
-	python examples/scao/run_soft_rtc.py --duration 10
+	python examples/scao/pywfs_oopao_soft_rtc_example.py --duration 10
 
 By default the script:
 
@@ -84,10 +84,12 @@ Useful variants:
 
 .. code-block:: bash
 
-	python examples/scao/run_soft_rtc.py --skip-im --duration 5
-	python examples/scao/run_soft_rtc.py --no-kl-basis --duration 5
+	python examples/scao/pywfs_oopao_soft_rtc_example.py --skip-im --duration 5
+	python examples/scao/pywfs_oopao_soft_rtc_example.py --no-kl-basis --duration 5
 
 If you prefer interactive exploration, open `examples/scao/pywfs_example_OOPAO.ipynb` after the script workflow is familiar. The notebook walks through the same stages cell by cell.
+
+This OOPAO path is intentionally soft-RTC only. The wavefront sensor, deformable mirror, and science camera adapters share one in-process optical simulation state, so it is not a good fit for the hard-RTC child-process launch model.
 
 Recommended Validation Steps
 ----------------------------

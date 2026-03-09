@@ -53,14 +53,27 @@ def test_validate_loop_config_rejects_bad_limits_shape():
 def test_validate_loop_config_accepts_valid_config():
     validate_loop_config(
         {
+            "CMMethod": "tikhonov",
+            "conditioning": 1000,
             "gain": 0.1,
             "leakyGain": 0.01,
             "numDroppedModes": 0,
+            "tikhonovReg": 0.001,
             "controlLimits": [-1.0, 1.0],
             "integralLimits": [-0.5, 0.5],
             "absoluteLimits": [-2.0, 2.0],
         }
     )
+
+
+def test_validate_loop_config_rejects_bad_cm_method():
+    with pytest.raises(ConfigValidationError, match="CMMethod"):
+        validate_loop_config({"CMMethod": "ridge-ish"})
+
+
+def test_validate_loop_config_rejects_bad_tikhonov_regularization():
+    with pytest.raises(ConfigValidationError, match="tikhonovReg"):
+        validate_loop_config({"tikhonovReg": -0.1})
 
 
 def test_validate_system_config_accepts_synthetic_example():
@@ -119,6 +132,25 @@ def test_validate_system_config_rejects_signal_stream_shape_mismatch():
 
     with pytest.raises(ConfigValidationError, match="streams.signal"):
         validate_system_config(conf)
+
+
+def test_validate_system_config_accepts_manager_declared_custom_section():
+    conf = read_system_config(SYNTHETIC_CONFIG_PATH, validate=False)
+    conf["modulator"] = {
+        "name": "tutorial-modulator",
+        "frequency": 300,
+        "amplitude": 600,
+    }
+    conf["manager"] = {
+        "mode": "hard-rtc",
+        "componentClasses": {"modulator": "pyRTC.pyRTCComponent.pyRTCComponent"},
+        "componentFiles": {"modulator": "pyRTC/pyRTCComponent.py"},
+        "ports": {"modulator": 6001},
+    }
+
+    normalized = validate_system_config(conf)
+
+    assert normalized["manager"]["componentClasses"]["modulator"] == "pyRTC.pyRTCComponent.pyRTCComponent"
 
 
 def test_validate_config_cli_text_success(capsys):

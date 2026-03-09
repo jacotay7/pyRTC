@@ -145,7 +145,7 @@ The script-driven entry point is:
 
 .. code-block:: bash
 
-	python examples/scao/run_soft_rtc.py --duration 10
+	python examples/scao/pywfs_oopao_soft_rtc_example.py --duration 10
 
 Use the companion notebook only once you want to step through the same workflow interactively.
 
@@ -187,7 +187,7 @@ You can also set logging once in the shell for multi-process runs:
 	export PYRTC_LOG_LEVEL=INFO
 	export PYRTC_LOG_DIR=./logs
 	export PYRTC_LOG_COLOR=1
-	python examples/synthetic_shwfs/run_soft_rtc.py --duration 15
+	python examples/synthetic_shwfs/synthetic_shwfs_soft_rtc_example.py --duration 15
 
 Supported environment variables are:
 

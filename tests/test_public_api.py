@@ -3,6 +3,7 @@ import pyRTC
 
 def test_package_root_imports():
     assert pyRTC.Loop is not None
+    assert pyRTC.RTCManager is not None
     assert pyRTC.WavefrontSensor is not None
     assert pyRTC.WavefrontCorrector is not None
     assert pyRTC.SlopesProcess is not None

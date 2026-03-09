@@ -20,7 +20,8 @@ Files
 The example assets live under `examples/synthetic_shwfs/`:
 
 - `config.yaml`: runnable soft-RTC configuration
-- `run_soft_rtc.py`: demo launcher that builds the control chain, applies an identity interaction matrix, and prints live status
+- `synthetic_shwfs_soft_rtc_example.py`: manager-driven soft-RTC tutorial script
+- `synthetic_shwfs_hard_rtc_example.py`: manager-driven hard-RTC tutorial script
 
 The synthetic hardware implementations live in `pyRTC/hardware/SyntheticSystems.py`.
 
@@ -44,9 +45,10 @@ From the repository root:
 
 .. code-block:: bash
 
-	python examples/synthetic_shwfs/run_soft_rtc.py --duration 15
+	python examples/synthetic_shwfs/synthetic_shwfs_soft_rtc_example.py --duration 15
+	python examples/synthetic_shwfs/synthetic_shwfs_hard_rtc_example.py --duration 15
 
-The launcher clears the standard pyRTC streams by default, starts all configured worker threads, and prints one status line per second. A typical line looks like:
+Both launchers clear the standard pyRTC streams by default, start the full chain through `RTCManager`, and print one status line per second. A typical line looks like:
 
 .. code-block:: text
 

@@ -12,6 +12,7 @@ import numpy as np
 
 from pyRTC.Pipeline import initExistingShm
 from pyRTC.ScienceCamera import ScienceCamera
+from pyRTC.WavefrontCorrector import WavefrontCorrector
 from pyRTC.WavefrontSensor import WavefrontSensor
 from pyRTC.utils import setFromConfig
 
@@ -273,3 +274,16 @@ class SyntheticScienceCamera(ScienceCamera):
         self.lastExposeTime = time.perf_counter()
         super().expose()
         return
+
+
+class SyntheticWFC(WavefrontCorrector):
+    """Synthetic wavefront corrector used by onboarding and manager tests.
+
+    The base ``WavefrontCorrector`` implementation already provides the behavior
+    needed for a software-only control loop: it reads the modal correction
+    stream, applies the M2C mapping, and publishes the optional 2D layout view.
+    This subclass exists so configs can refer to a concrete synthetic adapter by
+    name without implying vendor hardware.
+    """
+
+    pass

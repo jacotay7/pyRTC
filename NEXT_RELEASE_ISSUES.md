@@ -308,7 +308,7 @@ The next step is a manager layer that owns the lifecycle of a whole RTC system.
 The manager should support a workflow such as:
 
 ```python
-from pyRTC.manager import RTCManager
+from pyRTC.Pipeline import RTCManager
 
 manager = RTCManager.from_config_file("examples/synthetic_shwfs/config.yaml")
 manager.validate()
@@ -349,7 +349,7 @@ At minimum, define states such as:
 
 ### Suggested implementation pieces
 
-- `pyRTC/manager.py` or a `pyRTC/manager/` package
+- orchestration types housed in `pyRTC/Pipeline.py`
 - component runtime wrappers for soft and hard modes
 - normalized config to runtime mapping
 - startup dependency ordering

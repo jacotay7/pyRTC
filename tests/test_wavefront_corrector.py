@@ -57,3 +57,26 @@ def test_wavefront_corrector_core(monkeypatch, tmp_path):
 
     wfc.saveShape()
     assert (tmp_path / "shape.npy").exists()
+
+
+def test_wavefront_corrector_applies_command_cap(monkeypatch):
+    from testsupport import DummySHM
+
+    monkeypatch.setattr(wfc_mod, "ImageSHM", DummySHM)
+
+    conf = {
+        "name": "wfc",
+        "numActuators": 3,
+        "numModes": 3,
+        "m2cFile": "",
+        "commandCap": 0.5,
+        "functions": [],
+    }
+    wfc = wfc_mod.WavefrontCorrector(conf)
+
+    wfc.setM2C(np.eye(3, dtype=np.float32))
+    wfc.write(np.array([2.0, -0.75, 0.25], dtype=np.float32))
+
+    wfc.sendToHardware()
+
+    assert np.allclose(wfc.currentShape, np.array([0.5, -0.5, 0.25], dtype=np.float32))

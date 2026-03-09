@@ -279,6 +279,9 @@ BUILTIN_COMPONENT_DESCRIPTORS: tuple[ComponentDescriptor, ...] = (
         required_fields=(),
         optional_fields=(
             ConfigFieldDescriptor("numDroppedModes", "int", "Number of controlled modes to suppress.", default=0, minimum=0),
+            ConfigFieldDescriptor("CMMethod", "str", "Control-matrix inversion method ('svd' or 'tikhonov').", default="svd"),
+            ConfigFieldDescriptor("conditioning", "float | None", "Optional target conditioning number used to truncate small singular values.", default=None, minimum=1.0),
+            ConfigFieldDescriptor("tikhonovReg", "float", "Tikhonov regularization strength used when CMMethod is 'tikhonov'.", default=0.0, minimum=0.0),
             ConfigFieldDescriptor("gain", "float", "Integrator gain.", default=0.1),
             ConfigFieldDescriptor("leakyGain", "float", "Leaky-integrator gain.", default=0.0),
             ConfigFieldDescriptor("hardwareDelay", "float", "Estimated hardware delay.", default=0.0, minimum=0.0),

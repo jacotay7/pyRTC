@@ -36,6 +36,12 @@ ALLOWED_MANAGER_MODES = {"soft-rtc", "hard-rtc"}
 ALLOWED_RESTART_POLICIES = {"never", "on-failure", "always"}
 
 
+def _is_valid_manager_section(section_name: str, system_conf: Mapping[str, Any]) -> bool:
+    if get_component_descriptor(section_name) is not None:
+        return True
+    return section_name in system_conf and section_name not in OPTIONAL_TOP_LEVEL_SECTIONS
+
+
 def _require_mapping(conf: Any, component: str) -> Mapping[str, Any]:
     if not isinstance(conf, Mapping):
         raise ConfigValidationError(
@@ -190,7 +196,7 @@ def _validate_telemetry_config(conf: Any) -> None:
             raise ConfigValidationError("telemetry: 'streams' must be a list of non-empty stream names")
 
 
-def _validate_manager_config(conf: Any) -> None:
+def _validate_manager_config(conf: Any, *, system_conf: Mapping[str, Any]) -> None:
     component = "manager"
     conf = _require_mapping(conf, component)
 
@@ -210,7 +216,7 @@ def _validate_manager_config(conf: Any) -> None:
     if "componentModes" in conf:
         component_modes = _require_mapping(conf["componentModes"], "manager.componentModes")
         for section_name, launch_mode in component_modes.items():
-            if get_component_descriptor(section_name) is None:
+            if not _is_valid_manager_section(section_name, system_conf):
                 raise ConfigValidationError(
                     f"manager.componentModes: unknown component section '{section_name}'"
                 )
@@ -222,9 +228,20 @@ def _validate_manager_config(conf: Any) -> None:
     if "ports" in conf:
         ports = _require_mapping(conf["ports"], "manager.ports")
         for section_name, port in ports.items():
-            if get_component_descriptor(section_name) is None:
+            if not _is_valid_manager_section(section_name, system_conf):
                 raise ConfigValidationError(f"manager.ports: unknown component section '{section_name}'")
             _coerce_int(port, "manager.ports", section_name, minimum=1)
+
+    for mapping_name in ("componentClasses", "componentFiles"):
+        if mapping_name in conf:
+            mapping_value = _require_mapping(conf[mapping_name], f"manager.{mapping_name}")
+            for section_name, target in mapping_value.items():
+                if not _is_valid_manager_section(section_name, system_conf):
+                    raise ConfigValidationError(f"manager.{mapping_name}: unknown component section '{section_name}'")
+                if not isinstance(target, str) or not target.strip():
+                    raise ConfigValidationError(
+                        f"manager.{mapping_name}: target for '{section_name}' must be a non-empty string"
+                    )
 
     if "logDir" in conf and (not isinstance(conf["logDir"], str) or not conf["logDir"].strip()):
         raise ConfigValidationError("manager: 'logDir' must be a non-empty string when provided")
@@ -371,7 +388,7 @@ def validate_system_config(conf: Any, *, config_path: str | Path | None = None) 
     if "telemetry" in normalized:
         _validate_telemetry_config(normalized["telemetry"])
     if "manager" in normalized:
-        _validate_manager_config(normalized["manager"])
+        _validate_manager_config(normalized["manager"], system_conf=normalized)
     if "streams" in normalized:
         _validate_streams_config(normalized["streams"])
     if "metadata" in normalized:

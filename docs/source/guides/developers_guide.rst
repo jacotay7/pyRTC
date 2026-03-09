@@ -131,7 +131,7 @@ Useful controls:
 
    export PYRTC_LOG_LEVEL=INFO
    export PYRTC_LOG_DIR=./logs
-   python examples/synthetic_shwfs/run_soft_rtc.py --duration 15
+   python examples/synthetic_shwfs/synthetic_shwfs_soft_rtc_example.py --duration 15
 
 Per-command overrides:
 

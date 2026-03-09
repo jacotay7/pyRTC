@@ -256,3 +256,107 @@ def test_hardware_lazy_import_reports_missing_dependency(monkeypatch, symbol_nam
     message = str(excinfo.value)
     assert f"Unable to import pyRTC.hardware.{symbol_name}" in message
     assert missing_dependency in message
+
+
+def test_oopao_wfs_static_dm_does_not_accumulate_without_atmosphere(monkeypatch):
+    from testsupport import DummySHM
+
+    fake_wfs_module = importlib.import_module("pyRTC.WavefrontSensor")
+    monkeypatch.setattr(fake_wfs_module, "ImageSHM", DummySHM)
+
+    class _FakeSource:
+        def __init__(self):
+            self.tag = "source"
+            self.mask = 1
+            self.OPD = None
+            self.OPD_no_pupil = None
+            self.optical_path = []
+
+        def __mul__(self, obj):
+            obj.relay(self)
+            return self
+
+        def __pow__(self, obj):
+            if hasattr(obj, "src"):
+                obj.src = self
+            self.optical_path = []
+            self.reset()
+            self * obj
+            return self
+
+        def reset(self):
+            self.mask = 1
+            self.OPD = None
+            self.OPD_no_pupil = None
+
+    class _FakeTelescope:
+        def __init__(self, *args, **kwargs):
+            self.tag = "telescope"
+            self.isPaired = False
+            self.pupil = np.ones((2, 2), dtype=bool)
+            self.src = None
+
+        def relay(self, src):
+            self.src = src
+            src.mask = self.pupil.copy()
+            if src.OPD is None:
+                src.OPD_no_pupil = np.zeros(self.pupil.shape, dtype=np.float64)
+            src.OPD = src.OPD_no_pupil * src.mask
+
+    class _FakeDM:
+        def __init__(self, *args, **kwargs):
+            self.tag = "dm"
+            self.validAct = np.ones((4,), dtype=bool)
+            self.OPD = np.ones((2, 2), dtype=np.float64) * 2.0
+            self.coefs = 0
+
+        def relay(self, src):
+            src.OPD_no_pupil = src.OPD_no_pupil + self.OPD
+            src.OPD = src.OPD_no_pupil * src.mask
+
+    class _FakeAtmosphere:
+        def __init__(self, *args, **kwargs):
+            self.tag = "atmosphere"
+
+        def initializeAtmosphere(self, telescope):
+            return None
+
+        def update(self):
+            return None
+
+    class _FakePyramid:
+        def __init__(self, *args, **kwargs):
+            self.tag = "wfs"
+            self.cam = types.SimpleNamespace(frame=np.zeros((2, 2), dtype=np.float32))
+
+        def relay(self, src):
+            level = float(np.sum(src.OPD_no_pupil))
+            self.cam.frame = np.full((2, 2), level, dtype=np.float32)
+
+    fake_oopao_pkg = types.ModuleType("OOPAO")
+    monkeypatch.setitem(sys.modules, "OOPAO", fake_oopao_pkg)
+    monkeypatch.setitem(sys.modules, "OOPAO.Atmosphere", types.SimpleNamespace(Atmosphere=_FakeAtmosphere))
+    monkeypatch.setitem(sys.modules, "OOPAO.DeformableMirror", types.SimpleNamespace(DeformableMirror=_FakeDM))
+    monkeypatch.setitem(sys.modules, "OOPAO.Pyramid", types.SimpleNamespace(Pyramid=_FakePyramid))
+    monkeypatch.setitem(sys.modules, "OOPAO.Source", types.SimpleNamespace(Source=_FakeSource))
+    monkeypatch.setitem(sys.modules, "OOPAO.Telescope", types.SimpleNamespace(Telescope=_FakeTelescope))
+
+    sys.modules.pop("pyRTC.hardware.OOPAOInterface", None)
+    module = importlib.import_module("pyRTC.hardware.OOPAOInterface")
+
+    sensor = module._OOPAOWFSensor(
+        {"name": "wfs", "width": 2, "height": 2, "darkCount": 1, "functions": []},
+        _FakeTelescope(),
+        _FakeSource(),
+        _FakeAtmosphere(),
+        _FakeDM(),
+        _FakePyramid(),
+    )
+
+    sensor.expose()
+    first = sensor.data.copy()
+    sensor.expose()
+    second = sensor.data.copy()
+
+    assert np.array_equal(first, second)
+    assert np.all(first == 8)

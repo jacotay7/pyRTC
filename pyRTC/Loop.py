@@ -27,6 +27,8 @@ from pyRTC.utils import add_to_buffer, get_tmp_filepath, setFromConfig
 
 logger = get_logger(__name__)
 
+COMMON_CONDITIONING_LINES = (10.0, 100.0, 1e3, 1e4, 1e5, 1e6)
+
 @jit(nopython=True, nogil=True, cache=True, fastmath=True)
 def leakyIntegratorNumba(slopes: np.ndarray, 
                          resconstructionMatrix: np.ndarray, 
@@ -206,6 +208,15 @@ class Loop(pyRTCComponent):
         Absolute limits for corrections.
     derivativeFilter : float
         Filter for the derivative term.
+    CMMethod : str
+        Control-matrix inversion method. Supported values are ``svd`` and
+        ``tikhonov``.
+    conditioning : float or None
+        Optional target conditioning number used to truncate small singular
+        values when computing the control matrix.
+    tikhonovReg : float
+        Tikhonov regularization strength used when ``CMMethod`` is
+        ``tikhonov``.
     integral : numpy.ndarray
         Integral term for PID integrator.
     previousWfError : numpy.ndarray
@@ -292,6 +303,14 @@ class Loop(pyRTCComponent):
             self.delay = setFromConfig(self.conf, "delay", 0)
             self.IMMethod = setFromConfig(self.conf, "IMMethod", "push-pull")
             self.IMFile = setFromConfig(self.conf, "IMFile", "")
+            self.CMMethod = str(setFromConfig(self.conf, "CMMethod", "svd")).lower()
+            conditioning = setFromConfig(self.conf, "conditioning", None)
+            self.conditioning = None if conditioning is None else float(conditioning)
+            self.tikhonovReg = float(setFromConfig(self.conf, "tikhonovReg", 0.0))
+            self.lastSingularValues = np.array([], dtype=np.float64)
+            self.lastRetainedSingularMask = np.array([], dtype=bool)
+            self.lastSuggestedConditioning = None
+            self.lastSingularValueFit = None
         
             self.clDocrime = False
             self.numItersDC = 0
@@ -522,22 +541,218 @@ class Loop(pyRTCComponent):
             component_logger.exception("Failed to flatten loop correction")
             raise
         return
+
+    @staticmethod
+    def _validate_cm_method(method: str) -> str:
+        normalized = str(method).lower()
+        if normalized not in {"svd", "tikhonov"}:
+            raise ValueError(f"Unsupported CM inversion method: {method}")
+        return normalized
+
+    @staticmethod
+    def _suggest_conditioning_from_singular_values(singular_values: np.ndarray):
+        singular_values = np.asarray(singular_values, dtype=np.float64)
+        singular_values = singular_values[np.isfinite(singular_values) & (singular_values > 0)]
+        if singular_values.size < 4:
+            return None, None
+
+        normalized = singular_values / singular_values[0]
+        indices = np.arange(normalized.size, dtype=np.float64)
+        log_values = np.log10(np.clip(normalized, np.finfo(np.float64).tiny, None))
+
+        min_leading_points = max(3, normalized.size // 8)
+        best_score = -np.inf
+        best_fit = None
+
+        for knee_index in range(min_leading_points - 1, normalized.size - 1):
+            leading_x = indices[: knee_index + 1]
+            leading_y = log_values[: knee_index + 1]
+
+            x_mean = float(np.mean(leading_x))
+            y_mean = float(np.mean(leading_y))
+            centered_x = leading_x - x_mean
+            centered_y = leading_y - y_mean
+            variance_x = float(np.dot(centered_x, centered_x))
+            if variance_x <= 0:
+                continue
+
+            slope = float(np.dot(centered_x, centered_y) / variance_x)
+            intercept = float(y_mean - slope * x_mean)
+            fit_y = slope * leading_x + intercept
+            rmse = float(np.sqrt(np.mean((leading_y - fit_y) ** 2)))
+
+            predicted_next = slope * indices[knee_index + 1] + intercept
+            downward_departure = predicted_next - log_values[knee_index + 1]
+            if downward_departure <= 0:
+                continue
+
+            score = downward_departure / (rmse + 1e-6)
+            if score > best_score:
+                threshold = normalized[knee_index + 1]
+                if threshold <= 0:
+                    continue
+                best_score = score
+                best_fit = {
+                    "knee_index": int(knee_index),
+                    "suggested_index": int(knee_index + 1),
+                    "slope": float(slope),
+                    "intercept": float(intercept),
+                    "rmse": rmse,
+                    "normalized_threshold": float(threshold),
+                    "conditioning": float(1.0 / threshold),
+                    "score": float(score),
+                    "indices": indices.copy(),
+                    "normalized_singular_values": normalized.copy(),
+                    "fit_curve": np.power(10.0, slope * indices + intercept),
+                }
+
+        if best_fit is None:
+            return None, None
+        return best_fit["conditioning"], best_fit
+
+    def getSingularValues(self) -> np.ndarray:
+        if self.IM.size == 0:
+            return np.array([], dtype=np.float64)
+        return np.linalg.svd(self.IM, compute_uv=False)
+
+    def suggestConditioningNumber(self):
+        singular_values = self.getSingularValues()
+        suggestion, fit = self._suggest_conditioning_from_singular_values(singular_values)
+        self.lastSuggestedConditioning = suggestion
+        self.lastSingularValueFit = fit
+        return suggestion
+
+    def plotSingularValues(self, conditioning_lines=COMMON_CONDITIONING_LINES, ax=None):
+        singular_values = self.getSingularValues()
+        self.lastSingularValues = singular_values
+        suggestion, fit = self._suggest_conditioning_from_singular_values(singular_values)
+        self.lastSuggestedConditioning = suggestion
+        self.lastSingularValueFit = fit
+
+        if ax is None:
+            _, ax = plt.subplots(figsize=(8, 4.5))
+
+        if singular_values.size == 0 or np.max(singular_values) <= 0:
+            ax.set_title("Singular values unavailable")
+            ax.set_xlabel("Singular value index")
+            ax.set_ylabel("Singular value")
+            return suggestion
+
+        normalized = singular_values / singular_values[0]
+        indices = np.arange(1, singular_values.size + 1)
+        ax.semilogy(indices, normalized, marker="o", linewidth=1.5, label="Normalized singular values")
+
+        for cond in conditioning_lines:
+            if cond is None or cond <= 0:
+                continue
+            ax.axhline(1.0 / cond, linestyle="--", linewidth=0.8, alpha=0.5, label=f"cond={cond:.0e}")
+
+        if fit is not None:
+            ax.semilogy(indices, fit["fit_curve"], color="tab:green", linestyle="-.", linewidth=1.2, label="Leading log-fit")
+            ax.axvline(fit["suggested_index"] + 1, color="tab:red", linestyle=":", linewidth=1.2, label=f"turnoff idx={fit['suggested_index'] + 1}")
+
+        if suggestion is not None and suggestion > 0:
+            ax.axhline(1.0 / suggestion, color="black", linestyle=":", linewidth=1.5, label=f"suggested={suggestion:.2e}")
+
+        ax.set_title("Normalized IM singular values")
+        ax.set_xlabel("Singular value index")
+        ax.set_ylabel("Singular value / max singular value")
+        ax.legend(loc="best", fontsize="small")
+        return suggestion
+
+    def _compute_inverse_from_svd(self, matrix, method: str, conditioning, tikhonovReg: float):
+        matrix = np.asarray(matrix, dtype=np.float64)
+        num_modes = matrix.shape[1]
+
+        if matrix.size == 0:
+            return np.zeros((num_modes, matrix.shape[0]), dtype=self.CM.dtype), np.array([], dtype=np.float64), np.array([], dtype=bool)
+
+        singular_values = np.linalg.svd(matrix, compute_uv=False)
+        if singular_values.size == 0 or singular_values[0] <= 0:
+            return np.zeros((num_modes, matrix.shape[0]), dtype=self.CM.dtype), singular_values, np.zeros_like(singular_values, dtype=bool)
+
+        U, singular_values, Vh = np.linalg.svd(matrix, full_matrices=False)
+        retained = singular_values > 0
+        if conditioning is not None:
+            retained &= singular_values >= (singular_values[0] / conditioning)
+
+        inverse_singular_values = np.zeros_like(singular_values)
+        if method == "svd":
+            inverse_singular_values[retained] = 1.0 / singular_values[retained]
+        else:
+            if tikhonovReg < 0:
+                raise ValueError("tikhonovReg must be non-negative")
+            inverse_singular_values[retained] = singular_values[retained] / (singular_values[retained] ** 2 + tikhonovReg ** 2)
+
+        inverse = (Vh.T * inverse_singular_values) @ U.T
+        return inverse.astype(self.CM.dtype, copy=False), singular_values, retained
     
-    def computeCM(self):
+    def computeCM(self, method=None, numDroppedModes=None, conditioning=None, tikhonovReg=None):
         """
         Compute the control matrix from the interaction matrix.
+
+        Parameters
+        ----------
+        method : str, optional
+            Inversion method to use. Supported values are ``svd`` and
+            ``tikhonov``. Defaults to the configured ``CMMethod``.
+        numDroppedModes : int, optional
+            Number of modal commands to suppress before inversion. Defaults to
+            the configured ``numDroppedModes``.
+        conditioning : float, optional
+            Optional target conditioning number. Singular values below
+            ``max(s) / conditioning`` are discarded.
+        tikhonovReg : float, optional
+            Tikhonov regularization strength used when ``method`` is
+            ``tikhonov``. Defaults to the configured ``tikhonovReg``.
         """
         component_logger = getattr(self, "logger", logger)
         try:
+            method = self._validate_cm_method(self.CMMethod if method is None else method)
+            requested_dropped_modes = self.numDroppedModes if numDroppedModes is None else int(numDroppedModes)
+            requested_conditioning = self.conditioning if conditioning is None else conditioning
+            requested_tikhonov = self.tikhonovReg if tikhonovReg is None else float(tikhonovReg)
+
+            if requested_conditioning is not None:
+                requested_conditioning = float(requested_conditioning)
+                if requested_conditioning <= 1:
+                    raise ValueError("conditioning must be greater than 1 when provided")
+
+            self.numDroppedModes = requested_dropped_modes
+            self.CMMethod = method
+            self.conditioning = requested_conditioning
+            self.tikhonovReg = requested_tikhonov
             self.numActiveModes = self.numModes - self.numDroppedModes
             if self.numActiveModes < 0:
                 raise ValueError("Invalid number of modes used in CM. Check numDroppedModes")
-            self.CM[:self.numActiveModes, :] = np.linalg.pinv(self.IM[:, :self.numActiveModes], rcond=0)
+            active_im = self.IM[:, :self.numActiveModes]
+            inverse, singular_values, retained = self._compute_inverse_from_svd(
+                active_im,
+                method=self.CMMethod,
+                conditioning=self.conditioning,
+                tikhonovReg=self.tikhonovReg,
+            )
+
+            self.CM[:, :] = 0
+            self.CM[:self.numActiveModes, :] = inverse
             self.CM[self.numActiveModes:, :] = 0
             self.gCM = self.gain * self.CM
             self.fIM = np.copy(self.IM)
             self.fIM[:, self.numActiveModes:] = 0
-            component_logger.info("Computed control matrix activeModes=%s droppedModes=%s", self.numActiveModes, self.numDroppedModes)
+            self.lastSingularValues = singular_values
+            self.lastRetainedSingularMask = retained
+            suggestion, fit = self._suggest_conditioning_from_singular_values(singular_values)
+            self.lastSuggestedConditioning = suggestion
+            self.lastSingularValueFit = fit
+            component_logger.info(
+                "Computed control matrix method=%s activeModes=%s droppedModes=%s conditioning=%s retainedSingularValues=%s tikhonovReg=%s",
+                self.CMMethod,
+                self.numActiveModes,
+                self.numDroppedModes,
+                self.conditioning,
+                int(np.count_nonzero(retained)),
+                self.tikhonovReg,
+            )
         except Exception:
             component_logger.exception("Failed to compute control matrix")
             raise

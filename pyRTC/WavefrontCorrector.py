@@ -94,6 +94,9 @@ class WavefrontCorrector(pyRTCComponent):
         Floating actuator matrix.
     frameDelay : int
         Frame delay.
+    commandCap : float or None
+        Optional absolute limit applied to actuator-space commands before they
+        are handed to the hardware adapter.
     saveFile : str
         File to save the shape.
     layout : numpy.ndarray or None
@@ -129,6 +132,7 @@ class WavefrontCorrector(pyRTCComponent):
             self.flatModal = np.zeros(self.numModes, dtype=self.flat.dtype)
             self.currentShape = np.zeros_like(self.flat)
             self.flatFile = setFromConfig(conf, "flatFile", "")
+            self.commandCap = setFromConfig(conf, "commandCap", None)
             self.loadFlat()
 
             self.actuatorStatus = np.array([True] * self.numActuators)
@@ -141,10 +145,11 @@ class WavefrontCorrector(pyRTCComponent):
             self.saveFile = setFromConfig(conf, "saveFile", "wfcShape.npy")
             self.readM2C()
             self.logger.info(
-                "Initialized wavefront corrector name=%s actuators=%s modes=%s",
+                "Initialized wavefront corrector name=%s actuators=%s modes=%s commandCap=%s",
                 self.name,
                 self.numActuators,
                 self.numModes,
+                self.commandCap,
             )
         except Exception:
             logger.exception("Failed to initialize wavefront corrector")
@@ -390,6 +395,9 @@ class WavefrontCorrector(pyRTCComponent):
             self.currentShape = ModaltoZonalWithFlat(self.currentCorrection, 
                                                      self.f_M2C,
                                                      self.flat)
+
+        if self.commandCap is not None:
+            self.currentShape = np.clip(self.currentShape, -self.commandCap, self.commandCap)
         
         #If we have a 2D SHM instance, update it 
         if isinstance(self.correctionVector2D, ImageSHM):

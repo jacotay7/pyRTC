@@ -45,15 +45,23 @@ class _OOPAOWFSensor(WavefrontSensor):
         self.wfs = wfs
         
         super().__init__(wfsConf)
+
+    def _propagate_source(self):
+        if self.tel.isPaired:
+            # Atmosphere.update() rebuilds the source/telescope state from
+            # scratch, so only the DM and WFS need to be applied afterwards.
+            self.atm.update()
+            self.ngs * self.dm * self.wfs
+            return
+
+        # Without atmosphere, OOPAO does not reset the source state for us.
+        # Rebuilding the source/telescope path each frame prevents the DM OPD
+        # from accumulating across repeated exposures of a static command.
+        self.ngs ** self.tel
+        self.ngs * self.dm * self.wfs
         
     def expose(self):
-
-        #Advance the atmosphere
-        if self.tel.isPaired:
-            self.atm.update()
-
-        #Propagate the ngs to the wfs and apply the DM state
-        self.ngs*self.tel*self.dm*self.wfs
+        self._propagate_source()
 
         #Generate a new exposure
         self.data = self.wfs.cam.frame.astype(np.uint16)
@@ -116,39 +124,77 @@ class _OOPAOScienceCamera(ScienceCamera):
         self.src = src
         self.atm = atm
         self.dm = dm
-        self.old_opd = tel.OPD.copy()
+        self._atmosphere_enabled = False
         super().__init__(scienceConf)
+        self._reference_psf = self._render_reference_psf()
+        self._reference_peak = float(np.max(self._reference_psf)) if self._reference_psf.size else 1.0
+        if self._reference_peak <= 0:
+            self._reference_peak = 1.0
+        self.setModelPSF(self._scale_psf_to_detector(self._reference_psf).astype(self.psfLongDtype))
+
+    def _compute_psf(self, opd_no_pupil):
+        self.src ** self.tel
+        self.src.OPD_no_pupil = opd_no_pupil
+        self.tel.computePSF(zeroPaddingFactor=5)
+        return np.array(self.tel.PSF, dtype=np.float64, copy=True)
+
+    def _render_reference_psf(self):
+        zero_opd = np.zeros(self.tel.pupil.shape, dtype=np.float64)
+        reference = self._compute_psf(zero_opd)
+        return np.nan_to_num(reference, nan=0.0, posinf=0.0, neginf=0.0)
+
+    def _scale_psf_to_detector(self, psf):
+        psf = np.nan_to_num(psf, nan=0.0, posinf=0.0, neginf=0.0)
+        if psf.size == 0:
+            return np.zeros(self.imageShape, dtype=np.float64)
+
+        scaled = psf / self._reference_peak
+        scaled *= np.iinfo(self.imageRawDType).max
+        return np.clip(scaled, 0, np.iinfo(self.imageRawDType).max)
+
+    def _current_opd_no_pupil(self):
+        base_opd = np.zeros(self.tel.pupil.shape, dtype=np.float64)
+        if self._atmosphere_enabled:
+            if getattr(self.atm, "OPD_no_pupil", None) is not None:
+                base_opd = np.array(self.atm.OPD_no_pupil, dtype=np.float64, copy=True)
+            elif getattr(self.atm, "OPD", None) is not None:
+                base_opd = np.array(self.atm.OPD, dtype=np.float64, copy=True)
+
+        dm_opd = getattr(self.dm, "OPD", None)
+        if dm_opd is None:
+            return base_opd
+
+        dm_opd = np.asarray(dm_opd)
+        if dm_opd.ndim == 2:
+            return base_opd + dm_opd.astype(np.float64, copy=False)
+
+        # Interaction-matrix calibration can temporarily drive the DM with a cube.
+        # The science camera only renders one frame at a time, so keep the most
+        # recent 2D command if the PSF path is left running during calibration.
+        return base_opd + dm_opd[..., -1].astype(np.float64, copy=False)
+
+    def _render_psf_frame(self):
+        psf = self._compute_psf(self._current_opd_no_pupil())
+        return self._scale_psf_to_detector(psf).astype(self.imageRawDType)
         
     def expose(self):
-
-        #We need to manually add the current atmosphere OPD to the telescope
-        new_atm = not (self.atm.OPD == self.old_opd).all()
-        if self.tel.isPaired and new_atm :
-            self.old_opd = self.atm.OPD.copy()
-        elif not self.tel.isPaired: 
-            self.old_opd = np.zeros_like(self.old_opd)
-        
-        if self.dm.OPD.shape == self.old_opd.shape:
-            self.tel.OPD = self.old_opd + self.dm.OPD
-        
-        # #Add current dm state to the telescope
-        self.src*self.tel#*self.dm
-        #Compute PSF
-        self.tel.computePSF(zeroPaddingFactor=5)#, N_crop=136)
-        #Check that we still have the right source coupled
-        psfImg = self.tel.PSF_norma.copy()
-        psfImg[psfImg > 65536] = 65536
-        self.data = (psfImg).astype(np.uint16)
+        self.data = self._render_psf_frame()
         
         super().expose()
 
         return
+
+    def integrate(self):
+        super().integrate()
+        if np.max(self.model) > 0:
+            self.computeStrehl(median_filter_size=1, gaussian_sigma=0)
+        return
     
     def addAtmosphere(self):
-        self.tel+self.atm
+        self._atmosphere_enabled = True
 
     def removeAtmosphere(self):
-        self.tel-self.atm
+        self._atmosphere_enabled = False
 
 class OOPAOInterface():
     """Assembles a complete pyRTC-compatible OOPAO simulation stack.

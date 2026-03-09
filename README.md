@@ -143,12 +143,13 @@ The best first end-to-end path today is the no-hardware synthetic Shack-Hartmann
 Key files:
 
 - `examples/synthetic_shwfs/config.yaml`
-- `examples/synthetic_shwfs/run_soft_rtc.py`
+- `examples/synthetic_shwfs/synthetic_shwfs_soft_rtc_example.py`
+- `examples/synthetic_shwfs/synthetic_shwfs_hard_rtc_example.py`
 
 Run it with:
 
 ```bash
-python examples/synthetic_shwfs/run_soft_rtc.py --duration 15
+python examples/synthetic_shwfs/synthetic_shwfs_soft_rtc_example.py --duration 15
 ```
 
 Every primary CLI and example entry point now uses the shared `pyRTC` logger. By default you get timestamped `INFO` logs on the console. You can override that per run with `--log-level DEBUG`, write per-process logs with `--log-dir logs/`, or force one exact file with `--log-file session.log`.
@@ -159,7 +160,7 @@ The same settings can be exported for multi-process or repeated runs:
 export PYRTC_LOG_LEVEL=INFO
 export PYRTC_LOG_DIR=./logs
 export PYRTC_LOG_COLOR=1
-python examples/synthetic_shwfs/run_soft_rtc.py --duration 15
+python examples/synthetic_shwfs/synthetic_shwfs_hard_rtc_example.py --duration 15
 ```
 
 It publishes the normal `wfs`, `signal2D`, `wfc2D`, `psfShort`, and `psfLong` streams, so the standard viewer tools work unchanged while you evaluate the control flow and subclassing points.
