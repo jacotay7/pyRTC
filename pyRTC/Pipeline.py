@@ -30,7 +30,6 @@ from pyRTC.utils import (
     dtype_to_float,
     float_to_dtype,
     precise_delay,
-    read_yaml_file,
     setFromConfig,
     set_affinity_and_priority,
 )
