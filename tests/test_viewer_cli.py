@@ -1,5 +1,6 @@
 from pyRTC.scripts import view
 from pyRTC.scripts import clear_shms, view_launch_all
+from pyRTC.scripts import viewer_core
 from pyRTC.scripts.viewer_helpers import StreamConnection
 from pyRTC.scripts.viewer_helpers import format_shape
 from pyRTC.scripts.viewer_core import MosaicViewerWindow
@@ -197,3 +198,85 @@ def test_stream_connection_close_is_idempotent():
 
     assert connection.shm.calls == 1
     assert connection.metadata_shm.calls == 1
+
+
+def test_reset_streams_rebuilds_grid():
+    window = MosaicViewerWindow.__new__(MosaicViewerWindow)
+    calls = {"count": 0}
+
+    def _rebuild_grid():
+        calls["count"] += 1
+
+    window.rebuild_grid = _rebuild_grid
+
+    MosaicViewerWindow.reset_streams(window)
+
+    assert calls["count"] == 1
+
+
+def test_rebuild_grid_preserves_failed_stream_cells_as_unavailable(monkeypatch):
+    class _GridLayout:
+        def __init__(self):
+            self.added = []
+
+        def addWidget(self, widget, row, col):
+            self.added.append((widget, row, col))
+
+        def count(self):
+            return 0
+
+    class _Panel:
+        def __init__(self, connection, remove_callback, static_vmin, static_vmax, show_colorbar, show_stats, show_range, font_size):
+            self.connection = connection
+
+        def apply_theme(self, theme):
+            return None
+
+    class _Placeholder:
+        def __init__(self, name, retry_callback):
+            self.name = name
+            self.retry_callback = retry_callback
+
+        def apply_theme(self, theme):
+            return None
+
+    class _Connection:
+        def __init__(self, name):
+            if name == "missing":
+                raise FileNotFoundError(name)
+            self.name = name
+
+    monkeypatch.setattr(viewer_core, "Stream2DWidget", _Panel)
+    monkeypatch.setattr(viewer_core, "UnavailableStreamPlaceholder", _Placeholder)
+    monkeypatch.setattr(viewer_core, "StreamConnection", _Connection)
+
+    window = MosaicViewerWindow.__new__(MosaicViewerWindow)
+    window.cells = ["wfs", "missing"]
+    window.rows = 1
+    window.cols = 2
+    window.grid_layout = _GridLayout()
+    window.theme_name = "dark"
+    window.static_vmin = None
+    window.static_vmax = None
+    window._show_colorbars = False
+    window._show_stats = True
+    window._show_range = True
+    window.font_size = 15
+    window.panels = {}
+    window.placeholders = {}
+    window._last_panel_errors = 0
+    window._pause_refresh = lambda: False
+    window._resume_refresh = lambda was_active: None
+    window._clear_grid_widgets = lambda: None
+    window.apply_theme = lambda theme_name: None
+    window._set_summary = lambda changed_panels=0: None
+    window.remove_plot_at = lambda index: None
+    window.add_plot_at = lambda index: None
+    window.reset_streams = lambda: None
+
+    MosaicViewerWindow.rebuild_grid(window)
+
+    assert sorted(window.panels) == [0]
+    assert sorted(window.placeholders) == [1]
+    assert isinstance(window.placeholders[1], _Placeholder)
+    assert window._last_panel_errors == 1

@@ -66,6 +66,15 @@ def test_validate_loop_config_accepts_valid_config():
     )
 
 
+def test_validate_system_config_accepts_float_shwfs_subap_spacing():
+    conf = read_system_config(SYNTHETIC_CONFIG_PATH, validate=False)
+    conf["slopes"]["subApSpacing"] = 8.5
+
+    normalized = validate_system_config(conf, config_path=SYNTHETIC_CONFIG_PATH)
+
+    assert normalized["slopes"]["subApSpacing"] == 8.5
+
+
 def test_validate_loop_config_rejects_bad_cm_method():
     with pytest.raises(ConfigValidationError, match="CMMethod"):
         validate_loop_config({"CMMethod": "ridge-ish"})
@@ -82,6 +91,17 @@ def test_validate_system_config_accepts_synthetic_example():
     assert normalized["manager"]["mode"] == "soft-rtc"
     assert normalized["wfc"]["numModes"] == 32
     assert normalized["metadata"]["configPath"].endswith("examples/synthetic_shwfs/config.yaml")
+
+
+def test_validate_system_config_resolves_relative_file_paths_against_config_file():
+    conf = read_system_config(SYNTHETIC_CONFIG_PATH, validate=False)
+    conf["loop"]["IMFile"] = "synthetic_identity_im.npy"
+    conf["manager"] = {"mode": "hard-rtc", "componentFiles": {"loop": "../../pyRTC/Loop.py"}}
+
+    normalized = validate_system_config(conf, config_path=SYNTHETIC_CONFIG_PATH)
+
+    assert normalized["loop"]["IMFile"] == str((SYNTHETIC_CONFIG_PATH.parent / "synthetic_identity_im.npy").resolve())
+    assert normalized["manager"]["componentFiles"]["loop"] == str((SYNTHETIC_CONFIG_PATH.parent / "../../pyRTC/Loop.py").resolve())
 
 
 def test_validate_system_config_rejects_missing_required_section():

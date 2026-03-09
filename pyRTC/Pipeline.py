@@ -727,6 +727,7 @@ def initExistingShm(shmName, gpuDevice=None):
 
 
 def launchComponent(component, confKey, start = True):
+    from pyRTC.config_schema import read_system_config
 
     # Create argument parser
     parser = argparse.ArgumentParser(description="Read a config file from the command line.")
@@ -740,7 +741,7 @@ def launchComponent(component, confKey, start = True):
     args = parser.parse_args()
     configure_logging_from_args(args, app_name=f"pyrtc-{confKey}", component_name=confKey)
 
-    conf = read_yaml_file(args.config)[confKey]
+    conf = read_system_config(args.config)[confKey]
 
     set_affinity_and_priority("", setFromConfig(conf, "affinity", 0))
 
@@ -918,6 +919,21 @@ def _import_symbol(path_or_name: str):
     raise ImportError(f"Unable to resolve component symbol '{path_or_name}'")
 
 
+def _normalize_manager_mode(mode: str | None) -> str | None:
+    if mode is None:
+        return None
+    normalized = str(mode).strip().lower()
+    mode_aliases = {
+        "soft": "soft-rtc",
+        "soft-rtc": "soft-rtc",
+        "hard": "hard-rtc",
+        "hard-rtc": "hard-rtc",
+    }
+    if normalized not in mode_aliases:
+        raise ValueError("mode must be one of: soft, soft-rtc, hard, hard-rtc")
+    return mode_aliases[normalized]
+
+
 class RTCManager:
     """Validate, launch, stop, and inspect a pyRTC system as one unit.
 
@@ -931,10 +947,16 @@ class RTCManager:
         config: dict,
         *,
         config_path: str | None = None,
+        mode: str | None = None,
         launcher_cls=hardwareLauncher,
     ) -> None:
-        self.config = config
+        self.config = dict(config)
         self.config_path = config_path
+        self.mode = _normalize_manager_mode(mode)
+        if self.mode is not None:
+            manager_conf = dict(self.config.get("manager", {}))
+            manager_conf["mode"] = self.mode
+            self.config["manager"] = manager_conf
         self.launcher_cls = launcher_cls
         self.validated = False
         self.state = "created"
@@ -942,11 +964,11 @@ class RTCManager:
         self.runtimes = {}
 
     @classmethod
-    def from_config_file(cls, config_path: str | Path, *, launcher_cls=hardwareLauncher):
+    def from_config_file(cls, config_path: str | Path, *, mode: str | None = None, launcher_cls=hardwareLauncher):
         from pyRTC.config_schema import read_system_config
 
         normalized = read_system_config(config_path)
-        manager = cls(normalized, config_path=str(config_path), launcher_cls=launcher_cls)
+        manager = cls(normalized, config_path=str(config_path), mode=mode, launcher_cls=launcher_cls)
         manager.validated = True
         manager.state = "validated"
         return manager
@@ -957,9 +979,10 @@ class RTCManager:
         config: dict,
         *,
         config_path: str | None = None,
+        mode: str | None = None,
         launcher_cls=hardwareLauncher,
     ):
-        return cls(config, config_path=config_path, launcher_cls=launcher_cls)
+        return cls(config, config_path=config_path, mode=mode, launcher_cls=launcher_cls)
 
     def validate(self) -> dict:
         from pyRTC.config_schema import validate_system_config
@@ -1099,6 +1122,7 @@ class RTCManager:
     def status(self) -> dict:
         return {
             "state": self.state,
+            "mode": self.config.get("manager", {}).get("mode", "soft-rtc"),
             "validated": self.validated,
             "config_path": self.config_path,
             "error": self.error,

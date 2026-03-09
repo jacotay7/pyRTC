@@ -63,6 +63,9 @@ def test_loop_methods_without_full_init(tmp_path):
     loop.setGain(0.5)
     assert np.allclose(loop.gCM, 0.5 * loop.CM)
 
+    loop.gain = 0.3
+    assert np.allclose(loop.gCM, 0.3 * loop.CM)
+
     loop.setPeturbAmp(0.3)
     assert np.isclose(loop.perturbAmp, 0.3)
 

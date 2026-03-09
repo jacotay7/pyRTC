@@ -38,6 +38,7 @@ wfc:
 loop:
   gain: 0.35
   numDroppedModes: 0
+  IMFile: synthetic_identity_im.npy
   functions:
     - standardIntegrator
 
@@ -54,3 +55,10 @@ psf:
   functions:
     - expose
     - integrate
+
+manager:
+  mode: soft-rtc
+  componentFiles:
+    wfs: ../../pyRTC/hardware/SyntheticSHWFS.py
+    wfc: ../../pyRTC/hardware/SyntheticWFC.py
+    psf: ../../pyRTC/hardware/SyntheticScienceCamera.py

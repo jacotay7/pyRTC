@@ -250,7 +250,7 @@ BUILTIN_COMPONENT_DESCRIPTORS: tuple[ComponentDescriptor, ...] = (
             ConfigFieldDescriptor("pupils", "list[str]", "Pupil centers for PYWFS in 'x,y' form.", default=[]),
             ConfigFieldDescriptor("pupilsRadius", "int", "Pupil radius for explicit PYWFS geometry.", default=None, minimum=1),
             ConfigFieldDescriptor("contrast", "float", "SHWFS contrast parameter.", default=0.0),
-            ConfigFieldDescriptor("subApSpacing", "int", "Sub-aperture spacing for SHWFS layouts.", default=None, minimum=1),
+            ConfigFieldDescriptor("subApSpacing", "float", "Sub-aperture spacing for SHWFS layouts.", default=None, minimum=1),
             ConfigFieldDescriptor("subApOffsetX", "int", "SHWFS X offset in pixels.", default=0, minimum=0),
             ConfigFieldDescriptor("subApOffsetY", "int", "SHWFS Y offset in pixels.", default=0, minimum=0),
             ConfigFieldDescriptor("refSlopeCount", "int", "Number of frames used to average reference slopes.", default=1000, minimum=1),

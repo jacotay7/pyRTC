@@ -1,15 +1,14 @@
 """Notebook-style synthetic SHWFS soft-RTC example.
 
-This script is intentionally linear and heavily commented so new users can read
-it top to bottom like a tutorial. It uses ``RTCManager`` in soft-RTC mode,
-builds a tiny identity interaction matrix, starts the full chain, prints a live
-status summary, and then shuts everything down cleanly.
+This script uses the same YAML file as the hard-RTC example. The only runtime
+choice is the manager call itself: ``RTCManager.from_config_file(..., mode="soft")``.
+In soft mode, ``manager.get_component(...)`` returns the live Python objects, so
+direct syntax like ``loop.gain = 0.1`` is the intended user experience.
 """
 
 # %% Imports
 import argparse
 import sys
-import tempfile
 import time
 from pathlib import Path
 
@@ -23,12 +22,10 @@ if str(REPO_ROOT) not in sys.path:
 
 from pyRTC.Pipeline import RTCManager, clear_shms, initExistingShm
 from pyRTC.logging_utils import add_logging_cli_args, configure_logging_from_args, get_logger
-from pyRTC.utils import read_yaml_file
 
 
 logger = get_logger("examples.synthetic_shwfs.soft")
 CONFIG_PATH = REPO_ROOT / "examples" / "synthetic_shwfs" / "config.yaml"
-IDENTITY_IM_PATH = Path(tempfile.gettempdir()) / "pyrtc_synthetic_identity_im.npy"
 DEFAULT_STREAMS = [
     "wfs",
     "wfsRaw",
@@ -63,15 +60,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 
 # %% Tutorial helpers
-def write_identity_interaction_matrix(config: dict, output_path: Path) -> Path:
-    """Create the smallest useful IM for the synthetic tutorial.
-
-    The synthetic example is meant to be easy to run, so we use a dense identity
-    matrix instead of asking the user to calibrate one first.
-    """
+def ensure_identity_interaction_matrix(config: dict) -> Path:
+    """Create the tiny IM file referenced by the shared synthetic config."""
 
     wfs_conf = config["wfs"]
     slopes_conf = config["slopes"]
+    output_path = Path(config["loop"]["IMFile"])
     num_modes = int(config["wfc"]["numModes"])
 
     image_width = int(wfs_conf["width"])
@@ -88,26 +82,6 @@ def write_identity_interaction_matrix(config: dict, output_path: Path) -> Path:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     np.save(output_path, np.eye(signal_size, num_modes, dtype=np.float32))
     return output_path
-
-
-def build_manager_config(config: dict) -> dict:
-    """Inject the explicit manager metadata that keeps the tutorial readable."""
-
-    configured = dict(config)
-    configured.setdefault("manager", {})
-    configured["manager"].update(
-        {
-            "mode": "soft-rtc",
-            "componentClasses": {
-                "wfs": "pyRTC.hardware.SyntheticSHWFS",
-                "slopes": "pyRTC.SlopesProcess.SlopesProcess",
-                "loop": "pyRTC.Loop.Loop",
-                "wfc": "pyRTC.hardware.SyntheticWFC",
-                "psf": "pyRTC.hardware.SyntheticScienceCamera",
-            },
-        }
-    )
-    return configured
 
 
 def read_scalar_stream(name: str) -> float:
@@ -139,31 +113,38 @@ def main(argv=None) -> int:
     args = build_arg_parser().parse_args(argv)
     configure_logging_from_args(args, app_name="pyrtc-synthetic-shwfs", component_name="synthetic_soft_example")
 
-    # Step 1: load the human-readable YAML config.
-    config = read_yaml_file(str(CONFIG_PATH))
+    # Step 1: use the single shared config file and choose soft mode right here.
+    manager = RTCManager.from_config_file(CONFIG_PATH, mode="soft")
+    config = manager.config
 
-    # Step 2: write a simple identity interaction matrix so the loop has a CM to load.
-    config["loop"]["IMFile"] = str(write_identity_interaction_matrix(config, IDENTITY_IM_PATH))
+    # Step 2: generate the tiny IM file referenced by that same config.
+    im_path = ensure_identity_interaction_matrix(config)
 
-    # Step 3: add a manager section so the entire RTC can be started with one object.
-    config = build_manager_config(config)
-    manager = RTCManager.from_config(config)
-
-    # Step 4: reset the common streams unless the user explicitly wants to reuse them.
+    # Step 3: reset the common streams unless the user explicitly wants to reuse them.
     if not args.no_clear_shms:
         clear_shms(DEFAULT_STREAMS)
 
     logger.info("Synthetic SHWFS soft-RTC tutorial")
     logger.info("Config: %s", CONFIG_PATH)
-    logger.info("Interaction matrix: %s", config["loop"]["IMFile"])
+    logger.info("Manager call: RTCManager.from_config_file(CONFIG_PATH, mode='soft')")
+    logger.info("Interaction matrix: %s", im_path)
     logger.info("Viewer: pyrtc-view wfs signal2D psfShort psfLong --geometry 2x2")
 
-    # Step 5: start the full stack.
+    # Step 4: start the full stack.
     manager.start()
 
     try:
-        # Step 6: flatten the synthetic DM before observing the closed-loop status.
-        manager.get_component("wfc").flatten()
+        # Step 5: in soft mode these are the actual live Python objects.
+        loop = manager.get_component("loop")
+        wfc = manager.get_component("wfc")
+
+        logger.info("Soft mode returns live objects: loop=%s wfc=%s", type(loop).__name__, type(wfc).__name__)
+        logger.info("Direct update example: loop.gain = 0.10")
+        loop.gain = 0.10
+        logger.info("Loop gain is now %0.2f", loop.gain)
+
+        # Methods are also called directly in soft mode.
+        wfc.flatten()
 
         start_time = time.perf_counter()
         next_status = start_time

@@ -273,6 +273,8 @@ Do not overfit the first version to GUI form generation only. The descriptor mod
 
 ## Issue 03
 
+Status: Completed on branch `issue-03-rtc-manager-backend` on 2026-03-08. This looks ready to merge into `dev`.
+
 ### Title
 
 Introduce a `pyRTC Manager` backend for full-system orchestration
@@ -286,9 +288,46 @@ The next step is a manager layer that owns the lifecycle of a whole RTC system.
 ### Current repo anchors
 
 - `pyRTC/Pipeline.py`
-- `examples/sharp_lab/RTC.py`
-- `examples/sharp_lab/RTC_PyWFS.py`
-- `examples/synthetic_shwfs/run_soft_rtc.py`
+- `examples/synthetic_shwfs/config.yaml`
+- `examples/synthetic_shwfs/synthetic_shwfs_soft_rtc_example.py`
+- `examples/synthetic_shwfs/synthetic_shwfs_hard_rtc_example.py`
+- `examples/sharp_lab/config.yaml`
+- `examples/sharp_lab/config_pywfs.yaml`
+- `examples/sharp_lab/sharp_lab_shwfs_soft_rtc_example.py`
+- `examples/sharp_lab/sharp_lab_shwfs_hard_rtc_example.py`
+- `examples/sharp_lab/sharp_lab_pywfs_soft_rtc_example.py`
+- `examples/sharp_lab/sharp_lab_pywfs_hard_rtc_example.py`
+- `tests/test_manager.py`
+
+### Implemented outcome
+
+The manager backend now exists as a first-class orchestration layer inside `pyRTC/Pipeline.py` rather than as a one-off example pattern.
+
+Delivered pieces:
+
+- `RTCManager` with `from_config_file(...)`, `from_config(...)`, `validate()`, `start()`, `stop()`, `status()`, and `get_component()`
+- runtime wrappers for soft-RTC and hard-RTC component launch paths
+- per-component status snapshots and manager-level lifecycle state
+- structured startup failure handling and ordered shutdown
+- explicit top-level mode override at the manager API, including friendly aliases like `mode="soft"` and `mode="hard"`
+- shared config support where one YAML can back both soft and hard modes
+- normalized relative path handling for config file artifacts and hard-RTC component launch files
+- manager-driven synthetic SHWFS examples for both soft and hard modes
+- manager-driven SHARP lab SHWFS and PyWFS examples for both soft and hard modes
+
+The examples now also demonstrate the intended operator-facing distinction between modes:
+
+- soft mode returns live Python objects, so code such as `loop.gain = 0.10` is valid and shown directly
+- hard mode returns control proxies, so reads and writes use `getProperty(...)`, `setProperty(...)`, and `run(...)`
+
+### What this issue does not include
+
+These remain follow-on work, not blockers for closing Issue 03:
+
+- supervision and restart policy behavior beyond basic launch/stop lifecycle handling
+- health checks and degraded-state transitions
+- GUI or config-editor layers
+- broader docs polish beyond the example-path overhaul already landed
 
 ### Goals
 
@@ -358,10 +397,10 @@ At minimum, define states such as:
 
 ### Acceptance criteria
 
-- A manager can launch and stop the synthetic SHWFS system from one config.
-- A manager can represent at least one hard-RTC example using the existing launcher infrastructure.
-- Status reports include per-component state.
-- Startup and shutdown errors are surfaced in structured form.
+- A manager can launch and stop the synthetic SHWFS system from one config. Completed.
+- A manager can represent at least one hard-RTC example using the existing launcher infrastructure. Completed.
+- Status reports include per-component state. Completed.
+- Startup and shutdown errors are surfaced in structured form. Completed.
 
 ### Suggested test cases
 
@@ -375,6 +414,7 @@ At minimum, define states such as:
 - Issue 04
 - Issue 08
 - Issue 09
+- Issue 12
 
 ---
 

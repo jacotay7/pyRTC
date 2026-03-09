@@ -1,9 +1,9 @@
 """Notebook-style SHARP lab SHWFS soft-RTC example.
 
-This is the shortest readable path for starting the lab SHWFS stack in one
-Python process with ``RTCManager``. It assumes the site-specific SDKs, camera
-devices, and calibration files referenced by ``config.yaml`` are already
-available on the machine.
+This script uses the lab YAML directly and makes the runtime choice explicit at
+the manager call site with ``mode="soft"``. In soft mode,
+``manager.get_component(...)`` returns the live Python objects, so direct syntax
+like ``loop.gain = 0.1`` is the point of the example.
 """
 
 # %% Imports
@@ -22,7 +22,6 @@ if str(REPO_ROOT) not in sys.path:
 
 from pyRTC.Pipeline import RTCManager, clear_shms, initExistingShm
 from pyRTC.logging_utils import add_logging_cli_args, configure_logging_from_args, get_logger
-from pyRTC.utils import read_yaml_file
 
 
 logger = get_logger("examples.sharp_lab.shwfs.soft")
@@ -38,25 +37,6 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--no-clear-shms", action="store_true", help="Reuse any existing SHM blocks.")
     add_logging_cli_args(parser)
     return parser
-
-
-# %% Helpers
-def build_manager_config(config: dict) -> dict:
-    configured = dict(config)
-    configured.setdefault("manager", {})
-    configured["manager"].update(
-        {
-            "mode": "soft-rtc",
-            "componentClasses": {
-                "wfs": "pyRTC.hardware.XIMEA_WFS",
-                "slopes": "pyRTC.SlopesProcess.SlopesProcess",
-                "loop": "pyRTC.Loop.Loop",
-                "wfc": "pyRTC.hardware.ALPAODM",
-                "psf": "pyRTC.hardware.spinCam",
-            },
-        }
-    )
-    return configured
 
 
 def format_status_line(start_time: float) -> str:
@@ -85,19 +65,27 @@ def main(argv=None) -> int:
     args = build_arg_parser().parse_args(argv)
     configure_logging_from_args(args, app_name="pyrtc-sharp-lab", component_name="sharp_lab_shwfs_soft")
 
-    config = build_manager_config(read_yaml_file(str(CONFIG_PATH)))
-    manager = RTCManager.from_config(config)
+    manager = RTCManager.from_config_file(CONFIG_PATH, mode="soft")
 
     if not args.no_clear_shms:
         clear_shms(DEFAULT_STREAMS)
 
     logger.info("SHARP lab SHWFS soft-RTC tutorial")
     logger.info("Config: %s", CONFIG_PATH)
+    logger.info("Manager call: RTCManager.from_config_file(CONFIG_PATH, mode='soft')")
     logger.info("Viewer: pyrtc-view wfs signal2D psfShort psfLong --geometry 2x2")
 
     manager.start()
     try:
-        manager.get_component("wfc").flatten()
+        loop = manager.get_component("loop")
+        wfc = manager.get_component("wfc")
+
+        logger.info("Soft mode returns live objects: loop=%s wfc=%s", type(loop).__name__, type(wfc).__name__)
+        logger.info("Direct update example: loop.gain = 0.10")
+        loop.gain = 0.10
+        logger.info("Loop gain is now %0.2f", loop.gain)
+
+        wfc.flatten()
 
         start_time = time.perf_counter()
         next_status = start_time

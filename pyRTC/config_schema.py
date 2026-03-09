@@ -36,6 +36,30 @@ ALLOWED_MANAGER_MODES = {"soft-rtc", "hard-rtc"}
 ALLOWED_RESTART_POLICIES = {"never", "on-failure", "always"}
 
 
+def _is_relative_path_string(value: Any) -> bool:
+    if not isinstance(value, str) or not value.strip():
+        return False
+    if "://" in value:
+        return False
+    return not Path(value).is_absolute()
+
+
+def _resolve_relative_path_fields(value: Any, *, base_dir: Path, parent_key: str | None = None) -> Any:
+    if isinstance(value, Mapping):
+        resolved = {}
+        for key, item in value.items():
+            is_path_field = isinstance(key, str) and key.endswith(("File", "Dir", "Path"))
+            is_component_file_entry = parent_key == "componentFiles"
+            if (is_path_field or is_component_file_entry) and _is_relative_path_string(item):
+                resolved[key] = str((base_dir / item).resolve())
+            else:
+                resolved[key] = _resolve_relative_path_fields(item, base_dir=base_dir, parent_key=str(key))
+        return resolved
+    if isinstance(value, list):
+        return [_resolve_relative_path_fields(item, base_dir=base_dir, parent_key=parent_key) for item in value]
+    return value
+
+
 def _is_valid_manager_section(section_name: str, system_conf: Mapping[str, Any]) -> bool:
     if get_component_descriptor(section_name) is not None:
         return True
@@ -150,7 +174,7 @@ def _validate_slopes_config(conf: Any) -> None:
         for key in ("subApSpacing", "subApOffsetX", "subApOffsetY"):
             if key not in conf:
                 raise ConfigValidationError(f"{component}: '{key}' is required for SHWFS")
-        _coerce_int(conf["subApSpacing"], component, "subApSpacing", minimum=1)
+        _validate_optional_numeric(conf, "subApSpacing", component, minimum=1.0)
         _coerce_int(conf["subApOffsetX"], component, "subApOffsetX", minimum=0)
         _coerce_int(conf["subApOffsetY"], component, "subApOffsetY", minimum=0)
 
@@ -318,7 +342,11 @@ def _validate_cross_component_consistency(conf: Mapping[str, Any]) -> None:
     slopes_type = str(slopes_conf["type"]).lower()
     if slopes_type == "shwfs":
         image_width, image_height = _processed_wfs_shape(wfs_conf)
-        subap_spacing = _coerce_int(slopes_conf["subApSpacing"], "slopes", "subApSpacing", minimum=1)
+        subap_spacing = float(slopes_conf["subApSpacing"])
+        if subap_spacing < 1:
+            raise ConfigValidationError(
+                f"slopes: 'subApSpacing' must be >= 1, got {subap_spacing}"
+            )
         num_regions = min(image_width, image_height) // subap_spacing
         if num_regions < 1:
             raise ConfigValidationError(
@@ -401,6 +429,8 @@ def validate_system_config(conf: Any, *, config_path: str | Path | None = None) 
     _validate_cross_component_consistency(normalized)
 
     if config_path is not None:
+        config_path = Path(config_path).resolve()
+        normalized = _resolve_relative_path_fields(normalized, base_dir=config_path.parent)
         normalized.setdefault("metadata", {})
         normalized["metadata"].setdefault("configPath", str(config_path))
 

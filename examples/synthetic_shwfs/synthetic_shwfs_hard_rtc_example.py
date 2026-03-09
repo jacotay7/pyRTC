@@ -1,19 +1,20 @@
 """Notebook-style synthetic SHWFS hard-RTC example.
 
 This is the hard-RTC companion to ``synthetic_shwfs_soft_rtc_example.py``.
-It uses the same YAML config and the same identity interaction matrix, but the
-manager launches each component in its own child process.
+It uses the same YAML file, but switches behavior at the manager call with
+``RTCManager.from_config_file(..., mode="hard")``. In hard mode,
+``manager.get_component(...)`` returns a control proxy, so parameters are read
+and written with ``getProperty`` and ``setProperty`` and methods are called via
+``run``.
 """
 
 # %% Imports
 import argparse
 import sys
-import tempfile
 import time
 from pathlib import Path
 
 import numpy as np
-import yaml
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -23,13 +24,10 @@ if str(REPO_ROOT) not in sys.path:
 
 from pyRTC.Pipeline import RTCManager, clear_shms, initExistingShm
 from pyRTC.logging_utils import add_logging_cli_args, configure_logging_from_args, get_logger
-from pyRTC.utils import read_yaml_file
 
 
 logger = get_logger("examples.synthetic_shwfs.hard")
 CONFIG_PATH = REPO_ROOT / "examples" / "synthetic_shwfs" / "config.yaml"
-IDENTITY_IM_PATH = Path(tempfile.gettempdir()) / "pyrtc_synthetic_identity_im.npy"
-RUNTIME_CONFIG_PATH = Path(tempfile.gettempdir()) / "pyrtc_synthetic_hard_rtc_runtime.yaml"
 DEFAULT_STREAMS = [
     "wfs",
     "wfsRaw",
@@ -55,12 +53,6 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="Seconds between operator-friendly status lines.",
     )
     parser.add_argument(
-        "--base-port",
-        type=int,
-        default=5701,
-        help="Starting TCP port for the launched child processes.",
-    )
-    parser.add_argument(
         "--no-clear-shms",
         action="store_true",
         help="Leave existing pyRTC shared-memory streams in place.",
@@ -70,9 +62,10 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 
 # %% Tutorial helpers
-def write_identity_interaction_matrix(config: dict, output_path: Path) -> Path:
+def ensure_identity_interaction_matrix(config: dict) -> Path:
     wfs_conf = config["wfs"]
     slopes_conf = config["slopes"]
+    output_path = Path(config["loop"]["IMFile"])
     num_modes = int(config["wfc"]["numModes"])
 
     image_width = int(wfs_conf["width"])
@@ -88,46 +81,6 @@ def write_identity_interaction_matrix(config: dict, output_path: Path) -> Path:
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     np.save(output_path, np.eye(signal_size, num_modes, dtype=np.float32))
-    return output_path
-
-
-def build_manager_config(config: dict, base_port: int) -> dict:
-    configured = dict(config)
-    configured.setdefault("manager", {})
-    configured["manager"].update(
-        {
-            "mode": "hard-rtc",
-            "componentClasses": {
-                "wfs": "pyRTC.hardware.SyntheticSHWFS",
-                "slopes": "pyRTC.SlopesProcess.SlopesProcess",
-                "loop": "pyRTC.Loop.Loop",
-                "wfc": "pyRTC.hardware.SyntheticWFC",
-                "psf": "pyRTC.hardware.SyntheticScienceCamera",
-            },
-            "componentFiles": {
-                "wfs": str(REPO_ROOT / "pyRTC" / "hardware" / "SyntheticSHWFS.py"),
-                "slopes": str(REPO_ROOT / "pyRTC" / "SlopesProcess.py"),
-                "loop": str(REPO_ROOT / "pyRTC" / "Loop.py"),
-                "wfc": str(REPO_ROOT / "pyRTC" / "hardware" / "SyntheticWFC.py"),
-                "psf": str(REPO_ROOT / "pyRTC" / "hardware" / "SyntheticScienceCamera.py"),
-            },
-            "ports": {
-                "wfs": base_port,
-                "slopes": base_port + 1,
-                "loop": base_port + 2,
-                "wfc": base_port + 3,
-                "psf": base_port + 4,
-            },
-        }
-    )
-    return configured
-
-
-def write_runtime_config(config: dict, output_path: Path) -> Path:
-    runtime_config = {key: value for key, value in config.items() if key != "manager"}
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    with output_path.open("w", encoding="utf-8") as handle:
-        yaml.safe_dump(runtime_config, handle, sort_keys=False)
     return output_path
 
 
@@ -160,31 +113,39 @@ def main(argv=None) -> int:
     args = build_arg_parser().parse_args(argv)
     configure_logging_from_args(args, app_name="pyrtc-synthetic-shwfs", component_name="synthetic_hard_example")
 
-    # Step 1: load the base config and generate a tiny IM file that the loop can load remotely.
-    config = read_yaml_file(str(CONFIG_PATH))
-    config["loop"]["IMFile"] = str(write_identity_interaction_matrix(config, IDENTITY_IM_PATH))
+    # Step 1: use the same config file as soft mode and switch behavior here.
+    manager = RTCManager.from_config_file(CONFIG_PATH, mode="hard")
+    config = manager.config
 
-    # Step 2: inject the hard-RTC manager metadata.
-    config = build_manager_config(config, base_port=args.base_port)
-    runtime_config_path = write_runtime_config(config, RUNTIME_CONFIG_PATH)
-    manager = RTCManager.from_config(config, config_path=str(runtime_config_path))
+    # Step 2: generate the tiny IM file referenced by that same config.
+    im_path = ensure_identity_interaction_matrix(config)
 
     # Step 3: clear old SHMs so the child processes start from a clean state.
     if not args.no_clear_shms:
         clear_shms(DEFAULT_STREAMS)
 
     logger.info("Synthetic SHWFS hard-RTC tutorial")
-    logger.info("Config: %s", runtime_config_path)
-    logger.info("Interaction matrix: %s", config["loop"]["IMFile"])
-    logger.info("Base port: %s", args.base_port)
+    logger.info("Config: %s", CONFIG_PATH)
+    logger.info("Manager call: RTCManager.from_config_file(CONFIG_PATH, mode='hard')")
+    logger.info("Interaction matrix: %s", im_path)
     logger.info("Viewer: pyrtc-view wfs signal2D psfShort psfLong --geometry 2x2")
 
     # Step 4: start the full stack in child processes.
     manager.start()
 
     try:
-        # Step 5: flatten the mirror once the child processes are live.
-        manager.get_component("wfc").run("flatten")
+        # Step 5: in hard mode these are proxy objects that control child processes.
+        loop = manager.get_component("loop")
+        wfc = manager.get_component("wfc")
+
+        starting_gain = loop.getProperty("gain")
+        logger.info("Hard mode proxy read: loop.getProperty('gain') -> %s", starting_gain)
+        logger.info("Hard mode proxy write: loop.setProperty('gain', 0.10)")
+        loop.setProperty("gain", 0.10)
+        logger.info("Remote loop gain is now %s", loop.getProperty("gain"))
+
+        # Methods are invoked remotely with run(...).
+        wfc.run("flatten")
 
         start_time = time.perf_counter()
         next_status = start_time

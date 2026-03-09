@@ -341,6 +341,16 @@ class Loop(pyRTCComponent):
 
         return
 
+    @property
+    def gain(self):
+        return getattr(self, "_gain", 0.0)
+
+    @gain.setter
+    def gain(self, gain):
+        self._gain = float(gain)
+        if hasattr(self, "CM"):
+            self.gCM = self._gain * self.CM
+
     def setGain(self, gain):
         """
         Set the integrator gain. Only needed for certain integrators.
@@ -353,7 +363,6 @@ class Loop(pyRTCComponent):
         component_logger = getattr(self, "logger", logger)
         try:
             self.gain = gain
-            self.gCM = self.gain * self.CM
             component_logger.info("Set loop gain to %s", gain)
         except Exception:
             component_logger.exception("Failed to set loop gain to %s", gain)

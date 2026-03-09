@@ -1,9 +1,12 @@
 import copy
 from pathlib import Path
 
+import numpy as np
 import pytest
+import yaml
 
 from pyRTC.Pipeline import RTCManager, clear_shms
+from pyRTC.config_schema import read_system_config
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -22,9 +25,20 @@ DEFAULT_STREAMS = [
 ]
 
 
-def test_manager_launches_soft_synthetic_system():
+def _write_runtime_synthetic_config(tmp_path: Path) -> Path:
+    config = read_system_config(SYNTHETIC_CONFIG_PATH, validate=False)
+    im_path = tmp_path / "synthetic_identity_im.npy"
+    np.save(im_path, np.eye(32, dtype=np.float32))
+    config["loop"]["IMFile"] = str(im_path)
+
+    config_path = tmp_path / "synthetic_runtime_config.yaml"
+    config_path.write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
+    return config_path
+
+
+def test_manager_launches_soft_synthetic_system(tmp_path):
     clear_shms(DEFAULT_STREAMS)
-    manager = RTCManager.from_config_file(SYNTHETIC_CONFIG_PATH)
+    manager = RTCManager.from_config_file(_write_runtime_synthetic_config(tmp_path))
 
     try:
         manager.start()
@@ -39,17 +53,59 @@ def test_manager_launches_soft_synthetic_system():
 
 
 def test_manager_stop_is_idempotent_for_soft_system():
-    clear_shms(DEFAULT_STREAMS)
-    manager = RTCManager.from_config_file(SYNTHETIC_CONFIG_PATH)
+    class FakeRuntime:
+        def __init__(self):
+            self.calls = 0
 
-    try:
-        manager.start()
-    finally:
-        manager.stop()
-        manager.stop()
-        clear_shms(DEFAULT_STREAMS)
+        def stop(self):
+            self.calls += 1
+
+        def status(self):
+            return {"state": "stopped", "mode": "soft-rtc"}
+
+    manager = RTCManager.from_config_file(SYNTHETIC_CONFIG_PATH)
+    runtime = FakeRuntime()
+    manager.runtimes = {"wfs": runtime}
+    manager.state = "running"
+
+    manager.stop()
+    manager.stop()
 
     assert manager.status()["state"] == "stopped"
+    assert runtime.calls == 2
+
+
+def test_manager_mode_override_uses_hard_runtime_with_short_alias(monkeypatch):
+    calls = []
+
+    class FakeLauncher:
+        def __init__(self, hardwareFile, configFile, port, timeout=None):
+            self.hardwareFile = hardwareFile
+            self.configFile = configFile
+            self.port = port
+            self.timeout = timeout
+
+        def launch(self):
+            calls.append(("launch", self.hardwareFile, self.port))
+
+        def run(self, function, *args, timeout=None):
+            calls.append(("run", function, self.port))
+            return 1
+
+        def shutdown(self):
+            calls.append(("shutdown", self.hardwareFile, self.port))
+            return 1
+
+    manager = RTCManager.from_config_file(SYNTHETIC_CONFIG_PATH, mode="hard", launcher_cls=FakeLauncher)
+
+    manager.start()
+    status = manager.status()
+    manager.stop()
+
+    assert status["mode"] == "hard-rtc"
+    assert status["components"]["loop"]["mode"] == "hard-rtc"
+    assert any(entry[:2] == ("run", "start") for entry in calls)
+    assert any(entry[0] == "shutdown" for entry in calls)
 
 
 def test_manager_uses_hard_runtime_with_launcher_integration(monkeypatch):
