@@ -20,6 +20,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 
+from pyRTC import Telemetry
 from pyRTC.Pipeline import RTCManager, clear_shms, initExistingShm
 from pyRTC.logging_utils import add_logging_cli_args, configure_logging_from_args, get_logger
 
@@ -145,6 +146,17 @@ def main(argv=None) -> int:
 
         # Methods are also called directly in soft mode.
         wfc.flatten()
+
+        # Telemetry is an ordinary helper object: capture one or more streams,
+        # then reopen the most recent save as NumPy arrays plus timestamps.
+        telem = Telemetry({"dataDir": str(REPO_ROOT / "examples" / "synthetic_shwfs" / "telemetry")})
+        telem.save(["wfs", "wfc"], 10)
+        telemetry_data = telem.read_last_save()
+        logger.info(
+            "Telemetry example: wfs=%s wfc=%s",
+            telemetry_data["wfs"]["frames"].shape,
+            telemetry_data["wfc"]["frames"].shape,
+        )
 
         start_time = time.perf_counter()
         next_status = start_time
