@@ -19,8 +19,9 @@ Files
 
 The example assets live under `examples/synthetic_shwfs/`:
 
-- `config.yaml`: runnable soft-RTC configuration
-- `run_soft_rtc.py`: demo launcher that builds the control chain, applies an identity interaction matrix, and prints live status
+- `config.yaml`: single runnable config used by both soft and hard modes
+- `synthetic_shwfs_soft_rtc_example.py`: manager-driven soft-RTC tutorial script with direct object access
+- `synthetic_shwfs_hard_rtc_example.py`: manager-driven hard-RTC tutorial script with proxy-style access
 
 The synthetic hardware implementations live in `pyRTC/hardware/SyntheticSystems.py`.
 
@@ -44,9 +45,36 @@ From the repository root:
 
 .. code-block:: bash
 
-	python examples/synthetic_shwfs/run_soft_rtc.py --duration 15
+	python examples/synthetic_shwfs/synthetic_shwfs_soft_rtc_example.py --duration 15
+	python examples/synthetic_shwfs/synthetic_shwfs_hard_rtc_example.py --duration 15
 
-The launcher clears the standard pyRTC streams by default, starts all configured worker threads, and prints one status line per second. A typical line looks like:
+Both launchers read the same YAML file, generate the tiny interaction matrix referenced by that config, clear the standard pyRTC streams by default, and start the full chain through `RTCManager`.
+
+The mode switch is intentionally obvious in the code:
+
+.. code-block:: python
+
+	soft_manager = RTCManager.from_config_file(CONFIG_PATH, mode="soft")
+	hard_manager = RTCManager.from_config_file(CONFIG_PATH, mode="hard")
+
+The soft example then demonstrates direct object syntax:
+
+.. code-block:: python
+
+	loop = soft_manager.get_component("loop")
+	loop.gain = 0.10
+
+The hard example demonstrates remote proxy syntax:
+
+.. code-block:: python
+
+	loop = hard_manager.get_component("loop")
+	current_gain = loop.getProperty("gain")
+	loop.setProperty("gain", 0.10)
+	wfc = hard_manager.get_component("wfc")
+	wfc.run("flatten")
+
+Both scripts print one status line per second. A typical line looks like:
 
 .. code-block:: text
 
@@ -109,6 +137,7 @@ The synthetic config deliberately uses the same top-level sections you will keep
 
 	loop:
 	  gain: 0.35
+	  IMFile: synthetic_identity_im.npy
 	  functions:
 	    - standardIntegrator
 
@@ -120,6 +149,13 @@ The synthetic config deliberately uses the same top-level sections you will keep
 	  functions:
 	    - expose
 	    - integrate
+
+	manager:
+	  mode: soft-rtc
+	  componentFiles:
+	    wfs: ../../pyRTC/hardware/SyntheticSHWFS.py
+	    wfc: ../../pyRTC/hardware/SyntheticWFC.py
+	    psf: ../../pyRTC/hardware/SyntheticScienceCamera.py
 
 The transition from synthetic hardware to real hardware should mostly leave `slopes`, `loop`, and high-level wiring alone. In a typical integration, the first file you replace is the `wfs` section and the subclass behind it.
 

@@ -157,3 +157,18 @@ optimizer:
 #   servosOn: True
 #   autoZero: True
 
+manager:
+  mode: soft-rtc
+  componentClasses:
+    wfs: pyRTC.hardware.XIMEA_WFS
+    slopes: pyRTC.SlopesProcess.SlopesProcess
+    loop: pyRTC.Loop.Loop
+    wfc: pyRTC.hardware.ALPAODM
+    psf: pyRTC.hardware.spinCam
+  componentFiles:
+    wfs: ../../pyRTC/hardware/ximeaWFS.py
+    slopes: ../../pyRTC/SlopesProcess.py
+    loop: ../../pyRTC/Loop.py
+    wfc: ../../pyRTC/hardware/ALPAODM.py
+    psf: ../../pyRTC/hardware/SpinnakerScienceCam.py
+

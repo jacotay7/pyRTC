@@ -1,292 +1,194 @@
-import argparse
-import time
-from multiprocessing import shared_memory
-from pathlib import Path
+"""Compatibility wrapper for the legacy synthetic SHWFS soft-RTC example.
+
+The tutorial-facing examples were renamed to make the soft/hard manager flows
+clearer, but the test suite still imports the original helper module name.
+This file keeps that import surface stable while delegating to the current
+synthetic component stack.
+"""
+
 import sys
+import time
+import importlib.util
+from pathlib import Path
 
 import numpy as np
 
-from pyRTC.logging_utils import add_logging_cli_args, configure_logging_from_args, get_logger
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from pyRTC.SlopesProcess import SlopesProcess
-from pyRTC.WavefrontCorrector import WavefrontCorrector
+
 from pyRTC.Loop import Loop
-from pyRTC.Pipeline import ImageSHM
-from pyRTC.hardware.SyntheticSystems import SyntheticSHWFS, SyntheticScienceCamera
-from pyRTC.utils import float_to_dtype, read_yaml_file
+from pyRTC.Pipeline import clear_shms, initExistingShm
+from pyRTC.SlopesProcess import SlopesProcess
+from pyRTC.config_schema import read_system_config
+from pyRTC.hardware.SyntheticSystems import SyntheticSHWFS, SyntheticScienceCamera, SyntheticWFC
 
 
-logger = get_logger("examples.synthetic_shwfs")
-
-
-DEFAULT_STREAMS = [
-    "wfs",
+DEFAULT_STREAMS = (
     "wfsRaw",
-    "wfc",
-    "wfc2D",
+    "wfs",
     "signal",
     "signal2D",
+    "wfc",
+    "wfc2D",
     "psfShort",
     "psfLong",
     "strehl",
     "tiptilt",
-]
+)
+
+_SOFT_EXAMPLE_PATH = Path(__file__).with_name("synthetic_shwfs_soft_rtc_example.py")
+
+
+def read_yaml_file(file_path):
+    return read_system_config(file_path)
+
+
+def expected_stream_specs(config: dict) -> dict:
+    wfs_shape = (int(config["wfs"]["width"]), int(config["wfs"]["height"]))
+    psf_shape = (int(config["psf"]["width"]), int(config["psf"]["height"]))
+    num_modes = int(config["wfc"]["numModes"])
+    signal2d_shape = _signal_2d_shape(config)
+    wfc2d_shape = _wfc_2d_shape(config)
+
+    return {
+        "wfsRaw": {"shape": wfs_shape, "dtype": np.uint16},
+        "wfs": {"shape": wfs_shape, "dtype": np.int32},
+        "signal": {"shape": (num_modes,), "dtype": np.float32},
+        "signal2D": {"shape": signal2d_shape, "dtype": np.float32},
+        "wfc": {"shape": (num_modes,), "dtype": np.float32},
+        "wfc2D": {"shape": wfc2d_shape, "dtype": np.float32},
+        "psfShort": {"shape": psf_shape, "dtype": np.int32},
+        "psfLong": {"shape": psf_shape, "dtype": np.float64},
+        "strehl": {"shape": (1,), "dtype": np.float64},
+        "tiptilt": {"shape": (1,), "dtype": np.float64},
+    }
+
+
+def _existing_shm_spec(name: str):
+    try:
+        _, shape, dtype = initExistingShm(name)
+    except Exception:
+        return None
+    return tuple(shape), np.dtype(dtype)
 
 
 def clear_named_shms(names):
-    for name in names:
-        for suffix in ("", "_meta", "_gpu_handle"):
-            try:
-                shm = shared_memory.SharedMemory(name=name + suffix)
-            except FileNotFoundError:
-                continue
-            except Exception:
-                continue
-            try:
-                shm.unlink()
-            except FileNotFoundError:
-                pass
-            finally:
-                shm.close()
+    clear_shms(list(names))
 
 
-def _existing_shm_spec(name):
-    try:
-        meta_shm = shared_memory.SharedMemory(name=name + "_meta")
-    except FileNotFoundError:
-        return None
-    except Exception:
-        return None
-
-    try:
-        metadata = np.ndarray((ImageSHM.METADATA_SIZE,), dtype=np.float64, buffer=meta_shm.buf).copy()
-    finally:
-        meta_shm.close()
-
-    shape = []
-    index = 0
-    while 4 + index < metadata.size and int(metadata[4 + index]) > 0:
-        shape.append(int(metadata[4 + index]))
-        index += 1
-    return tuple(shape), np.dtype(float_to_dtype(metadata[3]))
-
-
-def expected_stream_specs(config):
-    wfs_width = int(config["wfs"]["width"])
-    wfs_height = int(config["wfs"]["height"])
-    downsample = int(config["wfs"].get("downsampleFactor", 0))
-    image_shape = [wfs_width, wfs_height]
-    if downsample > 0:
-        image_shape[0] //= downsample
-        image_shape[1] //= downsample
-
-    subap_spacing = int(config["slopes"]["subApSpacing"])
-    num_regions = image_shape[0] // int(round(subap_spacing, 0))
-    signal2d_shape = (2 * num_regions, num_regions)
-    signal_shape = (int(np.prod(signal2d_shape)),)
-
-    specs = {
-        "wfsRaw": {"shape": (wfs_width, wfs_height), "dtype": np.dtype(np.uint16)},
-        "wfs": {"shape": tuple(image_shape), "dtype": np.dtype(np.int32)},
-        "signal": {"shape": signal_shape, "dtype": np.dtype(np.float32)},
-        "signal2D": {"shape": signal2d_shape, "dtype": np.dtype(np.float32)},
-        "wfc": {"shape": (int(config["wfc"]["numModes"]),), "dtype": np.dtype(np.float32)},
-        "wfc2D": {"shape": signal2d_shape, "dtype": np.dtype(np.float32)},
-    }
-
-    if "psf" in config:
-        psf_shape = (int(config["psf"]["width"]), int(config["psf"]["height"]))
-        specs.update(
-            {
-                "psfShort": {"shape": psf_shape, "dtype": np.dtype(np.int32)},
-                "psfLong": {"shape": psf_shape, "dtype": np.dtype(np.float64)},
-                "strehl": {"shape": (1,), "dtype": np.dtype(float)},
-                "tiptilt": {"shape": (1,), "dtype": np.dtype(float)},
-            }
-        )
-
-    return specs
-
-
-def ensure_expected_shms(config, force_rebuild=False):
+def ensure_expected_shms(config: dict, force_rebuild: bool = False):
     specs = expected_stream_specs(config)
-    if force_rebuild:
-        clear_named_shms(list(specs))
-        return list(specs), []
-
     rebuilt = []
     reused = []
+
     for name, spec in specs.items():
-        existing = _existing_shm_spec(name)
-        if existing is None:
-            rebuilt.append(name)
+        current = None if force_rebuild else _existing_shm_spec(name)
+        expected = (tuple(spec["shape"]), np.dtype(spec["dtype"]))
+        if current is None:
+            if force_rebuild:
+                rebuilt.append(name)
             continue
-        if existing[0] != spec["shape"] or np.dtype(existing[1]) != np.dtype(spec["dtype"]):
+        if current != expected:
+            clear_named_shms([name])
             rebuilt.append(name)
         else:
             reused.append(name)
 
-    if rebuilt:
-        clear_named_shms(rebuilt)
+    if force_rebuild:
+        clear_named_shms(specs.keys())
+        rebuilt = list(specs)
+        reused = []
+
     return rebuilt, reused
 
 
-def build_system(config):
-    wfc = WavefrontCorrector(config["wfc"])
+def build_system(config: dict) -> dict:
+    ensure_identity_interaction_matrix(config)
+
     wfs = SyntheticSHWFS(config["wfs"])
     slopes = SlopesProcess(config["slopes"])
+    wfc = SyntheticWFC(config["wfc"])
+    wfc.setLayout(np.ones(_wfc_2d_shape(config), dtype=bool))
     loop = Loop(config["loop"])
-    psf = SyntheticScienceCamera(config["psf"]) if "psf" in config else None
-
-    control_matrix = np.eye(loop.signalSize, loop.numModes, dtype=loop.signalDType)
-    loop.IM = control_matrix
-    loop.computeCM()
-    loop.setGain(loop.gain)
-
-    if hasattr(slopes, "signal2DShape"):
-        wfc.setLayout(np.ones(slopes.signal2DShape, dtype=bool))
+    psf = SyntheticScienceCamera(config["psf"])
 
     return {
-        "wfc": wfc,
         "wfs": wfs,
         "slopes": slopes,
+        "wfc": wfc,
         "loop": loop,
         "psf": psf,
     }
 
 
-def start_system(system):
-    for component_name in ("wfc", "wfs", "slopes", "loop", "psf"):
-        component = system.get(component_name)
-        if component is not None:
-            component.start()
+def start_system(system: dict) -> None:
+    system["wfc"].start()
+    system["wfc"].flatten()
+    system["wfs"].start()
+    system["slopes"].start()
+    system["psf"].start()
+    system["loop"].start()
 
 
-def stop_system(system):
-    for component in system.values():
-        if component is not None:
-            component.stop()
-
-
-def status_line(system, elapsed_seconds, delta_seconds, previous_wfs_frames, previous_psf_frames):
-    wfs = system["wfs"]
-    psf = system.get("psf")
-    slopes = system["slopes"]
-    loop = system["loop"]
-
-    wfs_rate = 0.0 if delta_seconds <= 0 else (wfs.frameCounter - previous_wfs_frames) / delta_seconds
-    psf_rate = 0.0
-    if psf is not None and delta_seconds > 0:
-        psf_rate = (psf.frameCounter - previous_psf_frames) / delta_seconds
-
-    residual = slopes.read(block=False)
-    correction = loop.wfcShm.read_noblock(SAFE=False)
-    residual_rms = float(np.sqrt(np.mean(residual**2))) if residual.size > 0 else 0.0
-    correction_rms = float(np.sqrt(np.mean(correction**2))) if correction.size > 0 else 0.0
-    strehl = psf.strehl_ratio if psf is not None else float("nan")
-
-    return (
-        f"t={elapsed_seconds:5.1f}s "
-        f"wfs={wfs_rate:6.1f} Hz "
-        f"psf={psf_rate:6.1f} Hz "
-        f"residual_rms={residual_rms:0.4f} "
-        f"correction_rms={correction_rms:0.4f} "
-        f"strehl={strehl:0.3f}"
-    )
-
-
-def _build_arg_parser():
-    parser = argparse.ArgumentParser(description="Run the synthetic SHWFS soft-RTC onboarding demo.")
-    parser.add_argument(
-        "-c",
-        "--config",
-        default="examples/synthetic_shwfs/config.yaml",
-        help="Path to the synthetic example YAML config.",
-    )
-    parser.add_argument(
-        "--duration",
-        type=float,
-        default=15.0,
-        help="How long to run the demo in seconds. Use 0 to run until Ctrl-C.",
-    )
-    parser.add_argument(
-        "--status-interval",
-        type=float,
-        default=1.0,
-        help="Seconds between status updates.",
-    )
-    parser.add_argument(
-        "--no-clear-shms",
-        action="store_true",
-        help="Skip compatibility checks and leave existing pyRTC shared-memory streams untouched.",
-    )
-    add_logging_cli_args(parser)
-    return parser
-
-
-def main(argv=None):
-    args = _build_arg_parser().parse_args(argv)
-    configure_logging_from_args(args, app_name="pyrtc-synthetic-shwfs", component_name="soft_rtc")
-    config = read_yaml_file(args.config)
-    if args.no_clear_shms:
-        rebuilt = []
-        reused = []
-    else:
-        rebuilt, reused = ensure_expected_shms(config)
-    system = build_system(config)
-
-    logger.info("Synthetic SHWFS soft-RTC demo")
-    logger.info("Config: %s", args.config)
-    if args.no_clear_shms:
-        logger.info("Skipping SHM compatibility checks")
-    elif rebuilt:
-        logger.info("Rebuilt SHMs: %s", ", ".join(rebuilt))
-    else:
-        logger.info("Reusing existing compatible SHMs")
-    if reused:
-        logger.info("Reused SHMs: %s", ", ".join(reused))
-    logger.info("Viewer commands:")
-    logger.info("  pyrtc-view wfs signal2D wfc2D psfShort psfLong --geometry 2x3")
-    if system.get("psf") is not None:
-        logger.info("  pyrtc-view psfShort psfLong --geometry row")
-
-    start_system(system)
-    start_time = time.perf_counter()
-    last_status_time = start_time
-    last_wfs_frames = 0
-    last_psf_frames = 0
+def stop_system(system: dict) -> None:
+    try:
+        system["loop"].stop()
+    except Exception:
+        pass
 
     try:
-        while True:
-            time.sleep(min(max(args.status_interval, 0.1), 1.0))
-            now = time.perf_counter()
-            elapsed_seconds = now - start_time
-            if now - last_status_time >= args.status_interval:
-                logger.info(
-                    status_line(
-                        system,
-                        elapsed_seconds,
-                        now - last_status_time,
-                        last_wfs_frames,
-                        last_psf_frames,
-                    )
-                )
-                last_status_time = now
-                last_wfs_frames = system["wfs"].frameCounter
-                if system.get("psf") is not None:
-                    last_psf_frames = system["psf"].frameCounter
-            if args.duration > 0 and elapsed_seconds >= args.duration:
-                break
-    except KeyboardInterrupt:
-        logger.info("Stopping synthetic demo")
-    finally:
-        stop_system(system)
+        system["wfc"].flatten()
+    except Exception:
+        pass
 
-    return 0
+    for name in ("psf", "slopes", "wfs", "wfc"):
+        try:
+            system[name].stop()
+        except Exception:
+            pass
+
+
+def ensure_identity_interaction_matrix(config: dict) -> Path:
+    output_path = Path(config["loop"]["IMFile"])
+    signal_size = int(np.prod(_signal_2d_shape(config)))
+    num_modes = int(config["wfc"]["numModes"])
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    np.save(output_path, np.eye(signal_size, num_modes, dtype=np.float32))
+    return output_path
+
+
+def _signal_2d_shape(config: dict) -> tuple[int, int]:
+    spacing = int(round(float(config["slopes"]["subApSpacing"])))
+    width = int(config["wfs"]["width"])
+    height = int(config["wfs"]["height"])
+    num_regions = min(width, height) // spacing
+    return (2 * num_regions, num_regions)
+
+
+def _wfc_2d_shape(config: dict) -> tuple[int, int]:
+    num_modes = int(config["wfc"]["numModes"])
+    rows = int(round(np.sqrt(float(num_modes * 2))))
+    while rows > 1 and num_modes % rows != 0:
+        rows -= 1
+    cols = num_modes // rows
+    return (rows, cols)
+
+
+def _load_soft_example_module():
+    spec = importlib.util.spec_from_file_location("synthetic_shwfs_soft_rtc_example", _SOFT_EXAMPLE_PATH)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"Unable to load soft example from {_SOFT_EXAMPLE_PATH}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def main(argv=None) -> int:
+    module = _load_soft_example_module()
+    return int(module.main(argv))
 
 
 if __name__ == "__main__":

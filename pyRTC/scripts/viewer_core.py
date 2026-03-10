@@ -169,6 +169,53 @@ class AddPlotPlaceholder(QFrame):
         )
 
 
+class UnavailableStreamPlaceholder(QFrame):
+    """Placeholder shown when a requested SHM stream cannot be opened."""
+
+    def __init__(self, shm_name: str, retry_callback):
+        _require_viewer_backend()
+        super().__init__()
+        self.shm_name = shm_name
+        self.retry_callback = retry_callback
+        self.theme = THEMES["dark"]
+        self._build_ui()
+        self.apply_theme(self.theme)
+
+    def _build_ui(self):
+        self.setFrameShape(QFrame.StyledPanel)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(10)
+        layout.addStretch(1)
+
+        self.title_label = QLabel(self.shm_name)
+        self.title_label.setAlignment(Qt.AlignCenter)
+        layout.addWidget(self.title_label)
+
+        self.status_label = QLabel("Stream unavailable")
+        self.status_label.setAlignment(Qt.AlignCenter)
+        layout.addWidget(self.status_label)
+
+        self.retry_button = QPushButton("Reconnect")
+        self.retry_button.setMinimumHeight(44)
+        self.retry_button.clicked.connect(self.retry_callback)
+        layout.addWidget(self.retry_button)
+        layout.addStretch(1)
+
+    def apply_theme(self, theme: ViewerTheme):
+        self.theme = theme
+        self.setStyleSheet(
+            f"QFrame {{ background: {theme.panel_bg}; border: 1px dashed {theme.panel_border}; border-radius: 12px; }}"
+            f"QLabel {{ border: 0; color: {theme.subtext}; background: transparent; font-size: 13px; }}"
+            f"QPushButton {{ background: {theme.button_bg}; color: {theme.button_fg}; border: 1px solid {theme.panel_border}; "
+            f"border-radius: 10px; font-size: 14px; font-weight: 600; padding: 8px 12px; }}"
+            f"QPushButton:hover {{ border-color: {theme.accent}; }}"
+        )
+        self.title_label.setStyleSheet(f"font-weight: 700; font-size: 14px; color: {theme.text};")
+        self.status_label.setStyleSheet(f"font-size: 13px; color: {theme.subtext};")
+
+
 class EdgeArrowButton(QToolButton):
     """Small edge-mounted button used to grow the mosaic layout."""
 
@@ -565,6 +612,10 @@ class MosaicViewerWindow(QMainWindow):
         toolbar_layout.addWidget(self.summary_label)
         toolbar_layout.addStretch(1)
 
+        self.reset_button = QPushButton("Reset SHMs")
+        self.reset_button.clicked.connect(self.reset_streams)
+        toolbar_layout.addWidget(self.reset_button)
+
         self.settings_button = QToolButton()
         self.settings_button.setText("Settings")
         self.settings_button.setPopupMode(QToolButton.InstantPopup)
@@ -718,6 +769,16 @@ class MosaicViewerWindow(QMainWindow):
 
         self.settings_menu.addSeparator()
 
+        self.reset_action = QAction("Reset SHMs", self)
+        self.reset_action.setShortcut(QKeySequence("F5"))
+        self.reset_action.triggered.connect(self.reset_streams)
+        self.reset_action.setShortcutContext(Qt.WidgetWithChildrenShortcut)
+        self.addAction(self.reset_action)
+        self._registered_actions.append(self.reset_action)
+        self.settings_menu.addAction(self.reset_action)
+
+        self.settings_menu.addSeparator()
+
         self.add_row_action = QAction("Add Row", self)
         self.add_row_action.setShortcut(QKeySequence("Ctrl+Down"))
         self.add_row_action.triggered.connect(self.add_row)
@@ -761,6 +822,7 @@ class MosaicViewerWindow(QMainWindow):
 
         self.panels = {}
         self.placeholders = {}
+        connection_errors = 0
 
         for index, name in enumerate(self.cells):
             row_index = index // self.cols
@@ -770,22 +832,33 @@ class MosaicViewerWindow(QMainWindow):
                 self.placeholders[index] = placeholder
                 self.grid_layout.addWidget(placeholder, row_index, col_index)
             else:
-                panel = Stream2DWidget(
-                    StreamConnection(name),
-                    remove_callback=lambda checked=False, idx=index: self.remove_plot_at(idx),
-                    static_vmin=self.static_vmin,
-                    static_vmax=self.static_vmax,
-                    show_colorbar=self._show_colorbars,
-                    show_stats=self._show_stats,
-                    show_range=self._show_range,
-                    font_size=self.font_size,
-                )
-                self.panels[index] = panel
-                self.grid_layout.addWidget(panel, row_index, col_index)
+                try:
+                    panel = Stream2DWidget(
+                        StreamConnection(name),
+                        remove_callback=lambda checked=False, idx=index: self.remove_plot_at(idx),
+                        static_vmin=self.static_vmin,
+                        static_vmax=self.static_vmax,
+                        show_colorbar=self._show_colorbars,
+                        show_stats=self._show_stats,
+                        show_range=self._show_range,
+                        font_size=self.font_size,
+                    )
+                    self.panels[index] = panel
+                    self.grid_layout.addWidget(panel, row_index, col_index)
+                except Exception:
+                    connection_errors += 1
+                    logging.exception("Viewer panel reconnect failed for cell %s (%s)", index, name)
+                    placeholder = UnavailableStreamPlaceholder(name, self.reset_streams)
+                    self.placeholders[index] = placeholder
+                    self.grid_layout.addWidget(placeholder, row_index, col_index)
 
+        self._last_panel_errors = connection_errors
         self._set_summary(0)
         self.apply_theme(self.theme_name)
         self._resume_refresh(refresh_was_active)
+
+    def reset_streams(self):
+        self.rebuild_grid()
 
     def add_plot_at(self, index):
         shm_name, ok = QInputDialog.getText(self, "Add SHM", "Shared-memory stream name:")

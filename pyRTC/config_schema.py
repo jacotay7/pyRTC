@@ -36,6 +36,36 @@ ALLOWED_MANAGER_MODES = {"soft-rtc", "hard-rtc"}
 ALLOWED_RESTART_POLICIES = {"never", "on-failure", "always"}
 
 
+def _is_relative_path_string(value: Any) -> bool:
+    if not isinstance(value, str) or not value.strip():
+        return False
+    if "://" in value:
+        return False
+    return not Path(value).is_absolute()
+
+
+def _resolve_relative_path_fields(value: Any, *, base_dir: Path, parent_key: str | None = None) -> Any:
+    if isinstance(value, Mapping):
+        resolved = {}
+        for key, item in value.items():
+            is_path_field = isinstance(key, str) and key.endswith(("File", "Dir", "Path"))
+            is_component_file_entry = parent_key == "componentFiles"
+            if (is_path_field or is_component_file_entry) and _is_relative_path_string(item):
+                resolved[key] = str((base_dir / item).resolve())
+            else:
+                resolved[key] = _resolve_relative_path_fields(item, base_dir=base_dir, parent_key=str(key))
+        return resolved
+    if isinstance(value, list):
+        return [_resolve_relative_path_fields(item, base_dir=base_dir, parent_key=parent_key) for item in value]
+    return value
+
+
+def _is_valid_manager_section(section_name: str, system_conf: Mapping[str, Any]) -> bool:
+    if get_component_descriptor(section_name) is not None:
+        return True
+    return section_name in system_conf and section_name not in OPTIONAL_TOP_LEVEL_SECTIONS
+
+
 def _require_mapping(conf: Any, component: str) -> Mapping[str, Any]:
     if not isinstance(conf, Mapping):
         raise ConfigValidationError(
@@ -144,7 +174,7 @@ def _validate_slopes_config(conf: Any) -> None:
         for key in ("subApSpacing", "subApOffsetX", "subApOffsetY"):
             if key not in conf:
                 raise ConfigValidationError(f"{component}: '{key}' is required for SHWFS")
-        _coerce_int(conf["subApSpacing"], component, "subApSpacing", minimum=1)
+        _validate_optional_numeric(conf, "subApSpacing", component, minimum=1.0)
         _coerce_int(conf["subApOffsetX"], component, "subApOffsetX", minimum=0)
         _coerce_int(conf["subApOffsetY"], component, "subApOffsetY", minimum=0)
 
@@ -190,7 +220,7 @@ def _validate_telemetry_config(conf: Any) -> None:
             raise ConfigValidationError("telemetry: 'streams' must be a list of non-empty stream names")
 
 
-def _validate_manager_config(conf: Any) -> None:
+def _validate_manager_config(conf: Any, *, system_conf: Mapping[str, Any]) -> None:
     component = "manager"
     conf = _require_mapping(conf, component)
 
@@ -210,7 +240,7 @@ def _validate_manager_config(conf: Any) -> None:
     if "componentModes" in conf:
         component_modes = _require_mapping(conf["componentModes"], "manager.componentModes")
         for section_name, launch_mode in component_modes.items():
-            if get_component_descriptor(section_name) is None:
+            if not _is_valid_manager_section(section_name, system_conf):
                 raise ConfigValidationError(
                     f"manager.componentModes: unknown component section '{section_name}'"
                 )
@@ -222,9 +252,20 @@ def _validate_manager_config(conf: Any) -> None:
     if "ports" in conf:
         ports = _require_mapping(conf["ports"], "manager.ports")
         for section_name, port in ports.items():
-            if get_component_descriptor(section_name) is None:
+            if not _is_valid_manager_section(section_name, system_conf):
                 raise ConfigValidationError(f"manager.ports: unknown component section '{section_name}'")
             _coerce_int(port, "manager.ports", section_name, minimum=1)
+
+    for mapping_name in ("componentClasses", "componentFiles"):
+        if mapping_name in conf:
+            mapping_value = _require_mapping(conf[mapping_name], f"manager.{mapping_name}")
+            for section_name, target in mapping_value.items():
+                if not _is_valid_manager_section(section_name, system_conf):
+                    raise ConfigValidationError(f"manager.{mapping_name}: unknown component section '{section_name}'")
+                if not isinstance(target, str) or not target.strip():
+                    raise ConfigValidationError(
+                        f"manager.{mapping_name}: target for '{section_name}' must be a non-empty string"
+                    )
 
     if "logDir" in conf and (not isinstance(conf["logDir"], str) or not conf["logDir"].strip()):
         raise ConfigValidationError("manager: 'logDir' must be a non-empty string when provided")
@@ -301,7 +342,11 @@ def _validate_cross_component_consistency(conf: Mapping[str, Any]) -> None:
     slopes_type = str(slopes_conf["type"]).lower()
     if slopes_type == "shwfs":
         image_width, image_height = _processed_wfs_shape(wfs_conf)
-        subap_spacing = _coerce_int(slopes_conf["subApSpacing"], "slopes", "subApSpacing", minimum=1)
+        subap_spacing = float(slopes_conf["subApSpacing"])
+        if subap_spacing < 1:
+            raise ConfigValidationError(
+                f"slopes: 'subApSpacing' must be >= 1, got {subap_spacing}"
+            )
         num_regions = min(image_width, image_height) // subap_spacing
         if num_regions < 1:
             raise ConfigValidationError(
@@ -371,7 +416,7 @@ def validate_system_config(conf: Any, *, config_path: str | Path | None = None) 
     if "telemetry" in normalized:
         _validate_telemetry_config(normalized["telemetry"])
     if "manager" in normalized:
-        _validate_manager_config(normalized["manager"])
+        _validate_manager_config(normalized["manager"], system_conf=normalized)
     if "streams" in normalized:
         _validate_streams_config(normalized["streams"])
     if "metadata" in normalized:
@@ -384,6 +429,8 @@ def validate_system_config(conf: Any, *, config_path: str | Path | None = None) 
     _validate_cross_component_consistency(normalized)
 
     if config_path is not None:
+        config_path = Path(config_path).resolve()
+        normalized = _resolve_relative_path_fields(normalized, base_dir=config_path.parent)
         normalized.setdefault("metadata", {})
         normalized["metadata"].setdefault("configPath", str(config_path))
 

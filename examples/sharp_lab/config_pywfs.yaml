@@ -143,3 +143,20 @@ modulator:
   autoZero: True 
   affinity: 7
 
+manager:
+  mode: soft-rtc
+  componentClasses:
+    modulator: pyRTC.hardware.PIModulator
+    wfs: pyRTC.hardware.XIMEA_WFS
+    slopes: pyRTC.SlopesProcess.SlopesProcess
+    loop: pyRTC.Loop.Loop
+    wfc: pyRTC.hardware.ALPAODM
+    psf: pyRTC.hardware.spinCam
+  componentFiles:
+    modulator: ../../pyRTC/hardware/PIModulator.py
+    wfs: ../../pyRTC/hardware/ximeaWFS.py
+    slopes: ../../pyRTC/SlopesProcess.py
+    loop: ../../pyRTC/Loop.py
+    wfc: ../../pyRTC/hardware/ALPAODM.py
+    psf: ../../pyRTC/hardware/SpinnakerScienceCam.py
+

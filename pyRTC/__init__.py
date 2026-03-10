@@ -27,6 +27,7 @@ from .Optimizer import Optimizer
 from .Pipeline import (
 	ImageSHM,
 	Listener,
+	RTCManager,
 	gpu_torch_available,
 	hardwareLauncher,
 	initExistingShm,
@@ -49,6 +50,7 @@ __all__ = [
 	"Modulator",
 	"Optimizer",
 	"Pipeline",
+	"RTCManager",
 	"ScienceCamera",
 	"SlopesProcess",
 	"Telemetry",

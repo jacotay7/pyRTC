@@ -10,6 +10,7 @@ _EXPORTS = {
     "PIDOptimizer": (".PIDOptimizer", "PIDOptimizer"),
     "SyntheticSHWFS": (".SyntheticSystems", "SyntheticSHWFS"),
     "SyntheticScienceCamera": (".SyntheticSystems", "SyntheticScienceCamera"),
+    "SyntheticWFC": (".SyntheticSystems", "SyntheticWFC"),
     "loopOptimizer": (".loopHyperparamsOptimizer", "loopOptimizer"),
 }
 

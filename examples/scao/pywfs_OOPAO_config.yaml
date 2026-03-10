@@ -1,12 +1,14 @@
 loop:
   gain: 0.1
-  numDroppedModes: 0
-  pokeAmp: 0.000001 #1000nm
-  numItersIM: 1
+  leakyGain: 0.01 #Small leaky gain to help with stability and convergence
+  numDroppedModes: 0 #Drop the 5 least well-measured modes to improve stability
+  pokeAmp: 0.0000001 #100nm
+  numItersIM: 10 #Average 10 pokes per mode to get a nice signal
+  conditioning: 10 #Conditioning threshold for SVD inversion of the IM
   affinity: 2
   method: push-pull
   functions:
-  - standardIntegrator
+  - leakyIntegrator
 
 wfs:
   name: OOPAOWFS

@@ -23,9 +23,10 @@ Files
 
 The main example assets live under `examples/scao/`:
 
-- `run_soft_rtc.py`: script-driven soft-RTC walkthrough with logging and status output
+- `pywfs_oopao_soft_rtc_example.py`: notebook-style soft-RTC walkthrough with logging and status output
 - `pywfs_example_OOPAO.ipynb`: notebook walkthrough of the same setup
 - `pywfs_OOPAO_config.yaml`: example configuration
+- `pywfs_OOPAO_params.yaml`: OOPAO object-construction parameters for the telescope, sources, atmosphere, DM, and WFS
 
 What the Config Shows
 ---------------------
@@ -62,7 +63,21 @@ The example configuration defines the standard sections used by a basic AO chain
 		 functions:
 			 - sendToHardware
 
-This is the configuration pattern to copy when building a simulator-backed system after the synthetic quick start is already familiar.
+This is the pyRTC-side configuration pattern to copy when building a simulator-backed system after the synthetic quick start is already familiar.
+
+The OOPAO optical objects themselves are configured separately in `pywfs_OOPAO_params.yaml`. That companion file is now a flat OOPAO-style parameter dictionary rather than a nested pyRTC-specific schema. For non-source objects, the interface forwards any keys whose names exactly match the target OOPAO constructor arguments. The two `Source` objects are the only prescriptive exception:
+
+- `ngs_band` and `ngs_magnitude` configure the guide star used by the WFS path
+- `science_band` and `science_magnitude` configure the science source used by the PSF path
+
+This keeps the interface close to existing OOPAO projects where parameters are usually stored in one flat dictionary.
+
+You can either:
+
+- load the YAML into a dict and pass it to `OOPAOInterface(param=...)`
+- reuse objects you already created with explicit arguments like `OOPAOInterface(tel=..., atm=..., wfs=...)`
+
+In practice that means you can usually copy the same flat parameter dictionary you already use in OOPAO, then only split the two source entries into `ngs_*` and `science_*` keys so the WFS and PSF paths can use different source definitions.
 
 Running the Example
 -------------------
@@ -71,7 +86,7 @@ The recommended first path is the script version because it keeps the setup repr
 
 .. code-block:: bash
 
-	python examples/scao/run_soft_rtc.py --duration 10
+	python examples/scao/pywfs_oopao_soft_rtc_example.py --duration 10
 
 By default the script:
 
@@ -84,10 +99,13 @@ Useful variants:
 
 .. code-block:: bash
 
-	python examples/scao/run_soft_rtc.py --skip-im --duration 5
-	python examples/scao/run_soft_rtc.py --no-kl-basis --duration 5
+	python examples/scao/pywfs_oopao_soft_rtc_example.py --skip-im --duration 5
+	python examples/scao/pywfs_oopao_soft_rtc_example.py --no-kl-basis --duration 5
+	python examples/scao/pywfs_oopao_soft_rtc_example.py --oopao-param-file examples/scao/pywfs_OOPAO_params.yaml --duration 5
 
-If you prefer interactive exploration, open `examples/scao/pywfs_example_OOPAO.ipynb` after the script workflow is familiar. The notebook walks through the same stages cell by cell.
+If you prefer interactive exploration, open `examples/scao/pywfs_example_OOPAO.ipynb` after the script workflow is familiar. The notebook walks through the same stages cell by cell and now shows both the pyRTC config file and the companion OOPAO object-parameter file.
+
+This OOPAO path is intentionally soft-RTC only. The wavefront sensor, deformable mirror, and science camera adapters share one in-process optical simulation state, so it is not a good fit for the hard-RTC child-process launch model.
 
 Recommended Validation Steps
 ----------------------------

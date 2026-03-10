@@ -6,7 +6,13 @@ those blocks onto CUDA tensors for compatible deployments, and launch hardware-
 facing child processes that communicate with the main RTC over a small
 localhost-based JSON protocol.
 """
+
+from __future__ import annotations
+
 import argparse
+from dataclasses import dataclass
+import importlib
+import inspect
 import json 
 import logging
 import os
@@ -14,6 +20,7 @@ import socket
 import struct
 import sys
 import time
+from pathlib import Path
 
 from multiprocessing import shared_memory, resource_tracker
 from subprocess import PIPE, Popen
@@ -26,7 +33,6 @@ from pyRTC.utils import (
     dtype_to_float,
     float_to_dtype,
     precise_delay,
-    read_yaml_file,
     setFromConfig,
     set_affinity_and_priority,
 )
@@ -324,7 +330,17 @@ class ImageSHM:
 
     def close(self):
         logger.debug("Closing shared memory object %s", self.name)
-        self.shm.close()
+        try:
+            self.shm.close()
+        except Exception:
+            logger.debug("Failed to close data SHM %s", self.name, exc_info=True)
+
+        metadata_shm = getattr(self, "metadataShm", None)
+        if metadata_shm is not None:
+            try:
+                metadata_shm.close()
+            except Exception:
+                logger.debug("Failed to close metadata SHM %s_meta", self.name, exc_info=True)
         return
 
     def write(self, arr):
@@ -443,17 +459,31 @@ class ImageSHM:
         return
     
 def clear_shms(names):
-    
-    for n in names:
-        shm = ImageSHM(n,(1,),np.uint8)
-        shm.shm.unlink()
-        shm = ImageSHM(n+"_meta",(1,),np.uint8)
-        shm.shm.unlink()
+    def _close_and_unlink(name):
         try:
-            shm = ImageSHM(n+"_gpu_handle",(1,),np.uint8)
-            shm.shm.unlink()
+            shm = shared_memory.SharedMemory(name=name)
+        except FileNotFoundError:
+            return
         except Exception:
+            logger.debug("Failed opening shared memory object %s for cleanup", name, exc_info=True)
+            return
+
+        try:
+            shm.unlink()
+        except FileNotFoundError:
             pass
+        except Exception:
+            logger.debug("Failed unlinking shared memory object %s", name, exc_info=True)
+        finally:
+            try:
+                shm.close()
+            except Exception:
+                logger.debug("Failed closing shared memory object %s", name, exc_info=True)
+
+    for n in names:
+        _close_and_unlink(n)
+        _close_and_unlink(f"{n}_meta")
+        _close_and_unlink(f"{n}_gpu_handle")
 
 
 class hardwareLauncher:
@@ -478,12 +508,28 @@ class hardwareLauncher:
         self.timeout = timeout
 
         return
+
+    @staticmethod
+    def _discover_pythonpath_root(hardware_file: str) -> str | None:
+        script_path = Path(hardware_file).resolve()
+        for parent in (script_path.parent, *script_path.parents):
+            if (parent / "pyproject.toml").exists() and (parent / "pyRTC").is_dir():
+                return str(parent)
+        return None
     
     def launch(self):
         ensure_logging_configured(app_name="pyrtc-hardware-launcher", component_name=self.hardwareFile)
         if not self.running:
             logger.info("Launching process %s", self.hardwareFile)
-            self.process = Popen(self.command,stdin=PIPE,stdout=PIPE, text=True, bufsize=1, env=os.environ.copy())
+            child_env = os.environ.copy()
+            pythonpath_root = self._discover_pythonpath_root(self.hardwareFile)
+            if pythonpath_root is not None:
+                existing_pythonpath = child_env.get("PYTHONPATH", "")
+                if existing_pythonpath:
+                    child_env["PYTHONPATH"] = f"{pythonpath_root}{os.pathsep}{existing_pythonpath}"
+                else:
+                    child_env["PYTHONPATH"] = pythonpath_root
+            self.process = Popen(self.command,stdin=PIPE,stdout=PIPE, text=True, bufsize=1, env=child_env)
             self.running = True
 
             # Create a socket object
@@ -683,6 +729,7 @@ def initExistingShm(shmName, gpuDevice=None):
 
 
 def launchComponent(component, confKey, start = True):
+    from pyRTC.config_schema import read_system_config
 
     # Create argument parser
     parser = argparse.ArgumentParser(description="Read a config file from the command line.")
@@ -696,7 +743,7 @@ def launchComponent(component, confKey, start = True):
     args = parser.parse_args()
     configure_logging_from_args(args, app_name=f"pyrtc-{confKey}", component_name=confKey)
 
-    conf = read_yaml_file(args.config)[confKey]
+    conf = read_system_config(args.config)[confKey]
 
     set_affinity_and_priority("", setFromConfig(conf, "affinity", 0))
 
@@ -713,3 +760,380 @@ def launchComponent(component, confKey, start = True):
     except Exception:
         logger.exception("Failed to launch component %s", confKey)
         raise
+
+
+DEFAULT_COMPONENT_ORDER = ("modulator", "wfc", "wfs", "slopes", "loop", "psf", "telemetry")
+
+
+@dataclass
+class ComponentRuntimeStatus:
+    section_name: str
+    mode: str
+    state: str
+    component_class: str
+    error: str | None = None
+    port: int | None = None
+    target: str | None = None
+
+    def to_dict(self) -> dict:
+        return {
+            "section_name": self.section_name,
+            "mode": self.mode,
+            "state": self.state,
+            "component_class": self.component_class,
+            "error": self.error,
+            "port": self.port,
+            "target": self.target,
+        }
+
+
+class BaseComponentRuntime:
+    def __init__(self, section_name, mode, component_class) -> None:
+        self.section_name = section_name
+        self.mode = mode
+        self.component_class = component_class
+        self.state = "created"
+        self.error = None
+
+    @property
+    def component_class_path(self) -> str:
+        return f"{self.component_class.__module__}.{self.component_class.__name__}"
+
+    def status(self) -> dict:
+        return ComponentRuntimeStatus(
+            section_name=self.section_name,
+            mode=self.mode,
+            state=self.state,
+            component_class=self.component_class_path,
+            error=self.error,
+        ).to_dict()
+
+
+class SoftComponentRuntime(BaseComponentRuntime):
+    def __init__(self, section_name, component_class, conf: dict) -> None:
+        super().__init__(section_name=section_name, mode="soft-rtc", component_class=component_class)
+        self.conf = conf
+        self.component = None
+
+    def start(self) -> None:
+        if self.state == "running":
+            return
+        try:
+            if self.component is None:
+                self.component = self.component_class(self.conf)
+            self.component.start()
+            self.state = "running"
+            self.error = None
+        except Exception as exc:
+            self.state = "failed"
+            self.error = str(exc)
+            raise
+
+    def stop(self) -> None:
+        if self.component is None:
+            self.state = "stopped"
+            return
+        try:
+            self.component.stop()
+            self.state = "stopped"
+            self.error = None
+        except Exception as exc:
+            self.state = "failed"
+            self.error = str(exc)
+            raise
+
+
+class HardComponentRuntime(BaseComponentRuntime):
+    def __init__(
+        self,
+        section_name,
+        component_class,
+        script_path: str,
+        config_path: str,
+        port: int,
+        *,
+        launcher_cls=hardwareLauncher,
+    ) -> None:
+        super().__init__(section_name=section_name, mode="hard-rtc", component_class=component_class)
+        self.script_path = script_path
+        self.config_path = config_path
+        self.port = port
+        self.launcher_cls = launcher_cls
+        self.launcher = None
+
+    def start(self) -> None:
+        if self.state == "running":
+            return
+        try:
+            if self.launcher is None:
+                self.launcher = self.launcher_cls(self.script_path, self.config_path, self.port)
+                self.launcher.launch()
+            self.launcher.run("start")
+            self.state = "running"
+            self.error = None
+        except Exception as exc:
+            self.state = "failed"
+            self.error = str(exc)
+            raise
+
+    def stop(self) -> None:
+        if self.launcher is None:
+            self.state = "stopped"
+            return
+        try:
+            self.launcher.run("stop")
+        except Exception:
+            pass
+        try:
+            self.launcher.shutdown()
+        except Exception as exc:
+            self.state = "failed"
+            self.error = str(exc)
+            raise
+        self.state = "stopped"
+        self.error = None
+
+    def status(self) -> dict:
+        payload = super().status()
+        payload.update({"port": self.port, "target": self.script_path})
+        return payload
+
+
+def _find_free_port() -> int:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.bind(("127.0.0.1", 0))
+        return int(sock.getsockname()[1])
+
+
+def _import_symbol(path_or_name: str):
+    if "." in path_or_name:
+        module_name, attr_name = path_or_name.rsplit(".", 1)
+        module = importlib.import_module(module_name)
+        return getattr(module, attr_name)
+
+    for module_name in ("pyRTC.hardware", "pyRTC"):
+        try:
+            module = importlib.import_module(module_name)
+            if hasattr(module, path_or_name):
+                return getattr(module, path_or_name)
+        except Exception:
+            continue
+    raise ImportError(f"Unable to resolve component symbol '{path_or_name}'")
+
+
+def _normalize_manager_mode(mode: str | None) -> str | None:
+    if mode is None:
+        return None
+    normalized = str(mode).strip().lower()
+    mode_aliases = {
+        "soft": "soft-rtc",
+        "soft-rtc": "soft-rtc",
+        "hard": "hard-rtc",
+        "hard-rtc": "hard-rtc",
+    }
+    if normalized not in mode_aliases:
+        raise ValueError("mode must be one of: soft, soft-rtc, hard, hard-rtc")
+    return mode_aliases[normalized]
+
+
+class RTCManager:
+    """Validate, launch, stop, and inspect a pyRTC system as one unit.
+
+    The implementation intentionally lives in ``pyRTC.Pipeline`` because this
+    orchestration layer is an extension of the existing shared-memory and
+    launcher runtime rather than a separate subsystem.
+    """
+
+    def __init__(
+        self,
+        config: dict,
+        *,
+        config_path: str | None = None,
+        mode: str | None = None,
+        launcher_cls=hardwareLauncher,
+    ) -> None:
+        self.config = dict(config)
+        self.config_path = config_path
+        self.mode = _normalize_manager_mode(mode)
+        if self.mode is not None:
+            manager_conf = dict(self.config.get("manager", {}))
+            manager_conf["mode"] = self.mode
+            self.config["manager"] = manager_conf
+        self.launcher_cls = launcher_cls
+        self.validated = False
+        self.state = "created"
+        self.error = None
+        self.runtimes = {}
+
+    @classmethod
+    def from_config_file(cls, config_path: str | Path, *, mode: str | None = None, launcher_cls=hardwareLauncher):
+        from pyRTC.config_schema import read_system_config
+
+        normalized = read_system_config(config_path)
+        manager = cls(normalized, config_path=str(config_path), mode=mode, launcher_cls=launcher_cls)
+        manager.validated = True
+        manager.state = "validated"
+        return manager
+
+    @classmethod
+    def from_config(
+        cls,
+        config: dict,
+        *,
+        config_path: str | None = None,
+        mode: str | None = None,
+        launcher_cls=hardwareLauncher,
+    ):
+        return cls(config, config_path=config_path, mode=mode, launcher_cls=launcher_cls)
+
+    def validate(self) -> dict:
+        from pyRTC.config_schema import validate_system_config
+
+        self.config = validate_system_config(self.config, config_path=self.config_path)
+        self.validated = True
+        self.state = "validated"
+        self.error = None
+        return self.config
+
+    def _component_sections(self) -> list:
+        from pyRTC.component_descriptors import list_component_sections
+
+        sections = [section for section in DEFAULT_COMPONENT_ORDER if section in self.config]
+        for section in list_component_sections():
+            if section in self.config and section not in sections:
+                sections.append(section)
+        manager_conf = self.config.get("manager", {})
+        for mapping_name in ("componentModes", "ports", "componentClasses", "componentFiles"):
+            mapping = manager_conf.get(mapping_name, {})
+            if not isinstance(mapping, dict):
+                continue
+            for section in mapping:
+                if section in self.config and section not in sections:
+                    sections.append(section)
+        return sections
+
+    def _resolve_component_class(self, section_name: str):
+        from pyRTC.component_descriptors import get_component_descriptor
+
+        manager_conf = self.config.get("manager", {})
+        component_classes = manager_conf.get("componentClasses", {})
+        target = component_classes.get(section_name)
+        if target is None:
+            section_conf = self.config[section_name]
+            target = section_conf.get("name")
+
+        if target is not None:
+            if inspect.isclass(target):
+                return target
+            return _import_symbol(target)
+
+        descriptor = get_component_descriptor(section_name)
+        if descriptor is None:
+            raise ValueError(f"No component descriptor found for section '{section_name}'")
+        return descriptor.component_class
+
+    def _resolve_script_path(self, section_name: str, component_class) -> str:
+        manager_conf = self.config.get("manager", {})
+        component_files = manager_conf.get("componentFiles", {})
+        target = component_files.get(section_name)
+        if target is not None:
+            return str(target)
+
+        source_file = inspect.getsourcefile(component_class)
+        if source_file is None:
+            raise ValueError(f"Unable to determine script path for section '{section_name}'")
+        return source_file
+
+    def _resolve_component_mode(self, section_name: str) -> str:
+        manager_conf = self.config.get("manager", {})
+        component_modes = manager_conf.get("componentModes", {})
+        return component_modes.get(section_name, manager_conf.get("mode", "soft-rtc"))
+
+    def _resolve_port(self, section_name: str) -> int:
+        manager_conf = self.config.get("manager", {})
+        ports = manager_conf.get("ports", {})
+        return int(ports.get(section_name, _find_free_port()))
+
+    def _build_runtimes(self) -> None:
+        if self.runtimes:
+            return
+        for section_name in self._component_sections():
+            component_class = self._resolve_component_class(section_name)
+            mode = self._resolve_component_mode(section_name)
+            if mode == "soft-rtc":
+                runtime = SoftComponentRuntime(section_name, component_class, self.config[section_name])
+            else:
+                if not self.config_path:
+                    raise ValueError(
+                        f"manager: hard-rtc component '{section_name}' requires a config_path so child processes can load the YAML"
+                    )
+                runtime = HardComponentRuntime(
+                    section_name,
+                    component_class,
+                    self._resolve_script_path(section_name, component_class),
+                    self.config_path,
+                    self._resolve_port(section_name),
+                    launcher_cls=self.launcher_cls,
+                )
+            self.runtimes[section_name] = runtime
+
+    def start(self) -> None:
+        if not self.validated:
+            self.validate()
+        self._build_runtimes()
+        self.state = "starting"
+        started = []
+        try:
+            for section_name in self._component_sections():
+                runtime = self.runtimes[section_name]
+                runtime.start()
+                started.append(runtime)
+        except Exception as exc:
+            self.state = "failed"
+            self.error = str(exc)
+            for runtime in reversed(started):
+                try:
+                    runtime.stop()
+                except Exception:
+                    pass
+            raise
+        self.state = "running"
+        self.error = None
+
+    def stop(self) -> None:
+        if self.state in {"stopped", "created", "validated"} and not self.runtimes:
+            self.state = "stopped"
+            return
+        self.state = "stopping"
+        failures = []
+        for section_name in reversed(self._component_sections()):
+            runtime = self.runtimes.get(section_name)
+            if runtime is None:
+                continue
+            try:
+                runtime.stop()
+            except Exception as exc:
+                failures.append(f"{section_name}: {exc}")
+        if failures:
+            self.state = "failed"
+            self.error = "; ".join(failures)
+            raise RuntimeError(self.error)
+        self.state = "stopped"
+        self.error = None
+
+    def status(self) -> dict:
+        return {
+            "state": self.state,
+            "mode": self.config.get("manager", {}).get("mode", "soft-rtc"),
+            "validated": self.validated,
+            "config_path": self.config_path,
+            "error": self.error,
+            "components": {
+                section_name: runtime.status()
+                for section_name, runtime in self.runtimes.items()
+            },
+        }
+
+    def get_component(self, section_name: str):
+        runtime = self.runtimes[section_name]
+        return getattr(runtime, "component", getattr(runtime, "launcher", None))
