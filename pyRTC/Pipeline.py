@@ -19,6 +19,7 @@ import os
 import socket
 import struct
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -27,7 +28,14 @@ from subprocess import PIPE, Popen
 
 import numpy as np
 
-from pyRTC.logging_utils import add_logging_cli_args, configure_logging_from_args, ensure_logging_configured, get_logger
+from pyRTC.logging_utils import (
+    PYRTC_LOG_DIR_ENV,
+    PYRTC_LOG_FILE_ENV,
+    add_logging_cli_args,
+    configure_logging_from_args,
+    ensure_logging_configured,
+    get_logger,
+)
 from pyRTC.utils import (
     bind_socket,
     dtype_to_float,
@@ -502,12 +510,24 @@ class hardwareLauncher:
         self.hardwareFile = hardwareFile
         self.command = [sys.executable, hardwareFile, "-c", f"{configFile}", "-p", f"{port}"]
         self.running = False
+        self.process = None
+        self.processSocket = None
         # Client configuration
         self.host = '127.0.0.1'  # localhost
         self.port = port
         self.timeout = timeout
+        self.lastLaunchTime = None
+        self.lastContactTime = None
+        self.lastError = None
 
         return
+
+    @property
+    def pid(self) -> int | None:
+        return getattr(self.process, "pid", None)
+
+    def is_process_alive(self) -> bool:
+        return self.process is not None and self.process.poll() is None
 
     @staticmethod
     def _discover_pythonpath_root(hardware_file: str) -> str | None:
@@ -531,6 +551,8 @@ class hardwareLauncher:
                     child_env["PYTHONPATH"] = pythonpath_root
             self.process = Popen(self.command,stdin=PIPE,stdout=PIPE, text=True, bufsize=1, env=child_env)
             self.running = True
+            self.lastLaunchTime = time.time()
+            self.lastError = None
 
             # Create a socket object
             self.processSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -551,12 +573,16 @@ class hardwareLauncher:
                 self.processSocket.settimeout(self.timeout)
 
             logger.info("Connected to child process socket")
+            self.lastContactTime = time.time()
 
         return
     
     def shutdown(self):
         message = {"type": "shutdown"}
-        return self.writeAndRead(message)
+        try:
+            return self.writeAndRead(message)
+        finally:
+            self.close(force=False)
 
     def getProperty(self, property):
         message = {"type": "get", "property": property}
@@ -574,16 +600,24 @@ class hardwareLauncher:
 
     def writeAndRead(self,message):
         if self.running:
-            self.write(message)
-            reply = self.read()
+            try:
+                self.write(message)
+                reply = self.read()
+            except Exception as exc:
+                self.lastError = str(exc)
+                return -1
             #If there are issues with the reply format
             if not isinstance(reply, dict) or "status" not in reply.keys():
+                self.lastError = "invalid launcher reply"
                 return -1
             #If there was an issue on the process end
             if reply["status"] == 'BAD':
+                self.lastError = "child process returned BAD status"
                 return -1
             #If our request went through
             if reply["status"] == 'OK':
+                self.lastContactTime = time.time()
+                self.lastError = None
                 #If the reply came with a property to return
                 if "property" in reply.keys():
                     return reply["property"]
@@ -603,7 +637,75 @@ class hardwareLauncher:
             reply = self.processSocket.recv(4096).decode()
             return json.loads(reply)
         except socket.timeout:
+            self.lastError = "socket timeout"
             return -1
+
+    def close(self, *, force: bool = False) -> None:
+        self.running = False
+        if self.processSocket is not None:
+            try:
+                self.processSocket.close()
+            except Exception:
+                logger.debug("Failed to close process socket for %s", self.hardwareFile, exc_info=True)
+            self.processSocket = None
+
+        if self.process is None:
+            return
+
+        if force and self.process.poll() is None:
+            try:
+                self.process.terminate()
+                self.process.wait(timeout=1.0)
+            except Exception:
+                try:
+                    self.process.kill()
+                except Exception:
+                    logger.debug("Failed to kill process for %s", self.hardwareFile, exc_info=True)
+        self.process = None
+
+    def health_check(self, *, timeout=None) -> dict:
+        if not self.is_process_alive():
+            exit_code = None if self.process is None else self.process.poll()
+            return {
+                "state": "failed",
+                "pid": self.pid,
+                "last_contact_time": self.lastContactTime,
+                "error": f"child process exited with code {exit_code}",
+            }
+
+        original_timeout = None
+        if self.processSocket is not None and timeout is not None and hasattr(self.processSocket, "gettimeout"):
+            original_timeout = self.processSocket.gettimeout()
+            self.processSocket.settimeout(timeout)
+
+        try:
+            running = self.getProperty("running")
+        finally:
+            if self.processSocket is not None and original_timeout is not None:
+                self.processSocket.settimeout(original_timeout)
+
+        if running == -1:
+            return {
+                "state": "degraded",
+                "pid": self.pid,
+                "last_contact_time": self.lastContactTime,
+                "error": self.lastError or "health check RPC failed",
+            }
+
+        if not bool(running):
+            return {
+                "state": "degraded",
+                "pid": self.pid,
+                "last_contact_time": self.lastContactTime,
+                "error": "component reported running=False",
+            }
+
+        return {
+            "state": "running",
+            "pid": self.pid,
+            "last_contact_time": self.lastContactTime,
+            "error": None,
+        }
         
     
 
@@ -772,8 +874,18 @@ class ComponentRuntimeStatus:
     state: str
     component_class: str
     error: str | None = None
+    last_error: str | None = None
     port: int | None = None
     target: str | None = None
+    pid: int | None = None
+    start_time: float | None = None
+    uptime_seconds: float = 0.0
+    last_heartbeat_time: float | None = None
+    last_success_time: float | None = None
+    last_failure_time: float | None = None
+    restart_count: int = 0
+    restart_policy: str = "never"
+    log_file: str | None = None
 
     def to_dict(self) -> dict:
         return {
@@ -782,22 +894,87 @@ class ComponentRuntimeStatus:
             "state": self.state,
             "component_class": self.component_class,
             "error": self.error,
+            "last_error": self.last_error,
             "port": self.port,
             "target": self.target,
+            "pid": self.pid,
+            "start_time": self.start_time,
+            "uptime_seconds": self.uptime_seconds,
+            "last_heartbeat_time": self.last_heartbeat_time,
+            "last_success_time": self.last_success_time,
+            "last_failure_time": self.last_failure_time,
+            "restart_count": self.restart_count,
+            "restart_policy": self.restart_policy,
+            "log_file": self.log_file,
         }
 
 
 class BaseComponentRuntime:
-    def __init__(self, section_name, mode, component_class) -> None:
+    def __init__(self, section_name, mode, component_class, *, restart_policy="never", heartbeat_timeout=5.0) -> None:
         self.section_name = section_name
         self.mode = mode
         self.component_class = component_class
         self.state = "created"
         self.error = None
+        self.last_error = None
+        self.pid = None
+        self.start_time = None
+        self.last_heartbeat_time = None
+        self.last_success_time = None
+        self.last_failure_time = None
+        self.restart_count = 0
+        self.restart_policy = restart_policy
+        self.heartbeat_timeout = float(heartbeat_timeout)
+        self.log_file = None
+        self.desired_running = False
 
     @property
     def component_class_path(self) -> str:
         return f"{self.component_class.__module__}.{self.component_class.__name__}"
+
+    def _set_running(self, *, timestamp: float | None = None) -> None:
+        now = time.time() if timestamp is None else float(timestamp)
+        self.state = "running"
+        self.error = None
+        self.start_time = now
+        self.last_heartbeat_time = now
+        self.last_success_time = now
+
+    def _record_success(self, *, timestamp: float | None = None) -> None:
+        now = time.time() if timestamp is None else float(timestamp)
+        self.last_heartbeat_time = now
+        self.last_success_time = now
+        if self.desired_running:
+            self.state = "running"
+            self.error = None
+
+    def _record_problem(self, message: str, *, state: str) -> None:
+        now = time.time()
+        self.state = state
+        self.error = str(message)
+        self.last_error = str(message)
+        self.last_failure_time = now
+
+    def _set_stopped(self) -> None:
+        self.state = "stopped"
+        self.error = None
+        self.pid = None
+        self.start_time = None
+
+    def refresh_health(self) -> str:
+        return self.state
+
+    def restart(self, *, reason: str | None = None) -> None:
+        self.restart_count += 1
+        if reason:
+            self.last_error = str(reason)
+        self.stop()
+        self.start()
+
+    def _uptime_seconds(self) -> float:
+        if self.start_time is None:
+            return 0.0
+        return max(0.0, time.time() - self.start_time)
 
     def status(self) -> dict:
         return ComponentRuntimeStatus(
@@ -806,41 +983,76 @@ class BaseComponentRuntime:
             state=self.state,
             component_class=self.component_class_path,
             error=self.error,
+            last_error=self.last_error,
+            pid=self.pid,
+            start_time=self.start_time,
+            uptime_seconds=self._uptime_seconds(),
+            last_heartbeat_time=self.last_heartbeat_time,
+            last_success_time=self.last_success_time,
+            last_failure_time=self.last_failure_time,
+            restart_count=self.restart_count,
+            restart_policy=self.restart_policy,
+            log_file=self.log_file,
         ).to_dict()
 
 
 class SoftComponentRuntime(BaseComponentRuntime):
-    def __init__(self, section_name, component_class, conf: dict) -> None:
-        super().__init__(section_name=section_name, mode="soft-rtc", component_class=component_class)
+    def __init__(self, section_name, component_class, conf: dict, *, restart_policy="never", heartbeat_timeout=5.0) -> None:
+        super().__init__(
+            section_name=section_name,
+            mode="soft-rtc",
+            component_class=component_class,
+            restart_policy=restart_policy,
+            heartbeat_timeout=heartbeat_timeout,
+        )
         self.conf = conf
         self.component = None
+        self.pid = os.getpid()
+        self.log_file = _resolve_soft_runtime_log_file(component_class)
 
     def start(self) -> None:
         if self.state == "running":
             return
+        self.desired_running = True
         try:
             if self.component is None:
                 self.component = self.component_class(self.conf)
             self.component.start()
-            self.state = "running"
-            self.error = None
+            self.pid = os.getpid()
+            self._set_running()
         except Exception as exc:
-            self.state = "failed"
-            self.error = str(exc)
+            self._record_problem(str(exc), state="failed")
             raise
 
     def stop(self) -> None:
+        self.desired_running = False
         if self.component is None:
-            self.state = "stopped"
+            self._set_stopped()
             return
         try:
             self.component.stop()
-            self.state = "stopped"
-            self.error = None
+            self._set_stopped()
         except Exception as exc:
-            self.state = "failed"
-            self.error = str(exc)
+            self._record_problem(str(exc), state="failed")
             raise
+
+    def refresh_health(self) -> str:
+        if self.component is None:
+            if self.desired_running:
+                self._record_problem("component not initialized", state="failed")
+            return self.state
+
+        alive = bool(getattr(self.component, "alive", True))
+        running = bool(getattr(self.component, "running", False))
+        if self.desired_running and not alive:
+            self._record_problem("component reported alive=False", state="failed")
+            return self.state
+        if self.desired_running and not running:
+            self._record_problem("component reported running=False", state="degraded")
+            return self.state
+        if running:
+            self._record_success()
+        return self.state
 
 
 class HardComponentRuntime(BaseComponentRuntime):
@@ -852,33 +1064,55 @@ class HardComponentRuntime(BaseComponentRuntime):
         config_path: str,
         port: int,
         *,
+        restart_policy="never",
+        heartbeat_timeout=5.0,
+        rpc_timeout=0.25,
+        log_dir: str | None = None,
+        log_file: str | None = None,
         launcher_cls=hardwareLauncher,
     ) -> None:
-        super().__init__(section_name=section_name, mode="hard-rtc", component_class=component_class)
+        super().__init__(
+            section_name=section_name,
+            mode="hard-rtc",
+            component_class=component_class,
+            restart_policy=restart_policy,
+            heartbeat_timeout=heartbeat_timeout,
+        )
         self.script_path = script_path
         self.config_path = config_path
         self.port = port
+        self.rpc_timeout = float(rpc_timeout)
+        self.log_dir = log_dir
+        self.configured_log_file = log_file
         self.launcher_cls = launcher_cls
         self.launcher = None
 
     def start(self) -> None:
         if self.state == "running":
             return
+        self.desired_running = True
         try:
-            if self.launcher is None:
-                self.launcher = self.launcher_cls(self.script_path, self.config_path, self.port)
+            if self.launcher is None or not _launcher_process_alive(self.launcher):
+                self.launcher = self.launcher_cls(self.script_path, self.config_path, self.port, timeout=self.rpc_timeout)
+                _apply_runtime_logging_environment(log_dir=self.log_dir, log_file=self.configured_log_file)
                 self.launcher.launch()
             self.launcher.run("start")
-            self.state = "running"
-            self.error = None
+            self.pid = _launcher_pid(self.launcher)
+            self.log_file = _resolve_hard_runtime_log_file(
+                self.section_name,
+                pid=self.pid,
+                log_dir=self.log_dir,
+                log_file=self.configured_log_file,
+            )
+            self._set_running()
         except Exception as exc:
-            self.state = "failed"
-            self.error = str(exc)
+            self._record_problem(str(exc), state="failed")
             raise
 
     def stop(self) -> None:
+        self.desired_running = False
         if self.launcher is None:
-            self.state = "stopped"
+            self._set_stopped()
             return
         try:
             self.launcher.run("stop")
@@ -887,16 +1121,107 @@ class HardComponentRuntime(BaseComponentRuntime):
         try:
             self.launcher.shutdown()
         except Exception as exc:
-            self.state = "failed"
-            self.error = str(exc)
+            self._record_problem(str(exc), state="failed")
             raise
-        self.state = "stopped"
-        self.error = None
+        self._set_stopped()
+
+    def refresh_health(self) -> str:
+        if self.launcher is None:
+            if self.desired_running:
+                self._record_problem("launcher not initialized", state="failed")
+            return self.state
+
+        self.pid = _launcher_pid(self.launcher)
+        if hasattr(self.launcher, "health_check"):
+            health = self.launcher.health_check(timeout=self.rpc_timeout)
+            last_contact = health.get("last_contact_time")
+            state = health.get("state", self.state)
+            if state == "running":
+                self._record_success(timestamp=last_contact)
+            else:
+                self._record_problem(health.get("error", "health check failed"), state=state)
+            return self.state
+
+        if hasattr(self.launcher, "getProperty"):
+            try:
+                running = self.launcher.getProperty("running")
+            except Exception as exc:
+                self._record_problem(f"health check RPC failed: {exc}", state="degraded")
+                return self.state
+            if running == -1:
+                self._record_problem("health check RPC failed", state="degraded")
+                return self.state
+            if not bool(running):
+                self._record_problem("component reported running=False", state="degraded")
+                return self.state
+
+        if self.desired_running:
+            self._record_success()
+        return self.state
 
     def status(self) -> dict:
         payload = super().status()
         payload.update({"port": self.port, "target": self.script_path})
         return payload
+
+    def restart(self, *, reason: str | None = None) -> None:
+        self.restart_count += 1
+        if reason:
+            self.last_error = str(reason)
+        launcher = self.launcher
+        self.launcher = None
+        if launcher is not None and hasattr(launcher, "close"):
+            try:
+                launcher.close(force=True)
+            except Exception:
+                logger.debug("Failed to close dead launcher for %s", self.section_name, exc_info=True)
+        self.start()
+
+
+def _resolve_soft_runtime_log_file(component_class) -> str | None:
+    explicit_log_file = os.environ.get(PYRTC_LOG_FILE_ENV)
+    if explicit_log_file:
+        return explicit_log_file
+    log_dir = os.environ.get(PYRTC_LOG_DIR_ENV)
+    if not log_dir:
+        return None
+    return str((Path(log_dir).expanduser() / f"pyrtc_{component_class.__name__}_{os.getpid()}.log").resolve())
+
+
+def _resolve_hard_runtime_log_file(section_name: str, *, pid: int | None, log_dir: str | None, log_file: str | None) -> str | None:
+    if log_file:
+        return str(Path(log_file).expanduser().resolve())
+    if pid is None or not log_dir:
+        return None
+    filename = f"pyrtc-{section_name}_{section_name}_{pid}.log"
+    return str((Path(log_dir).expanduser() / filename).resolve())
+
+
+def _apply_runtime_logging_environment(*, log_dir: str | None, log_file: str | None) -> None:
+    if log_file:
+        os.environ[PYRTC_LOG_FILE_ENV] = str(Path(log_file).expanduser())
+        os.environ.pop(PYRTC_LOG_DIR_ENV, None)
+        return
+    if log_dir:
+        os.environ[PYRTC_LOG_DIR_ENV] = str(Path(log_dir).expanduser())
+        os.environ.pop(PYRTC_LOG_FILE_ENV, None)
+
+
+def _launcher_pid(launcher) -> int | None:
+    pid = getattr(launcher, "pid", None)
+    if isinstance(pid, int):
+        return pid
+    process = getattr(launcher, "process", None)
+    return getattr(process, "pid", None)
+
+
+def _launcher_process_alive(launcher) -> bool:
+    if hasattr(launcher, "is_process_alive"):
+        return bool(launcher.is_process_alive())
+    process = getattr(launcher, "process", None)
+    if process is None or not hasattr(process, "poll"):
+        return True
+    return process.poll() is None
 
 
 def _find_free_port() -> int:
@@ -964,6 +1289,9 @@ class RTCManager:
         self.state = "created"
         self.error = None
         self.runtimes = {}
+        self._lock = threading.RLock()
+        self._supervisor_thread = None
+        self._supervisor_stop_event = threading.Event()
 
     @classmethod
     def from_config_file(cls, config_path: str | Path, *, mode: str | None = None, launcher_cls=hardwareLauncher):
@@ -1054,14 +1382,50 @@ class RTCManager:
         ports = manager_conf.get("ports", {})
         return int(ports.get(section_name, _find_free_port()))
 
+    def _resolve_restart_policy(self, section_name: str) -> str:
+        manager_conf = self.config.get("manager", {})
+        component_policies = manager_conf.get("componentRestartPolicies", {})
+        return str(component_policies.get(section_name, manager_conf.get("restartPolicy", "never")))
+
+    def _resolve_health_check_interval(self) -> float:
+        manager_conf = self.config.get("manager", {})
+        return float(manager_conf.get("healthCheckInterval", 1.0))
+
+    def _resolve_heartbeat_timeout(self) -> float:
+        manager_conf = self.config.get("manager", {})
+        return float(manager_conf.get("heartbeatTimeout", 5.0))
+
+    def _resolve_rpc_timeout(self) -> float:
+        manager_conf = self.config.get("manager", {})
+        return float(manager_conf.get("rpcTimeout", 0.25))
+
+    def _manager_log_dir(self) -> str | None:
+        value = self.config.get("manager", {}).get("logDir")
+        return None if value is None else str(value)
+
+    def _manager_log_file(self) -> str | None:
+        value = self.config.get("manager", {}).get("logFile")
+        return None if value is None else str(value)
+
     def _build_runtimes(self) -> None:
         if self.runtimes:
             return
+        heartbeat_timeout = self._resolve_heartbeat_timeout()
+        rpc_timeout = self._resolve_rpc_timeout()
+        manager_log_dir = self._manager_log_dir()
+        manager_log_file = self._manager_log_file()
         for section_name in self._component_sections():
             component_class = self._resolve_component_class(section_name)
             mode = self._resolve_component_mode(section_name)
+            restart_policy = self._resolve_restart_policy(section_name)
             if mode == "soft-rtc":
-                runtime = SoftComponentRuntime(section_name, component_class, self.config[section_name])
+                runtime = SoftComponentRuntime(
+                    section_name,
+                    component_class,
+                    self.config[section_name],
+                    restart_policy=restart_policy,
+                    heartbeat_timeout=heartbeat_timeout,
+                )
             else:
                 if not self.config_path:
                     raise ValueError(
@@ -1073,55 +1437,154 @@ class RTCManager:
                     self._resolve_script_path(section_name, component_class),
                     self.config_path,
                     self._resolve_port(section_name),
+                    restart_policy=restart_policy,
+                    heartbeat_timeout=heartbeat_timeout,
+                    rpc_timeout=rpc_timeout,
+                    log_dir=manager_log_dir,
+                    log_file=manager_log_file,
                     launcher_cls=self.launcher_cls,
                 )
             self.runtimes[section_name] = runtime
 
-    def start(self) -> None:
-        if not self.validated:
-            self.validate()
-        self._build_runtimes()
-        self.state = "starting"
-        started = []
-        try:
-            for section_name in self._component_sections():
-                runtime = self.runtimes[section_name]
-                runtime.start()
-                started.append(runtime)
-        except Exception as exc:
-            self.state = "failed"
-            self.error = str(exc)
-            for runtime in reversed(started):
-                try:
-                    runtime.stop()
-                except Exception:
-                    pass
-            raise
-        self.state = "running"
-        self.error = None
-
-    def stop(self) -> None:
-        if self.state in {"stopped", "created", "validated"} and not self.runtimes:
-            self.state = "stopped"
+    def _start_supervisor(self) -> None:
+        if self._supervisor_thread is not None and self._supervisor_thread.is_alive():
             return
-        self.state = "stopping"
-        failures = []
-        for section_name in reversed(self._component_sections()):
+        self._supervisor_stop_event.clear()
+        self._supervisor_thread = threading.Thread(
+            target=self._supervisor_loop,
+            name="pyRTC-manager-supervisor",
+            daemon=True,
+        )
+        self._supervisor_thread.start()
+
+    def _stop_supervisor(self) -> None:
+        self._supervisor_stop_event.set()
+        if self._supervisor_thread is None:
+            return
+        if self._supervisor_thread.is_alive() and threading.current_thread() is not self._supervisor_thread:
+            self._supervisor_thread.join(timeout=max(1.0, self._resolve_health_check_interval() * 2.0))
+        self._supervisor_thread = None
+
+    def _supervisor_loop(self) -> None:
+        interval = max(self._resolve_health_check_interval(), 0.05)
+        while not self._supervisor_stop_event.wait(interval):
+            with self._lock:
+                if self.state not in {"running", "degraded", "failed"}:
+                    continue
+                self._refresh_health_locked(supervise=True)
+
+    def _maybe_restart_runtime(self, runtime) -> None:
+        if not runtime.desired_running:
+            return
+        if runtime.restart_policy == "never":
+            return
+        if runtime.restart_policy == "on-failure" and runtime.state != "failed":
+            return
+        if runtime.restart_policy == "always" and runtime.state not in {"failed", "stopped"}:
+            return
+        try:
+            runtime.restart(reason=runtime.error)
+        except Exception as exc:
+            runtime._record_problem(f"restart failed: {exc}", state="failed")
+
+    def _refresh_health_locked(self, *, supervise: bool) -> None:
+        if not self.runtimes:
+            return
+
+        any_failed = False
+        any_degraded = False
+        for section_name in self._component_sections():
             runtime = self.runtimes.get(section_name)
             if runtime is None:
                 continue
-            try:
-                runtime.stop()
-            except Exception as exc:
-                failures.append(f"{section_name}: {exc}")
-        if failures:
-            self.state = "failed"
-            self.error = "; ".join(failures)
-            raise RuntimeError(self.error)
-        self.state = "stopped"
-        self.error = None
+            runtime.refresh_health()
+            if supervise:
+                previous_state = runtime.state
+                self._maybe_restart_runtime(runtime)
+                if previous_state != runtime.state and runtime.state == "running":
+                    logger.warning("Restarted component %s under policy %s", section_name, runtime.restart_policy)
+            if runtime.state == "failed":
+                any_failed = True
+            elif runtime.state == "degraded":
+                any_degraded = True
 
-    def status(self) -> dict:
+        if any_failed:
+            self.state = "failed"
+            self.error = "; ".join(
+                f"{section_name}: {runtime.error}"
+                for section_name, runtime in self.runtimes.items()
+                if runtime.state == "failed" and runtime.error
+            ) or self.error
+        elif any_degraded:
+            self.state = "degraded"
+            self.error = "; ".join(
+                f"{section_name}: {runtime.error}"
+                for section_name, runtime in self.runtimes.items()
+                if runtime.state == "degraded" and runtime.error
+            ) or None
+        elif self.state not in {"starting", "stopping", "stopped"}:
+            self.state = "running"
+            self.error = None
+
+    def start(self) -> None:
+        with self._lock:
+            if not self.validated:
+                self.validate()
+            self._build_runtimes()
+            self.state = "starting"
+            started = []
+            try:
+                _apply_runtime_logging_environment(
+                    log_dir=self._manager_log_dir(),
+                    log_file=self._manager_log_file(),
+                )
+                for section_name in self._component_sections():
+                    runtime = self.runtimes[section_name]
+                    runtime.start()
+                    started.append(runtime)
+            except Exception as exc:
+                self.state = "failed"
+                self.error = str(exc)
+                for runtime in reversed(started):
+                    try:
+                        runtime.stop()
+                    except Exception:
+                        pass
+                raise
+            self.state = "running"
+            self.error = None
+            self._start_supervisor()
+
+    def stop(self) -> None:
+        self._stop_supervisor()
+        if self.state in {"stopped", "created", "validated"} and not self.runtimes:
+            self.state = "stopped"
+            return
+        with self._lock:
+            self.state = "stopping"
+            failures = []
+            for section_name in reversed(self._component_sections()):
+                runtime = self.runtimes.get(section_name)
+                if runtime is None:
+                    continue
+                try:
+                    runtime.stop()
+                except Exception as exc:
+                    failures.append(f"{section_name}: {exc}")
+            if failures:
+                self.state = "failed"
+                self.error = "; ".join(failures)
+                raise RuntimeError(self.error)
+            self.state = "stopped"
+            self.error = None
+
+    def restart_component(self, section_name: str) -> None:
+        with self._lock:
+            runtime = self.runtimes[section_name]
+            runtime.restart(reason="manual restart")
+            self._refresh_health_locked(supervise=False)
+
+    def _status_payload(self) -> dict:
         return {
             "state": self.state,
             "mode": self.config.get("manager", {}).get("mode", "soft-rtc"),
@@ -1133,6 +1596,17 @@ class RTCManager:
                 for section_name, runtime in self.runtimes.items()
             },
         }
+
+    def status(self) -> dict:
+        with self._lock:
+            if self.state in {"running", "degraded", "failed"}:
+                self._refresh_health_locked(supervise=False)
+            return self._status_payload()
+
+    def refresh_health(self) -> dict:
+        with self._lock:
+            self._refresh_health_locked(supervise=True)
+            return self._status_payload()
 
     def get_component(self, section_name: str):
         runtime = self.runtimes[section_name]

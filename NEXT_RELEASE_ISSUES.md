@@ -420,6 +420,8 @@ At minimum, define states such as:
 
 ## Issue 04
 
+Status: Completed on the current branch on 2026-03-09. Ready to merge into `dev`.
+
 ### Title
 
 Add supervision, restart policy, and health checks to the Manager
@@ -433,6 +435,24 @@ Launching a system is only the first step. Operators need to know when a process
 - `pyRTC/Pipeline.py`
 - current logging system in `pyRTC/logging_utils.py`
 - any future `pyRTC/manager.py` from Issue 03
+
+### Implemented outcome
+
+The manager now includes a first-pass supervision and health layer that stays in the control plane rather than the real-time hot path.
+
+Delivered pieces:
+
+- per-component health/status metadata in `RTCManager.status()` including state, PID, start time, uptime, last heartbeat, last success time, last failure time, restart count, last error, restart policy, and log file path when configured
+- manager supervision polling with explicit `refresh_health()` and `restart_component(...)` entry points
+- hard-RTC child health checks using process-alive detection plus launcher RPC responsiveness
+- degraded-state handling for live-but-unresponsive children and failed-state handling for exited children
+- restart policy support for `never`, `on-failure`, and `always`, with per-component overrides via manager config
+- manager config validation for supervision-related fields including restart policies, health-check timing, RPC timeout, and log-path configuration
+- regression coverage for degraded children, failed-child restart behavior, repeated restart counting, and structured health metadata
+
+Verification completed on 2026-03-09:
+
+- full test suite passed: `168 passed` via `pytest --no-cov`
 
 ### Goals
 
