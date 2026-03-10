@@ -237,6 +237,21 @@ def _validate_manager_config(conf: Any, *, system_conf: Mapping[str, Any]) -> No
                 f"manager: 'restartPolicy' must be one of {sorted(ALLOWED_RESTART_POLICIES)}"
             )
 
+    if "componentRestartPolicies" in conf:
+        restart_policies = _require_mapping(conf["componentRestartPolicies"], "manager.componentRestartPolicies")
+        for section_name, policy in restart_policies.items():
+            if not _is_valid_manager_section(section_name, system_conf):
+                raise ConfigValidationError(
+                    f"manager.componentRestartPolicies: unknown component section '{section_name}'"
+                )
+            if not isinstance(policy, str) or policy not in ALLOWED_RESTART_POLICIES:
+                raise ConfigValidationError(
+                    f"manager.componentRestartPolicies: policy for '{section_name}' must be one of {sorted(ALLOWED_RESTART_POLICIES)}"
+                )
+
+    for key in ("healthCheckInterval", "heartbeatTimeout", "rpcTimeout"):
+        _validate_optional_numeric(conf, key, component, minimum=1e-6)
+
     if "componentModes" in conf:
         component_modes = _require_mapping(conf["componentModes"], "manager.componentModes")
         for section_name, launch_mode in component_modes.items():
@@ -269,6 +284,8 @@ def _validate_manager_config(conf: Any, *, system_conf: Mapping[str, Any]) -> No
 
     if "logDir" in conf and (not isinstance(conf["logDir"], str) or not conf["logDir"].strip()):
         raise ConfigValidationError("manager: 'logDir' must be a non-empty string when provided")
+    if "logFile" in conf and (not isinstance(conf["logFile"], str) or not conf["logFile"].strip()):
+        raise ConfigValidationError("manager: 'logFile' must be a non-empty string when provided")
 
 
 def _validate_streams_config(conf: Any) -> None:

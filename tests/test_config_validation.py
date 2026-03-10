@@ -90,7 +90,7 @@ def test_validate_system_config_accepts_synthetic_example():
 
     assert normalized["manager"]["mode"] == "soft-rtc"
     assert normalized["wfc"]["numModes"] == 32
-    assert normalized["metadata"]["configPath"].endswith("examples/synthetic_shwfs/config.yaml")
+    assert Path(normalized["metadata"]["configPath"]).resolve() == SYNTHETIC_CONFIG_PATH.resolve()
 
 
 def test_validate_system_config_resolves_relative_file_paths_against_config_file():
@@ -141,6 +141,37 @@ def test_validate_system_config_rejects_manager_restart_policy():
     conf["manager"] = {"mode": "soft-rtc", "restartPolicy": "sometimes"}
 
     with pytest.raises(ConfigValidationError, match="restartPolicy"):
+        validate_system_config(conf)
+
+
+def test_validate_system_config_accepts_manager_supervision_fields(tmp_path):
+    conf = read_system_config(SYNTHETIC_CONFIG_PATH, validate=False)
+    conf["manager"] = {
+        "mode": "hard-rtc",
+        "restartPolicy": "on-failure",
+        "componentRestartPolicies": {"loop": "always"},
+        "healthCheckInterval": 0.5,
+        "heartbeatTimeout": 3.0,
+        "rpcTimeout": 0.2,
+        "logDir": str(tmp_path),
+        "logFile": str(tmp_path / "manager.log"),
+        "componentFiles": {"loop": "../../pyRTC/Loop.py"},
+    }
+
+    normalized = validate_system_config(conf, config_path=SYNTHETIC_CONFIG_PATH)
+
+    assert normalized["manager"]["restartPolicy"] == "on-failure"
+    assert normalized["manager"]["componentRestartPolicies"]["loop"] == "always"
+
+
+def test_validate_system_config_rejects_component_restart_policy_for_unknown_section():
+    conf = read_system_config(SYNTHETIC_CONFIG_PATH, validate=False)
+    conf["manager"] = {
+        "mode": "soft-rtc",
+        "componentRestartPolicies": {"notAComponent": "on-failure"},
+    }
+
+    with pytest.raises(ConfigValidationError, match="componentRestartPolicies"):
         validate_system_config(conf)
 
 
