@@ -22,8 +22,10 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 
+from pyRTC import Telemetry
 from pyRTC.Pipeline import RTCManager, clear_shms, initExistingShm
 from pyRTC.logging_utils import add_logging_cli_args, configure_logging_from_args, get_logger
+from examples.synthetic_shwfs.aotpy_helpers import export_synthetic_session_to_aotpy
 
 
 logger = get_logger("examples.synthetic_shwfs.hard")
@@ -56,6 +58,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "--no-clear-shms",
         action="store_true",
         help="Leave existing pyRTC shared-memory streams in place.",
+    )
+    parser.add_argument(
+        "--aotpy",
+        action="store_true",
+        help="Capture a short telemetry session, export it to AOTPy, and verify readback.",
     )
     add_logging_cli_args(parser)
     return parser
@@ -146,6 +153,33 @@ def main(argv=None) -> int:
 
         # Methods are invoked remotely with run(...).
         wfc.run("flatten")
+
+        # Telemetry works the same way in hard mode because it only reads the
+        # published streams and saves them for offline use.
+        telem = Telemetry({"dataDir": str(REPO_ROOT / "examples" / "synthetic_shwfs" / "telemetry")})
+        telem.save(["wfs", "wfc"], 10)
+        telemetry_data = telem.read_last_save()
+        logger.info(
+            "Telemetry example: wfs=%s wfc=%s",
+            telemetry_data["wfs"]["frames"].shape,
+            telemetry_data["wfc"]["frames"].shape,
+        )
+
+        if args.aotpy:
+            session_path, exported_path, reopened_system = export_synthetic_session_to_aotpy(
+                repo_root=REPO_ROOT,
+                config=config,
+                config_path=CONFIG_PATH,
+                mode_label="hard",
+            )
+            logger.info(
+                "AOTPy export verified: session=%s file=%s wfs=%s loops=%s science_cameras=%s",
+                session_path,
+                exported_path,
+                len(reopened_system.wavefront_sensors),
+                len(reopened_system.loops),
+                len(reopened_system.scoring_cameras),
+            )
 
         start_time = time.perf_counter()
         next_status = start_time

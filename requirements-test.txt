@@ -3,3 +3,4 @@ pytest-cov
 ruff
 build
 twine
+aotpy>=3.2; python_version >= "3.10"
