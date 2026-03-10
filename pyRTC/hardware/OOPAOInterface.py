@@ -6,9 +6,13 @@ for simulation-backed development and validation where the control stack should
 behave as if it were driving real hardware.
 """
 
+from __future__ import annotations
+
 import argparse
+import inspect
 import os
 import time
+from typing import Any, Mapping
 
 import numpy as np
 
@@ -207,70 +211,70 @@ class OOPAOInterface():
     and end-to-end synthetic tests.
     """
 
-    def __init__(self, conf, param=None) -> None:
+    OBJECT_NAMES = ("tel", "tel_psf", "ngs", "src", "atm", "dm", "wfs")
 
-        if param is None:
-            self.param = _initializeDummyParameterFile()
-        else:
-            self.param = param
+    def __init__(self, conf, param=None, tel=None, tel_psf=None, ngs=None, src=None, atm=None, dm=None, wfs=None) -> None:
+
+        self.conf = conf
+        self.param = self._load_param_mapping(param)
+        self.tel_input = tel
+        self.tel_psf_input = tel_psf
+        self.ngs_input = ngs
+        self.src_input = src
+        self.atm_input = atm
+        self.dm_input = dm
+        self.wfs_input = wfs
+        self.tel = tel
+        self.tel_psf = tel_psf
+        self.ngs = ngs
+        self.src = src
+        self.atm = atm
+        self.dm = dm
+        self.wfs = wfs
+
+        if not self.param and all(getattr(self, name) is None for name in self.OBJECT_NAMES):
+            raise ValueError(
+                "OOPAOInterface no longer ships an embedded default parameter payload. "
+                + self._describe_supported_inputs()
+            )
+
+        if self.tel is None:
+            self.tel = self._build_object("tel", Telescope)
+        if self.tel_psf is None:
+            self.tel_psf = self._build_object("tel_psf", Telescope)
+        if self.ngs is None:
+            self.ngs = self._build_object("ngs", Source)
+        if self.src is None:
+            self.src = self._build_object("src", Source)
+
+        if hasattr(self.ngs, "__mul__"):
+            self.ngs * self.tel
+        if hasattr(self.src, "__mul__"):
+            self.src * self.tel_psf
+
+        if self.atm is None:
+            self.atm = self._build_object("atm", Atmosphere, telescope=self.tel)
+        if self.dm is None:
+            self.dm = self._build_object("dm", DeformableMirror, telescope=self.tel)
+        if self.wfs is None:
+            self.wfs = self._build_object("wfs", Pyramid, telescope=self.tel)
+
+        if hasattr(self.atm, "initializeAtmosphere"):
+            logger.info("Initializing OOPAO atmosphere against the telescope model")
+            self.atm.initializeAtmosphere(self.tel)
 
         wfsConf = conf["wfs"]
         correctorConf = conf["wfc"]
         scienceConf = conf["psf"]
 
-        if param is None:
-            param = self.param
-        else:
-            self.param = param
-
-        #Create our Telescope Simulatation
-        self.tel = Telescope(resolution     = param['resolution'],
-                        diameter            = param['diameter'],
-                        samplingTime        = param['samplingTime'],
-                        centralObstruction  = param['centralObstruction'])
-        
-        #A second copy of the telescope so that the PSF camera is fighting with the
-        #Wavefront Sensor
-        self.tel_psf = Telescope(resolution     = param['resolution'],
-                diameter            = param['diameter'],
-                samplingTime        = param['samplingTime'],
-                centralObstruction  = param['centralObstruction'])
-        
-        self.src = Source(optBand   = param["sourceBand"], 
-                          magnitude = param['magnitude'])
-        self.src*self.tel_psf
-
-        #Create a guide star
-        self.ngs = Source(optBand = param['opticalBand'], magnitude = param['magnitude'])
-        self.ngs*self.tel
-
-        self.atm = Atmosphere(telescope     = self.tel,\
-               r0            = param['r0'],\
-               L0            = param['L0'],\
-               windSpeed     = param['windSpeed'],\
-               fractionalR0  = param['fractionnalR0'],\
-               windDirection = param['windDirection'],\
-               altitude      = param['altitude'])
-
-        self.dm=DeformableMirror(telescope          = self.tel,
-                                        nSubap         = param['nSubaperture'], 
-                                        mechCoupling   = param['mechanicalCoupling'])
-
-        # create the Pyramid WFS Object
-        self.wfs = Pyramid(nSubap         = param['nSubaperture'],
-                    telescope             = self.tel,
-                    modulation            = param['modulation'],
-                    lightRatio            = param['lightThreshold'],
-                    n_pix_separation      = param['n_pix_separation'],
-                    psfCentering          = param['psfCentering'],
-                    postProcessing        = param['postProcessing'])
-        
-        #Initialize the atmosphere
-        self.atm.initializeAtmosphere(self.tel)
-
         self.wfsInterface = _OOPAOWFSensor(wfsConf, self.tel, self.ngs, self.atm, self.dm, self.wfs)
         self.dmInterface  = _OOPAOWFCorrector(correctorConf, self.tel, self.dm)
         self.psfInterface = _OOPAOScienceCamera(scienceConf, self.tel_psf, self.src, self.atm, self.dm)
+
+        logger.info(
+            "OOPAOInterface ready. Pass param as a loaded flat dict of OOPAO constructor-style keys, "
+            "or provide explicit tel=..., atm=..., wfs=... arguments to reuse existing OOPAO objects."
+        )
 
         #Add the atmosphere to the system
         self.addAtmosphere()
@@ -288,87 +292,84 @@ class OOPAOInterface():
         del self.dmInterface
         del self.psfInterface
 
-        self.__init__(param=self.param)
+        self.__init__(
+            self.conf,
+            param=self.param,
+            tel=self.tel_input,
+            tel_psf=self.tel_psf_input,
+            ngs=self.ngs_input,
+            src=self.src_input,
+            atm=self.atm_input,
+            dm=self.dm_input,
+            wfs=self.wfs_input,
+        )
 
     def get_hardware(self):
         return self.wfsInterface, self.dmInterface, self.psfInterface
 
+    def _describe_supported_inputs(self):
+        return (
+            "Provide param as a flat dict using OOPAO constructor argument names where possible. "
+            "Non-source objects are built by forwarding any matching keys from that flat dict. "
+            "The two Source objects are the only special case: use ngs_band and ngs_magnitude for the guide star, "
+            "and science_band and science_magnitude for the science source. "
+            "If a flat key is ambiguous across OOPAO constructors, pass the already-built object explicitly. "
+            "You can also pass already-built objects through the matching explicit constructor arguments."
+        )
 
-def _initializeDummyParameterFile():
-    """Return a small default OOPAO parameter dictionary for local simulation."""
+    def _load_param_mapping(self, param: Any) -> dict[str, Any]:
+        if param is None:
+            return {}
 
-    from OOPAO.tools.tools import createFolder
+        if not isinstance(param, Mapping):
+            raise TypeError(f"OOPAO parameters must be a mapping/dict, got {type(param).__name__}")
 
-    # initialize the dictionaries
-    param = dict()
-    
-    ###%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% ATMOSPHERE PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-    
-    param['r0'                   ] = 0.3                                            # value of r0 in the visible in [m]
-    param['L0'                   ] = 30                                             # value of L0 in the visible in [m]
-    param['fractionnalR0'        ] = [0.45,0.1,0.1,0.25,0.1]                        # Cn2 profile
-    param['windSpeed'            ] = [10,12,11,15,20]                               # wind speed of the different layers in [m.s-1]
-    param['windDirection'        ] = [0,72,144,216,288]                             # wind direction of the different layers in [degrees]
-    param['altitude'             ] = [0, 1000,5000,10000,12000 ]                    # altitude of the different layers in [m]
-                    
-    ###%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% M1 PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-    
-    param['diameter'             ] = 8                                              # diameter in [m]
-    param['nSubaperture'         ] = 10                                             # number of PWFS subaperture along the telescope diameter
-    param['nPixelPerSubap'       ] = 4                                              # sampling of the PWFS subapertures
-    param['resolution'           ] = param['nSubaperture']*param['nPixelPerSubap']  # resolution of the telescope driven by the PWFS
-    param['sizeSubaperture'      ] = param['diameter']/param['nSubaperture']        # size of a sub-aperture projected in the M1 space
-    param['samplingTime'         ] = 1/1000                                         # loop sampling time in [s]
-    param['centralObstruction'   ] = 0.112                                          # central obstruction in percentage of the diameter
-    param['nMissingSegments'     ] = 0                                              # number of missing segments on the M1 pupil
-    param['m1_reflectivity'      ] = 1                                              # reflectivity of the 798 segments
-          
-    ###%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% NGS PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-    
-    param['magnitude'            ] = 8                                              # magnitude of the guide star
-    param['opticalBand'          ] = 'I'                                            # optical band of the guide star
-    param['sourceBand'          ] = 'K'
+        return dict(param)
 
-    ###%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% DM PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-    param['nActuator'            ] = param['nSubaperture']+1                        # number of actuators 
-    param['mechanicalCoupling'   ] = 0.45
-    param['isM4'                 ] = False                                          # tag for the deformable mirror class
-    param['dm_coordinates'       ] = None                                           # tag for the eformable mirror class
-    
-    # mis-registrations                                                             
-    param['shiftX'               ] = 0                                              # shift X of the DM in pixel size units ( tel.D/tel.resolution ) 
-    param['shiftY'               ] = 0                                              # shift Y of the DM in pixel size units ( tel.D/tel.resolution )
-    param['rotationAngle'        ] = 0                                              # rotation angle of the DM in [degrees]
-    param['anamorphosisAngle'    ] = 0                                              # anamorphosis angle of the DM in [degrees]
-    param['radialScaling'        ] = 0                                              # radial scaling in percentage of diameter
-    param['tangentialScaling'    ] = 0                                              # tangential scaling in percentage of diameter
-    
-    ###%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% WFS PROPERTIES %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-    
-    param['modulation'            ] = 5                                             # modulation radius in ratio of wavelength over telescope diameter
-    param['n_pix_separation'      ] = 4                                             # separation ratio between the PWFS pupils
-    param['psfCentering'          ] = False                                         # centering of the FFT and of the PWFS mask on the 4 central pixels
-    param['lightThreshold'        ] = 0.1                                           # light threshold to select the valid pixels
-    param['postProcessing'        ] = 'slopesMaps'                                  # post-processing of the PWFS signals 
-    
-    ###%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% OUTPUT DATA %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+    def _build_object(self, object_name: str, factory, **extra_kwargs):
+        if object_name == "ngs":
+            kwargs = {
+                "optBand": self.param.get("ngs_band"),
+                "magnitude": self.param.get("ngs_magnitude"),
+            }
+            kwargs.update(extra_kwargs)
+            kwargs = {key: value for key, value in kwargs.items() if value is not None}
+        elif object_name == "src":
+            kwargs = {
+                "optBand": self.param.get("science_band"),
+                "magnitude": self.param.get("science_magnitude"),
+            }
+            kwargs.update(extra_kwargs)
+            kwargs = {key: value for key, value in kwargs.items() if value is not None}
+        else:
+            kwargs = {}
+            signature = inspect.signature(factory)
+            for parameter_name, parameter in signature.parameters.items():
+                if parameter_name == "self":
+                    continue
+                if parameter.kind in (inspect.Parameter.POSITIONAL_ONLY, inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD):
+                    continue
+                if parameter_name in extra_kwargs:
+                    kwargs[parameter_name] = extra_kwargs[parameter_name]
+                    continue
+                if parameter_name in self.param:
+                    value = self.param[parameter_name]
+                    if object_name == "dm" and parameter_name == "altitude" and not np.isscalar(value):
+                        logger.info(
+                            "Skipping non-scalar 'altitude' when building OOPAO object 'dm'; treating it as atmosphere layer heights"
+                        )
+                        continue
+                    kwargs[parameter_name] = value
 
-    # name of the system
-    param['name'] = 'VLT_' +  param['opticalBand'] +'_band_'+ str(param['nSubaperture'])+'x'+ str(param['nSubaperture'])  
-    
-    # location of the calibration data
-    param['pathInput'            ] = 'data_calibration/' 
-    
-    # location of the output data
-    param['pathOutput'            ] = 'data_cl/'
-    
+        logger.info("Building OOPAO object '%s' with kwargs keys %s", object_name, sorted(kwargs))
 
-    logger.info('Reading/Writting calibration data from %s', param['pathInput'])
-    logger.info('Writting output data in %s', param['pathOutput'])
-
-    createFolder(param['pathOutput'])
-    
-    return param
+        try:
+            return factory(**kwargs)
+        except TypeError as exc:
+            raise TypeError(
+                f"Failed to build OOPAO object '{object_name}' from kwargs {sorted(kwargs)}. "
+                f"{self._describe_supported_inputs()}"
+            ) from exc
 
 if __name__ == "__main__":
 
@@ -376,7 +377,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Read a config file from the command line.")
 
     # Add command-line argument for the config file
-    parser.add_argument("-c", "--config", required=True, help="Path to the config file")
+    parser.add_argument("-c", "--config", required=True, help="Path to the pyRTC config file")
+    parser.add_argument("--param-file", help="Path to an OOPAO parameter YAML file used to build the simulator objects")
     parser.add_argument("-p", "--port", required=True, help="Port for communication")
 
     # Parse command-line arguments
@@ -388,7 +390,9 @@ if __name__ == "__main__":
     set_affinity((conf["wfs"]["affinity"])%os.cpu_count()) 
     decrease_nice(pid)
 
-    sim = OOPAOInterface(conf=conf)
+    param = read_yaml_file(args.param_file) if args.param_file else None
+
+    sim = OOPAOInterface(conf=conf, param=param)
     
     listener = Listener(sim, port= int(args.port))
     while listener.running:

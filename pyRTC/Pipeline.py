@@ -6,6 +6,9 @@ those blocks onto CUDA tensors for compatible deployments, and launch hardware-
 facing child processes that communicate with the main RTC over a small
 localhost-based JSON protocol.
 """
+
+from __future__ import annotations
+
 import argparse
 from dataclasses import dataclass
 import importlib

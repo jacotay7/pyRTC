@@ -644,7 +644,8 @@ class Loop(pyRTCComponent):
         self.lastSingularValueFit = fit
 
         if ax is None:
-            _, ax = plt.subplots(figsize=(8, 4.5))
+            fig = plt.figure(figsize=(8, 4.5))
+            ax = fig.add_axes((0.12, 0.15, 0.83, 0.78))
 
         if singular_values.size == 0 or np.max(singular_values) <= 0:
             ax.set_title("Singular values unavailable")

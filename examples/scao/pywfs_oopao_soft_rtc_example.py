@@ -32,6 +32,7 @@ from pyRTC.utils import read_yaml_file
 
 logger = get_logger("examples.scao.pywfs_oopao_soft")
 CONFIG_PATH = REPO_ROOT / "examples" / "scao" / "pywfs_OOPAO_config.yaml"
+PARAM_PATH = REPO_ROOT / "examples" / "scao" / "pywfs_OOPAO_params.yaml"
 DEFAULT_STREAMS = [
     "wfs",
     "wfsRaw",
@@ -78,6 +79,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Leave existing pyRTC shared-memory streams untouched.",
     )
+    parser.add_argument(
+        "--oopao-param-file",
+        type=Path,
+        default=PARAM_PATH,
+        help="YAML file describing how to build the OOPAO tel/ngs/src/atm/dm/wfs objects.",
+    )
     add_logging_cli_args(parser)
     return parser
 
@@ -90,10 +97,15 @@ def configure_kl_basis(sim, dm, num_modes: int) -> None:
     dm.setM2C(basis[:, :num_modes])
 
 
-def build_system(config: dict, *, use_kl_basis: bool) -> dict:
+def build_system(config: dict, *, use_kl_basis: bool, oopao_param_file: Path) -> dict:
     from pyRTC.hardware.OOPAOInterface import OOPAOInterface
 
-    sim = OOPAOInterface(conf=config, param=None)
+    oopao_param = read_yaml_file(str(oopao_param_file))
+    logger.info(
+        "OOPAO param conventions: reuse the flat OOPAO constructor-style keys for tel/atm/dm/wfs values, "
+        "and use ngs_band/ngs_magnitude plus science_band/science_magnitude for the two source objects."
+    )
+    sim = OOPAOInterface(conf=config, param=oopao_param)
     wfs, dm, psf = sim.get_hardware()
     if use_kl_basis:
         configure_kl_basis(sim, dm, int(config["wfc"]["numModes"]))
@@ -188,10 +200,18 @@ def main(argv=None) -> int:
 
     logger.info("OOPAO PyWFS soft-RTC tutorial")
     logger.info("Config: %s", CONFIG_PATH)
+    logger.info("OOPAO object params: %s", args.oopao_param_file)
     logger.info("Viewer: pyrtc-view wfs signal2D wfc2D psfShort psfLong --geometry 2x3")
+    logger.info(
+        "To reuse your own OOPAO objects instead of this YAML file, construct OOPAOInterface with explicit tel=..., atm=..., wfs=... arguments."
+    )
 
     # Step 3: build the simulation-backed components.
-    system = build_system(config, use_kl_basis=not args.no_kl_basis)
+    system = build_system(
+        config,
+        use_kl_basis=not args.no_kl_basis,
+        oopao_param_file=args.oopao_param_file,
+    )
 
     try:
         # Step 4: start the WFS, DM, and slopes stages needed for calibration.

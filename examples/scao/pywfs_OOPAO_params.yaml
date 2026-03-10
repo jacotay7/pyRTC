@@ -1,0 +1,24 @@
+resolution: 40
+diameter: 8
+samplingTime: 0.001
+centralObstruction: 0.112
+
+ngs_band: I
+ngs_magnitude: 8
+science_band: K
+science_magnitude: 8
+
+r0: 0.3
+L0: 30
+fractionalR0: [0.45, 0.1, 0.1, 0.25, 0.1]
+windSpeed: [10, 12, 11, 15, 20]
+windDirection: [0, 72, 144, 216, 288]
+altitude: [0, 1000, 5000, 10000, 12000]
+
+nSubap: 10
+mechCoupling: 0.45
+modulation: 5
+lightRatio: 0.1
+n_pix_separation: 4
+psfCentering: false
+postProcessing: slopesMaps
