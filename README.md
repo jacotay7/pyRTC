@@ -101,6 +101,7 @@ pip install pyrtcao
 Optional extras:
 
 ```bash
+pip install pyrtcao[aotpy]
 pip install pyrtcao[docs]
 pip install pyrtcao[gpu]
 pip install pyrtcao[viewer]
@@ -117,6 +118,7 @@ pip install .
 Optional source extras:
 
 ```bash
+pip install .[aotpy]
 pip install .[docs]
 pip install .[gpu]
 pip install .[viewer]
@@ -136,6 +138,12 @@ Validate a system config before launch:
 
 ```bash
 pyrtc-validate-config examples/synthetic_shwfs/config.yaml
+```
+
+Export a telemetry session into AOTPy once the optional dependency is installed:
+
+```bash
+pyrtc-export-aotpy data/session_20260309_120000_abcd1234 session_export.fits
 ```
 
 The best first end-to-end path today is the no-hardware synthetic Shack-Hartmann workflow under `examples/synthetic_shwfs/`.

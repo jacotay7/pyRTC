@@ -32,6 +32,7 @@ Optional extras:
 
 .. code-block:: bash
 
+	pip install pyrtcao[aotpy]
 	pip install pyrtcao[docs]
 	pip install pyrtcao[gpu]
 	pip install pyrtcao[viewer]
@@ -79,6 +80,22 @@ For automation or GUI-oriented tooling, JSON output is also available:
 .. code-block:: bash
 
 	pyrtc-validate-config examples/synthetic_shwfs/config.yaml --format json
+
+Export Telemetry Sessions to AOTPy
+---------------------------------
+
+If you want to move a saved telemetry session into the broader AO ecosystem,
+install the optional AOTPy dependency and export the session after capture:
+
+.. code-block:: bash
+
+	pip install pyrtcao[aotpy]
+	pyrtc-export-aotpy data/session_20260309_120000_abcd1234 exported_session.fits
+
+The exporter only maps the streams actually present in the session. The current
+mapping is conservative: `wfs` becomes detector pixels, `signal` becomes WFS
+measurements when the shape is interpretable, `wfc` becomes command history,
+and `psfShort` or `psfLong` become scoring-camera outputs.
 
 Minimal Component Example
 -------------------------

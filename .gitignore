@@ -57,3 +57,4 @@ Thumbs.db
 coverage.xml
 wheel-test-env
 session_*
+examples/aotpy/output/*
