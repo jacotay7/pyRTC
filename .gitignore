@@ -56,3 +56,4 @@ Thumbs.db
 *.png
 coverage.xml
 wheel-test-env
+session_*

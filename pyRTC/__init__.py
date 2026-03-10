@@ -36,7 +36,12 @@ from .Pipeline import (
 )
 from .ScienceCamera import ScienceCamera
 from .SlopesProcess import SlopesProcess
-from .Telemetry import Telemetry
+from .Telemetry import (
+	Telemetry,
+	list_telemetry_sessions,
+	load_telemetry_manifest,
+	load_telemetry_session,
+)
 from .WavefrontCorrector import WavefrontCorrector
 from .WavefrontSensor import WavefrontSensor
 from .pyRTCComponent import pyRTCComponent
@@ -54,6 +59,9 @@ __all__ = [
 	"ScienceCamera",
 	"SlopesProcess",
 	"Telemetry",
+	"list_telemetry_sessions",
+	"load_telemetry_manifest",
+	"load_telemetry_session",
 	"WavefrontCorrector",
 	"WavefrontSensor",
 	"normalize_system_config",

@@ -525,6 +525,8 @@ The initial implementation does not need deep instrumentation. It can start with
 
 ## Issue 05
 
+Status: Completed on the current branch on 2026-03-09. Ready to merge into `dev`.
+
 ### Title
 
 Add structured telemetry sessions and capture manifests
@@ -540,6 +542,24 @@ The next release should make telemetry captures self-describing.
 - `pyRTC/Telemetry.py`
 - `tests/test_telemetry.py`
 - stream usage across `WavefrontSensor`, `SlopesProcess`, `Loop`, `WavefrontCorrector`, and `ScienceCamera`
+
+### Implemented outcome
+
+Telemetry capture is now session-based, self-describing, and NumPy-native.
+
+Delivered pieces:
+
+- per-session telemetry directories under `dataDir` with one subdirectory per captured stream
+- standard NumPy capture products per stream: `frames.npy` and `timestamps.npy`
+- JSON metadata alongside each stream plus one session-level `session.json`
+- simple user-facing capture flow centered on `Telemetry.save(...)` and `Telemetry.read_last_save()`
+- grouped multi-stream capture via `Telemetry.save([...], ...)` and config-driven capture via `Telemetry.save_configured_streams(...)`
+- offline helpers to list sessions, load session metadata, and reopen captures into a per-stream mapping with `frames`, `timestamps`, and `metadata`
+- regression coverage for single-stream saves, grouped multi-stream saves, metadata reconstruction, corrupted metadata, and missing capture files
+
+Verification completed on 2026-03-09:
+
+- full test suite passed: `170 passed` via `pytest --no-cov`
 
 ### Goals
 

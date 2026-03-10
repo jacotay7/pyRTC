@@ -86,6 +86,32 @@ The exact numbers will vary by host, but the important pattern is:
 - the residual RMS should settle below the open-loop disturbance amplitude
 - the synthetic Strehl should rise when the loop is behaving sensibly
 
+Telemetry Capture
+-----------------
+
+The intended telemetry workflow is intentionally small and NumPy-native:
+
+.. code-block:: python
+
+	from pyRTC import Telemetry
+
+	telem = Telemetry()
+	telem.save("wfs", 1000)
+	telem.save(["wfs", "wfc"], 1000)
+	data = telem.read_last_save()
+	print(data["wfs"]["frames"].shape)
+	print(data["wfs"]["timestamps"].shape)
+
+Each save creates one session directory under ``dataDir``. For each captured
+stream pyRTC writes:
+
+- ``frames.npy`` for the frame stack
+- ``timestamps.npy`` for producer timestamps
+- ``metadata.json`` for stream metadata
+
+That means users can reopen the files with plain NumPy if they want, while the
+``Telemetry`` helper keeps the most common access pattern straightforward.
+
 Viewer Commands
 ---------------
 
