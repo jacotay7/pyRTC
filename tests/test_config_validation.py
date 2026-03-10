@@ -90,7 +90,7 @@ def test_validate_system_config_accepts_synthetic_example():
 
     assert normalized["manager"]["mode"] == "soft-rtc"
     assert normalized["wfc"]["numModes"] == 32
-    assert normalized["metadata"]["configPath"].endswith("examples/synthetic_shwfs/config.yaml")
+    assert Path(normalized["metadata"]["configPath"]).resolve() == SYNTHETIC_CONFIG_PATH.resolve()
 
 
 def test_validate_system_config_resolves_relative_file_paths_against_config_file():
