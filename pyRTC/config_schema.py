@@ -289,6 +289,13 @@ def _validate_manager_config(conf: Any, *, system_conf: Mapping[str, Any]) -> No
 
 
 def _validate_streams_config(conf: Any) -> None:
+    """Validate optional stream metadata and lineage overrides.
+
+    The preferred terminology is ``outputComponent`` and ``inputComponents``.
+    ``producer`` and ``consumers`` remain supported as backward-compatible
+    aliases.
+    """
+
     component = "streams"
     conf = _require_mapping(conf, component)
 
@@ -304,19 +311,30 @@ def _validate_streams_config(conf: Any) -> None:
                 _coerce_int(axis, f"streams.{stream_name}", "shape axis", minimum=1)
         if "dtype" in stream_conf and (not isinstance(stream_conf["dtype"], str) or not stream_conf["dtype"].strip()):
             raise ConfigValidationError(f"streams.{stream_name}: 'dtype' must be a non-empty string")
-        if "producer" in stream_conf and get_component_descriptor(stream_conf["producer"]) is None:
+        output_component = stream_conf.get("outputComponent", stream_conf.get("producer"))
+        if output_component is not None and get_component_descriptor(output_component) is None:
             raise ConfigValidationError(
-                f"streams.{stream_name}: 'producer' must reference a known component section"
+                f"streams.{stream_name}: 'outputComponent' must reference a known component section"
             )
-        if "consumers" in stream_conf:
-            consumers = stream_conf["consumers"]
-            if not isinstance(consumers, list):
-                raise ConfigValidationError(f"streams.{stream_name}: 'consumers' must be a list")
-            for consumer in consumers:
-                if get_component_descriptor(consumer) is None:
+        input_components = stream_conf.get("inputComponents", stream_conf.get("consumers"))
+        if input_components is not None:
+            if not isinstance(input_components, list):
+                raise ConfigValidationError(f"streams.{stream_name}: 'inputComponents' must be a list")
+            for input_component in input_components:
+                if get_component_descriptor(input_component) is None:
                     raise ConfigValidationError(
-                        f"streams.{stream_name}: consumer '{consumer}' is not a known component section"
+                        f"streams.{stream_name}: input component '{input_component}' is not a known component section"
                     )
+        if "sourceStreams" in stream_conf:
+            source_streams = stream_conf["sourceStreams"]
+            if not isinstance(source_streams, list) or not all(isinstance(item, str) and item.strip() for item in source_streams):
+                raise ConfigValidationError(f"streams.{stream_name}: 'sourceStreams' must be a list of non-empty stream names")
+        if "lineageSource" in stream_conf:
+            lineage_source = stream_conf["lineageSource"]
+            if not isinstance(lineage_source, str) or not lineage_source.strip():
+                raise ConfigValidationError(f"streams.{stream_name}: 'lineageSource' must be a non-empty stream name")
+            if "sourceStreams" in stream_conf and lineage_source not in stream_conf["sourceStreams"]:
+                raise ConfigValidationError(f"streams.{stream_name}: 'lineageSource' must also appear in 'sourceStreams'")
 
 
 def _validate_metadata_config(conf: Any) -> None:

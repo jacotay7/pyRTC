@@ -21,6 +21,7 @@ if str(REPO_ROOT) not in sys.path:
 
 
 from pyRTC import Telemetry
+from pyRTC.latency import format_latency_report
 from pyRTC.Pipeline import RTCManager, clear_shms, initExistingShm
 from pyRTC.logging_utils import add_logging_cli_args, configure_logging_from_args, get_logger
 from examples.synthetic_shwfs.aotpy_helpers import export_synthetic_session_to_aotpy
@@ -46,6 +47,12 @@ DEFAULT_STREAMS = [
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run the synthetic SHWFS tutorial in soft-RTC mode.")
     parser.add_argument("--duration", type=float, default=15.0, help="Seconds to run before stopping.")
+    parser.add_argument(
+        "--latency-samples",
+        type=int,
+        default=256,
+        help="Number of samples to use for the tutorial manager.latency() example. Set to 0 to disable.",
+    )
     parser.add_argument(
         "--status-interval",
         type=float,
@@ -115,6 +122,28 @@ def format_status_line(start_time: float) -> str:
     )
 
 
+def log_latency_example(manager: RTCManager, *, samples: int) -> None:
+    """Log one formatted manager.latency() example for the tutorial.
+
+    Parameters
+    ----------
+    manager : RTCManager
+        Running manager instance for the tutorial system.
+    samples : int
+        Number of latency samples to request. Values less than 2 disable the
+        example to avoid invalid latency calls.
+    """
+
+    if samples < 2:
+        logger.info("Skipping manager.latency() tutorial example because latency_samples=%s", samples)
+        return
+
+    logger.info("Manager latency example: manager.latency(samples=%s)", samples)
+    report = manager.latency(samples=samples, show_progress=False)
+    for line in format_latency_report(report).splitlines():
+        logger.info("%s", line)
+
+
 # %% Main walkthrough
 def main(argv=None) -> int:
     args = build_arg_parser().parse_args(argv)
@@ -152,6 +181,11 @@ def main(argv=None) -> int:
 
         # Methods are also called directly in soft mode.
         wfc.flatten()
+
+        # Give the running system a brief moment to produce stream lineage,
+        # then show the manager latency helper once in the tutorial logs.
+        time.sleep(1.0)
+        log_latency_example(manager, samples=args.latency_samples)
 
         # Telemetry is an ordinary helper object: capture one or more streams,
         # then reopen the most recent save as NumPy arrays plus timestamps.

@@ -87,6 +87,65 @@ def test_manager_launches_soft_synthetic_system(tmp_path):
         clear_shms(DEFAULT_STREAMS)
 
 
+def test_manager_latency_infers_loop_path(monkeypatch, tmp_path):
+    from pyRTC import latency
+
+    class FakeShm:
+        def __init__(self, time_scale):
+            self._count = 0
+            self._time_scale = time_scale
+            self.metadata = np.array([0, 0.0], dtype=np.float64)
+
+        def hold(self):
+            self._count += 1
+            self.metadata = np.array([self._count, self._count * self._time_scale], dtype=np.float64)
+
+    streams = {
+        "wfs": FakeShm(1.0e-3),
+        "signal": FakeShm(1.4e-3),
+        "wfc": FakeShm(1.8e-3),
+    }
+
+    monkeypatch.setattr(latency, "initExistingShm", lambda name, gpuDevice=None: (streams[name], None, None))
+
+    manager = RTCManager.from_config_file(_write_runtime_synthetic_config(tmp_path))
+    report = manager.latency(samples=8)
+
+    assert report["stream_path"] == ["wfs", "signal", "wfc"]
+    assert report["inferred_path"] is True
+    assert report["total"]["source_shm"] == "wfs"
+    assert report["total"]["target_shm"] == "wfc"
+    assert len(report["segments"]) == 2
+
+
+def test_manager_latency_uses_explicit_pair_when_requested(monkeypatch, tmp_path):
+    from pyRTC import latency
+
+    class FakeShm:
+        def __init__(self, offset):
+            self._count = 0
+            self._offset = offset
+            self.metadata = np.array([0, offset], dtype=np.float64)
+
+        def hold(self):
+            self._count += 1
+            self.metadata = np.array([self._count, self._count * 1.0e-3 + self._offset], dtype=np.float64)
+
+    streams = {
+        "signal": FakeShm(2.0e-4),
+        "wfc": FakeShm(5.0e-4),
+    }
+
+    monkeypatch.setattr(latency, "initExistingShm", lambda name, gpuDevice=None: (streams[name], None, None))
+
+    manager = RTCManager.from_config_file(_write_runtime_synthetic_config(tmp_path))
+    report = manager.latency(source_shm="signal", target_shm="wfc", samples=8)
+
+    assert report["stream_path"] == ["signal", "wfc"]
+    assert report["total"]["source_shm"] == "signal"
+    assert report["total"]["target_shm"] == "wfc"
+
+
 def test_manager_stop_is_idempotent_for_soft_system():
     class FakeRuntime:
         def __init__(self):

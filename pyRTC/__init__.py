@@ -22,6 +22,7 @@ from .component_descriptors import (
 )
 from .config_schema import normalize_system_config, read_system_config, validate_system_config
 from .logging_utils import add_logging_cli_args, configure_logging, configure_logging_from_args, get_logger
+from .latency import LatencyReport, LatencySegment, LatencyStatistics, format_latency_report
 from .Modulator import Modulator
 from .Optimizer import Optimizer
 from .Pipeline import (
@@ -52,6 +53,9 @@ __all__ = [
 	"ImageSHM",
 	"Listener",
 	"Loop",
+	"LatencyReport",
+	"LatencySegment",
+	"LatencyStatistics",
 	"Modulator",
 	"Optimizer",
 	"Pipeline",
@@ -72,6 +76,7 @@ __all__ = [
 	"read_system_config",
 	"configure_logging",
 	"configure_logging_from_args",
+	"format_latency_report",
 	"add_logging_cli_args",
 	"ComponentDescriptor",
 	"ConfigFieldDescriptor",

@@ -389,6 +389,7 @@ class SlopesProcess(pyRTCComponent):
             self.name = "Slopes"
 
             self.wfsShm, self.imageShape, self.imageDType = initExistingShm("wfs", gpuDevice=self.gpuDevice)
+            self.register_input_stream("wfs", self.wfsShm)
 
             self.signalDType = np.float32
             self.imageNoise = setFromConfig(self.conf, "imageNoise", 0.0)
@@ -456,6 +457,8 @@ class SlopesProcess(pyRTCComponent):
 
                 self.signal = ImageSHM("signal", self.signalShape, self.signalDType, gpuDevice=self.gpuDevice, consumer=False)
                 self.signal2D = ImageSHM("signal2D", self.signal2DShape, self.signalDType, gpuDevice=self.gpuDevice, consumer=False)
+                self.register_output_stream("signal", self.signal, source_streams=["wfs"], lineage_source="wfs")
+                self.register_output_stream("signal2D", self.signal2D, source_streams=["signal"], lineage_source="signal")
 
                 self.refSlopes = np.zeros(self.signal2DShape, dtype=self.signalDType)
 
@@ -477,8 +480,8 @@ class SlopesProcess(pyRTCComponent):
             Current signal.
         """
         if block:
-            return self.signal.read(SAFE=SAFE, GPU=GPU, RELEASE_GIL = self.RELEASE_GIL)
-        return self.signal.read_noblock(SAFE=SAFE, GPU=GPU)
+            return self.read_stream("signal", SAFE=SAFE, GPU=GPU, RELEASE_GIL=self.RELEASE_GIL)
+        return self.read_stream("signal", block=False, SAFE=SAFE, GPU=GPU)
     
     def readImage(self, SAFE=True, GPU=False, block=True):
         """
@@ -490,8 +493,8 @@ class SlopesProcess(pyRTCComponent):
             Current WFS image.
         """
         if block:
-            return self.wfsShm.read(SAFE=SAFE, GPU=GPU, RELEASE_GIL = self.RELEASE_GIL)
-        return self.wfsShm.read_noblock(SAFE=SAFE, GPU=GPU)
+            return self.read_stream("wfs", SAFE=SAFE, GPU=GPU, RELEASE_GIL=self.RELEASE_GIL)
+        return self.read_stream("wfs", block=False, SAFE=SAFE, GPU=GPU)
 
     def setValidSubAps(self, validSubAps):
         """
@@ -710,8 +713,8 @@ class SlopesProcess(pyRTCComponent):
                 # self.signal2D.write(slopes*self.validSubAps)
                 # slopes = np.zeros_like(self.refSlopes)
                 # self.signal.write(self.refSlopes.flatten()[:np.prod(self.signalShape)].reshape(self.signalShape))
-            self.signal.write(slope_signal)
-            self.signal2D.write(self.computeSignal2D(slope_signal))
+            self.write_stream("signal", slope_signal, source_streams=["wfs"], lineage_source="wfs")
+            self.write_stream("signal2D", self.computeSignal2D(slope_signal), source_streams=["signal"], lineage_source="signal")
         
         return
     

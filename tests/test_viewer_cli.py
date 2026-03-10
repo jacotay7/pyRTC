@@ -1,6 +1,10 @@
+import numpy as np
+
+from pyRTC.Pipeline import ImageSHM
 from pyRTC.scripts import view
 from pyRTC.scripts import clear_shms, view_launch_all
 from pyRTC.scripts import viewer_core
+from pyRTC.scripts import viewer_helpers
 from pyRTC.scripts.viewer_helpers import StreamConnection
 from pyRTC.scripts.viewer_helpers import format_shape
 from pyRTC.scripts.viewer_core import MosaicViewerWindow
@@ -152,6 +156,37 @@ def test_stream_connection_reports_paused_without_new_frame():
 def test_format_shape_joins_all_dimensions():
     assert format_shape((8, 8)) == "8x8"
     assert format_shape((64, 32, 4)) == "64x32x4"
+
+
+def test_read_shm_metadata_uses_image_shm_metadata_indices(monkeypatch):
+    metadata_size = ImageSHM.METADATA_SIZE
+    metadata_index_dtype = ImageSHM.METADATA_INDEX_DTYPE
+    metadata_index_shape_start = ImageSHM.METADATA_INDEX_SHAPE_START
+
+    class _MetadataShm:
+        METADATA_SIZE = metadata_size
+        METADATA_INDEX_DTYPE = metadata_index_dtype
+        METADATA_INDEX_SHAPE_START = metadata_index_shape_start
+
+        def __init__(self, name, shape, dtype):
+            self.name = name
+            self.shape = shape
+            self.dtype = dtype
+
+        def read_noblock(self):
+            metadata = np.zeros(self.METADATA_SIZE, dtype=np.float64)
+            metadata[self.METADATA_INDEX_DTYPE] = viewer_helpers.utils.dtype_to_float(np.int32)
+            metadata[self.METADATA_INDEX_SHAPE_START] = 8
+            metadata[self.METADATA_INDEX_SHAPE_START + 1] = 4
+            return metadata
+
+    monkeypatch.setattr(viewer_helpers, "ImageSHM", _MetadataShm)
+
+    metadata_shm, shm_shape, shm_dtype = viewer_helpers.read_shm_metadata("wfc2D")
+
+    assert metadata_shm.name == "wfc2D_meta"
+    assert shm_shape == (8, 4)
+    assert shm_dtype == np.dtype(np.int32)
 
 
 def test_apply_to_panels_collects_errors_without_raising():

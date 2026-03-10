@@ -160,6 +160,8 @@ Run it with:
 python examples/synthetic_shwfs/synthetic_shwfs_soft_rtc_example.py --duration 15
 ```
 
+That tutorial now logs one `manager.latency(samples=256)` example after startup so you can inspect the full-loop latency breakdown directly from the manager API while the synthetic system is running.
+
 Every primary CLI and example entry point now uses the shared `pyRTC` logger. By default you get timestamped `INFO` logs on the console. You can override that per run with `--log-level DEBUG`, write per-process logs with `--log-dir logs/`, or force one exact file with `--log-file session.log`.
 
 The same settings can be exported for multi-process or repeated runs:
