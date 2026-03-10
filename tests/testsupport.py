@@ -39,13 +39,16 @@ def _fake_fits_open(filename):
     return _FakeHDUList([_FakeHDU(data)])
 
 
-fake_fits = types.SimpleNamespace(PrimaryHDU=_FakePrimaryHDU, open=_fake_fits_open)
-fake_io = types.SimpleNamespace(fits=fake_fits)
-fake_astropy = types.SimpleNamespace(io=fake_io)
+try:
+    import astropy.io.fits  # noqa: F401
+except Exception:
+    fake_fits = types.SimpleNamespace(PrimaryHDU=_FakePrimaryHDU, open=_fake_fits_open)
+    fake_io = types.SimpleNamespace(fits=fake_fits)
+    fake_astropy = types.SimpleNamespace(io=fake_io)
 
-sys.modules.setdefault("astropy", fake_astropy)
-sys.modules.setdefault("astropy.io", fake_io)
-sys.modules.setdefault("astropy.io.fits", fake_fits)
+    sys.modules.setdefault("astropy", fake_astropy)
+    sys.modules.setdefault("astropy.io", fake_io)
+    sys.modules.setdefault("astropy.io.fits", fake_fits)
 
 
 class DummySHM:

@@ -1,7 +1,7 @@
 import importlib
-import sys
 from pathlib import Path
 
+import aotpy
 import numpy as np
 import pytest
 
@@ -10,24 +10,7 @@ from pyRTC.exporters import aotpy_export
 from pyRTC.scripts import export_aotpy as export_aotpy_cli
 
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
-AOTPY_REPO_ROOT = REPO_ROOT.parent / "aotpy"
-
-
-def _ensure_local_aotpy_importable():
-    astropy_module = sys.modules.get("astropy")
-    if astropy_module is None or getattr(astropy_module, "__file__", None) is None:
-        for module_name in ("astropy.io.fits", "astropy.io", "astropy"):
-            sys.modules.pop(module_name, None)
-        importlib.import_module("astropy.io.fits")
-
-    if str(AOTPY_REPO_ROOT) not in sys.path:
-        sys.path.insert(0, str(AOTPY_REPO_ROOT))
-
-
 def test_telemetry_session_to_aotpy_maps_synthetic_streams(monkeypatch, tmp_path):
-    _ensure_local_aotpy_importable()
-    import aotpy
     telemetry_module = importlib.import_module("pyRTC.Telemetry")
 
     class _SHM:
@@ -110,8 +93,6 @@ def test_aotpy_export_surfaces_missing_optional_dependency(monkeypatch, tmp_path
 
 
 def test_export_aotpy_cli_writes_default_output(monkeypatch, tmp_path, capsys):
-    _ensure_local_aotpy_importable()
-    import aotpy
     telemetry_module = importlib.import_module("pyRTC.Telemetry")
 
     class _SHM:
