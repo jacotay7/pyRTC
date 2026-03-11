@@ -58,12 +58,30 @@ class DummySHM:
         self.dtype = _np().dtype(dtype)
         self.gpuDevice = gpuDevice
         self.arr = _np().zeros(self.shape, dtype=self.dtype)
+        self.metadata = _np().zeros(16, dtype=_np().float64)
+        self._count = 0
 
-    def write(self, arr):
+    def write(self, arr, *, root_time=None, upstream_time=None, consumer_time=None):
         np = _np()
         arr = np.asarray(arr, dtype=self.dtype)
         np.copyto(self.arr, arr.reshape(self.shape))
+        self._count += 1
+        write_time = float(self._count)
+        self.metadata[0] = self._count
+        self.metadata[1] = write_time
+        self.metadata[2] = write_time if root_time is None else float(root_time)
+        self.metadata[3] = 0.0 if upstream_time is None else float(upstream_time)
+        self.metadata[4] = 0.0 if consumer_time is None else float(consumer_time)
         return 1
+
+    def frame_metadata(self):
+        return {
+            "count": int(self.metadata[0]),
+            "write_time": float(self.metadata[1]),
+            "root_time": float(self.metadata[2]),
+            "upstream_write_time": float(self.metadata[3]),
+            "upstream_consume_time": float(self.metadata[4]),
+        }
 
     def read(self, SAFE=True, GPU=False, RELEASE_GIL=True):
         if SAFE:
@@ -87,7 +105,7 @@ class FakeStream:
     def read_noblock(self, SAFE=True):
         return _np().copy(self.arr)
 
-    def write(self, arr):
+    def write(self, arr, *, root_time=None, upstream_time=None, consumer_time=None):
         self.writes.append(_np().asarray(arr))
 
 

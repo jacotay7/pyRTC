@@ -281,11 +281,13 @@ class Loop(pyRTCComponent):
         
         #Read wfs signal's metadata and open a stream to the shared memory
             self.signalShm, self.signalShape, self.signalDType = initExistingShm("signal", gpuDevice=self.gpuDevice)
+            self.register_input_stream("signal", self.signalShm)
             self.signalSize = int(np.prod(self.signalShape))
             self.nullSignal = np.zeros(self.signalShape, dtype=self.signalDType)
 
         #Read wfc metadata and open a stream to the shared memory
             self.wfcShm, self.wfcShape, self.wfcDType = initExistingShm("wfc", gpuDevice=self.gpuDevice)
+            self.register_output_stream("wfc", self.wfcShm, source_streams=["signal"], lineage_source="signal")
             self.numModes = int(np.prod(self.wfcShape))
 
             self.numDroppedModes = setFromConfig(self.conf, "numDroppedModes", 0)
@@ -330,7 +332,7 @@ class Loop(pyRTCComponent):
             self.derivativeFilter = setFromConfig(self.conf, "derivativeFilter", 0.1)
             self.integral = 0
 
-            self.previousWfError = np.zeros_like(self.wfcShm.read_noblock())
+            self.previousWfError = np.zeros_like(self.read_stream("wfc", block=False, record_consumption=False))
             self.previousDerivative = np.zeros_like(self.previousWfError)
             self.controlOutput = np.zeros_like(self.previousWfError)
 
@@ -403,11 +405,11 @@ class Loop(pyRTCComponent):
             #Add some delay to ensure one-to-one
             time.sleep(self.hardwareDelay)
             #Burn the first new image since we were moving the DM during the exposure
-            self.signalShm.read(RELEASE_GIL = True)
+            self.read_stream("signal", RELEASE_GIL=True)
             #Average out N new WFS frames
             tmp_plus = np.zeros_like(self.IM[:,i])
             for n in range(self.numItersIM):
-                tmp_plus += self.signalShm.read(RELEASE_GIL = True)
+                tmp_plus += self.read_stream("signal", RELEASE_GIL=True)
             tmp_plus /= self.numItersIM
 
             #Minus amplitude
@@ -417,11 +419,11 @@ class Loop(pyRTCComponent):
             #Add some delay to ensure one-to-one
             time.sleep(self.hardwareDelay)
             #Burn the first new image since we were moving the DM during the exposure
-            self.signalShm.read(RELEASE_GIL = True)
+            self.read_stream("signal", RELEASE_GIL=True)
             #Average out N new WFS frames
             tmp_minus = np.zeros_like(self.IM[:,i])
             for n in range(self.numItersIM):
-                tmp_minus += self.signalShm.read(RELEASE_GIL = True)
+                tmp_minus += self.read_stream("signal", RELEASE_GIL=True)
             tmp_minus /= self.numItersIM
 
             #Compute the normalized difference
@@ -456,7 +458,7 @@ class Loop(pyRTCComponent):
             
             #Get current WFS response
             #I put this first to match CL case
-            slopes = self.signalShm.read(RELEASE_GIL = True).reshape(slopes.shape)
+            slopes = self.read_stream("signal", RELEASE_GIL=True).reshape(slopes.shape)
 
             #Send random shape to mirror
             self.sendToWfc(correction)
@@ -801,8 +803,8 @@ class Loop(pyRTCComponent):
         """
         Standard integrator using the pseudo open loop slopes.
         """
-        residual_slopes = self.signalShm.read(RELEASE_GIL = self.RELEASE_GIL)
-        currentCorrection = self.wfcShm.read(RELEASE_GIL = self.RELEASE_GIL)
+        residual_slopes = self.read_stream("signal", RELEASE_GIL=self.RELEASE_GIL)
+        currentCorrection = self.read_stream("wfc", RELEASE_GIL=self.RELEASE_GIL, record_consumption=False)
         # print(f'slopes: {residual_slopes.shape}, IM: {self.IM.shape}, corr: {currentCorrection.shape}')
 
         newCorrection = self.updateCorrectionPOL(correction=currentCorrection, 
@@ -817,10 +819,10 @@ class Loop(pyRTCComponent):
         """
         Standard integrator.
         """
-        slopes = self.signalShm.read(SAFE=False, RELEASE_GIL = self.RELEASE_GIL)
+        slopes = self.read_stream("signal", SAFE=False, RELEASE_GIL=self.RELEASE_GIL)
         newCorrection = leakyIntegratorNumba(slopes, 
                          self.gCM, 
-                         self.wfcShm.read_noblock(SAFE=False).squeeze(),
+                 self.read_stream("wfc", block=False, SAFE=False, record_consumption=False).squeeze(),
                          self.nullCorrection,
                          np.float32(0),#No leak
                          self.numActiveModes)
@@ -831,10 +833,10 @@ class Loop(pyRTCComponent):
         """
         Leaky integrator.
         """
-        slopes = self.signalShm.read(SAFE=False, RELEASE_GIL = self.RELEASE_GIL)
+        slopes = self.read_stream("signal", SAFE=False, RELEASE_GIL=self.RELEASE_GIL)
         newCorrection = leakyIntegratorNumba(slopes, 
                          self.gCM, 
-                         self.wfcShm.read_noblock(SAFE=False).squeeze(),
+                 self.read_stream("wfc", block=False, SAFE=False, record_consumption=False).squeeze(),
                          self.nullCorrection,
                          np.float32(self.leakyGain),
                          self.numActiveModes)
@@ -845,8 +847,8 @@ class Loop(pyRTCComponent):
         """
         PID integrator using the pseudo-open loop slopes.
         """
-        slopes = self.signalShm.read(RELEASE_GIL = self.RELEASE_GIL)
-        correction = self.wfcShm.read(RELEASE_GIL = self.RELEASE_GIL)
+        slopes = self.read_stream("signal", RELEASE_GIL=self.RELEASE_GIL)
+        correction = self.read_stream("wfc", RELEASE_GIL=self.RELEASE_GIL, record_consumption=False)
         polSlopes = slopes - self.fIM@correction
         return self.pidIntegrator(slopes=polSlopes, correction=correction)
 
@@ -862,9 +864,9 @@ class Loop(pyRTCComponent):
             Current correction vector. If not provided, reads from shared memory.
         """
         if slopes is None:
-            slopes = self.signalShm.read(RELEASE_GIL = self.RELEASE_GIL)
+            slopes = self.read_stream("signal", RELEASE_GIL=self.RELEASE_GIL)
         if correction is None:
-            correction = self.wfcShm.read(RELEASE_GIL = self.RELEASE_GIL)
+            correction = self.read_stream("wfc", RELEASE_GIL=self.RELEASE_GIL, record_consumption=False)
 
         #Compute raw error term (numba accelerated)
         wfError = compCorrection(CM=self.CM, 
@@ -932,7 +934,7 @@ class Loop(pyRTCComponent):
                 correction = randShape
 
             #Send our new pertubation to the WFC
-            self.wfcShm.write(correction)
+            self.write_stream("wfc", correction, source_streams=["signal"], lineage_source="signal")
 
             #Correlate Current response with old correction by delay time
             self.docrimeCross += slopes@self.docrimeBuffer[0].T
@@ -941,7 +943,7 @@ class Loop(pyRTCComponent):
             self.numItersDC += 1
 
         else:
-            self.wfcShm.write(correction)
+            self.write_stream("wfc", correction, source_streams=["signal"], lineage_source="signal")
         return
 
     def solveDocrime(self):

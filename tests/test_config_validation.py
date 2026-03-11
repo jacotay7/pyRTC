@@ -178,11 +178,37 @@ def test_validate_system_config_rejects_component_restart_policy_for_unknown_sec
 def test_validate_system_config_rejects_signal_stream_shape_mismatch():
     conf = read_system_config(SYNTHETIC_CONFIG_PATH, validate=False)
     conf["streams"] = {
-        "signal": {"shape": [31], "dtype": "float32", "producer": "slopes", "consumers": ["loop"]}
+        "signal": {"shape": [31], "dtype": "float32", "outputComponent": "slopes", "inputComponents": ["loop"]}
     }
 
     with pytest.raises(ConfigValidationError, match="streams.signal"):
         validate_system_config(conf)
+
+
+def test_validate_system_config_accepts_stream_lineage_overrides():
+    conf = read_system_config(SYNTHETIC_CONFIG_PATH, validate=False)
+    conf["streams"] = {
+        "signal": {
+            "shape": [32],
+            "dtype": "float32",
+            "outputComponent": "slopes",
+            "inputComponents": ["loop"],
+            "sourceStreams": ["wfs"],
+            "lineageSource": "wfs",
+        },
+        "wfc": {
+            "shape": [32],
+            "dtype": "float32",
+            "outputComponent": "loop",
+            "inputComponents": ["wfc"],
+            "sourceStreams": ["signal"],
+            "lineageSource": "signal",
+        },
+    }
+
+    normalized = validate_system_config(conf)
+
+    assert normalized["streams"]["signal"]["lineageSource"] == "wfs"
 
 
 def test_validate_system_config_accepts_manager_declared_custom_section():

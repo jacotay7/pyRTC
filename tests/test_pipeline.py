@@ -41,6 +41,21 @@ def test_image_shm_cpu_read_write(unique_name):
     _cleanup_shm(shm)
 
 
+def test_image_shm_lineage_metadata(unique_name):
+    name = unique_name("lineage")
+    shm = pipeline.ImageSHM(name, (2,), np.float32, gpuDevice=None, consumer=False)
+    try:
+        shm.write(np.array([1.0, 2.0], dtype=np.float32), root_time=10.0, upstream_time=11.0, consumer_time=12.0)
+        metadata = shm.frame_metadata()
+
+        assert metadata["count"] == 1
+        assert metadata["root_time"] == 10.0
+        assert metadata["upstream_write_time"] == 11.0
+        assert metadata["upstream_consume_time"] == 12.0
+    finally:
+        _cleanup_shm(shm)
+
+
 def test_init_existing_shm(unique_name):
     name = unique_name("existing")
     prod = pipeline.ImageSHM(name, (2, 2), np.int32, consumer=False)

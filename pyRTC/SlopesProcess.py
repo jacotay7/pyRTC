@@ -19,7 +19,7 @@ from typing import Any
 from numba import jit
 
 from pyRTC.logging_utils import get_logger
-from pyRTC.Pipeline import ImageSHM, gpu_torch_available, initExistingShm, launchComponent
+from pyRTC.Pipeline import ImageSHM, clear_shms, gpu_torch_available, initExistingShm, launchComponent
 from pyRTC.pyRTCComponent import pyRTCComponent
 from pyRTC.utils import (
     compute_fwhm_dark_subtracted_image,
@@ -389,6 +389,7 @@ class SlopesProcess(pyRTCComponent):
             self.name = "Slopes"
 
             self.wfsShm, self.imageShape, self.imageDType = initExistingShm("wfs", gpuDevice=self.gpuDevice)
+            self.register_input_stream("wfs", self.wfsShm)
 
             self.signalDType = np.float32
             self.imageNoise = setFromConfig(self.conf, "imageNoise", 0.0)
@@ -454,8 +455,7 @@ class SlopesProcess(pyRTCComponent):
                     self.signalDType,
                 )
 
-                self.signal = ImageSHM("signal", self.signalShape, self.signalDType, gpuDevice=self.gpuDevice, consumer=False)
-                self.signal2D = ImageSHM("signal2D", self.signal2DShape, self.signalDType, gpuDevice=self.gpuDevice, consumer=False)
+                self._configure_signal_streams(self.signalShape, self.signal2DShape)
 
                 self.refSlopes = np.zeros(self.signal2DShape, dtype=self.signalDType)
 
@@ -464,8 +464,73 @@ class SlopesProcess(pyRTCComponent):
         except Exception:
             logger.exception("Failed to initialize slopes process")
             raise
-        
-        
+
+    def _close_signal_streams(self) -> None:
+        """Close any currently attached signal output streams."""
+
+        for attribute_name in ("signal", "signal2D"):
+            stream = getattr(self, attribute_name, None)
+            if stream is None or not hasattr(stream, "close"):
+                continue
+            try:
+                stream.close()
+            except Exception:
+                logger.debug("Failed closing %s stream during rebuild", attribute_name, exc_info=True)
+
+    def _existing_output_stream_matches(self, stream_name: str, expected_shape: tuple[int, ...]) -> bool:
+        """Return ``True`` when an existing SHM matches the expected output shape."""
+
+        try:
+            stream, shape, dtype = initExistingShm(stream_name, gpuDevice=self.gpuDevice)
+        except Exception:
+            return False
+
+        try:
+            return tuple(shape) == tuple(expected_shape) and np.dtype(dtype) == np.dtype(self.signalDType)
+        finally:
+            try:
+                stream.close()
+            except Exception:
+                logger.debug("Failed closing temporary stream probe for %s", stream_name, exc_info=True)
+
+    def _configure_signal_streams(
+        self,
+        signal_shape: tuple[int, ...],
+        signal2d_shape: tuple[int, ...],
+        *,
+        rebuild: bool = False,
+    ) -> None:
+        """Create or rebuild the signal and signal2D output streams.
+
+        Parameters
+        ----------
+        signal_shape : tuple of int
+            Desired one-dimensional signal shape.
+        signal2d_shape : tuple of int
+            Desired two-dimensional display shape.
+        rebuild : bool, optional
+            When ``True`` force a rebuild of the underlying SHMs. This is used
+            when pupil geometry changes can resize the signal outputs.
+        """
+
+        self.signalShape = tuple(int(axis) for axis in signal_shape)
+        self.signal2DShape = tuple(int(axis) for axis in signal2d_shape)
+
+        needs_rebuild = rebuild
+        if not needs_rebuild:
+            needs_rebuild = not self._existing_output_stream_matches("signal", self.signalShape)
+        if not needs_rebuild:
+            needs_rebuild = not self._existing_output_stream_matches("signal2D", self.signal2DShape)
+
+        if needs_rebuild:
+            self._close_signal_streams()
+            clear_shms(["signal", "signal2D"])
+
+        self.signal = ImageSHM("signal", self.signalShape, self.signalDType, gpuDevice=self.gpuDevice, consumer=False)
+        self.signal2D = ImageSHM("signal2D", self.signal2DShape, self.signalDType, gpuDevice=self.gpuDevice, consumer=False)
+        self.register_output_stream("signal", self.signal, source_streams=["wfs"], lineage_source="wfs")
+        self.register_output_stream("signal2D", self.signal2D, source_streams=["signal"], lineage_source="signal")
+
     
     def read(self, block = True, SAFE=True, GPU=False):
         """
@@ -477,8 +542,8 @@ class SlopesProcess(pyRTCComponent):
             Current signal.
         """
         if block:
-            return self.signal.read(SAFE=SAFE, GPU=GPU, RELEASE_GIL = self.RELEASE_GIL)
-        return self.signal.read_noblock(SAFE=SAFE, GPU=GPU)
+            return self.read_stream("signal", SAFE=SAFE, GPU=GPU, RELEASE_GIL=self.RELEASE_GIL)
+        return self.read_stream("signal", block=False, SAFE=SAFE, GPU=GPU)
     
     def readImage(self, SAFE=True, GPU=False, block=True):
         """
@@ -490,8 +555,8 @@ class SlopesProcess(pyRTCComponent):
             Current WFS image.
         """
         if block:
-            return self.wfsShm.read(SAFE=SAFE, GPU=GPU, RELEASE_GIL = self.RELEASE_GIL)
-        return self.wfsShm.read_noblock(SAFE=SAFE, GPU=GPU)
+            return self.read_stream("wfs", SAFE=SAFE, GPU=GPU, RELEASE_GIL=self.RELEASE_GIL)
+        return self.read_stream("wfs", block=False, SAFE=SAFE, GPU=GPU)
 
     def setValidSubAps(self, validSubAps):
         """
@@ -710,8 +775,8 @@ class SlopesProcess(pyRTCComponent):
                 # self.signal2D.write(slopes*self.validSubAps)
                 # slopes = np.zeros_like(self.refSlopes)
                 # self.signal.write(self.refSlopes.flatten()[:np.prod(self.signalShape)].reshape(self.signalShape))
-            self.signal.write(slope_signal)
-            self.signal2D.write(self.computeSignal2D(slope_signal))
+            self.write_stream("signal", slope_signal, source_streams=["wfs"], lineage_source="wfs")
+            self.write_stream("signal2D", self.computeSignal2D(slope_signal), source_streams=["signal"], lineage_source="signal")
         
         return
     
@@ -758,9 +823,11 @@ class SlopesProcess(pyRTCComponent):
                 self.setValidSubAps(np.concatenate([slopemask, slopemask], axis=1))
                 if self.validSubApsFile != "":
                     self.saveValidSubAps()
-                self.signal2DShape = (self.validSubAps.shape[0], self.validSubAps.shape[1])
-                self.signal = ImageSHM("signal", (self.signalSize,), self.signalDType, gpuDevice=self.gpuDevice, consumer=False)
-                self.signal2D = ImageSHM("signal2D", self.signal2DShape, self.signalDType, gpuDevice=self.gpuDevice, consumer=False)
+                self._configure_signal_streams(
+                    (self.signalSize,),
+                    (self.validSubAps.shape[0], self.validSubAps.shape[1]),
+                    rebuild=True,
+                )
             component_logger.info("Configured pupils locs=%s radius=%s", pupilLocs, pupilRadius)
         except Exception:
             component_logger.exception("Failed to set pupils locs=%s radius=%s", pupilLocs, pupilRadius)

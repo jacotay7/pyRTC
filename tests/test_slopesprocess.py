@@ -93,3 +93,46 @@ def test_compute_signal2d_shwfs():
     out = sp.computeSignal2D(np.array([1.0, 2.0], dtype=np.float32))
     assert out[0, 0] == 1.0
     assert out[1, 1] == 2.0
+
+
+def test_set_pupils_registers_pywfs_output_streams(monkeypatch):
+    sp = slopes_mod.SlopesProcess.__new__(slopes_mod.SlopesProcess)
+    sp.signalType = "slopes"
+    sp.signalDType = np.float32
+    sp.gpuDevice = None
+    sp.validSubApsFile = ""
+    sp._stream_inputs = {}
+    sp._stream_outputs = {}
+    sp._stream_defaults = {}
+    sp._last_stream_metadata = {}
+    sp.system_streams = {}
+    sp.section_name = None
+
+    monkeypatch.setattr(
+        sp,
+        "computePupilsMask",
+        lambda: setattr(sp, "pupilMask", np.ones((4, 4), dtype=bool)),
+    )
+    monkeypatch.setattr(
+        sp,
+        "setValidSubAps",
+        lambda valid_sub_aps: (
+            setattr(sp, "validSubAps", valid_sub_aps.astype(bool)),
+            setattr(sp, "curSignal2D", np.zeros(valid_sub_aps.shape, dtype=np.float32)),
+        ),
+    )
+    monkeypatch.setattr(slopes_mod, "clear_shms", lambda names: None)
+    monkeypatch.setattr(slopes_mod, "initExistingShm", lambda name, gpuDevice=None: (_ for _ in ()).throw(FileNotFoundError(name)))
+
+    class _FakeShm:
+        def __init__(self, name, shape, dtype, gpuDevice=None, consumer=False):
+            self.name = name
+            self.shape = shape
+            self.dtype = dtype
+
+    monkeypatch.setattr(slopes_mod, "ImageSHM", _FakeShm)
+
+    sp.setPupils([(1, 1), (1, 2), (2, 1), (2, 2)], 1)
+
+    assert "signal" in sp._stream_outputs
+    assert "signal2D" in sp._stream_outputs

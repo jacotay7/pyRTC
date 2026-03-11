@@ -285,5 +285,35 @@ class SyntheticWFC(WavefrontCorrector):
     This subclass exists so configs can refer to a concrete synthetic adapter by
     name without implying vendor hardware.
     """
+    def __init__(self, conf):
+        super().__init__(conf)
+        if self.layout is None:
+            self.setLayout(_default_wfc_layout(self.numActuators))
 
-    pass
+
+def _default_wfc_layout(num_actuators: int) -> np.ndarray:
+    """Return a simple near-square boolean layout for synthetic DMs."""
+
+    if num_actuators < 1:
+        raise ValueError("num_actuators must be positive")
+
+    best_rows = 1
+    best_cols = num_actuators
+    best_gap = best_cols - best_rows
+    for rows in range(1, int(np.sqrt(float(num_actuators))) + 1):
+        if num_actuators % rows != 0:
+            continue
+        cols = num_actuators // rows
+        gap = abs(cols - rows)
+        if gap < best_gap:
+            best_rows = rows
+            best_cols = cols
+            best_gap = gap
+
+    if best_rows * best_cols != num_actuators:
+        best_rows = int(np.floor(np.sqrt(float(num_actuators))))
+        best_cols = int(np.ceil(num_actuators / best_rows))
+
+    layout = np.zeros((best_cols, best_rows), dtype=bool)
+    layout.flat[:num_actuators] = True
+    return layout

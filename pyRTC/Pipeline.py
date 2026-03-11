@@ -125,12 +125,20 @@ class ImageSHM:
     dtype, and timing information, and optionally a GPU-backed tensor mirror in
     hard-RTC deployments where CUDA sharing is supported.
 
-    Producers create the stream and update it with NumPy arrays. Consumers
+    Writers create the stream and update it with NumPy arrays. Readers
     reconstruct the stream by name and read either safe copies or direct views,
     depending on their performance and synchronization needs.
     """
 
-    METADATA_SIZE = 10
+    METADATA_INDEX_COUNT = 0
+    METADATA_INDEX_WRITE_TIME = 1
+    METADATA_INDEX_ROOT_TIME = 2
+    METADATA_INDEX_UPSTREAM_WRITE_TIME = 3
+    METADATA_INDEX_UPSTREAM_CONSUME_TIME = 4
+    METADATA_INDEX_SIZE = 5
+    METADATA_INDEX_DTYPE = 6
+    METADATA_INDEX_SHAPE_START = 7
+    METADATA_SIZE = 16
     def __init__(self, name, shape, dtype, gpuDevice=None, consumer=True) -> None:
 
         self.name = name
@@ -142,8 +150,12 @@ class ImageSHM:
         self.count = 0
         self.lastWriteTime = 0
         self.lastReadTime = 0
+        self.rootTime = 0
+        self.upstreamWriteTime = 0
+        self.upstreamConsumeTime = 0
         self.areData = "meta" not in name
         self.gpuDevice = normalize_gpu_device(gpuDevice, name)
+        created_metadata = False
 
         try:
             self.shm = shared_memory.SharedMemory(name= name, create=True, size=self.arr.nbytes)
@@ -163,13 +175,18 @@ class ImageSHM:
             try:
                 self.metadataShm = shared_memory.SharedMemory(name= name+"_meta", create=True, size=self.metadata.nbytes)
                 logger.debug("Creating shared memory object %s_meta", self.name)
+                created_metadata = True
             except Exception:
                 self.metadataShm = shared_memory.SharedMemory(name= name+"_meta")
                 logger.debug("Opening existing shared memory object %s_meta", self.name)
             if sys.platform != 'win32':
                 resource_tracker.unregister(self.metadataShm._name, 'shared_memory')
             self.metadata = np.ndarray(self.metadata.shape, dtype=self.metadata.dtype, buffer=self.metadataShm.buf)
-            self.updateMetadata(FULL_UPDATE=True)
+            if created_metadata:
+                self.metadata.fill(0)
+                self.updateMetadata(FULL_UPDATE=True)
+            else:
+                self._refresh_local_metadata_cache()
 
             if self.gpuDevice is not None:
                 self.torchDtype = dtype_mapping.get(self.dtype, None)
@@ -185,6 +202,32 @@ class ImageSHM:
                     self.createGPUMemSHM()
 
         return
+
+    def _refresh_local_metadata_cache(self) -> None:
+        if not self.areData:
+            return
+        self.count = int(self.metadata[self.METADATA_INDEX_COUNT])
+        self.lastWriteTime = float(self.metadata[self.METADATA_INDEX_WRITE_TIME])
+        self.rootTime = float(self.metadata[self.METADATA_INDEX_ROOT_TIME])
+        self.upstreamWriteTime = float(self.metadata[self.METADATA_INDEX_UPSTREAM_WRITE_TIME])
+        self.upstreamConsumeTime = float(self.metadata[self.METADATA_INDEX_UPSTREAM_CONSUME_TIME])
+
+    def frame_metadata(self) -> dict[str, float | int]:
+        if not self.areData:
+            return {
+                "count": 0,
+                "write_time": 0.0,
+                "root_time": 0.0,
+                "upstream_write_time": 0.0,
+                "upstream_consume_time": 0.0,
+            }
+        return {
+            "count": int(self.metadata[self.METADATA_INDEX_COUNT]),
+            "write_time": float(self.metadata[self.METADATA_INDEX_WRITE_TIME]),
+            "root_time": float(self.metadata[self.METADATA_INDEX_ROOT_TIME]),
+            "upstream_write_time": float(self.metadata[self.METADATA_INDEX_UPSTREAM_WRITE_TIME]),
+            "upstream_consume_time": float(self.metadata[self.METADATA_INDEX_UPSTREAM_CONSUME_TIME]),
+        }
 
     def __del__(self):
 
@@ -351,7 +394,7 @@ class ImageSHM:
                 logger.debug("Failed to close metadata SHM %s_meta", self.name, exc_info=True)
         return
 
-    def write(self, arr):
+    def write(self, arr, *, root_time: float | None = None, upstream_time: float | None = None, consumer_time: float | None = None):
 
         #Check if we are a GPU shm
         if self.gpuDevice is not None:
@@ -388,6 +431,12 @@ class ImageSHM:
         #Update metadata
         self.count += 1
         self.lastWriteTime = time.time()
+        if root_time is None or float(root_time) <= 0:
+            self.rootTime = self.lastWriteTime
+        else:
+            self.rootTime = float(root_time)
+        self.upstreamWriteTime = 0.0 if upstream_time is None else float(upstream_time)
+        self.upstreamConsumeTime = 0.0 if consumer_time is None else float(consumer_time)
         if self.areData:
             self.updateMetadata()
 
@@ -455,14 +504,17 @@ class ImageSHM:
     def updateMetadata(self, FULL_UPDATE=False):
         
         # self.metadata = np.zeros_like(self.metadata)
-        self.metadata[0] = self.count
-        self.metadata[1] = self.lastWriteTime
+        self.metadata[self.METADATA_INDEX_COUNT] = self.count
+        self.metadata[self.METADATA_INDEX_WRITE_TIME] = self.lastWriteTime
+        self.metadata[self.METADATA_INDEX_ROOT_TIME] = self.rootTime
+        self.metadata[self.METADATA_INDEX_UPSTREAM_WRITE_TIME] = self.upstreamWriteTime
+        self.metadata[self.METADATA_INDEX_UPSTREAM_CONSUME_TIME] = self.upstreamConsumeTime
         if FULL_UPDATE:
-            self.metadata[2] = self.size
-            self.metadata[3] = dtype_to_float(self.arr.dtype)
+            self.metadata[self.METADATA_INDEX_SIZE] = self.size
+            self.metadata[self.METADATA_INDEX_DTYPE] = dtype_to_float(self.arr.dtype)
             for i in range(len(self.arr.shape)):
-                if i + 4 < self.metadata.size:
-                    self.metadata[i+4] = self.arr.shape[i]
+                if self.METADATA_INDEX_SHAPE_START + i < self.metadata.size:
+                    self.metadata[self.METADATA_INDEX_SHAPE_START + i] = self.arr.shape[i]
         # np.copyto(self.metadata, metadata)
         return
     
@@ -820,14 +872,21 @@ class Listener:
 def initExistingShm(shmName, gpuDevice=None):
     #Read wfc metadata and open a stream to the shared memory
     shmMeta = ImageSHM(shmName+"_meta", (ImageSHM.METADATA_SIZE,), np.float64).read_noblock()
-    shmDType = float_to_dtype(shmMeta[3])
+    shmDType = float_to_dtype(shmMeta[ImageSHM.METADATA_INDEX_DTYPE])
     shmDims = []
     i = 0
-    while int(shmMeta[4+i]) > 0:
-        shmDims.append(int(shmMeta[4+i]))
+    while ImageSHM.METADATA_INDEX_SHAPE_START + i < shmMeta.size and int(shmMeta[ImageSHM.METADATA_INDEX_SHAPE_START + i]) > 0:
+        shmDims.append(int(shmMeta[ImageSHM.METADATA_INDEX_SHAPE_START + i]))
         i += 1
     shm = ImageSHM(shmName, shmDims, shmDType, gpuDevice=gpuDevice, consumer=True)
     return shm, shmDims, shmDType
+
+
+def build_component_runtime_config(system_conf: dict, section_name: str) -> dict:
+    conf = dict(system_conf[section_name])
+    conf["_sectionName"] = section_name
+    conf["_systemStreams"] = dict(system_conf.get("streams", {}))
+    return conf
 
 
 def launchComponent(component, confKey, start = True):
@@ -845,7 +904,8 @@ def launchComponent(component, confKey, start = True):
     args = parser.parse_args()
     configure_logging_from_args(args, app_name=f"pyrtc-{confKey}", component_name=confKey)
 
-    conf = read_system_config(args.config)[confKey]
+    system_conf = read_system_config(args.config)
+    conf = build_component_runtime_config(system_conf, confKey)
 
     set_affinity_and_priority("", setFromConfig(conf, "affinity", 0))
 
@@ -1422,7 +1482,7 @@ class RTCManager:
                 runtime = SoftComponentRuntime(
                     section_name,
                     component_class,
-                    self.config[section_name],
+                    build_component_runtime_config(self.config, section_name),
                     restart_policy=restart_policy,
                     heartbeat_timeout=heartbeat_timeout,
                 )
@@ -1607,6 +1667,49 @@ class RTCManager:
         with self._lock:
             self._refresh_health_locked(supervise=True)
             return self._status_payload()
+
+    def latency(
+        self,
+        *,
+        source_shm: str | None = None,
+        target_shm: str | None = None,
+        stream_path: list[str] | tuple[str, ...] | None = None,
+        samples: int = 2048,
+        show_progress: bool = False,
+    ) -> dict:
+        from pyRTC.component_descriptors import describe_component_class, get_component_descriptor
+        from pyRTC.latency import infer_stream_path, measure_stream_path_latency
+
+        with self._lock:
+            if not self.validated:
+                self.validate()
+            section_names = tuple(self._component_sections())
+
+            def _descriptor_resolver(section_name: str):
+                try:
+                    return describe_component_class(self._resolve_component_class(section_name))
+                except Exception:
+                    return get_component_descriptor(section_name)
+
+        if stream_path is not None:
+            path = [str(stream_name) for stream_name in stream_path]
+            inferred_path = False
+        else:
+            path, inferred_path = infer_stream_path(
+                section_names=section_names,
+                descriptor_resolver=_descriptor_resolver,
+                source_shm=source_shm,
+                target_shm=target_shm,
+            )
+
+        report, _ = measure_stream_path_latency(
+            path,
+            samples=samples,
+            show_progress=show_progress,
+        )
+        payload = report.to_dict()
+        payload["inferred_path"] = bool(inferred_path)
+        return payload
 
     def get_component(self, section_name: str):
         runtime = self.runtimes[section_name]

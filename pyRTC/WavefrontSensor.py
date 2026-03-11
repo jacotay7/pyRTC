@@ -243,6 +243,8 @@ class WavefrontSensor(pyRTCComponent):
                 self.imageShape[1] = self.imageShape[1] // self.downsampleFactor
             self.imageRaw = ImageSHM("wfsRaw", self.imageRawShape, self.imageRawDType, gpuDevice=self.gpuDevice, consumer=False)
             self.image = ImageSHM("wfs", self.imageShape, self.imageDType, gpuDevice=self.gpuDevice, consumer=False)
+            self.register_output_stream("wfsRaw", self.imageRaw)
+            self.register_output_stream("wfs", self.image, source_streams=["wfsRaw"], lineage_source="wfsRaw")
 
             self.data = np.zeros(self.imageShape, dtype=self.imageRawDType)
             self.dark = np.zeros(self.imageRawShape, dtype=self.imageDType)
@@ -361,7 +363,7 @@ class WavefrontSensor(pyRTCComponent):
         Parameters
         ----------
         """
-        self.imageRaw.write(self.data)
+        self.write_stream("wfsRaw", self.data)
         img = self.data.astype(self.imageDType)
         
         # Apply dark subtraction
@@ -377,7 +379,7 @@ class WavefrontSensor(pyRTCComponent):
             processed_image = rotate_image_jit(processed_image, angle_rad)
         
         # Write the processed image to shared memory
-        self.image.write(processed_image)
+        self.write_stream("wfs", processed_image)
         return
 
     def read(self, block = True) -> None:
@@ -390,9 +392,9 @@ class WavefrontSensor(pyRTCComponent):
             Processed image data.
         """
         if block:
-            return self.image.read(RELEASE_GIL = self.RELEASE_GIL)
+            return self.read_stream("wfs", RELEASE_GIL=self.RELEASE_GIL)
         else:
-            return self.image.read_noblock()
+            return self.read_stream("wfs", block=False)
     
     def takeDark(self) -> None:
         """
