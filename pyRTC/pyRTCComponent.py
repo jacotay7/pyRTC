@@ -137,6 +137,22 @@ class pyRTCComponent:
             }
         return defaults
 
+    def _ensure_stream_state(self) -> None:
+        """Initialize stream-tracking state for partially constructed objects."""
+
+        if not hasattr(self, "_stream_inputs"):
+            self._stream_inputs = {}
+        if not hasattr(self, "_stream_outputs"):
+            self._stream_outputs = {}
+        if not hasattr(self, "_stream_defaults"):
+            self._stream_defaults = {}
+        if not hasattr(self, "_last_stream_metadata"):
+            self._last_stream_metadata = {}
+        if not hasattr(self, "system_streams"):
+            self.system_streams = {}
+        if not hasattr(self, "section_name"):
+            self.section_name = None
+
     def _stream_runtime_override(self, stream_name: str) -> dict:
         """Return any config override that applies to one output stream.
 
@@ -145,6 +161,7 @@ class pyRTCComponent:
         compatible alias.
         """
 
+        self._ensure_stream_state()
         stream_conf = self.system_streams.get(stream_name, {})
         if not isinstance(stream_conf, dict):
             return {}
@@ -157,15 +174,20 @@ class pyRTCComponent:
     def _stream_object(self, stream_name: str):
         """Return the registered SHM object for an input or output stream."""
 
+        self._ensure_stream_state()
         if stream_name in self._stream_inputs:
             return self._stream_inputs[stream_name]
         if stream_name in self._stream_outputs:
             return self._stream_outputs[stream_name]
+        conventional_name = f"{stream_name}Shm"
+        if hasattr(self, conventional_name):
+            return getattr(self, conventional_name)
         raise KeyError(stream_name)
 
     def _read_stream_metadata(self, stream_name: str) -> dict[str, float | int]:
         """Capture the latest metadata snapshot for a registered stream."""
 
+        self._ensure_stream_state()
         stream = self._stream_object(stream_name)
         frame_metadata = getattr(stream, "frame_metadata", None)
         if callable(frame_metadata):
@@ -200,6 +222,7 @@ class pyRTCComponent:
     ) -> tuple[list[str], str | None]:
         """Resolve the lineage inputs for one output stream write."""
 
+        self._ensure_stream_state()
         defaults = self._stream_defaults.get(stream_name, {})
         resolved_sources = [
             str(item)
@@ -219,6 +242,7 @@ class pyRTCComponent:
     ) -> tuple[float | None, float | None, float | None]:
         """Resolve root, upstream-write, and input-read times for a write."""
 
+        self._ensure_stream_state()
         source_metadata = [
             self._last_stream_metadata[source_name]
             for source_name in source_streams
@@ -240,9 +264,46 @@ class pyRTCComponent:
             input_read_time = max(float(metadata.get("read_time", 0.0)) for metadata in source_metadata)
         return root_time, upstream_time, input_read_time
 
+    def _call_stream_read(self, stream, *, block: bool, SAFE: bool, GPU: bool, RELEASE_GIL: bool):
+        """Call a stream read method while tolerating older helper signatures."""
+
+        if block:
+            try:
+                return stream.read(SAFE=SAFE, GPU=GPU, RELEASE_GIL=RELEASE_GIL)
+            except TypeError:
+                try:
+                    return stream.read(SAFE=SAFE, RELEASE_GIL=RELEASE_GIL)
+                except TypeError:
+                    try:
+                        return stream.read(SAFE=SAFE)
+                    except TypeError:
+                        return stream.read()
+
+        try:
+            return stream.read_noblock(SAFE=SAFE, GPU=GPU)
+        except TypeError:
+            try:
+                return stream.read_noblock(SAFE=SAFE)
+            except TypeError:
+                return stream.read_noblock()
+
+    def _call_stream_write(self, stream, arr, *, root_time, upstream_time, input_read_time):
+        """Call a stream write method while tolerating older helper signatures."""
+
+        try:
+            return stream.write(
+                arr,
+                root_time=root_time,
+                upstream_time=upstream_time,
+                consumer_time=input_read_time,
+            )
+        except TypeError:
+            return stream.write(arr)
+
     def register_input_stream(self, stream_name: str, shm) -> None:
         """Register a stream that this component reads from."""
 
+        self._ensure_stream_state()
         self._stream_inputs[str(stream_name)] = shm
 
     def register_output_stream(
@@ -255,6 +316,7 @@ class pyRTCComponent:
     ) -> None:
         """Register a stream that this component writes to."""
 
+        self._ensure_stream_state()
         name = str(stream_name)
         self._stream_outputs[name] = shm
         defaults = self._stream_defaults.get(name, {})
@@ -289,11 +351,15 @@ class pyRTCComponent:
             When ``True`` remember this read for downstream lineage metadata.
         """
 
+        self._ensure_stream_state()
         stream = self._stream_object(str(stream_name))
-        if block:
-            payload = stream.read(SAFE=SAFE, GPU=GPU, RELEASE_GIL=RELEASE_GIL)
-        else:
-            payload = stream.read_noblock(SAFE=SAFE, GPU=GPU)
+        payload = self._call_stream_read(
+            stream,
+            block=block,
+            SAFE=SAFE,
+            GPU=GPU,
+            RELEASE_GIL=RELEASE_GIL,
+        )
         if record_consumption:
             self._last_stream_metadata[str(stream_name)] = self._read_stream_metadata(str(stream_name))
         return payload
@@ -308,8 +374,11 @@ class pyRTCComponent:
     ):
         """Write one registered output stream with lineage metadata."""
 
+        self._ensure_stream_state()
         name = str(stream_name)
-        stream = self._stream_outputs[name]
+        stream = self._stream_outputs.get(name)
+        if stream is None:
+            stream = self._stream_object(name)
         resolved_sources, resolved_lineage = self._resolve_output_lineage(
             name,
             source_streams=source_streams,
@@ -320,11 +389,12 @@ class pyRTCComponent:
             resolved_lineage,
         )
 
-        result = stream.write(
+        result = self._call_stream_write(
+            stream,
             arr,
             root_time=root_time,
             upstream_time=upstream_time,
-            consumer_time=input_read_time,
+            input_read_time=input_read_time,
         )
         self._last_stream_metadata[name] = self._read_stream_metadata(name)
         return result
