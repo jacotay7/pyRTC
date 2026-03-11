@@ -696,6 +696,8 @@ The implementation should explicitly document:
 
 ## Issue 07
 
+Status: Completed on the current branch on 2026-03-10. Ready to merge into `dev`.
+
 ### Title
 
 Add component latency tracing and end-to-end timing budget tooling
@@ -709,8 +711,39 @@ This issue adds observability without compromising the existing performance-firs
 ### Current repo anchors
 
 - `benchmarks/`
+- `pyRTC/latency.py`
 - `pyRTC/scripts/measure_latency.py`
+- `pyRTC/pyRTCComponent.py`
 - logging system and shared-memory metadata in `pyRTC/Pipeline.py`
+
+### Implemented outcome
+
+Latency tracing is now built into the shared-memory transport and exposed through
+one consistent control-plane API.
+
+Delivered pieces:
+
+- `RTCManager.latency(...)` for end-to-end or explicit stream-path latency measurement
+- a shared `pyRTC/latency.py` module with structured report models, stream-path inference, text formatting, JSON-ready payloads, and histogram support
+- a rewritten `pyrtc-measure-latency` CLI that supports explicit pairs, explicit stream paths, or config-driven inferred paths
+- lineage-aware SHM metadata in `ImageSHM` so latency can be derived from stream-boundary timestamps rather than inferred only from sampled write histories
+- base-class stream helpers in `pyRTCComponent` so components propagate lineage metadata through registered input and output streams
+- migrated core pipeline components (`WavefrontSensor`, `SlopesProcess`, `Loop`, `WavefrontCorrector`, and `ScienceCamera`) onto the shared stream read/write helpers for latency lineage propagation
+- config support for stream-lineage overrides through `sourceStreams` and `lineageSource`, with backward-compatible validation for stream component metadata
+- viewer compatibility updates for the expanded SHM metadata layout
+- a manager-based latency example in the synthetic SHWFS soft-RTC tutorial so users can inspect `manager.latency()` in a runnable end-to-end example
+
+The reporting layer now gives:
+
+- full-loop latency summary statistics
+- per-boundary breakdowns across inferred or explicit stream paths
+- machine-readable JSON output for automation
+- one operator-facing max-speed estimate derived from the full-loop P99 latency
+
+Verification completed on 2026-03-10:
+
+- focused regression coverage passed: `60 passed` via `pytest tests/test_pipeline.py tests/test_measure_latency_cli.py tests/test_manager.py tests/test_config_validation.py tests/test_wavefront_corrector.py tests/test_synthetic_example.py --no-cov -q`
+- viewer regression coverage passed: `19 passed` via `pytest tests/test_viewer_cli.py tests/test_viewer_boundary.py --no-cov -q`
 
 ### Goals
 
