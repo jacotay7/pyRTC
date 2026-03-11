@@ -5,6 +5,9 @@ normalize optional GPU settings, spawn one or more worker threads from YAML,
 and expose lightweight start/stop controls. This module provides that shared
 behavior.
 """
+
+from __future__ import annotations
+
 import os
 import threading
 import time
