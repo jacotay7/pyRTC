@@ -1,6 +1,3 @@
-from contextlib import redirect_stdout
-import io
-
 import numpy as np
 import pytest
 
@@ -186,22 +183,27 @@ def test_main_config_json_output(monkeypatch):
         "from_config_file",
         classmethod(lambda cls, path: _FakeManager()),
     )
+    emitted = {}
 
-    stdout_buffer = io.StringIO()
-    with redirect_stdout(stdout_buffer):
-        code = measure_latency.main([
-            "--config",
-            "examples/synthetic_shwfs/config.yaml",
-            "--format",
-            "json",
-            "--samples",
-            "16",
-        ])
+    def _capture_emit(report_payload, output_format):
+        emitted["payload"] = report_payload
+        emitted["format"] = output_format
 
-    captured = stdout_buffer.getvalue()
+    monkeypatch.setattr(measure_latency, "_emit_report", _capture_emit)
+
+    code = measure_latency.main([
+        "--config",
+        "examples/synthetic_shwfs/config.yaml",
+        "--format",
+        "json",
+        "--samples",
+        "16",
+    ])
+
     assert code == 0
-    assert '"stream_path": [' in captured
-    assert '"inferred_path": true' in captured
+    assert emitted["format"] == "json"
+    assert emitted["payload"]["stream_path"] == ["wfs", "signal", "wfc"]
+    assert emitted["payload"]["inferred_path"] is True
 
 
 def test_format_latency_report_includes_max_speed_in_khz():
