@@ -3,6 +3,7 @@
 import argparse
 import json
 from pathlib import Path
+import sys
 
 import pyRTC.latency as latency_helpers
 
@@ -94,6 +95,26 @@ def _resolve_stream_path(args):
     raise SystemExit("Provide source_shm and target_shm, --path, or --config")
 
 
+def _normalize_report_payload(report_payload):
+    """Normalize a latency report into a plain mapping for CLI output."""
+
+    if hasattr(report_payload, "to_dict"):
+        return report_payload.to_dict()
+    return dict(report_payload)
+
+
+def _emit_report(report_payload, output_format: str) -> None:
+    """Write the formatted latency report to stdout and flush it."""
+
+    normalized_payload = _normalize_report_payload(report_payload)
+    if output_format == "json":
+        rendered = json.dumps(normalized_payload, indent=2, sort_keys=True)
+    else:
+        rendered = format_latency_report(normalized_payload)
+    sys.stdout.write(rendered + "\n")
+    sys.stdout.flush()
+
+
 def main(argv=None) -> int:
     """Run the latency measurement workflow from the command line."""
 
@@ -107,7 +128,7 @@ def main(argv=None) -> int:
 
     resolved, from_manager = _resolve_stream_path(args)
     if from_manager:
-        report_payload = resolved
+        report_payload = _normalize_report_payload(resolved)
         total_latency = None
     else:
         report, total_latency = measure_stream_path_latency(
@@ -118,10 +139,7 @@ def main(argv=None) -> int:
         )
         report_payload = report.to_dict()
 
-    if args.format == "json":
-        print(json.dumps(report_payload, indent=2, sort_keys=True))
-    else:
-        print(format_latency_report(report_payload))
+    _emit_report(report_payload, args.format)
 
     if args.output or args.show_plot:
         if total_latency is None:
