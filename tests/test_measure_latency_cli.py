@@ -1,3 +1,6 @@
+from contextlib import redirect_stdout
+import io
+
 import numpy as np
 import pytest
 
@@ -177,26 +180,28 @@ def test_main_no_show(monkeypatch, tmp_path):
     assert out.exists()
 
 
-def test_main_config_json_output(monkeypatch, capsys):
+def test_main_config_json_output(monkeypatch):
     monkeypatch.setattr(
         measure_latency.RTCManager,
         "from_config_file",
         classmethod(lambda cls, path: _FakeManager()),
     )
 
-    code = measure_latency.main([
-        "--config",
-        "examples/synthetic_shwfs/config.yaml",
-        "--format",
-        "json",
-        "--samples",
-        "16",
-    ])
+    stdout_buffer = io.StringIO()
+    with redirect_stdout(stdout_buffer):
+        code = measure_latency.main([
+            "--config",
+            "examples/synthetic_shwfs/config.yaml",
+            "--format",
+            "json",
+            "--samples",
+            "16",
+        ])
 
-    captured = capsys.readouterr()
+    captured = stdout_buffer.getvalue()
     assert code == 0
-    assert '"stream_path": [' in captured.out
-    assert '"inferred_path": true' in captured.out
+    assert '"stream_path": [' in captured
+    assert '"inferred_path": true' in captured
 
 
 def test_format_latency_report_includes_max_speed_in_khz():
