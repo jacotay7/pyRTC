@@ -6,11 +6,34 @@ from pathlib import Path
 
 from pyRTC.logging_utils import add_logging_cli_args, configure_logging_from_args
 from pyRTC.Pipeline import RTCManager
+from pyRTC import latency as latency_helpers
 from pyRTC.latency import (
     format_latency_report,
     measure_stream_path_latency,
     plot_latency_histogram,
 )
+
+
+def collect_timestamps(streams, samples: int, show_progress: bool = False):
+    """Collect timestamp and count samples for one or more streams.
+
+    This compatibility wrapper preserves the historical import location under
+    ``pyRTC.scripts.measure_latency`` while delegating the implementation to the
+    shared latency helper module.
+    """
+
+    return latency_helpers.collect_timestamps(streams, samples=samples, show_progress=show_progress)
+
+
+def compute_latency_seconds(source_write_times, target_write_times):
+    """Compute latency samples from aligned source and target timestamps.
+
+    This compatibility wrapper preserves the historical import location under
+    ``pyRTC.scripts.measure_latency`` while delegating the implementation to the
+    shared latency helper module.
+    """
+
+    return latency_helpers.compute_latency_seconds(source_write_times, target_write_times)
 
 
 def _build_arg_parser() -> argparse.ArgumentParser:
