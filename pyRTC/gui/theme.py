@@ -100,8 +100,16 @@ def build_main_window_stylesheet(theme: GUITheme) -> str:
         border-radius: 8px;
         padding: 6px 10px;
     }}
+    QPushButton:disabled, QToolButton:disabled, QComboBox:disabled {{
+        background: {theme.panel_alt_bg};
+        color: {theme.subtext};
+        border-color: {theme.border};
+    }}
     QPushButton:hover, QToolButton:hover, QComboBox:hover {{
         border-color: {theme.accent};
+    }}
+    QMenu::item:disabled {{
+        color: {theme.subtext};
     }}
     QListWidget::item:selected {{
         background: {theme.selection_bg};

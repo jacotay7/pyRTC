@@ -280,13 +280,13 @@ class Loop(pyRTCComponent):
             self.conf = conf
         
         #Read wfs signal's metadata and open a stream to the shared memory
-            self.signalShm, self.signalShape, self.signalDType = initExistingShm("signal", gpuDevice=self.gpuDevice)
+            self.signalShm, self.signalShape, self.signalDType = initExistingShm(self.input_stream_name("signal"), gpuDevice=self.gpuDevice)
             self.register_input_stream("signal", self.signalShm)
             self.signalSize = int(np.prod(self.signalShape))
             self.nullSignal = np.zeros(self.signalShape, dtype=self.signalDType)
 
         #Read wfc metadata and open a stream to the shared memory
-            self.wfcShm, self.wfcShape, self.wfcDType = initExistingShm("wfc", gpuDevice=self.gpuDevice)
+            self.wfcShm, self.wfcShape, self.wfcDType = initExistingShm(self.output_stream_name("wfc"), gpuDevice=self.gpuDevice)
             self.register_output_stream("wfc", self.wfcShm, source_streams=["signal"], lineage_source="signal")
             self.numModes = int(np.prod(self.wfcShape))
 

@@ -241,8 +241,8 @@ class WavefrontSensor(pyRTCComponent):
             if self.downsampleFactor > 0:
                 self.imageShape[0] = self.imageShape[0] // self.downsampleFactor
                 self.imageShape[1] = self.imageShape[1] // self.downsampleFactor
-            self.imageRaw = ImageSHM("wfsRaw", self.imageRawShape, self.imageRawDType, gpuDevice=self.gpuDevice, consumer=False)
-            self.image = ImageSHM("wfs", self.imageShape, self.imageDType, gpuDevice=self.gpuDevice, consumer=False)
+            self.imageRaw = ImageSHM(self.output_stream_name("wfsRaw"), self.imageRawShape, self.imageRawDType, gpuDevice=self.gpuDevice, consumer=False)
+            self.image = ImageSHM(self.output_stream_name("wfs"), self.imageShape, self.imageDType, gpuDevice=self.gpuDevice, consumer=False)
             self.register_output_stream("wfsRaw", self.imageRaw)
             self.register_output_stream("wfs", self.image, source_streams=["wfsRaw"], lineage_source="wfsRaw")
 

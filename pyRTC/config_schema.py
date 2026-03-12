@@ -10,10 +10,13 @@ manager and GUI layers can reuse.
 from __future__ import annotations
 
 from copy import deepcopy
+import importlib
+import importlib.util
 from pathlib import Path
 from typing import Any, Mapping
 
 from pyRTC.component_descriptors import (
+    describe_component_class,
     get_component_descriptor,
     list_component_sections,
     validate_config_with_descriptor,
@@ -34,6 +37,70 @@ OPTIONAL_COMPONENT_SECTIONS = tuple(
 OPTIONAL_TOP_LEVEL_SECTIONS = ("manager", "streams", "metadata")
 ALLOWED_MANAGER_MODES = {"soft-rtc", "hard-rtc"}
 ALLOWED_RESTART_POLICIES = {"never", "on-failure", "always"}
+
+
+def _resolve_class_symbol(class_name: str, class_file: str | None = None):
+    if class_file:
+        module_path = Path(class_file).expanduser()
+        if module_path.exists():
+            module_name = f"pyrtc_schema_{module_path.stem}_{abs(hash(str(module_path.resolve()))) & 0xFFFFFFFF:x}"
+            spec = importlib.util.spec_from_file_location(module_name, module_path)
+            if spec is None or spec.loader is None:
+                raise ImportError(f"Unable to load component module from '{module_path}'")
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+            attr_name = class_name.rsplit(".", 1)[-1]
+            return getattr(module, attr_name)
+
+    if "." in class_name:
+        module_name, attr_name = class_name.rsplit(".", 1)
+        module = importlib.import_module(module_name)
+        return getattr(module, attr_name)
+
+    for module_name in ("pyRTC.hardware", "pyRTC"):
+        try:
+            module = importlib.import_module(module_name)
+            if hasattr(module, class_name):
+                return getattr(module, class_name)
+        except Exception:
+            continue
+    raise ImportError(f"Unable to resolve component class '{class_name}'")
+
+
+def _default_stream_aliases_for_section(section_name: str, section_conf: Mapping[str, Any]) -> tuple[dict[str, str], dict[str, str]]:
+    descriptor = get_component_descriptor(section_name)
+    if descriptor is None:
+        class_name = section_conf.get("className")
+        class_file = section_conf.get("classFile")
+        if isinstance(class_name, str) and class_name.strip():
+            try:
+                descriptor = describe_component_class(_resolve_class_symbol(class_name, class_file if isinstance(class_file, str) else None))
+            except Exception:
+                descriptor = None
+    input_aliases = {}
+    output_aliases = {}
+    if descriptor is not None:
+        input_aliases = {stream.name: stream.name for stream in descriptor.input_streams if stream.name != "*"}
+        output_aliases = {stream.name: stream.name for stream in descriptor.output_streams if stream.name != "*"}
+    return input_aliases, output_aliases
+
+
+def _normalize_stream_alias_mapping(raw_mapping: Any, *, defaults: Mapping[str, str]) -> dict[str, str]:
+    normalized = dict(defaults)
+    if not isinstance(raw_mapping, Mapping):
+        return normalized
+    for semantic_name, value in raw_mapping.items():
+        if not isinstance(semantic_name, str) or not semantic_name.strip():
+            continue
+        if isinstance(value, str):
+            shm_name = value.strip()
+        elif isinstance(value, Mapping):
+            shm_name = str(value.get("shm", value.get("name", semantic_name))).strip()
+        else:
+            continue
+        if shm_name:
+            normalized[str(semantic_name)] = shm_name
+    return normalized
 
 
 def _is_relative_path_string(value: Any) -> bool:
@@ -144,6 +211,39 @@ def _validate_functions_section(section_name: str, section_conf: Mapping[str, An
             raise ConfigValidationError(
                 f"{section_name}: function '{function_name}' exists on {component_cls.__name__} but is not callable"
             )
+
+
+def _validate_component_class_and_streams(section_name: str, section_conf: Mapping[str, Any]) -> None:
+    class_name = section_conf.get("className")
+    class_file = section_conf.get("classFile")
+    if not isinstance(class_name, str) or not class_name.strip():
+        raise ConfigValidationError(f"{section_name}: 'className' must be a non-empty string")
+    if class_file is not None and (not isinstance(class_file, str) or not class_file.strip()):
+        raise ConfigValidationError(f"{section_name}: 'classFile' must be a non-empty string when provided")
+    try:
+        component_class = _resolve_class_symbol(class_name, class_file if isinstance(class_file, str) else None)
+    except Exception as exc:
+        raise ConfigValidationError(f"{section_name}: unable to resolve className '{class_name}'") from exc
+
+    descriptor = describe_component_class(component_class)
+    for mapping_name, streams in (("inputStreams", descriptor.input_streams), ("outputStreams", descriptor.output_streams)):
+        raw_mapping = section_conf.get(mapping_name, {})
+        if raw_mapping is None:
+            continue
+        if not isinstance(raw_mapping, Mapping):
+            raise ConfigValidationError(f"{section_name}: '{mapping_name}' must be a mapping")
+        allowed = {stream.name for stream in streams if stream.name != "*"}
+        for semantic_name, value in raw_mapping.items():
+            if not isinstance(semantic_name, str) or not semantic_name.strip():
+                raise ConfigValidationError(f"{section_name}: '{mapping_name}' keys must be non-empty strings")
+            if allowed and semantic_name not in allowed:
+                raise ConfigValidationError(f"{section_name}: '{mapping_name}' key '{semantic_name}' is not a known stream role")
+            if isinstance(value, Mapping):
+                shm_name = value.get("shm", value.get("name"))
+            else:
+                shm_name = value
+            if not isinstance(shm_name, str) or not shm_name.strip():
+                raise ConfigValidationError(f"{section_name}: '{mapping_name}.{semantic_name}' must resolve to a non-empty SHM name")
 
 
 def _validate_slopes_config(conf: Any) -> None:
@@ -288,7 +388,7 @@ def _validate_manager_config(conf: Any, *, system_conf: Mapping[str, Any]) -> No
         raise ConfigValidationError("manager: 'logFile' must be a non-empty string when provided")
 
 
-def _validate_streams_config(conf: Any) -> None:
+def _validate_streams_config(conf: Any, *, system_conf: Mapping[str, Any]) -> None:
     """Validate optional stream metadata and lineage overrides.
 
     The preferred terminology is ``outputComponent`` and ``inputComponents``.
@@ -312,7 +412,7 @@ def _validate_streams_config(conf: Any) -> None:
         if "dtype" in stream_conf and (not isinstance(stream_conf["dtype"], str) or not stream_conf["dtype"].strip()):
             raise ConfigValidationError(f"streams.{stream_name}: 'dtype' must be a non-empty string")
         output_component = stream_conf.get("outputComponent", stream_conf.get("producer"))
-        if output_component is not None and get_component_descriptor(output_component) is None:
+        if output_component is not None and not _is_valid_manager_section(str(output_component), system_conf):
             raise ConfigValidationError(
                 f"streams.{stream_name}: 'outputComponent' must reference a known component section"
             )
@@ -321,10 +421,14 @@ def _validate_streams_config(conf: Any) -> None:
             if not isinstance(input_components, list):
                 raise ConfigValidationError(f"streams.{stream_name}: 'inputComponents' must be a list")
             for input_component in input_components:
-                if get_component_descriptor(input_component) is None:
+                if not _is_valid_manager_section(str(input_component), system_conf):
                     raise ConfigValidationError(
                         f"streams.{stream_name}: input component '{input_component}' is not a known component section"
                     )
+        if "componentStream" in stream_conf:
+            component_stream = stream_conf["componentStream"]
+            if not isinstance(component_stream, str) or not component_stream.strip():
+                raise ConfigValidationError(f"streams.{stream_name}: 'componentStream' must be a non-empty semantic stream name")
         if "sourceStreams" in stream_conf:
             source_streams = stream_conf["sourceStreams"]
             if not isinstance(source_streams, list) or not all(isinstance(item, str) and item.strip() for item in source_streams):
@@ -425,6 +529,29 @@ def normalize_system_config(conf: Any) -> dict[str, Any]:
     manager_conf.setdefault("mode", "soft-rtc")
     conf["manager"] = manager_conf
     conf.setdefault("metadata", {})
+    conf.setdefault("streams", {})
+
+    component_classes = manager_conf.get("componentClasses", {}) if isinstance(manager_conf.get("componentClasses"), Mapping) else {}
+    component_files = manager_conf.get("componentFiles", {}) if isinstance(manager_conf.get("componentFiles"), Mapping) else {}
+    for section_name, section_conf in list(conf.items()):
+        if section_name in OPTIONAL_TOP_LEVEL_SECTIONS or not isinstance(section_conf, Mapping):
+            continue
+        section_conf = dict(section_conf)
+        class_name = section_conf.get("className")
+        if not isinstance(class_name, str) or not class_name.strip():
+            fallback_class = component_classes.get(section_name)
+            if isinstance(fallback_class, str) and fallback_class.strip():
+                section_conf["className"] = fallback_class
+            else:
+                descriptor = get_component_descriptor(section_name)
+                if descriptor is not None:
+                    section_conf["className"] = descriptor.class_path
+        if "classFile" not in section_conf and isinstance(component_files.get(section_name), str):
+            section_conf["classFile"] = component_files.get(section_name)
+        default_inputs, default_outputs = _default_stream_aliases_for_section(section_name, section_conf)
+        section_conf["inputStreams"] = _normalize_stream_alias_mapping(section_conf.get("inputStreams", {}), defaults=default_inputs)
+        section_conf["outputStreams"] = _normalize_stream_alias_mapping(section_conf.get("outputStreams", {}), defaults=default_outputs)
+        conf[section_name] = section_conf
     return conf
 
 
@@ -453,13 +580,17 @@ def validate_system_config(conf: Any, *, config_path: str | Path | None = None) 
     if "manager" in normalized:
         _validate_manager_config(normalized["manager"], system_conf=normalized)
     if "streams" in normalized:
-        _validate_streams_config(normalized["streams"])
+        _validate_streams_config(normalized["streams"], system_conf=normalized)
     if "metadata" in normalized:
         _validate_metadata_config(normalized["metadata"])
 
     for section_name in list_component_sections():
         if section_name in normalized:
             _validate_functions_section(section_name, normalized[section_name])
+
+    for section_name, section_conf in normalized.items():
+        if section_name not in OPTIONAL_TOP_LEVEL_SECTIONS and isinstance(section_conf, Mapping):
+            _validate_component_class_and_streams(section_name, section_conf)
 
     _validate_cross_component_consistency(normalized)
 

@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 from dataclasses import dataclass
 import importlib
+import importlib.util
 import inspect
 import json 
 import logging
@@ -912,6 +913,25 @@ def build_component_runtime_config(system_conf: dict, section_name: str) -> dict
     return conf
 
 
+def _stream_aliases(section_conf: dict, mapping_name: str) -> dict[str, str]:
+    raw_mapping = section_conf.get(mapping_name, {})
+    aliases: dict[str, str] = {}
+    if not isinstance(raw_mapping, dict):
+        return aliases
+    for semantic_name, value in raw_mapping.items():
+        if not isinstance(semantic_name, str):
+            continue
+        if isinstance(value, str):
+            shm_name = value.strip()
+        elif isinstance(value, dict):
+            shm_name = str(value.get("shm", value.get("name", semantic_name))).strip()
+        else:
+            continue
+        if shm_name:
+            aliases[semantic_name] = shm_name
+    return aliases
+
+
 def launchComponent(component, confKey, start = True):
     from pyRTC.config_schema import read_system_config
 
@@ -981,17 +1001,19 @@ def expected_output_shm_specs_for_config(system_conf: dict) -> dict[str, dict[st
 
     wfs_conf = system_conf.get("wfs")
     if isinstance(wfs_conf, dict):
+        output_aliases = _stream_aliases(wfs_conf, "outputStreams")
         width = int(wfs_conf.get("width", 1))
         height = int(wfs_conf.get("height", 1))
         downsample = int(wfs_conf.get("downsampleFactor", 0) or 0)
         image_shape = (width, height)
         if downsample > 0:
             image_shape = (max(1, width // downsample), max(1, height // downsample))
-        specs["wfsRaw"] = {"shape": (width, height), "dtype": np.uint16}
-        specs["wfs"] = {"shape": image_shape, "dtype": np.int32}
+        specs[output_aliases.get("wfsRaw", "wfsRaw")] = {"shape": (width, height), "dtype": np.uint16}
+        specs[output_aliases.get("wfs", "wfs")] = {"shape": image_shape, "dtype": np.int32}
 
     slopes_conf = system_conf.get("slopes")
     if isinstance(slopes_conf, dict) and isinstance(wfs_conf, dict):
+        output_aliases = _stream_aliases(slopes_conf, "outputStreams")
         wfs_type = str(slopes_conf.get("type", "SHWFS")).lower()
         if wfs_type == "shwfs":
             downsample = int(wfs_conf.get("downsampleFactor", 0) or 0)
@@ -1002,24 +1024,26 @@ def expected_output_shm_specs_for_config(system_conf: dict) -> dict[str, dict[st
             num_regions = max(1, width // max(1, spacing))
             signal2d_shape = (2 * num_regions, num_regions)
             signal_size = int(np.prod(signal2d_shape))
-            specs["signal"] = {"shape": (signal_size,), "dtype": np.float32}
-            specs["signal2D"] = {"shape": signal2d_shape, "dtype": np.float32}
+            specs[output_aliases.get("signal", "signal")] = {"shape": (signal_size,), "dtype": np.float32}
+            specs[output_aliases.get("signal2D", "signal2D")] = {"shape": signal2d_shape, "dtype": np.float32}
 
     wfc_conf = system_conf.get("wfc")
     if isinstance(wfc_conf, dict):
+        output_aliases = _stream_aliases(wfc_conf, "outputStreams")
         num_modes = int(wfc_conf.get("numModes", 1))
-        specs["wfc"] = {"shape": (num_modes,), "dtype": np.float32}
+        specs[output_aliases.get("wfc", "wfc")] = {"shape": (num_modes,), "dtype": np.float32}
         display_grid_size = int(wfc_conf.get("displayGridSize", 33))
         if display_grid_size > 0:
-            specs["wfc2D"] = {"shape": (display_grid_size, display_grid_size), "dtype": np.float32}
+            specs[output_aliases.get("wfc2D", "wfc2D")] = {"shape": (display_grid_size, display_grid_size), "dtype": np.float32}
 
     psf_conf = system_conf.get("psf")
     if isinstance(psf_conf, dict):
+        output_aliases = _stream_aliases(psf_conf, "outputStreams")
         psf_shape = (int(psf_conf.get("width", 1)), int(psf_conf.get("height", 1)))
-        specs["psfShort"] = {"shape": psf_shape, "dtype": np.int32}
-        specs["psfLong"] = {"shape": psf_shape, "dtype": np.float64}
-        specs["strehl"] = {"shape": (1,), "dtype": np.float64}
-        specs["tiptilt"] = {"shape": (1,), "dtype": np.float64}
+        specs[output_aliases.get("psfShort", "psfShort")] = {"shape": psf_shape, "dtype": np.int32}
+        specs[output_aliases.get("psfLong", "psfLong")] = {"shape": psf_shape, "dtype": np.float64}
+        specs[output_aliases.get("strehl", "strehl")] = {"shape": (1,), "dtype": np.float64}
+        specs[output_aliases.get("tiptilt", "tiptilt")] = {"shape": (1,), "dtype": np.float64}
 
     return specs
 
@@ -1442,6 +1466,17 @@ def _import_symbol(path_or_name: str):
     raise ImportError(f"Unable to resolve component symbol '{path_or_name}'")
 
 
+def _import_symbol_from_file(file_path: str, attr_name: str):
+    module_path = Path(file_path).expanduser().resolve()
+    module_name = f"pyrtc_custom_{module_path.stem}_{abs(hash(str(module_path))) & 0xFFFFFFFF:x}"
+    spec = importlib.util.spec_from_file_location(module_name, module_path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"Unable to load component module from '{module_path}'")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return getattr(module, attr_name)
+
+
 def _normalize_manager_mode(mode: str | None) -> str | None:
     if mode is None:
         return None
@@ -1541,14 +1576,20 @@ class RTCManager:
 
         manager_conf = self.config.get("manager", {})
         component_classes = manager_conf.get("componentClasses", {})
-        target = component_classes.get(section_name)
+        component_files = manager_conf.get("componentFiles", {})
+        section_conf = self.config[section_name]
+        target = section_conf.get("className", component_classes.get(section_name))
+        class_file = section_conf.get("classFile", component_files.get(section_name))
         if target is None:
-            section_conf = self.config[section_name]
             target = section_conf.get("name")
 
         if target is not None:
             if inspect.isclass(target):
                 return target
+            if isinstance(target, str) and "." not in target and class_file:
+                component_file = Path(class_file).expanduser()
+                if component_file.exists():
+                    return _import_symbol_from_file(str(component_file), target)
             return _import_symbol(target)
 
         descriptor = get_component_descriptor(section_name)

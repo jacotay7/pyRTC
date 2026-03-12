@@ -3,13 +3,16 @@
 from __future__ import annotations
 
 from ast import literal_eval
+import importlib
+import importlib.util
 import inspect
 from pathlib import Path
 import subprocess
 from typing import Any
+import yaml
 
 from pyRTC.Pipeline import DEFAULT_COMPONENT_ORDER, RTCManager
-from pyRTC.component_descriptors import get_component_descriptor, list_component_sections
+from pyRTC.component_descriptors import describe_component_class, get_component_descriptor, list_component_descriptors, list_component_sections
 from pyRTC.config_schema import read_system_config
 
 from .models import GraphEdgeModel, GraphNodeModel, GraphSnapshot
@@ -22,6 +25,8 @@ _CONFIG_ONLY_FIELDS = {
     "type",
     "signalType",
 }
+
+_NON_COMPONENT_TOP_LEVEL_SECTIONS = {"manager", "streams", "metadata"}
 
 _NON_ACTION_METHODS = {
     "start",
@@ -54,6 +59,9 @@ def _ordered_sections(config: dict[str, Any]) -> list[str]:
     for section in list_component_sections():
         if section in config and section not in sections:
             sections.append(section)
+    for section in config:
+        if section not in sections and section not in _NON_COMPONENT_TOP_LEVEL_SECTIONS:
+            sections.append(section)
     return sections
 
 
@@ -62,6 +70,76 @@ def _infer_layout(index: int) -> tuple[float, float]:
     col = index % columns
     row = index // columns
     return 80.0 + col * 260.0, 60.0 + row * 190.0
+
+
+def _import_component_class(class_path: str, component_file: str | None = None):
+    if component_file:
+        module_path = Path(component_file).expanduser().resolve()
+        module_name = f"pyrtc_builder_{module_path.stem}_{abs(hash(str(module_path))) & 0xFFFFFFFF:x}"
+        spec = importlib.util.spec_from_file_location(module_name, module_path)
+        if spec is None or spec.loader is None:
+            raise ImportError(f"Unable to load component module from '{module_path}'")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        attr_name = class_path.rsplit(".", 1)[-1]
+        return getattr(module, attr_name)
+
+    if "." not in class_path:
+        for module_name in ("pyRTC.hardware", "pyRTC"):
+            try:
+                module = importlib.import_module(module_name)
+                if hasattr(module, class_path):
+                    return getattr(module, class_path)
+            except Exception:
+                continue
+        raise ImportError(f"Unable to resolve component class '{class_path}'")
+
+    module_name, attr_name = class_path.rsplit(".", 1)
+    module = importlib.import_module(module_name)
+    return getattr(module, attr_name)
+
+
+def _default_value_for_field(field_descriptor) -> Any:
+    if field_descriptor.default is not None:
+        if isinstance(field_descriptor.default, list):
+            return list(field_descriptor.default)
+        return field_descriptor.default
+    if field_descriptor.field_type == "int":
+        return max(1, int(field_descriptor.minimum or 1))
+    if field_descriptor.field_type == "float":
+        return float(field_descriptor.minimum or 0.0)
+    if field_descriptor.field_type == "bool":
+        return False
+    if field_descriptor.field_type in {"list[str]", "list[float]"}:
+        return []
+    if field_descriptor.field_type == "str | None":
+        return None
+    return ""
+
+
+def _normalize_stream_alias_map(raw_mapping: Any) -> dict[str, str]:
+    normalized: dict[str, str] = {}
+    if not isinstance(raw_mapping, dict):
+        return normalized
+    for semantic_name, value in raw_mapping.items():
+        if not isinstance(semantic_name, str):
+            continue
+        if isinstance(value, str):
+            shm_name = value.strip()
+        elif isinstance(value, dict):
+            shm_name = str(value.get("shm", value.get("name", semantic_name))).strip()
+        else:
+            continue
+        if shm_name:
+            normalized[semantic_name] = shm_name
+    return normalized
+
+
+def _component_stream_name(config: dict[str, Any], section_name: str, direction: str, stream_name: str) -> str:
+    section_conf = config.get(section_name, {}) if isinstance(config.get(section_name), dict) else {}
+    mapping_name = "inputStreams" if direction == "input" else "outputStreams"
+    aliases = _normalize_stream_alias_map(section_conf.get(mapping_name, {}))
+    return aliases.get(stream_name, stream_name)
 
 
 def _parse_float_list(raw_value: Any) -> list[float]:
@@ -132,6 +210,19 @@ class ManagerAdapter:
     def is_loaded(self) -> bool:
         return self.config is not None
 
+    def initialize_empty_config(self, *, mode: str = "soft-rtc") -> dict[str, Any]:
+        self.config = {
+            "manager": {
+                "mode": str(mode),
+            },
+            "metadata": {},
+            "streams": {},
+        }
+        self.config_path = None
+        self.manager = RTCManager.from_config(self.config, config_path=self.config_path, mode=mode)
+        self._last_status = self.manager.status()
+        return self.config
+
     def load_config(self, config_path: str, *, mode: str | None = None) -> dict[str, Any]:
         normalized = read_system_config(config_path, validate=False)
         self.config = dict(normalized)
@@ -158,6 +249,222 @@ class ManagerAdapter:
         self.manager = RTCManager.from_config(self.config, config_path=self.config_path, mode=mode)
         self._last_status = self.manager.status()
         return self._last_status
+
+    def _rebuild_manager(self) -> None:
+        if not self.config:
+            return
+        mode = None if self.manager is None else self.selected_mode()
+        self.manager = RTCManager.from_config(self.config, config_path=self.config_path, mode=mode)
+        self._last_status = self.manager.status()
+
+    def save_config(self, path: str | None = None) -> str:
+        if not self.config:
+            raise RuntimeError("No config is loaded")
+        destination = path or self.config_path
+        if not destination:
+            raise RuntimeError("No destination path is available")
+        resolved = str(Path(destination).expanduser().resolve())
+        Path(resolved).write_text(yaml.safe_dump(self.config, sort_keys=False), encoding="utf-8")
+        self.config_path = resolved
+        return resolved
+
+    def available_component_templates(self) -> list[dict[str, str]]:
+        return [
+            {
+                "section_name": descriptor.section_name,
+                "label": f"{descriptor.section_name} ({descriptor.class_name})",
+                "class_path": descriptor.class_path,
+            }
+            for descriptor in list_component_descriptors()
+        ]
+
+    def _descriptor_for_section(self, section_name: str):
+        descriptor = get_component_descriptor(section_name)
+        if descriptor is not None:
+            return descriptor
+        if not self.config:
+            return None
+        section_conf = self.config.get(section_name, {}) if isinstance(self.config.get(section_name), dict) else {}
+        class_path = section_conf.get("className") or section_conf.get("name")
+        component_file = section_conf.get("classFile")
+        if not class_path:
+            return None
+        try:
+            component_class = _import_component_class(str(class_path), str(component_file) if component_file else None)
+        except Exception:
+            return None
+        return describe_component_class(component_class)
+
+    def add_component(
+        self,
+        section_name: str,
+        *,
+        template_section: str | None = None,
+        class_path: str | None = None,
+        component_file: str | None = None,
+        config_overrides: dict[str, Any] | None = None,
+        input_streams: dict[str, str] | None = None,
+        output_streams: dict[str, str] | None = None,
+    ) -> None:
+        if not self.config:
+            raise RuntimeError("No config is loaded")
+        normalized = str(section_name).strip()
+        if not normalized:
+            raise ValueError("Section name must be non-empty")
+        if normalized in self.config:
+            raise ValueError(f"Component '{normalized}' already exists")
+        if normalized in _NON_COMPONENT_TOP_LEVEL_SECTIONS:
+            raise ValueError(f"'{normalized}' is reserved")
+
+        descriptor = get_component_descriptor(template_section or normalized)
+        resolved_class_path = class_path
+        if descriptor is None:
+            if not class_path:
+                raise ValueError("A template section or class path is required")
+            component_class = _import_component_class(class_path, component_file)
+            descriptor = describe_component_class(component_class)
+        elif resolved_class_path is None:
+            resolved_class_path = descriptor.class_path
+
+        component_conf: dict[str, Any] = {}
+        for field_descriptor in descriptor.all_fields:
+            component_conf[field_descriptor.name] = _default_value_for_field(field_descriptor)
+        if "name" in descriptor.field_map and not component_conf.get("name"):
+            component_conf["name"] = descriptor.class_name
+        component_conf["className"] = resolved_class_path or descriptor.class_path
+        if component_file:
+            component_conf["classFile"] = str(Path(component_file).expanduser().resolve())
+        descriptor_for_aliases = describe_component_class(_import_component_class(component_conf["className"], component_conf.get("classFile")))
+        component_conf["inputStreams"] = {stream.name: stream.name for stream in descriptor_for_aliases.input_streams if stream.name != "*"}
+        component_conf["outputStreams"] = {stream.name: stream.name for stream in descriptor_for_aliases.output_streams if stream.name != "*"}
+        if config_overrides:
+            coerced_overrides = {}
+            for name, value in config_overrides.items():
+                field_descriptor = descriptor.field_map.get(name)
+                if field_descriptor is None:
+                    coerced_overrides[name] = value
+                else:
+                    coerced_overrides[name] = _coerce_runtime_value(value, field_descriptor.field_type)
+            component_conf.update(coerced_overrides)
+        if input_streams is not None:
+            component_conf["inputStreams"] = dict(input_streams)
+        if output_streams is not None:
+            component_conf["outputStreams"] = dict(output_streams)
+        self.config[normalized] = component_conf
+
+        manager_conf = self.config.setdefault("manager", {})
+        component_classes = manager_conf.setdefault("componentClasses", {})
+        component_classes[normalized] = resolved_class_path or descriptor.class_path
+        if component_file:
+            manager_conf.setdefault("componentFiles", {})[normalized] = str(Path(component_file).expanduser().resolve())
+        self._rebuild_manager()
+
+    def remove_component(self, section_name: str) -> None:
+        if not self.config or section_name not in self.config:
+            raise KeyError(section_name)
+        self.config.pop(section_name, None)
+        manager_conf = self.config.get("manager", {}) if isinstance(self.config.get("manager"), dict) else {}
+        for mapping_name in ("componentClasses", "componentFiles", "componentModes", "ports", "componentRestartPolicies"):
+            mapping = manager_conf.get(mapping_name)
+            if isinstance(mapping, dict):
+                mapping.pop(section_name, None)
+        streams_conf = self.config.get("streams")
+        if isinstance(streams_conf, dict):
+            stale_names = []
+            for stream_name, stream_conf in streams_conf.items():
+                if not isinstance(stream_conf, dict):
+                    continue
+                output_component = stream_conf.get("outputComponent", stream_conf.get("producer"))
+                input_components = stream_conf.get("inputComponents", stream_conf.get("consumers", []))
+                if output_component == section_name:
+                    stale_names.append(stream_name)
+                    continue
+                if isinstance(input_components, list) and section_name in input_components:
+                    remaining = [item for item in input_components if item != section_name]
+                    if remaining:
+                        stream_conf["inputComponents"] = remaining
+                    else:
+                        stale_names.append(stream_name)
+            for stream_name in stale_names:
+                streams_conf.pop(stream_name, None)
+        self._rebuild_manager()
+
+    def add_connection(
+        self,
+        stream_name: str,
+        *,
+        output_component: str,
+        input_components: list[str],
+        component_stream: str | None = None,
+        output_role: str | None = None,
+        input_role: str | None = None,
+    ) -> None:
+        if not self.config:
+            raise RuntimeError("No config is loaded")
+        normalized_name = str(stream_name).strip()
+        if not normalized_name:
+            raise ValueError("Stream name must be non-empty")
+        if output_component not in self.config:
+            raise KeyError(output_component)
+        for input_component in input_components:
+            if input_component not in self.config:
+                raise KeyError(input_component)
+        resolved_output_role = (output_role or component_stream or normalized_name).strip()
+        resolved_input_role = (input_role or component_stream or normalized_name).strip()
+        producer_conf = self.config.setdefault(output_component, {})
+        producer_outputs = producer_conf.setdefault("outputStreams", {})
+        producer_outputs[resolved_output_role] = normalized_name
+        for input_component in input_components:
+            consumer_conf = self.config.setdefault(input_component, {})
+            consumer_inputs = consumer_conf.setdefault("inputStreams", {})
+            consumer_inputs[resolved_input_role] = normalized_name
+        streams_conf = self.config.setdefault("streams", {})
+        existing = streams_conf.get(normalized_name, {}) if isinstance(streams_conf.get(normalized_name), dict) else {}
+        current_inputs = list(existing.get("inputComponents", []))
+        for input_component in input_components:
+            if input_component not in current_inputs:
+                current_inputs.append(input_component)
+        payload = {
+            "outputComponent": output_component,
+            "inputComponents": current_inputs,
+        }
+        payload["componentStream"] = resolved_output_role
+        payload["inputRole"] = resolved_input_role
+        streams_conf[normalized_name] = payload
+        self._rebuild_manager()
+
+    def remove_connection(self, stream_name: str) -> None:
+        if not self.config:
+            raise RuntimeError("No config is loaded")
+        streams_conf = self.config.get("streams")
+        if not isinstance(streams_conf, dict) or stream_name not in streams_conf:
+            raise KeyError(stream_name)
+        stream_conf = streams_conf.get(stream_name, {})
+        if isinstance(stream_conf, dict):
+            output_component = stream_conf.get("outputComponent", stream_conf.get("producer"))
+            component_stream = stream_conf.get("componentStream", stream_name)
+            input_role = stream_conf.get("inputRole", component_stream)
+            if isinstance(output_component, str) and output_component in self.config:
+                producer_outputs = self.config[output_component].get("outputStreams", {})
+                if isinstance(producer_outputs, dict):
+                    producer_outputs.pop(component_stream, None)
+            input_components = stream_conf.get("inputComponents", stream_conf.get("consumers", []))
+            if isinstance(input_components, list):
+                for input_component in input_components:
+                    if input_component in self.config:
+                        consumer_inputs = self.config[input_component].get("inputStreams", {})
+                        if isinstance(consumer_inputs, dict):
+                            consumer_inputs.pop(input_role, None)
+        streams_conf.pop(stream_name, None)
+        self._rebuild_manager()
+
+    def connection_names(self) -> list[str]:
+        if not self.config:
+            return []
+        streams_conf = self.config.get("streams")
+        if not isinstance(streams_conf, dict):
+            return []
+        return sorted(streams_conf)
 
     def runtime_sections(self) -> set[str]:
         manager = self.ensure_manager()
@@ -224,7 +531,7 @@ class ManagerAdapter:
             raise KeyError(section_name)
 
         manager = self.ensure_manager()
-        descriptor = get_component_descriptor(section_name)
+        descriptor = self._descriptor_for_section(section_name)
         runtime = manager.runtimes.get(section_name) if manager.runtimes else None
         component_class = getattr(runtime, "component_class", None)
         if component_class is None:
@@ -296,7 +603,7 @@ class ManagerAdapter:
     def get_component_parameters(self, section_name: str) -> list[dict[str, Any]]:
         if not self.config or section_name not in self.config:
             raise KeyError(section_name)
-        descriptor = get_component_descriptor(section_name)
+        descriptor = self._descriptor_for_section(section_name)
         conf = self.config[section_name]
         rows = []
         for field_descriptor in descriptor.all_fields if descriptor is not None else ():
@@ -367,7 +674,7 @@ class ManagerAdapter:
                 setattr(target, name, value)
         return value
 
-    def build_graph_snapshot(self, status: dict[str, Any] | None = None) -> GraphSnapshot:
+    def build_graph_snapshot(self, status: dict[str, Any] | None = None, *, runtime_controls_enabled: bool = True) -> GraphSnapshot:
         if not self.config:
             return GraphSnapshot()
         status = status or self._last_status or self.status()
@@ -375,16 +682,35 @@ class ManagerAdapter:
         sections = _ordered_sections(self.config)
         nodes = []
         output_map: dict[str, list[tuple[str, str]]] = {}
+        streams_conf = self.config.get("streams", {}) if isinstance(self.config.get("streams"), dict) else {}
         telemetry_streams = set(self.config.get("telemetry", {}).get("streams", [])) if isinstance(self.config.get("telemetry"), dict) else set()
 
         for index, section_name in enumerate(sections):
-            descriptor = get_component_descriptor(section_name)
+            descriptor = self._descriptor_for_section(section_name)
             component_info = component_status.get(section_name, {})
             x, y = _infer_layout(index)
             title = section_name.upper()
             subtitle = descriptor.class_name if descriptor is not None else self.config[section_name].get("name", "component")
-            input_streams = tuple(stream.name for stream in descriptor.input_streams) if descriptor is not None else ()
-            output_streams = tuple(stream.name for stream in descriptor.output_streams) if descriptor is not None else ()
+            input_names = {
+                _component_stream_name(self.config, section_name, "input", stream.name)
+                for stream in descriptor.input_streams
+                if descriptor is not None and stream.name != "*"
+            } if descriptor is not None else set()
+            output_names = {
+                _component_stream_name(self.config, section_name, "output", stream.name)
+                for stream in descriptor.output_streams
+                if descriptor is not None and stream.name != "*"
+            } if descriptor is not None else set()
+            for stream_name, stream_conf in streams_conf.items():
+                if not isinstance(stream_conf, dict):
+                    continue
+                if stream_conf.get("outputComponent", stream_conf.get("producer")) == section_name:
+                    output_names.add(stream_name)
+                input_components = stream_conf.get("inputComponents", stream_conf.get("consumers", []))
+                if isinstance(input_components, list) and section_name in input_components:
+                    input_names.add(stream_name)
+            input_streams = tuple(sorted(input_names))
+            output_streams = tuple(sorted(output_names))
             for stream_name in output_streams:
                 output_map.setdefault(stream_name, []).append((section_name, stream_name))
             nodes.append(
@@ -400,42 +726,71 @@ class ManagerAdapter:
                     restart_policy=component_info.get("restart_policy"),
                     input_streams=input_streams,
                     output_streams=output_streams,
-                    can_start=component_info.get("state", "stopped") != "running",
-                    can_stop=component_info.get("state", "stopped") == "running",
+                    can_start=runtime_controls_enabled and component_info.get("state", "stopped") != "running",
+                    can_stop=runtime_controls_enabled and component_info.get("state", "stopped") == "running",
                 )
             )
 
         edges: list[GraphEdgeModel] = []
+        seen_edges: set[tuple[str, str, str, str]] = set()
         for node in nodes:
-            descriptor = get_component_descriptor(node.section_name)
+            descriptor = self._descriptor_for_section(node.section_name)
             if descriptor is None:
                 continue
             for input_stream in descriptor.input_streams:
+                actual_input_name = _component_stream_name(self.config, node.section_name, "input", input_stream.name)
                 if input_stream.name == "*":
                     for upstreams in output_map.values():
                         for upstream_section, upstream_stream in upstreams:
                             if telemetry_streams and upstream_stream not in telemetry_streams:
                                 continue
-                            edges.append(
-                                GraphEdgeModel(
-                                    source_section=upstream_section,
-                                    target_section=node.section_name,
-                                    source_stream=upstream_stream,
-                                    target_stream=input_stream.name,
+                            edge_key = (upstream_section, node.section_name, upstream_stream, actual_input_name)
+                            if edge_key not in seen_edges:
+                                seen_edges.add(edge_key)
+                                edges.append(
+                                    GraphEdgeModel(
+                                        source_section=upstream_section,
+                                        target_section=node.section_name,
+                                        source_stream=upstream_stream,
+                                        target_stream=actual_input_name,
+                                    )
                                 )
-                            )
                     continue
-                for upstream_section, upstream_stream in output_map.get(input_stream.name, []):
+                for upstream_section, upstream_stream in output_map.get(actual_input_name, []):
                     if upstream_section == node.section_name:
                         continue
-                    edges.append(
-                        GraphEdgeModel(
-                            source_section=upstream_section,
-                            target_section=node.section_name,
-                            source_stream=upstream_stream,
-                            target_stream=input_stream.name,
+                    edge_key = (upstream_section, node.section_name, upstream_stream, actual_input_name)
+                    if edge_key not in seen_edges:
+                        seen_edges.add(edge_key)
+                        edges.append(
+                            GraphEdgeModel(
+                                source_section=upstream_section,
+                                target_section=node.section_name,
+                                source_stream=upstream_stream,
+                                target_stream=actual_input_name,
+                            )
                         )
+
+        for stream_name, stream_conf in streams_conf.items():
+            if not isinstance(stream_conf, dict):
+                continue
+            source_section = stream_conf.get("outputComponent", stream_conf.get("producer"))
+            input_components = stream_conf.get("inputComponents", stream_conf.get("consumers", []))
+            if not isinstance(source_section, str) or not isinstance(input_components, list):
+                continue
+            for target_section in input_components:
+                edge_key = (source_section, str(target_section), stream_name, stream_name)
+                if edge_key in seen_edges:
+                    continue
+                seen_edges.add(edge_key)
+                edges.append(
+                    GraphEdgeModel(
+                        source_section=source_section,
+                        target_section=str(target_section),
+                        source_stream=stream_name,
+                        target_stream=stream_name,
                     )
+                )
 
         return GraphSnapshot(
             nodes=tuple(nodes),

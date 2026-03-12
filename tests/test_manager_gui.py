@@ -36,6 +36,17 @@ def test_manager_adapter_builds_graph_snapshot_from_synthetic_config():
     assert ("loop", "wfc", "wfc") in edges
 
 
+def test_manager_adapter_can_initialize_empty_config_for_build_mode():
+    adapter = ManagerAdapter()
+
+    config = adapter.initialize_empty_config(mode="hard-rtc")
+
+    assert config["manager"]["mode"] == "hard-rtc"
+    assert config["streams"] == {}
+    assert config["metadata"] == {}
+    assert adapter.is_loaded() is True
+
+
 def test_manager_adapter_set_parameter_updates_loaded_config():
     adapter = ManagerAdapter()
     adapter.load_config(str(SYNTHETIC_CONFIG_PATH))
@@ -209,6 +220,44 @@ def test_manager_adapter_runs_zero_arg_component_function_on_hard_runtime():
 
     assert result == 1
     assert launcher.calls == ["flatten"]
+
+
+def test_manager_adapter_adds_custom_component_and_connection():
+    adapter = ManagerAdapter()
+    adapter.load_config(str(SYNTHETIC_CONFIG_PATH))
+
+    adapter.add_component("science_copy", template_section="psf")
+    adapter.add_connection(
+        "science_copy_psf",
+        output_component="science_copy",
+        input_components=["loop"],
+        component_stream="psfShort",
+    )
+
+    assert "science_copy" in adapter.config
+    assert adapter.config["manager"]["componentClasses"]["science_copy"] == "pyRTC.ScienceCamera.ScienceCamera"
+    assert adapter.config["streams"]["science_copy_psf"]["outputComponent"] == "science_copy"
+    assert adapter.config["streams"]["science_copy_psf"]["componentStream"] == "psfShort"
+
+
+def test_manager_adapter_snapshot_includes_custom_stream_connections():
+    adapter = ManagerAdapter()
+    adapter.load_config(str(SYNTHETIC_CONFIG_PATH))
+    adapter.add_component("science_copy", template_section="psf")
+    adapter.add_connection(
+        "science_copy_psf",
+        output_component="science_copy",
+        input_components=["loop"],
+        component_stream="psfShort",
+    )
+
+    snapshot = adapter.build_graph_snapshot(runtime_controls_enabled=False)
+
+    sections = {node.section_name for node in snapshot.nodes}
+    edges = {(edge.source_section, edge.target_section, edge.source_stream) for edge in snapshot.edges}
+
+    assert "science_copy" in sections
+    assert ("science_copy", "loop", "science_copy_psf") in edges
 
 
 def test_manager_adapter_component_start_stop_round_trip():

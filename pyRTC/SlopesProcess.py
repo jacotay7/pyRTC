@@ -388,7 +388,7 @@ class SlopesProcess(pyRTCComponent):
             self.conf = conf
             self.name = "Slopes"
 
-            self.wfsShm, self.imageShape, self.imageDType = initExistingShm("wfs", gpuDevice=self.gpuDevice)
+            self.wfsShm, self.imageShape, self.imageDType = initExistingShm(self.input_stream_name("wfs"), gpuDevice=self.gpuDevice)
             self.register_input_stream("wfs", self.wfsShm)
 
             self.signalDType = np.float32
@@ -481,7 +481,7 @@ class SlopesProcess(pyRTCComponent):
         """Return ``True`` when an existing SHM matches the expected output shape."""
 
         try:
-            stream, shape, dtype = initExistingShm(stream_name, gpuDevice=self.gpuDevice)
+            stream, shape, dtype = initExistingShm(self.output_stream_name(stream_name), gpuDevice=self.gpuDevice)
         except Exception:
             return False
 
@@ -524,10 +524,10 @@ class SlopesProcess(pyRTCComponent):
 
         if needs_rebuild:
             self._close_signal_streams()
-            clear_shms(["signal", "signal2D"])
+            clear_shms([self.output_stream_name("signal"), self.output_stream_name("signal2D")])
 
-        self.signal = ImageSHM("signal", self.signalShape, self.signalDType, gpuDevice=self.gpuDevice, consumer=False)
-        self.signal2D = ImageSHM("signal2D", self.signal2DShape, self.signalDType, gpuDevice=self.gpuDevice, consumer=False)
+        self.signal = ImageSHM(self.output_stream_name("signal"), self.signalShape, self.signalDType, gpuDevice=self.gpuDevice, consumer=False)
+        self.signal2D = ImageSHM(self.output_stream_name("signal2D"), self.signal2DShape, self.signalDType, gpuDevice=self.gpuDevice, consumer=False)
         self.register_output_stream("signal", self.signal, source_streams=["wfs"], lineage_source="wfs")
         self.register_output_stream("signal2D", self.signal2D, source_streams=["signal"], lineage_source="signal")
 

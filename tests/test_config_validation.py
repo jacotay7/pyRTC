@@ -89,8 +89,17 @@ def test_validate_system_config_accepts_synthetic_example():
     normalized = read_system_config(SYNTHETIC_CONFIG_PATH)
 
     assert normalized["manager"]["mode"] == "soft-rtc"
+    assert normalized["wfs"]["className"] == "SyntheticSHWFS"
     assert normalized["wfc"]["numModes"] == 32
     assert Path(normalized["metadata"]["configPath"]).resolve() == SYNTHETIC_CONFIG_PATH.resolve()
+
+
+def test_validate_system_config_rejects_invalid_component_class_name():
+    conf = read_system_config(SYNTHETIC_CONFIG_PATH, validate=False)
+    conf["loop"]["className"] = "DefinitelyNotARealComponent"
+
+    with pytest.raises(ConfigValidationError, match="className"):
+        validate_system_config(conf)
 
 
 def test_validate_system_config_resolves_relative_file_paths_against_config_file():

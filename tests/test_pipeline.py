@@ -77,6 +77,53 @@ def test_clear_shms(unique_name):
     _cleanup_shm(shm)
 
 
+def test_expected_output_specs_follow_component_output_aliases():
+    config = {
+        "wfs": {
+            "className": "WavefrontSensor",
+            "width": 16,
+            "height": 16,
+            "darkCount": 1,
+            "outputStreams": {"wfsRaw": "raw_custom", "wfs": "wfs_custom"},
+        },
+        "slopes": {
+            "className": "SlopesProcess",
+            "type": "SHWFS",
+            "signalType": "slopes",
+            "subApSpacing": 4,
+            "subApOffsetX": 0,
+            "subApOffsetY": 0,
+            "outputStreams": {"signal": "signal_custom", "signal2D": "signal2d_custom"},
+        },
+        "wfc": {
+            "className": "WavefrontCorrector",
+            "name": "dm",
+            "numActuators": 8,
+            "numModes": 8,
+            "outputStreams": {"wfc": "wfc_custom", "wfc2D": "wfc2d_custom"},
+        },
+        "psf": {
+            "className": "ScienceCamera",
+            "name": "cam",
+            "width": 8,
+            "height": 8,
+            "darkCount": 1,
+            "integration": 1,
+            "outputStreams": {"psfShort": "short_custom", "psfLong": "long_custom", "strehl": "strehl_custom", "tiptilt": "tiptilt_custom"},
+        },
+    }
+
+    specs = pipeline.expected_output_shm_specs_for_config(config)
+
+    assert "raw_custom" in specs
+    assert "wfs_custom" in specs
+    assert "signal_custom" in specs
+    assert "signal2d_custom" in specs
+    assert "wfc_custom" in specs
+    assert "wfc2d_custom" in specs
+    assert "short_custom" in specs
+
+
 def test_hardware_launcher_write_and_read():
     hl = pipeline.hardwareLauncher("dummy.py", "c.yaml", 9999)
     calls = []
