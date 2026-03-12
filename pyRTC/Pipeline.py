@@ -90,6 +90,29 @@ def normalize_gpu_device(gpuDevice, context: str = ""):
         return None
     return gpuDevice
 
+
+def _socket_send_json(sock: socket.socket, message: dict) -> None:
+    payload = json.dumps(message, separators=(",", ":")) + "\n"
+    sock.sendall(payload.encode("utf-8"))
+
+
+def _socket_read_json(sock: socket.socket, buffer: str) -> tuple[dict, str]:
+    while "\n" not in buffer:
+        chunk = sock.recv(4096)
+        if not chunk:
+            raise ConnectionError("socket closed")
+        buffer += chunk.decode("utf-8")
+
+    line, buffer = buffer.split("\n", 1)
+    while line == "":
+        if "\n" not in buffer:
+            chunk = sock.recv(4096)
+            if not chunk:
+                raise ConnectionError("socket closed")
+            buffer += chunk.decode("utf-8")
+        line, buffer = buffer.split("\n", 1)
+    return json.loads(line), buffer
+
 def work(obj, functionName, affinity):
     """
     The main working thread for the any Pipeline object
@@ -571,6 +594,7 @@ class hardwareLauncher:
         self.lastLaunchTime = None
         self.lastContactTime = None
         self.lastError = None
+        self._read_buffer = ""
 
         return
 
@@ -680,14 +704,13 @@ class hardwareLauncher:
         return -1
 
     def write(self, message):
-        message = json.dumps(message)
-        self.processSocket.send(message.encode())
+        _socket_send_json(self.processSocket, message)
         return
     
     def read(self):
         try:
-            reply = self.processSocket.recv(4096).decode()
-            return json.loads(reply)
+            reply, self._read_buffer = _socket_read_json(self.processSocket, self._read_buffer)
+            return reply
         except socket.timeout:
             self.lastError = "socket timeout"
             return -1
@@ -795,6 +818,7 @@ class Listener:
 
         self.OKMessage = {"status": "OK"}
         self.BadMessage = {"status": "BAD"}
+        self._read_buffer = ""
 
         return
     
@@ -861,13 +885,12 @@ class Listener:
             self.write(self.BadMessage)
 
     def write(self, message):
-        message = json.dumps(message)
-        self.RTCsocket.send(message.encode())
+        _socket_send_json(self.RTCsocket, message)
         return
     
     def read(self):
-        reply = self.RTCsocket.recv(4096).decode()
-        return json.loads(reply)
+        reply, self._read_buffer = _socket_read_json(self.RTCsocket, self._read_buffer)
+        return reply
     
 def initExistingShm(shmName, gpuDevice=None):
     #Read wfc metadata and open a stream to the shared memory
@@ -927,6 +950,109 @@ def launchComponent(component, confKey, start = True):
 DEFAULT_COMPONENT_ORDER = ("modulator", "wfc", "wfs", "slopes", "loop", "psf", "telemetry")
 
 
+def _existing_shm_spec(name: str):
+    try:
+        stream, shape, dtype = initExistingShm(name)
+    except Exception:
+        return None
+    try:
+        return tuple(int(axis) for axis in shape), np.dtype(dtype)
+    finally:
+        try:
+            stream.close()
+        except Exception:
+            logger.debug("Failed closing temporary SHM probe for %s", name, exc_info=True)
+
+
+def _default_layout_shape(num_actuators: int) -> tuple[int, int]:
+    if num_actuators < 1:
+        raise ValueError("num_actuators must be positive")
+    if num_actuators == 1:
+        return 1, 1
+    side = max(
+        int(np.ceil(np.sqrt(float(num_actuators)))),
+        int(np.ceil(np.sqrt(float(4 * num_actuators) / np.pi))),
+    )
+    return side, side
+
+
+def expected_output_shm_specs_for_config(system_conf: dict) -> dict[str, dict[str, object]]:
+    specs: dict[str, dict[str, object]] = {}
+
+    wfs_conf = system_conf.get("wfs")
+    if isinstance(wfs_conf, dict):
+        width = int(wfs_conf.get("width", 1))
+        height = int(wfs_conf.get("height", 1))
+        downsample = int(wfs_conf.get("downsampleFactor", 0) or 0)
+        image_shape = (width, height)
+        if downsample > 0:
+            image_shape = (max(1, width // downsample), max(1, height // downsample))
+        specs["wfsRaw"] = {"shape": (width, height), "dtype": np.uint16}
+        specs["wfs"] = {"shape": image_shape, "dtype": np.int32}
+
+    slopes_conf = system_conf.get("slopes")
+    if isinstance(slopes_conf, dict) and isinstance(wfs_conf, dict):
+        wfs_type = str(slopes_conf.get("type", "SHWFS")).lower()
+        if wfs_type == "shwfs":
+            downsample = int(wfs_conf.get("downsampleFactor", 0) or 0)
+            width = int(wfs_conf.get("width", 1))
+            if downsample > 0:
+                width = max(1, width // downsample)
+            spacing = int(round(float(slopes_conf.get("subApSpacing", 1))))
+            num_regions = max(1, width // max(1, spacing))
+            signal2d_shape = (2 * num_regions, num_regions)
+            signal_size = int(np.prod(signal2d_shape))
+            specs["signal"] = {"shape": (signal_size,), "dtype": np.float32}
+            specs["signal2D"] = {"shape": signal2d_shape, "dtype": np.float32}
+
+    wfc_conf = system_conf.get("wfc")
+    if isinstance(wfc_conf, dict):
+        num_modes = int(wfc_conf.get("numModes", 1))
+        specs["wfc"] = {"shape": (num_modes,), "dtype": np.float32}
+        display_grid_size = int(wfc_conf.get("displayGridSize", 33))
+        if display_grid_size > 0:
+            specs["wfc2D"] = {"shape": (display_grid_size, display_grid_size), "dtype": np.float32}
+
+    psf_conf = system_conf.get("psf")
+    if isinstance(psf_conf, dict):
+        psf_shape = (int(psf_conf.get("width", 1)), int(psf_conf.get("height", 1)))
+        specs["psfShort"] = {"shape": psf_shape, "dtype": np.int32}
+        specs["psfLong"] = {"shape": psf_shape, "dtype": np.float64}
+        specs["strehl"] = {"shape": (1,), "dtype": np.float64}
+        specs["tiptilt"] = {"shape": (1,), "dtype": np.float64}
+
+    return specs
+
+
+def expected_output_shms_for_config(system_conf: dict) -> list[str]:
+    """Return the known output stream names implied by a validated config."""
+
+    return list(expected_output_shm_specs_for_config(system_conf))
+
+
+def reconcile_expected_output_shms(system_conf: dict, *, force_rebuild: bool = False) -> tuple[list[str], list[str]]:
+    specs = expected_output_shm_specs_for_config(system_conf)
+    rebuilt: list[str] = []
+    reused: list[str] = []
+
+    for name, spec in specs.items():
+        current = None if force_rebuild else _existing_shm_spec(name)
+        expected = (tuple(int(axis) for axis in spec["shape"]), np.dtype(spec["dtype"]))
+        if current is None:
+            continue
+        if current != expected:
+            clear_shms([name])
+            rebuilt.append(name)
+        else:
+            reused.append(name)
+
+    if rebuilt:
+        logger.info("Rebuilt mismatched SHMs: %s", ", ".join(rebuilt))
+    if reused:
+        logger.debug("Reused matching SHMs: %s", ", ".join(reused))
+    return rebuilt, reused
+
+
 @dataclass
 class ComponentRuntimeStatus:
     section_name: str
@@ -946,6 +1072,7 @@ class ComponentRuntimeStatus:
     restart_count: int = 0
     restart_policy: str = "never"
     log_file: str | None = None
+    desired_running: bool = False
 
     def to_dict(self) -> dict:
         return {
@@ -966,6 +1093,7 @@ class ComponentRuntimeStatus:
             "restart_count": self.restart_count,
             "restart_policy": self.restart_policy,
             "log_file": self.log_file,
+            "desired_running": self.desired_running,
         }
 
 
@@ -1053,6 +1181,7 @@ class BaseComponentRuntime:
             restart_count=self.restart_count,
             restart_policy=self.restart_policy,
             log_file=self.log_file,
+            desired_running=self.desired_running,
         ).to_dict()
 
 
@@ -1174,18 +1303,25 @@ class HardComponentRuntime(BaseComponentRuntime):
         if self.launcher is None:
             self._set_stopped()
             return
+        launcher = self.launcher
         try:
-            self.launcher.run("stop")
+            launcher.run("stop")
         except Exception:
             pass
         try:
-            self.launcher.shutdown()
+            launcher.shutdown()
         except Exception as exc:
             self._record_problem(str(exc), state="failed")
             raise
+        self.launcher = None
         self._set_stopped()
 
     def refresh_health(self) -> str:
+        if not self.desired_running:
+            if self.state != "stopped":
+                self._set_stopped()
+            return self.state
+
         if self.launcher is None:
             if self.desired_running:
                 self._record_problem("launcher not initialized", state="failed")
@@ -1553,6 +1689,7 @@ class RTCManager:
 
         any_failed = False
         any_degraded = False
+        any_running = False
         for section_name in self._component_sections():
             runtime = self.runtimes.get(section_name)
             if runtime is None:
@@ -1567,6 +1704,8 @@ class RTCManager:
                 any_failed = True
             elif runtime.state == "degraded":
                 any_degraded = True
+            elif runtime.state == "running":
+                any_running = True
 
         if any_failed:
             self.state = "failed"
@@ -1582,14 +1721,18 @@ class RTCManager:
                 for section_name, runtime in self.runtimes.items()
                 if runtime.state == "degraded" and runtime.error
             ) or None
-        elif self.state not in {"starting", "stopping", "stopped"}:
+        elif any_running:
             self.state = "running"
+            self.error = None
+        else:
+            self.state = "stopped"
             self.error = None
 
     def start(self) -> None:
         with self._lock:
             if not self.validated:
                 self.validate()
+            reconcile_expected_output_shms(self.config)
             self._build_runtimes()
             self.state = "starting"
             started = []
@@ -1615,6 +1758,21 @@ class RTCManager:
             self.error = None
             self._start_supervisor()
 
+    def start_component(self, section_name: str) -> None:
+        with self._lock:
+            if not self.validated:
+                self.validate()
+            reconcile_expected_output_shms(self.config)
+            self._build_runtimes()
+            runtime = self.runtimes[section_name]
+            _apply_runtime_logging_environment(
+                log_dir=self._manager_log_dir(),
+                log_file=self._manager_log_file(),
+            )
+            runtime.start()
+            self._refresh_health_locked(supervise=False)
+            self._start_supervisor()
+
     def stop(self) -> None:
         self._stop_supervisor()
         if self.state in {"stopped", "created", "validated"} and not self.runtimes:
@@ -1637,6 +1795,14 @@ class RTCManager:
                 raise RuntimeError(self.error)
             self.state = "stopped"
             self.error = None
+
+    def stop_component(self, section_name: str) -> None:
+        with self._lock:
+            runtime = self.runtimes[section_name]
+            runtime.stop()
+            self._refresh_health_locked(supervise=False)
+            if not any(component_runtime.desired_running for component_runtime in self.runtimes.values()):
+                self._stop_supervisor()
 
     def restart_component(self, section_name: str) -> None:
         with self._lock:

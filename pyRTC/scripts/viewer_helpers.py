@@ -157,7 +157,7 @@ class StreamConnection:
         self.last_time = None
         self.last_fps_text = None
         self._closed = False
-        self.cached_frame = normalize_frame(self.shm.read_noblock())
+        self.cached_frame = normalize_frame(np.array(self.shm.read_noblock(), copy=True))
 
     def prime(self):
         """Prime cached count and timestamp state before timer-driven refreshes."""
@@ -189,7 +189,7 @@ class StreamConnection:
         status_changed = fps_text != self.last_fps_text
 
         if changed:
-            self.cached_frame = normalize_frame(self.shm.read_noblock())
+            self.cached_frame = normalize_frame(np.array(self.shm.read_noblock(), copy=True))
 
         self.last_count = new_count
         self.last_time = new_time
