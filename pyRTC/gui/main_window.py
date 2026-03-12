@@ -409,6 +409,7 @@ class ManagerMainWindow(QMainWindow):
         self._blink_on = False
         self._field_inputs = {}
         self._field_types = {}
+        self._function_buttons = []
         self._inspector_section: str | None = None
         self._gui_log_handler = _GuiLogHandler()
         get_logger().addHandler(self._gui_log_handler)
@@ -472,6 +473,14 @@ class ManagerMainWindow(QMainWindow):
         self.form_layout = QFormLayout(self.form_container)
         self.form_scroll.setWidget(self.form_container)
         inspector_layout.addWidget(self.form_scroll)
+        self.functions_title = QLabel("Functions")
+        self.functions_title.hide()
+        inspector_layout.addWidget(self.functions_title)
+        self.functions_container = QWidget()
+        self.functions_layout = QVBoxLayout(self.functions_container)
+        self.functions_layout.setContentsMargins(0, 0, 0, 0)
+        self.functions_layout.setSpacing(8)
+        inspector_layout.addWidget(self.functions_container)
         button_row = QHBoxLayout()
         self.refresh_component_button = QPushButton("Refresh")
         self.refresh_component_button.clicked.connect(self._refresh_selected_component)
@@ -762,6 +771,8 @@ class ManagerMainWindow(QMainWindow):
         self.inspector_title.setText("Inspector")
         self.inspector_status.setText("Select a component")
         self._clear_form()
+        self._clear_function_buttons()
+        self.functions_title.hide()
         self._update_action_states(self.adapter._last_status)
 
     def _clear_form(self) -> None:
@@ -770,12 +781,22 @@ class ManagerMainWindow(QMainWindow):
         self._field_inputs = {}
         self._field_types = {}
 
+    def _clear_function_buttons(self) -> None:
+        while self.functions_layout.count():
+            item = self.functions_layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
+        self._function_buttons = []
+
     def _populate_inspector(self, section_name: str) -> None:
         self._clear_form()
+        self._clear_function_buttons()
         self._inspector_section = section_name
         self.inspector_title.setText(f"Inspector: {section_name}")
         try:
             rows = self.adapter.get_component_parameters(section_name)
+            functions = self.adapter.get_component_functions(section_name)
             cached_status = self.adapter._last_status or {}
             status = cached_status.get("components", {}).get(section_name, {})
         except Exception as exc:
@@ -790,6 +811,20 @@ class ManagerMainWindow(QMainWindow):
             self.form_layout.addRow(f"{row['name']} ({row['type']})", editor)
             self._field_inputs[row["name"]] = editor
             self._field_types[row["name"]] = row["type"]
+
+        if functions:
+            self.functions_title.show()
+            for function in functions:
+                button = QPushButton(function["name"])
+                button.setToolTip(function["description"])
+                button.setEnabled(bool(function["enabled"]))
+                button.clicked.connect(
+                    lambda _checked=False, name=function["name"], section=section_name: self._run_component_function(section, name)
+                )
+                self.functions_layout.addWidget(button)
+                self._function_buttons.append(button)
+        else:
+            self.functions_title.hide()
 
     def _refresh_selected_component(self) -> None:
         if self.selected_section:
@@ -812,6 +847,16 @@ class ManagerMainWindow(QMainWindow):
         self.statusBar().showMessage(f"Updated {self.selected_section}", 3000)
         self._populate_inspector(self.selected_section)
         self.refresh_view()
+
+    def _run_component_function(self, section_name: str, function_name: str) -> None:
+        try:
+            self.adapter.run_component_function(section_name, function_name)
+        except Exception as exc:
+            self._show_error(f"Function '{function_name}' failed", exc)
+            return
+        self.statusBar().showMessage(f"Ran {section_name}.{function_name}()", 3000)
+        self.refresh_view()
+        self._populate_inspector(section_name)
 
     def _refresh_logs(self) -> None:
         chunks = []

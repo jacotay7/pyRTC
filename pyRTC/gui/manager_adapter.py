@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from ast import literal_eval
+import inspect
 from pathlib import Path
 import subprocess
 from typing import Any
@@ -20,6 +21,23 @@ _CONFIG_ONLY_FIELDS = {
     "gpuDevice",
     "type",
     "signalType",
+}
+
+_NON_ACTION_METHODS = {
+    "start",
+    "stop",
+    "status",
+    "read",
+    "write",
+    "listen",
+    "launch",
+    "validate",
+    "refresh_health",
+    "restart",
+    "run",
+    "getProperty",
+    "setProperty",
+    "shutdown",
 }
 
 
@@ -200,6 +218,80 @@ class ManagerAdapter:
         manager.stop_component(section_name)
         self._last_status = manager.status()
         return self._last_status
+
+    def get_component_functions(self, section_name: str) -> list[dict[str, Any]]:
+        if not self.config or section_name not in self.config:
+            raise KeyError(section_name)
+
+        manager = self.ensure_manager()
+        descriptor = get_component_descriptor(section_name)
+        runtime = manager.runtimes.get(section_name) if manager.runtimes else None
+        component_class = getattr(runtime, "component_class", None)
+        if component_class is None:
+            component_class = descriptor.component_class if descriptor is not None else None
+        if component_class is None:
+            return []
+
+        excluded = set(_NON_ACTION_METHODS)
+        if descriptor is not None:
+            excluded.update(descriptor.worker_functions)
+
+        target = manager.get_component(section_name) if runtime is not None else None
+        enabled = target is not None
+        rows = []
+        for name, member in inspect.getmembers(component_class):
+            if name.startswith("_") or name in excluded:
+                continue
+            if not callable(member):
+                continue
+            try:
+                signature = inspect.signature(member)
+            except (TypeError, ValueError):
+                continue
+            parameters = list(signature.parameters.values())
+            required = [
+                parameter
+                for index, parameter in enumerate(parameters)
+                if not (index == 0 and parameter.name == "self")
+                and parameter.kind not in (inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD)
+                and parameter.default is inspect._empty
+            ]
+            if required:
+                continue
+            rows.append(
+                {
+                    "name": name,
+                    "description": inspect.getdoc(member) or "",
+                    "enabled": enabled,
+                }
+            )
+        rows.sort(key=lambda row: row["name"])
+        return rows
+
+    def run_component_function(self, section_name: str, function_name: str) -> Any:
+        manager = self.ensure_manager()
+        if section_name not in manager.runtimes:
+            raise KeyError(section_name)
+
+        runtime = manager.runtimes[section_name]
+        target = manager.get_component(section_name)
+        if target is None:
+            raise RuntimeError(f"Component '{section_name}' is not active")
+
+        available = {row["name"] for row in self.get_component_functions(section_name)}
+        if function_name not in available:
+            raise ValueError(f"Function '{function_name}' is not available for component '{section_name}'")
+
+        if runtime.mode == "hard-rtc" and hasattr(target, "run"):
+            result = target.run(function_name)
+            if result == -1 and getattr(target, "lastError", None):
+                raise RuntimeError(target.lastError)
+            self._last_status = manager.status()
+            return result
+
+        result = getattr(target, function_name)()
+        self._last_status = manager.status()
+        return result
 
     def get_component_parameters(self, section_name: str) -> list[dict[str, Any]]:
         if not self.config or section_name not in self.config:

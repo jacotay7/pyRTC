@@ -306,7 +306,7 @@ class Stream2DWidget(QFrame):
 
         outer_layout.addLayout(header_layout)
 
-        self.figure = Figure(figsize=(4.0, 3.4))
+        self.figure = Figure(figsize=(4.0, 4.0))
         self.axes = self.figure.add_subplot(111)
         self.axes.set_anchor("C")
         self.canvas = FigureCanvas(self.figure)
@@ -332,20 +332,21 @@ class Stream2DWidget(QFrame):
         stats_layout = QHBoxLayout()
         stats_layout.setContentsMargins(0, 2, 0, 0)
         stats_layout.setSpacing(8)
+        self.stats_label = QLabel("")
+        self.stats_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        self.stats_label.setTextFormat(Qt.RichText)
+        self.stats_label.setMinimumWidth(0)
+        self.stats_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.stats_label.setVisible(self.show_stats or self.show_range)
+        stats_layout.addWidget(self.stats_label, stretch=1, alignment=Qt.AlignLeft)
+        stats_layout.addStretch(1)
+
         self.status_label = QLabel("")
         self.status_label.setAlignment(Qt.AlignCenter)
-        self.status_label.setMinimumWidth(92)
+        self.status_label.setMinimumWidth(108)
+        self.status_label.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
         self.status_label.setVisible(self.show_stats)
-        stats_layout.addWidget(self.status_label, alignment=Qt.AlignLeft)
-
-        self.stats_label = QLabel("")
-        self.stats_label.setAlignment(Qt.AlignCenter)
-        self.stats_label.setTextFormat(Qt.RichText)
-        self.stats_label.setMinimumWidth(340)
-        self.stats_label.setMaximumWidth(340)
-        self.stats_label.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
-        self.stats_label.setVisible(self.show_stats or self.show_range)
-        stats_layout.addWidget(self.stats_label, alignment=Qt.AlignCenter)
+        stats_layout.addWidget(self.status_label, alignment=Qt.AlignRight)
         outer_layout.addLayout(stats_layout)
 
         self._build_settings_menu()
@@ -404,7 +405,7 @@ class Stream2DWidget(QFrame):
             self.colorbar_axes = None
 
     def _update_figure_layout(self):
-        self.axes.set_position([0.11, 0.10, 0.66, 0.78])
+        self.axes.set_position([0.10, 0.10, 0.70, 0.80])
         if self.colorbar_axes is not None:
             self.colorbar_axes.set_position([0.84, 0.14, 0.028, 0.72])
 
@@ -486,6 +487,7 @@ class Stream2DWidget(QFrame):
             f"QLabel {{ border: 0; color: {theme.text}; background: transparent; }}"
             f"QToolButton {{ border: 0; border-radius: 6px; padding: 5px 8px; "
             f"background: {theme.button_bg}; color: {theme.button_fg}; }}"
+            "QToolButton::menu-indicator { image: none; width: 0px; }"
             f"QToolButton:checked {{ background: {theme.accent}; color: {theme.axes_bg}; }}"
         )
         self.title_label.setStyleSheet(
@@ -904,6 +906,7 @@ class MosaicViewerWindow(QMainWindow):
             f"QWidget {{ background: {theme.window_bg}; color: {theme.text}; }}"
             f"QPushButton, QComboBox, QToolButton {{ background: {theme.button_bg}; color: {theme.button_fg}; "
             f"border: 1px solid {theme.panel_border}; border-radius: 6px; padding: 6px 10px; }}"
+            "QToolButton::menu-indicator { image: none; width: 0px; }"
             f"QToolButton:checked {{ background: {theme.accent}; color: {theme.axes_bg}; }}"
             f"QLabel {{ color: {theme.text}; }}"
             f"QMenu {{ background: {theme.panel_bg}; color: {theme.text}; border: 1px solid {theme.panel_border}; }}"
@@ -973,8 +976,8 @@ def launch_mosaic_viewer(argv, shm_names, fps, geometry, pixel_scale, static_vmi
     screen = app.primaryScreen()
     if screen is not None:
         available = screen.availableGeometry()
-        max_width = int(available.width() * 0.78)
-        max_height = int(available.height() * 0.78)
+        max_width = int(available.width() * 0.96)
+        max_height = int(available.height() * 0.94)
         window.resize(min(window.width(), max_width), min(window.height(), max_height))
     window.show()
     return app.exec_()

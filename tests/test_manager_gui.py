@@ -124,6 +124,93 @@ def test_manager_adapter_rejects_restart_for_non_runtime_section():
         raise AssertionError("Expected KeyError for non-runtime section")
 
 
+def test_manager_adapter_lists_zero_arg_component_functions():
+    adapter = ManagerAdapter()
+    adapter.load_config(str(SYNTHETIC_CONFIG_PATH))
+
+    functions = adapter.get_component_functions("wfc")
+    names = {row["name"] for row in functions}
+
+    assert "flatten" in names
+    assert "sendToHardware" not in names
+    assert "start" not in names
+
+
+def test_manager_adapter_runs_zero_arg_component_function_on_soft_runtime():
+    class _FakeComponent:
+        def __init__(self):
+            self.flatten_calls = 0
+
+        def flatten(self):
+            self.flatten_calls += 1
+            return 123
+
+    class _FakeRuntime:
+        mode = "soft-rtc"
+        component_class = _FakeComponent
+
+    class _FakeManager:
+        def __init__(self, component):
+            self.runtimes = {"wfc": _FakeRuntime()}
+            self._component = component
+
+        def get_component(self, section_name):
+            return self._component
+
+        def status(self):
+            return {"components": {"wfc": {"state": "running"}}, "state": "running"}
+
+    component = _FakeComponent()
+    adapter = ManagerAdapter()
+    adapter.config = read_system_config(SYNTHETIC_CONFIG_PATH, validate=False)
+    adapter.manager = _FakeManager(component)
+
+    result = adapter.run_component_function("wfc", "flatten")
+
+    assert result == 123
+    assert component.flatten_calls == 1
+
+
+def test_manager_adapter_runs_zero_arg_component_function_on_hard_runtime():
+    class _FakeLauncher:
+        def __init__(self):
+            self.calls = []
+            self.lastError = None
+
+        def run(self, function_name):
+            self.calls.append(function_name)
+            return 1
+
+    class _FakeComponentClass:
+        def flatten(self):
+            return None
+
+    class _FakeRuntime:
+        mode = "hard-rtc"
+        component_class = _FakeComponentClass
+
+    class _FakeManager:
+        def __init__(self, launcher):
+            self.runtimes = {"wfc": _FakeRuntime()}
+            self._launcher = launcher
+
+        def get_component(self, section_name):
+            return self._launcher
+
+        def status(self):
+            return {"components": {"wfc": {"state": "running"}}, "state": "running"}
+
+    launcher = _FakeLauncher()
+    adapter = ManagerAdapter()
+    adapter.config = read_system_config(SYNTHETIC_CONFIG_PATH, validate=False)
+    adapter.manager = _FakeManager(launcher)
+
+    result = adapter.run_component_function("wfc", "flatten")
+
+    assert result == 1
+    assert launcher.calls == ["flatten"]
+
+
 def test_manager_adapter_component_start_stop_round_trip():
     class _FakeManager:
         def __init__(self):
