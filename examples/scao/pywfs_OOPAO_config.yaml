@@ -1,61 +1,117 @@
 loop:
   gain: 0.1
-  leakyGain: 0.01 #Small leaky gain to help with stability and convergence
-  numDroppedModes: 0 #Drop the 5 least well-measured modes to improve stability
-  pokeAmp: 0.0000001 #100nm
-  numItersIM: 10 #Average 10 pokes per mode to get a nice signal
-  conditioning: 10 #Conditioning threshold for SVD inversion of the IM
+  leakyGain: 0.01
+  numDroppedModes: 0
+  pokeAmp: 1.0e-07
+  numItersIM: 10
+  conditioning: 10
   affinity: 2
   method: push-pull
+  className: Loop
+  inputStreams:
+    signal: signal
+  outputStreams:
+    wfc: wfc
   functions:
   - leakyIntegrator
-
+  classFile: ../../pyRTC/Loop.py
 wfs:
   name: OOPAOWFS
   width: 28
   height: 28
   darkCount: 1000
   affinity: 3
+  className: pyRTC.hardware.OOPAOInterface._OOPAOWFSensor
+  inputStreams: {}
+  outputStreams:
+    wfsRaw: wfsRaw
+    wfs: wfs
   functions:
   - expose
-
+  classFile: ../../pyRTC/hardware/OOPAOInterface.py
 slopes:
   type: PYWFS
   signalType: slopes
   affinity: 4
-  flatNorm: True
-  #Specify where the pupils are and how large for a PYWFS
-  # pupilsRadius: 12
-  # pupils:  
-  # - 12,12
-  # - 36,12
-  # - 12,36
-  # - 36,36
+  flatNorm: true
+  className: SlopesProcess
+  inputStreams:
+    wfs: wfs
+  outputStreams:
+    signal: signal
+    signal2D: signal2D
   functions:
   - computeSignal
-
+  classFile: ../../pyRTC/SlopesProcess.py
 wfc:
-  name: "OOPAOWFC"
+  name: OOPAOWFC
   numActuators: 100
   numModes: 80
-  flatFile: ""
-  saveFile: "flat.npy"
-  m2cFile:  ""
+  flatFile: ''
+  saveFile: flat.npy
+  m2cFile: ''
   affinity: 3
   commandCap: 0.8
   hardwareDelay: 0.001
   frameDelay: 0
+  className: pyRTC.hardware.OOPAOInterface._OOPAOWFCorrector
+  inputStreams:
+    wfc: wfc
+  outputStreams:
+    wfc: wfc
+    wfc2D: wfc2D
   functions:
   - sendToHardware
-
+  classFile: ../../pyRTC/hardware/OOPAOInterface.py
 psf:
-  name: "OOPAOPSF"
+  name: OOPAOPSF
   index: 0
   width: 200
   height: 200
   darkCount: 10
   integration: 5
   affinity: 3
+  className: pyRTC.hardware.OOPAOInterface._OOPAOScienceCamera
+  inputStreams: {}
+  outputStreams:
+    psfShort: psfShort
+    psfLong: psfLong
+    strehl: strehl
+    tiptilt: tiptilt
   functions:
   - expose
   - integrate
+  classFile: ../../pyRTC/hardware/OOPAOInterface.py
+manager:
+  mode: soft-rtc
+  componentClasses:
+    wfs: pyRTC.hardware.OOPAOInterface._OOPAOWFSensor
+    slopes: pyRTC.SlopesProcess.SlopesProcess
+    loop: pyRTC.Loop.Loop
+    wfc: pyRTC.hardware.OOPAOInterface._OOPAOWFCorrector
+    psf: pyRTC.hardware.OOPAOInterface._OOPAOScienceCamera
+  componentFiles:
+    wfs: ../../pyRTC/hardware/OOPAOInterface.py
+    slopes: ../../pyRTC/SlopesProcess.py
+    loop: ../../pyRTC/Loop.py
+    wfc: ../../pyRTC/hardware/OOPAOInterface.py
+    psf: ../../pyRTC/hardware/OOPAOInterface.py
+  graphLayout:
+    positions:
+      wfc:
+        x: 518.0
+        y: 202.0
+      wfs:
+        x: -18.0
+        y: 34.0
+      slopes:
+        x: 263.0
+        y: 1.0
+      psf:
+        x: -7.0
+        y: 281.0
+      loop:
+        x: 556.0
+        y: -26.0
+metadata: {}
+streams: {}

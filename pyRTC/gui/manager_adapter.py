@@ -72,6 +72,24 @@ def _infer_layout(index: int) -> tuple[float, float]:
     return 80.0 + col * 260.0, 60.0 + row * 190.0
 
 
+def _graph_layout_positions(config: dict[str, Any]) -> dict[str, dict[str, float]]:
+    manager_conf = config.get("manager", {}) if isinstance(config.get("manager"), dict) else {}
+    graph_layout = manager_conf.get("graphLayout", {}) if isinstance(manager_conf.get("graphLayout"), dict) else {}
+    positions = graph_layout.get("positions", {}) if isinstance(graph_layout.get("positions"), dict) else {}
+    normalized: dict[str, dict[str, float]] = {}
+    for section_name, value in positions.items():
+        if not isinstance(value, dict):
+            continue
+        try:
+            normalized[str(section_name)] = {
+                "x": float(value["x"]),
+                "y": float(value["y"]),
+            }
+        except Exception:
+            continue
+    return normalized
+
+
 def _import_component_class(class_path: str, component_file: str | None = None):
     if component_file:
         module_path = Path(component_file).expanduser().resolve()
@@ -185,6 +203,13 @@ def _coerce_runtime_value(raw_value: Any, field_type: str) -> Any:
     if field_type == "str | None":
         text = str(raw_value)
         return None if text == "" else text
+    if field_type == "dict[str,str]":
+        if isinstance(raw_value, dict):
+            return {str(key): str(value) for key, value in raw_value.items()}
+        parsed = yaml.safe_load(str(raw_value))
+        if not isinstance(parsed, dict):
+            raise ValueError("Mapping fields must parse to a dict")
+        return {str(key): str(value) for key, value in parsed.items()}
     if field_type in {"list[str]", "list[float]"}:
         if isinstance(raw_value, list):
             value = raw_value
@@ -267,6 +292,50 @@ class ManagerAdapter:
         Path(resolved).write_text(yaml.safe_dump(self.config, sort_keys=False), encoding="utf-8")
         self.config_path = resolved
         return resolved
+
+    def get_component_position(self, section_name: str, *, default_index: int | None = None) -> tuple[float, float]:
+        if not self.config:
+            if default_index is None:
+                return 80.0, 60.0
+            return _infer_layout(default_index)
+        positions = _graph_layout_positions(self.config)
+        if section_name in positions:
+            return positions[section_name]["x"], positions[section_name]["y"]
+        if default_index is None:
+            return 80.0, 60.0
+        return _infer_layout(default_index)
+
+    def set_component_position(self, section_name: str, x: float, y: float) -> None:
+        if not self.config:
+            raise RuntimeError("No config is loaded")
+        manager_conf = self.config.setdefault("manager", {})
+        graph_layout = manager_conf.setdefault("graphLayout", {})
+        positions = graph_layout.setdefault("positions", {})
+        positions[section_name] = {"x": float(x), "y": float(y)}
+        if self.manager is not None:
+            self.manager.config.setdefault("manager", {}).setdefault("graphLayout", {}).setdefault("positions", {})[section_name] = {
+                "x": float(x),
+                "y": float(y),
+            }
+
+    def clear_component_position(self, section_name: str) -> None:
+        if not self.config:
+            raise RuntimeError("No config is loaded")
+        manager_conf = self.config.get("manager", {})
+        if isinstance(manager_conf, dict):
+            graph_layout = manager_conf.get("graphLayout", {})
+            if isinstance(graph_layout, dict):
+                positions = graph_layout.get("positions", {})
+                if isinstance(positions, dict):
+                    positions.pop(section_name, None)
+        if self.manager is not None:
+            manager_conf = self.manager.config.get("manager", {})
+            if isinstance(manager_conf, dict):
+                graph_layout = manager_conf.get("graphLayout", {})
+                if isinstance(graph_layout, dict):
+                    positions = graph_layout.get("positions", {})
+                    if isinstance(positions, dict):
+                        positions.pop(section_name, None)
 
     def available_component_templates(self) -> list[dict[str, str]]:
         return [
@@ -606,6 +675,38 @@ class ManagerAdapter:
         descriptor = self._descriptor_for_section(section_name)
         conf = self.config[section_name]
         rows = []
+        rows.extend(
+            [
+                {
+                    "name": "className",
+                    "type": "str",
+                    "required": True,
+                    "description": "Fully qualified or built-in component class name.",
+                    "value": conf.get("className", ""),
+                },
+                {
+                    "name": "classFile",
+                    "type": "str | None",
+                    "required": False,
+                    "description": "Optional Python file containing the component class.",
+                    "value": conf.get("classFile"),
+                },
+                {
+                    "name": "inputStreams",
+                    "type": "dict[str,str]",
+                    "required": False,
+                    "description": "Semantic input stream roles mapped to SHM names.",
+                    "value": conf.get("inputStreams", {}),
+                },
+                {
+                    "name": "outputStreams",
+                    "type": "dict[str,str]",
+                    "required": False,
+                    "description": "Semantic output stream roles mapped to SHM names.",
+                    "value": conf.get("outputStreams", {}),
+                },
+            ]
+        )
         for field_descriptor in descriptor.all_fields if descriptor is not None else ():
             value = conf.get(field_descriptor.name, field_descriptor.default)
             live_value = self.get_parameter(section_name, field_descriptor.name, fallback=value)
@@ -648,10 +749,14 @@ class ManagerAdapter:
     def set_parameter(self, section_name: str, name: str, raw_value: Any) -> Any:
         if not self.config or section_name not in self.config:
             raise KeyError(section_name)
-        descriptor = get_component_descriptor(section_name)
+        descriptor = self._descriptor_for_section(section_name)
         field_type = "str"
         if descriptor is not None and name in descriptor.field_map:
             field_type = descriptor.field_map[name].field_type
+        elif name == "classFile":
+            field_type = "str | None"
+        elif name in {"inputStreams", "outputStreams"}:
+            field_type = "dict[str,str]"
         value = _coerce_runtime_value(raw_value, field_type)
         self.config[section_name][name] = value
 
@@ -688,7 +793,7 @@ class ManagerAdapter:
         for index, section_name in enumerate(sections):
             descriptor = self._descriptor_for_section(section_name)
             component_info = component_status.get(section_name, {})
-            x, y = _infer_layout(index)
+            x, y = self.get_component_position(section_name, default_index=index)
             title = section_name.upper()
             subtitle = descriptor.class_name if descriptor is not None else self.config[section_name].get("name", "component")
             input_names = {
@@ -799,6 +904,7 @@ class ManagerAdapter:
             error=status.get("error"),
             config_path=self.config_path,
             mode=status.get("mode", "soft-rtc"),
+            metadata={"positions": _graph_layout_positions(self.config)},
         )
 
     def suggested_viewer_streams(self) -> list[str]:

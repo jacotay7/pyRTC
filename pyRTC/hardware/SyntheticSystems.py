@@ -116,7 +116,7 @@ class SyntheticSHWFS(WavefrontSensor):
         if self.correctionShm is not None:
             return
         try:
-            self.correctionShm, _, _ = initExistingShm("wfc", gpuDevice=self.gpuDevice)
+            self.correctionShm, _, _ = initExistingShm(self.input_stream_name("wfc"), gpuDevice=self.gpuDevice)
         except Exception:
             self.correctionShm = None
 
@@ -235,7 +235,7 @@ class SyntheticScienceCamera(ScienceCamera):
         if self.signalShm is not None:
             return
         try:
-            self.signalShm, _, _ = initExistingShm("signal")
+            self.signalShm, _, _ = initExistingShm(self.input_stream_name("signal"))
         except Exception:
             self.signalShm = None
 

@@ -86,7 +86,15 @@ psf:
 
 manager:
   mode: soft-rtc
+  componentClasses:
+    wfs: SyntheticSHWFS
+    slopes: SlopesProcess
+    loop: Loop
+    wfc: SyntheticWFC
+    psf: SyntheticScienceCamera
   componentFiles:
     wfs: ../../pyRTC/hardware/SyntheticSHWFS.py
+    slopes: ../../pyRTC/SlopesProcess.py
+    loop: ../../pyRTC/Loop.py
     wfc: ../../pyRTC/hardware/SyntheticWFC.py
     psf: ../../pyRTC/hardware/SyntheticScienceCamera.py

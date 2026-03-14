@@ -382,6 +382,24 @@ def _validate_manager_config(conf: Any, *, system_conf: Mapping[str, Any]) -> No
                         f"manager.{mapping_name}: target for '{section_name}' must be a non-empty string"
                     )
 
+    if "graphLayout" in conf:
+        graph_layout = _require_mapping(conf["graphLayout"], "manager.graphLayout")
+        positions = graph_layout.get("positions", {})
+        if positions is not None:
+            positions = _require_mapping(positions, "manager.graphLayout.positions")
+            for section_name, value in positions.items():
+                if not _is_valid_manager_section(str(section_name), system_conf):
+                    raise ConfigValidationError(
+                        f"manager.graphLayout.positions: unknown component section '{section_name}'"
+                    )
+                position_conf = _require_mapping(value, f"manager.graphLayout.positions.{section_name}")
+                for axis in ("x", "y"):
+                    if axis not in position_conf:
+                        raise ConfigValidationError(
+                            f"manager.graphLayout.positions.{section_name}: missing '{axis}'"
+                        )
+                    _validate_optional_numeric(position_conf, axis, f"manager.graphLayout.positions.{section_name}")
+
     if "logDir" in conf and (not isinstance(conf["logDir"], str) or not conf["logDir"].strip()):
         raise ConfigValidationError("manager: 'logDir' must be a non-empty string when provided")
     if "logFile" in conf and (not isinstance(conf["logFile"], str) or not conf["logFile"].strip()):

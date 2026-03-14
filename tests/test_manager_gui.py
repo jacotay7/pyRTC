@@ -36,6 +36,19 @@ def test_manager_adapter_builds_graph_snapshot_from_synthetic_config():
     assert ("loop", "wfc", "wfc") in edges
 
 
+def test_manager_adapter_uses_persisted_graph_positions_from_config():
+    adapter = ManagerAdapter()
+    adapter.load_config(str(SYNTHETIC_CONFIG_PATH))
+    adapter.set_component_position("loop", 321.5, 654.25)
+
+    snapshot = adapter.build_graph_snapshot()
+    loop_node = next(node for node in snapshot.nodes if node.section_name == "loop")
+
+    assert loop_node.x == 321.5
+    assert loop_node.y == 654.25
+    assert snapshot.metadata["positions"]["loop"] == {"x": 321.5, "y": 654.25}
+
+
 def test_manager_adapter_can_initialize_empty_config_for_build_mode():
     adapter = ManagerAdapter()
 

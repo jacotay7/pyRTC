@@ -16,6 +16,11 @@ loop:
   integralLimits: [-0.1, 0.1]
   derivativeFilter: 0.1
   # gpuDevice: 0
+  className: Loop
+  inputStreams:
+    signal: signal
+  outputStreams:
+    wfc: wfc
   functions:
   - leakyIntegrator
 
@@ -39,6 +44,11 @@ wfs:
   darkFile: "/home/whetstone/pyRTC/examples/sharp_lab/calib/darkPyWFS.npy"
   affinity: 3
   # gpuDevice: 0
+  className: XIMEA_WFS
+  inputStreams: {}
+  outputStreams:
+    wfsRaw: wfsRaw
+    wfs: wfs
   functions:
   - expose
 
@@ -62,6 +72,12 @@ slopes:
   - 152,65 #140, 60
   - 130,128
   affinity: 4
+  className: SlopesProcess
+  inputStreams:
+    wfs: wfs
+  outputStreams:
+    signal: signal
+    signal2D: signal2D
   functions:
   - computeSignal
 
@@ -80,6 +96,11 @@ wfc:
   hardwareDelay: 0.001 #seconds
   # gpuDevice: 0
   frameDelay: 0
+  className: ALPAODM
+  inputStreams: {}
+  outputStreams:
+    wfc: wfc
+    wfc2D: wfc2D
   functions:
   - sendToHardware
 
@@ -98,6 +119,13 @@ psf:
   modelFile: "/home/whetstone/pyRTC/examples/sharp_lab/calib/modelPSF_PyWFS.npy"
   integration: 5000
   affinity: 6
+  className: spinCam
+  inputStreams: {}
+  outputStreams:
+    psfShort: psfShort
+    psfLong: psfLong
+    strehl: strehl
+    tiptilt: tiptilt
   functions:
   - expose
   - integrate
@@ -131,6 +159,9 @@ optimizer:
     affinity: 10
 modulator:
   name: 'E-727'
+  className: PIModulator
+  inputStreams: {}
+  outputStreams: {}
   libFolder: '/opt/PI/lib64/'
   digitalFreq: 20000 #Hz
   frequency: 300 #Hz

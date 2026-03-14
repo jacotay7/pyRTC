@@ -162,12 +162,13 @@ class GraphNodeButtonItem(QGraphicsRectItem):
 
 
 class GraphNodeItem(QGraphicsRectItem):
-    def __init__(self, node: GraphNodeModel, theme, selection_callback, action_callback):
+    def __init__(self, node: GraphNodeModel, theme, selection_callback, action_callback, position_callback=None):
         super().__init__(QRectF(0.0, 0.0, 220.0, 152.0))
         self.node = node
         self.theme = theme
         self._selection_callback = selection_callback
         self._action_callback = action_callback
+        self._position_callback = position_callback
         self._edge_items = []
         self._blink_on = False
         self._drag_state_callback = None
@@ -279,6 +280,8 @@ class GraphNodeItem(QGraphicsRectItem):
         if change == QGraphicsRectItem.ItemPositionHasChanged:
             for edge_item in self._edge_items:
                 edge_item.update_positions()
+            if self._position_callback is not None:
+                self._position_callback(self.node.section_name, float(self.pos().x()), float(self.pos().y()))
         if change == QGraphicsRectItem.ItemSelectedHasChanged:
             self.apply_theme(self.theme)
             if bool(value) and (self._selection_guard is None or self._selection_guard()):
@@ -297,11 +300,12 @@ class GraphNodeItem(QGraphicsRectItem):
 
 
 class GraphCanvas(QGraphicsView):
-    def __init__(self, selection_callback, deselection_callback, action_callback):
+    def __init__(self, selection_callback, deselection_callback, action_callback, position_callback=None):
         super().__init__()
         self.selection_callback = selection_callback
         self.deselection_callback = deselection_callback
         self.action_callback = action_callback
+        self.position_callback = position_callback
         self.scene = QGraphicsScene(self)
         self.setScene(self.scene)
         self.setRenderHint(QPainter.Antialiasing)
@@ -312,6 +316,7 @@ class GraphCanvas(QGraphicsView):
         self._edge_items = []
         self._dragging = False
         self._suppress_selection_callback = False
+        self._persist_positions = True
         self._zoom = 1.0
 
     @property
@@ -326,13 +331,20 @@ class GraphCanvas(QGraphicsView):
             section_name: (item.pos().x(), item.pos().y())
             for section_name, item in self._items_by_section.items()
         }
+        self._persist_positions = False
         self.scene.clear()
         self._items_by_section = {}
         self._edge_items = []
         self.setBackgroundBrush(QBrush(QColor(theme.canvas_bg)))
 
         for node in snapshot.nodes:
-            item = GraphNodeItem(node, theme, self.selection_callback, self.action_callback)
+            item = GraphNodeItem(
+                node,
+                theme,
+                self.selection_callback,
+                self.action_callback,
+                position_callback=self._handle_item_position_changed,
+            )
             item.set_drag_state_callback(self.set_dragging)
             item.set_selection_guard(self.should_emit_selection_callback)
             if node.section_name in positions:
@@ -353,6 +365,11 @@ class GraphCanvas(QGraphicsView):
             self._edge_items.append(edge_item)
 
         self.scene.setSceneRect(self.scene.itemsBoundingRect().adjusted(-80.0, -80.0, 120.0, 120.0))
+        self._persist_positions = True
+
+    def _handle_item_position_changed(self, section_name: str, x: float, y: float) -> None:
+        if self._persist_positions and self.position_callback is not None:
+            self.position_callback(section_name, x, y)
 
     def select_section(self, section_name: str) -> None:
         item = self._items_by_section.get(section_name)
@@ -530,7 +547,12 @@ class ManagerMainWindow(QMainWindow):
         self.summary_label = QLabel("No config loaded")
         self.summary_label.setObjectName("SubtleText")
         center_layout.addWidget(self.summary_label)
-        self.graph_canvas = GraphCanvas(self._select_section_from_canvas, self._clear_selection, self._handle_node_action)
+        self.graph_canvas = GraphCanvas(
+            self._select_section_from_canvas,
+            self._clear_selection,
+            self._handle_node_action,
+            position_callback=self._store_component_position,
+        )
         center_layout.addWidget(self.graph_canvas)
 
         self.inspector_panel = QFrame()
@@ -787,6 +809,12 @@ class ManagerMainWindow(QMainWindow):
             self._show_error("Save failed", exc)
             return
         self.statusBar().showMessage(f"Saved {saved_path}", 3000)
+
+    def _store_component_position(self, section_name: str, x: float, y: float) -> None:
+        try:
+            self.adapter.set_component_position(section_name, x, y)
+        except Exception:
+            return
 
     def validate_config(self) -> None:
         try:
