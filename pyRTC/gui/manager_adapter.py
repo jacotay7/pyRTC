@@ -26,7 +26,7 @@ _CONFIG_ONLY_FIELDS = {
     "signalType",
 }
 
-_NON_COMPONENT_TOP_LEVEL_SECTIONS = {"manager", "streams", "metadata"}
+_NON_COMPONENT_TOP_LEVEL_SECTIONS = {"manager", "streams", "metadata", "resources"}
 
 _NON_ACTION_METHODS = {
     "start",
@@ -43,6 +43,7 @@ _NON_ACTION_METHODS = {
     "getProperty",
     "setProperty",
     "shutdown",
+    "get_hardware",
 }
 
 
@@ -549,6 +550,11 @@ class ManagerAdapter:
         self.config = manager.validate()
         self._last_status = manager.status()
         return self.config
+
+    def build(self) -> dict[str, Any]:
+        manager = self.ensure_manager()
+        self._last_status = manager.build()
+        return self._last_status
 
     def start(self) -> dict[str, Any]:
         manager = self.ensure_manager()

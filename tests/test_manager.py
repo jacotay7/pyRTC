@@ -106,6 +106,29 @@ def test_manager_start_clears_stale_output_shms(tmp_path):
         clear_shms(DEFAULT_STREAMS)
 
 
+def test_manager_build_creates_components_before_start(tmp_path):
+    clear_shms(DEFAULT_STREAMS)
+    manager = RTCManager.from_config_file(_write_runtime_synthetic_config(tmp_path))
+
+    try:
+        status = manager.build()
+
+        assert status["state"] == "built"
+        assert manager.get_component("wfs") is not None
+        assert status["components"]["wfs"]["state"] == "built"
+
+        manager.start()
+        running_status = manager.status()
+        assert running_status["state"] == "running"
+
+        manager.stop()
+        built_status = manager.status()
+        assert built_status["state"] == "built"
+    finally:
+        manager.stop()
+        clear_shms(DEFAULT_STREAMS)
+
+
 def test_reconcile_expected_output_shms_reuses_matching_streams(monkeypatch):
     config = read_system_config(SYNTHETIC_CONFIG_PATH, validate=False)
     specs = expected_output_shm_specs_for_config(config)
@@ -142,6 +165,16 @@ def test_reconcile_expected_output_shms_clears_only_mismatched_streams(monkeypat
     assert rebuilt == ["wfc"]
     assert "signal" in reused
     assert cleared == ["wfc"]
+
+
+def test_expected_output_shm_specs_include_pywfs_signal2d():
+    config = read_system_config(REPO_ROOT / "examples" / "scao" / "pywfs_OOPAO_config.yaml", validate=False)
+
+    specs = expected_output_shm_specs_for_config(config)
+
+    assert specs["signal"]["dtype"] == np.float32
+    assert specs["signal2D"]["dtype"] == np.float32
+    assert specs["signal2D"]["shape"] == (14, 28)
 
 
 def test_socket_json_helpers_handle_back_to_back_messages():
@@ -240,7 +273,7 @@ def test_manager_stop_is_idempotent_for_soft_system():
     manager.stop()
     manager.stop()
 
-    assert manager.status()["state"] == "stopped"
+    assert manager.status()["state"] == "built"
     assert runtime.calls == 2
 
 
@@ -453,6 +486,123 @@ def test_manager_supports_explicit_manager_declared_sections():
     manager.stop()
 
     assert any(entry[:2] == ("launch", str(REPO_ROOT / "pyRTC" / "pyRTCComponent.py")) for entry in calls)
+
+
+def test_manager_injects_shared_resources_into_soft_runtimes(tmp_path):
+    class FakeResource:
+        def __init__(self, conf, system_conf):
+            self.conf = conf
+            self.system_conf = system_conf
+
+    class FakeComponent:
+        def __init__(self, conf, resource):
+            self.conf = conf
+            self.resource = resource
+            self.alive = True
+            self.running = False
+
+        def start(self):
+            self.running = True
+
+        def stop(self):
+            self.running = False
+
+    manager = RTCManager.from_config(
+        {
+            "demo": {
+                "className": "ignored",
+                "resource": "shared",
+                "inputStreams": {},
+                "outputStreams": {},
+            },
+            "resources": {
+                "shared": {
+                    "className": "ignored",
+                }
+            },
+            "manager": {
+                "mode": "soft-rtc",
+                "componentClasses": {"demo": "ignored"},
+            },
+        },
+        config_path=str(tmp_path / "resource_demo.yaml"),
+    )
+    manager.validated = True
+    manager.state = "validated"
+    manager._resolve_resource_class = lambda resource_name: FakeResource
+    manager._resolve_component_class = lambda section_name: FakeComponent
+
+    manager.start()
+    try:
+        runtime = manager.runtimes["demo"]
+        assert isinstance(runtime.component, FakeComponent)
+        assert isinstance(runtime.component.resource, FakeResource)
+        assert runtime.state == "running"
+    finally:
+        manager.stop()
+
+
+def test_manager_injects_component_provider_resources_into_soft_runtimes(tmp_path):
+    starts = []
+
+    class FakeProvider:
+        def __init__(self, conf):
+            self.conf = conf
+            self.alive = True
+            self.running = False
+
+        def start(self):
+            self.running = True
+            starts.append("provider")
+
+        def stop(self):
+            self.running = False
+
+    class FakeConsumer:
+        def __init__(self, conf, resource):
+            self.conf = conf
+            self.resource = resource
+            self.alive = True
+            self.running = False
+
+        def start(self):
+            self.running = True
+            starts.append("consumer")
+
+        def stop(self):
+            self.running = False
+
+    manager = RTCManager.from_config(
+        {
+            "provider": {
+                "className": "ignored",
+                "inputStreams": {},
+                "outputStreams": {},
+            },
+            "consumer": {
+                "className": "ignored",
+                "resource": "provider",
+                "inputStreams": {},
+                "outputStreams": {},
+            },
+            "manager": {
+                "mode": "soft-rtc",
+                "componentClasses": {"provider": "ignored", "consumer": "ignored"},
+            },
+        },
+        config_path=str(tmp_path / "component_resource_demo.yaml"),
+    )
+    manager.validated = True
+    manager.state = "validated"
+    manager._resolve_component_class = lambda section_name: FakeProvider if section_name == "provider" else FakeConsumer
+
+    manager.start()
+    try:
+        runtime = manager.runtimes["consumer"]
+        assert isinstance(runtime.component.resource, FakeProvider)
+        assert starts == ["provider", "consumer"]
+    finally:
+        manager.stop()
 
 
 def test_manager_status_includes_health_metadata_for_hard_runtime(tmp_path):

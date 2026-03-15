@@ -71,6 +71,24 @@ def test_manager_adapter_set_parameter_updates_loaded_config():
     assert adapter.get_parameter("loop", "gain") == 0.55
 
 
+def test_manager_adapter_build_exposes_built_state(tmp_path):
+    adapter = ManagerAdapter()
+    config_path = tmp_path / "synthetic_runtime_config.yaml"
+    config = read_system_config(SYNTHETIC_CONFIG_PATH, validate=False)
+    np_path = tmp_path / "synthetic_identity_im.npy"
+    import numpy as np
+
+    np.save(np_path, np.eye(32, dtype=np.float32))
+    config["loop"]["IMFile"] = str(np_path)
+    config_path.write_text(__import__("yaml").safe_dump(config, sort_keys=False), encoding="utf-8")
+
+    adapter.load_config(str(config_path))
+    status = adapter.build()
+
+    assert status["state"] == "built"
+    assert status["components"]["wfs"]["state"] == "built"
+
+
 def test_manager_adapter_prefers_common_viewer_streams():
     adapter = ManagerAdapter()
     adapter.config = read_system_config(SYNTHETIC_CONFIG_PATH, validate=False)

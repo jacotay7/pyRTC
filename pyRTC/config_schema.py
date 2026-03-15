@@ -34,7 +34,7 @@ REQUIRED_COMPONENT_SECTIONS = ("wfs", "slopes", "loop", "wfc")
 OPTIONAL_COMPONENT_SECTIONS = tuple(
     section for section in list_component_sections() if section not in REQUIRED_COMPONENT_SECTIONS
 )
-OPTIONAL_TOP_LEVEL_SECTIONS = ("manager", "streams", "metadata")
+OPTIONAL_TOP_LEVEL_SECTIONS = ("manager", "streams", "metadata", "resources")
 ALLOWED_MANAGER_MODES = {"soft-rtc", "hard-rtc"}
 ALLOWED_RESTART_POLICIES = {"never", "on-failure", "always"}
 
@@ -406,6 +406,63 @@ def _validate_manager_config(conf: Any, *, system_conf: Mapping[str, Any]) -> No
         raise ConfigValidationError("manager: 'logFile' must be a non-empty string when provided")
 
 
+def _validate_resources_config(conf: Any) -> None:
+    component = "resources"
+    conf = _require_mapping(conf, component)
+    for resource_name, resource_conf in conf.items():
+        if not isinstance(resource_name, str) or not resource_name.strip():
+            raise ConfigValidationError("resources: resource names must be non-empty strings")
+        resource_conf = _require_mapping(resource_conf, f"resources.{resource_name}")
+        class_name = resource_conf.get("className")
+        class_file = resource_conf.get("classFile")
+        if not isinstance(class_name, str) or not class_name.strip():
+            raise ConfigValidationError(f"resources.{resource_name}: 'className' must be a non-empty string")
+        if class_file is not None and (not isinstance(class_file, str) or not class_file.strip()):
+            raise ConfigValidationError(f"resources.{resource_name}: 'classFile' must be a non-empty string when provided")
+        try:
+            _resolve_class_symbol(class_name, class_file if isinstance(class_file, str) else None)
+        except Exception as exc:
+            raise ConfigValidationError(
+                f"resources.{resource_name}: unable to resolve className '{class_name}'"
+            ) from exc
+
+
+def _validate_component_resource_bindings(conf: Mapping[str, Any]) -> None:
+    resources_conf = conf.get("resources", {}) if isinstance(conf.get("resources"), Mapping) else {}
+    manager_conf = conf.get("manager", {}) if isinstance(conf.get("manager"), Mapping) else {}
+    component_modes = manager_conf.get("componentModes", {}) if isinstance(manager_conf.get("componentModes"), Mapping) else {}
+    default_mode = str(manager_conf.get("mode", "soft-rtc"))
+    component_sections = {
+        section_name
+        for section_name, section_conf in conf.items()
+        if section_name not in OPTIONAL_TOP_LEVEL_SECTIONS and isinstance(section_conf, Mapping)
+    }
+
+    for section_name, section_conf in conf.items():
+        if section_name in OPTIONAL_TOP_LEVEL_SECTIONS or not isinstance(section_conf, Mapping):
+            continue
+        resource_name = section_conf.get("resource")
+        if resource_name is None:
+            continue
+        if not isinstance(resource_name, str) or not resource_name.strip():
+            raise ConfigValidationError(f"{section_name}: 'resource' must be a non-empty string when provided")
+        if resource_name not in resources_conf and resource_name not in component_sections:
+            raise ConfigValidationError(
+                f"{section_name}: resource '{resource_name}' is not defined under top-level resources or as a component section"
+            )
+        effective_mode = str(component_modes.get(section_name, default_mode))
+        if effective_mode != "soft-rtc":
+            raise ConfigValidationError(
+                f"{section_name}: resource-backed components are supported only in soft-rtc mode"
+            )
+        if resource_name in component_sections:
+            provider_mode = str(component_modes.get(resource_name, default_mode))
+            if provider_mode != "soft-rtc":
+                raise ConfigValidationError(
+                    f"{section_name}: resource provider component '{resource_name}' must run in soft-rtc mode"
+                )
+
+
 def _validate_streams_config(conf: Any, *, system_conf: Mapping[str, Any]) -> None:
     """Validate optional stream metadata and lineage overrides.
 
@@ -548,6 +605,7 @@ def normalize_system_config(conf: Any) -> dict[str, Any]:
     conf["manager"] = manager_conf
     conf.setdefault("metadata", {})
     conf.setdefault("streams", {})
+    conf.setdefault("resources", {})
 
     component_classes = manager_conf.get("componentClasses", {}) if isinstance(manager_conf.get("componentClasses"), Mapping) else {}
     component_files = manager_conf.get("componentFiles", {}) if isinstance(manager_conf.get("componentFiles"), Mapping) else {}
@@ -597,6 +655,8 @@ def validate_system_config(conf: Any, *, config_path: str | Path | None = None) 
         _validate_telemetry_config(normalized["telemetry"])
     if "manager" in normalized:
         _validate_manager_config(normalized["manager"], system_conf=normalized)
+    if "resources" in normalized:
+        _validate_resources_config(normalized["resources"])
     if "streams" in normalized:
         _validate_streams_config(normalized["streams"], system_conf=normalized)
     if "metadata" in normalized:
@@ -609,6 +669,8 @@ def validate_system_config(conf: Any, *, config_path: str | Path | None = None) 
     for section_name, section_conf in normalized.items():
         if section_name not in OPTIONAL_TOP_LEVEL_SECTIONS and isinstance(section_conf, Mapping):
             _validate_component_class_and_streams(section_name, section_conf)
+
+    _validate_component_resource_bindings(normalized)
 
     _validate_cross_component_consistency(normalized)
 

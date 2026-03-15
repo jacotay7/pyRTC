@@ -173,6 +173,39 @@ def test_validate_system_config_accepts_manager_supervision_fields(tmp_path):
     assert normalized["manager"]["componentRestartPolicies"]["loop"] == "always"
 
 
+def test_validate_system_config_rejects_hard_rtc_for_resource_backed_component():
+    conf = read_system_config(SYNTHETIC_CONFIG_PATH, validate=False)
+    conf["resources"] = {
+        "shared": {
+            "className": "pyRTC.pyRTCComponent.pyRTCComponent",
+        }
+    }
+    conf["wfs"]["resource"] = "shared"
+    conf["manager"] = {
+        "mode": "hard-rtc",
+    }
+
+    with pytest.raises(ConfigValidationError, match="soft-rtc"):
+        validate_system_config(conf)
+
+
+def test_validate_system_config_accepts_component_section_as_resource_provider():
+    conf = read_system_config(SYNTHETIC_CONFIG_PATH, validate=False)
+    conf["shared"] = {
+        "className": "pyRTC.pyRTCComponent.pyRTCComponent",
+    }
+    conf["wfs"]["resource"] = "shared"
+    conf["manager"] = {
+        "mode": "soft-rtc",
+        "componentClasses": {"shared": "pyRTC.pyRTCComponent.pyRTCComponent"},
+        "componentFiles": {"shared": "pyRTC/pyRTCComponent.py"},
+    }
+
+    normalized = validate_system_config(conf)
+
+    assert normalized["wfs"]["resource"] == "shared"
+
+
 def test_validate_system_config_rejects_component_restart_policy_for_unknown_section():
     conf = read_system_config(SYNTHETIC_CONFIG_PATH, validate=False)
     conf["manager"] = {

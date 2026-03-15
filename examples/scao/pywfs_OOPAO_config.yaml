@@ -1,3 +1,11 @@
+oopao:
+  className: pyRTC.hardware.OOPAOInterface.OOPAOInterface
+  classFile: ../../pyRTC/hardware/OOPAOInterface.py
+  paramFile: pywfs_OOPAO_params.yaml
+  wfcSection: wfc
+  useAtmosphere: false
+  inputStreams: {}
+  outputStreams: {}
 loop:
   gain: 0.1
   leakyGain: 0.01
@@ -21,7 +29,8 @@ wfs:
   height: 28
   darkCount: 1000
   affinity: 3
-  className: pyRTC.hardware.OOPAOInterface._OOPAOWFSensor
+  className: pyRTC.hardware.OOPAOInterface.OOPAOWFSensor
+  resource: oopao
   inputStreams: {}
   outputStreams:
     wfsRaw: wfsRaw
@@ -54,7 +63,8 @@ wfc:
   commandCap: 0.8
   hardwareDelay: 0.001
   frameDelay: 0
-  className: pyRTC.hardware.OOPAOInterface._OOPAOWFCorrector
+  className: pyRTC.hardware.OOPAOInterface.OOPAOWFCorrector
+  resource: oopao
   inputStreams:
     wfc: wfc
   outputStreams:
@@ -71,7 +81,8 @@ psf:
   darkCount: 10
   integration: 5
   affinity: 3
-  className: pyRTC.hardware.OOPAOInterface._OOPAOScienceCamera
+  className: pyRTC.hardware.OOPAOInterface.OOPAOScienceCamera
+  resource: oopao
   inputStreams: {}
   outputStreams:
     psfShort: psfShort
@@ -85,33 +96,39 @@ psf:
 manager:
   mode: soft-rtc
   componentClasses:
-    wfs: pyRTC.hardware.OOPAOInterface._OOPAOWFSensor
-    slopes: pyRTC.SlopesProcess.SlopesProcess
+    oopao: pyRTC.hardware.OOPAOInterface.OOPAOInterface
     loop: pyRTC.Loop.Loop
-    wfc: pyRTC.hardware.OOPAOInterface._OOPAOWFCorrector
-    psf: pyRTC.hardware.OOPAOInterface._OOPAOScienceCamera
+    wfs: pyRTC.hardware.OOPAOInterface.OOPAOWFSensor
+    slopes: pyRTC.SlopesProcess.SlopesProcess
+    wfc: pyRTC.hardware.OOPAOInterface.OOPAOWFCorrector
+    psf: pyRTC.hardware.OOPAOInterface.OOPAOScienceCamera
   componentFiles:
+    oopao: ../../pyRTC/hardware/OOPAOInterface.py
+    loop: ../../pyRTC/Loop.py
     wfs: ../../pyRTC/hardware/OOPAOInterface.py
     slopes: ../../pyRTC/SlopesProcess.py
-    loop: ../../pyRTC/Loop.py
     wfc: ../../pyRTC/hardware/OOPAOInterface.py
     psf: ../../pyRTC/hardware/OOPAOInterface.py
   graphLayout:
     positions:
+      oopao:
+        x: 142.41983331640614
+        y: 424.21956642421856
       wfc:
-        x: 518.0
-        y: 202.0
+        x: 1021.9363610453123
+        y: 235.23111875000006
       wfs:
         x: -18.0
-        y: 34.0
+        y: -48.20329374999997
       slopes:
-        x: 263.0
-        y: 1.0
+        x: 282.23906875
+        y: 188.1436687499999
       psf:
-        x: -7.0
-        y: 281.0
+        x: 568.4230562499997
+        y: 412.17546874999994
       loop:
-        x: 556.0
-        y: -26.0
+        x: 588.0280210757815
+        y: -34.74503125
 metadata: {}
 streams: {}
+resources: {}

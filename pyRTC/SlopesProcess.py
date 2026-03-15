@@ -116,7 +116,7 @@ Optimized for best performance.
 Works very well with numba JIT compilation.
 Performed better compared to a numpy only implementation
 """
-@jit(nopython=True, nogil=True, cache=True, fastmath=True)
+@jit(nopython=True, nogil=True, cache=False, fastmath=True)
 def computeSlopesPYWFSOptimNumba(image:np.ndarray,
                             p1Mask:np.ndarray, 
                             p2Mask:np.ndarray,
@@ -173,7 +173,7 @@ Works very well with numba JIT compilation.
 Performed better compared to a numpy only implementation, while also
 allowing for non-integer spacing.
 """
-@jit(nopython=True, nogil=True, cache=True)
+@jit(nopython=True, nogil=True, cache=False)
 def computeSlopesSHWFSOptimNumba(image:np.ndarray, 
                                  slopes:np.ndarray, 
                                  unaberratedSlopes:np.ndarray, 

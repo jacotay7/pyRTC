@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections import deque
+from html import escape
 import logging
 from pathlib import Path
 from types import SimpleNamespace
@@ -13,6 +14,7 @@ try:
     from PyQt5.QtWidgets import (
         QAction,
         QApplication,
+        QComboBox,
         QDialog,
         QDialogButtonBox,
         QDockWidget,
@@ -39,6 +41,8 @@ try:
         QSplitter,
         QStatusBar,
         QToolBar,
+        QToolButton,
+        QTextEdit,
         QVBoxLayout,
         QWidget,
     )
@@ -52,9 +56,9 @@ except ImportError as exc:
                 "pyrtc-manager-gui requires GUI dependencies. Install with: pip install pyRTC[gui]"
             ) from _GUI_IMPORT_ERROR
 
-    QAction = QApplication = QDialog = QDialogButtonBox = QDockWidget = QFileDialog = QFormLayout = QFrame = QGraphicsPathItem = (  # type: ignore[assignment]
+    QAction = QApplication = QComboBox = QDialog = QDialogButtonBox = QDockWidget = QFileDialog = QFormLayout = QFrame = QGraphicsPathItem = (  # type: ignore[assignment]
         QGraphicsRectItem
-    ) = QGraphicsScene = QGraphicsSimpleTextItem = QGraphicsView = QHBoxLayout = QLabel = QLineEdit = QListWidget = QListWidgetItem = QMainWindow = QMessageBox = QPushButton = QPlainTextEdit = QScrollArea = QSizePolicy = QSplitter = QStatusBar = QToolBar = QVBoxLayout = QWidget = QTimer = QInputDialog = _QtUnavailableBase
+    ) = QGraphicsScene = QGraphicsSimpleTextItem = QGraphicsView = QHBoxLayout = QLabel = QLineEdit = QListWidget = QListWidgetItem = QMainWindow = QMessageBox = QPushButton = QPlainTextEdit = QScrollArea = QSizePolicy = QSplitter = QStatusBar = QToolBar = QToolButton = QTextEdit = QVBoxLayout = QWidget = QTimer = QInputDialog = _QtUnavailableBase
     QPointF = QRectF = QBrush = QColor = QFont = QKeySequence = QPainter = QPainterPath = QPen = _QtUnavailableBase
     Qt = SimpleNamespace(Horizontal=0, Vertical=0, AlignTop=0, LeftDockWidgetArea=0, BottomDockWidgetArea=0)
 
@@ -67,6 +71,50 @@ from .theme import build_main_window_stylesheet, get_theme
 
 
 logger = get_logger(__name__)
+
+
+def _format_log_line_html(text: str, theme, *, level: int | None = None) -> str:
+    level_colors = {
+        logging.DEBUG: theme.subtext,
+        logging.INFO: theme.running,
+        logging.WARNING: theme.degraded,
+        logging.ERROR: theme.failed,
+        logging.CRITICAL: theme.failed,
+    }
+    parts = [part.strip() for part in text.split("|")]
+    if len(parts) < 5:
+        color = level_colors.get(level, theme.text)
+        return f'<div><span style="color:{color};">{escape(text)}</span></div>'
+
+    timestamp, level_text, process_name, logger_name = parts[:4]
+    message = " | ".join(parts[4:])
+    level_color = level_colors.get(level, None)
+    if level_color is None:
+        normalized = level_text.strip().upper()
+        if normalized == "DEBUG":
+            level_color = theme.subtext
+        elif normalized == "INFO":
+            level_color = theme.running
+        elif normalized == "WARNING":
+            level_color = theme.degraded
+        elif normalized in {"ERROR", "CRITICAL"}:
+            level_color = theme.failed
+        else:
+            level_color = theme.text
+
+    return (
+        "<div>"
+        f'<span style="color:{theme.subtext};">{escape(timestamp)}</span>'
+        f'<span style="color:{theme.border};"> | </span>'
+        f'<span style="color:{level_color};font-weight:700;">{escape(level_text)}</span>'
+        f'<span style="color:{theme.border};"> | </span>'
+        f'<span style="color:{theme.accent};">{escape(process_name)}</span>'
+        f'<span style="color:{theme.border};"> | </span>'
+        f'<span style="color:{theme.subtext};">{escape(logger_name)}</span>'
+        f'<span style="color:{theme.border};"> | </span>'
+        f'<span style="color:{theme.text};">{escape(message)}</span>'
+        "</div>"
+    )
 
 
 class _GuiLogHandler(logging.Handler):
@@ -82,12 +130,23 @@ class _GuiLogHandler(logging.Handler):
 
     def emit(self, record: logging.LogRecord) -> None:
         try:
-            self._messages.append(self.format(record))
+            self._messages.append({"level": record.levelno, "text": self.format(record)})
         except Exception:
             pass
 
-    def render(self) -> str:
-        return "\n".join(self._messages)
+    def render_html(self, theme) -> str:
+        return "".join(_format_log_line_html(entry["text"], theme, level=entry["level"]) for entry in self._messages)
+
+
+def _build_log_html(lines: list[str], theme, *, title: str | None = None) -> str:
+    html_lines = []
+    if title:
+        html_lines.append(
+            f'<div style="margin:8px 0 4px 0;color:{theme.accent};font-weight:700;">{escape(title)}</div>'
+        )
+    for line in lines:
+        html_lines.append(_format_log_line_html(line, theme))
+    return "".join(html_lines)
 
 
 def _require_gui_backend() -> None:
@@ -246,6 +305,8 @@ class GraphNodeItem(QGraphicsRectItem):
             "stopped": theme.stopped,
             "created": theme.stopped,
             "validated": theme.accent,
+            "built": theme.accent,
+            "building": theme.accent,
             "starting": theme.accent,
             "stopping": theme.degraded,
         }
@@ -502,6 +563,8 @@ class ManagerMainWindow(QMainWindow):
         self._field_types = {}
         self._function_buttons = []
         self._inspector_section: str | None = None
+        self._updating_mode_selector = False
+        self._last_log_html = ""
         self._gui_log_handler = _GuiLogHandler()
         get_logger().addHandler(self._gui_log_handler)
 
@@ -565,20 +628,21 @@ class ManagerMainWindow(QMainWindow):
         self.inspector_status = QLabel("Select a component")
         self.inspector_status.setObjectName("SubtleText")
         inspector_layout.addWidget(self.inspector_status)
+        self.properties_toggle = QToolButton()
+        self.properties_toggle.setCheckable(True)
+        self.properties_toggle.setChecked(True)
+        self.properties_toggle.clicked.connect(lambda checked: self._set_section_visible("properties", checked))
+        inspector_layout.addWidget(self.properties_toggle)
+        self.properties_section = QWidget()
+        properties_layout = QVBoxLayout(self.properties_section)
+        properties_layout.setContentsMargins(0, 0, 0, 0)
+        properties_layout.setSpacing(8)
         self.form_scroll = QScrollArea()
         self.form_scroll.setWidgetResizable(True)
         self.form_container = QWidget()
         self.form_layout = QFormLayout(self.form_container)
         self.form_scroll.setWidget(self.form_container)
-        inspector_layout.addWidget(self.form_scroll)
-        self.functions_title = QLabel("Functions")
-        self.functions_title.hide()
-        inspector_layout.addWidget(self.functions_title)
-        self.functions_container = QWidget()
-        self.functions_layout = QVBoxLayout(self.functions_container)
-        self.functions_layout.setContentsMargins(0, 0, 0, 0)
-        self.functions_layout.setSpacing(8)
-        inspector_layout.addWidget(self.functions_container)
+        properties_layout.addWidget(self.form_scroll)
         button_row = QHBoxLayout()
         self.refresh_component_button = QPushButton("Refresh")
         self.refresh_component_button.clicked.connect(self._refresh_selected_component)
@@ -586,7 +650,28 @@ class ManagerMainWindow(QMainWindow):
         self.apply_button = QPushButton("Apply")
         self.apply_button.clicked.connect(self._apply_selected_component)
         button_row.addWidget(self.apply_button)
-        inspector_layout.addLayout(button_row)
+        properties_layout.addLayout(button_row)
+        inspector_layout.addWidget(self.properties_section)
+
+        self.functions_toggle = QToolButton()
+        self.functions_toggle.setCheckable(True)
+        self.functions_toggle.setChecked(False)
+        self.functions_toggle.clicked.connect(lambda checked: self._set_section_visible("functions", checked))
+        inspector_layout.addWidget(self.functions_toggle)
+        self.functions_section = QWidget()
+        functions_section_layout = QVBoxLayout(self.functions_section)
+        functions_section_layout.setContentsMargins(0, 0, 0, 0)
+        functions_section_layout.setSpacing(8)
+        self.functions_container = QWidget()
+        self.functions_layout = QVBoxLayout(self.functions_container)
+        self.functions_layout.setContentsMargins(0, 0, 0, 0)
+        self.functions_layout.setSpacing(8)
+        functions_section_layout.addWidget(self.functions_container)
+        inspector_layout.addWidget(self.functions_section)
+        self.properties_toggle.setVisible(False)
+        self.functions_toggle.setVisible(False)
+        self._set_section_visible("properties", True)
+        self._set_section_visible("functions", False)
 
         splitter.addWidget(self.catalog_panel)
         splitter.addWidget(center_panel)
@@ -596,7 +681,7 @@ class ManagerMainWindow(QMainWindow):
         splitter.setStretchFactor(2, 0)
 
         self.log_dock = QDockWidget("Logs", self)
-        self.log_output = QPlainTextEdit()
+        self.log_output = QTextEdit()
         self.log_output.setReadOnly(True)
         self.log_dock.setWidget(self.log_output)
         self.addDockWidget(Qt.BottomDockWidgetArea, self.log_dock)
@@ -616,6 +701,10 @@ class ManagerMainWindow(QMainWindow):
         self.validate_action.triggered.connect(self.validate_config)
         toolbar.addAction(self.validate_action)
 
+        self.build_action = QAction("Build", self)
+        self.build_action.triggered.connect(self.build_system)
+        toolbar.addAction(self.build_action)
+
         self.start_action = QAction("Start", self)
         self.start_action.triggered.connect(self.start_system)
         toolbar.addAction(self.start_action)
@@ -627,6 +716,21 @@ class ManagerMainWindow(QMainWindow):
         self.reset_action = QAction("Reset", self)
         self.reset_action.triggered.connect(self.reset_system)
         toolbar.addAction(self.reset_action)
+        self.viewer_action = QAction("Launch Viewer", self)
+        self.viewer_action.triggered.connect(self.launch_viewer)
+        self.viewer_action.setShortcut(QKeySequence("Ctrl+Shift+V"))
+        toolbar.addAction(self.viewer_action)
+
+        toolbar.addSeparator()
+        mode_label = QLabel("Mode")
+        toolbar.addWidget(mode_label)
+        self.mode_selector = QComboBox()
+        self.mode_selector.addItem("Soft IOC", "soft-rtc")
+        self.mode_selector.addItem("Hard IOC", "hard-rtc")
+        self.mode_selector.currentIndexChanged.connect(self._handle_mode_selector_changed)
+        toolbar.addWidget(self.mode_selector)
+        self._update_mode_selector()
+
     def _build_menubar(self) -> None:
         file_menu = self.menuBar().addMenu("File")
         self.save_action = QAction("Save", self)
@@ -691,9 +795,6 @@ class ManagerMainWindow(QMainWindow):
         self.restart_action = QAction("Restart Selected", self)
         self.restart_action.triggered.connect(self.restart_selected_component)
         self.restart_action.setShortcut(QKeySequence("Ctrl+Shift+R"))
-        self.viewer_action = QAction("Launch Viewer", self)
-        self.viewer_action.triggered.connect(self.launch_viewer)
-        self.viewer_action.setShortcut(QKeySequence("Ctrl+Shift+V"))
         self.zoom_in_action = QAction("Zoom In", self)
         self.zoom_in_action.triggered.connect(self.graph_canvas.zoom_in)
         self.zoom_in_action.setShortcut(QKeySequence.ZoomIn)
@@ -737,6 +838,33 @@ class ManagerMainWindow(QMainWindow):
             self.soft_mode_action.setChecked(self.manager_mode == "soft-rtc")
         if hasattr(self, "hard_mode_action"):
             self.hard_mode_action.setChecked(self.manager_mode == "hard-rtc")
+        self._update_mode_selector()
+
+    def _update_mode_selector(self) -> None:
+        if not hasattr(self, "mode_selector"):
+            return
+        self._updating_mode_selector = True
+        try:
+            index = self.mode_selector.findData(self.manager_mode)
+            if index >= 0 and self.mode_selector.currentIndex() != index:
+                self.mode_selector.setCurrentIndex(index)
+        finally:
+            self._updating_mode_selector = False
+
+    def _handle_mode_selector_changed(self, index: int) -> None:
+        if self._updating_mode_selector or index < 0:
+            return
+        mode = self.mode_selector.itemData(index)
+        if isinstance(mode, str):
+            self._set_manager_mode(mode)
+
+    def _set_section_visible(self, section_name: str, visible: bool) -> None:
+        if section_name == "properties":
+            self.properties_section.setVisible(visible)
+            self.properties_toggle.setText(f"{'▼' if visible else '▶'} Properties")
+        elif section_name == "functions":
+            self.functions_section.setVisible(visible)
+            self.functions_toggle.setText(f"{'▼' if visible else '▶'} Functions")
 
     def _set_theme(self, theme_name: str) -> None:
         self.theme_name = theme_name
@@ -834,6 +962,15 @@ class ManagerMainWindow(QMainWindow):
         self.statusBar().showMessage("System started", 3000)
         self.refresh_view()
 
+    def build_system(self) -> None:
+        try:
+            self.adapter.build()
+        except Exception as exc:
+            self._show_error("Build failed", exc)
+            return
+        self.statusBar().showMessage("System built", 3000)
+        self.refresh_view()
+
     def stop_system(self) -> None:
         try:
             self.adapter.stop()
@@ -925,10 +1062,12 @@ class ManagerMainWindow(QMainWindow):
         is_loaded = self.adapter.is_loaded()
         state = None if status is None else status.get("state")
         is_running = state in {"running", "degraded", "failed"}
+        is_built = state == "built"
         runtime_sections = set() if status is None else set(status.get("components", {}))
 
-        self.validate_action.setEnabled(is_loaded and not is_running)
-        self.start_action.setEnabled(is_loaded and not is_running and not self.build_mode)
+        self.validate_action.setEnabled(is_loaded and not is_running and not is_built)
+        self.build_action.setEnabled(is_loaded and not is_running and not is_built and not self.build_mode)
+        self.start_action.setEnabled(is_loaded and is_built and not self.build_mode)
         self.stop_action.setEnabled(is_running and not self.build_mode)
         self.reset_action.setEnabled(is_running and not self.build_mode)
         self.refresh_action.setEnabled(is_running)
@@ -943,8 +1082,11 @@ class ManagerMainWindow(QMainWindow):
         self.remove_component_action.setEnabled(build_enabled and bool(self.selected_section))
         self.add_connection_action.setEnabled(build_enabled)
         self.remove_connection_action.setEnabled(build_enabled and bool(self.adapter.connection_names()))
-        self.soft_mode_action.setEnabled(is_loaded and not self.build_mode)
-        self.hard_mode_action.setEnabled(is_loaded and not self.build_mode)
+        mode_enabled = not self.build_mode and not is_running and not is_built
+        self.soft_mode_action.setEnabled(mode_enabled)
+        self.hard_mode_action.setEnabled(mode_enabled)
+        if hasattr(self, "mode_selector"):
+            self.mode_selector.setEnabled(mode_enabled)
 
     def _populate_component_list(self, snapshot: GraphSnapshot) -> None:
         selected = self.selected_section
@@ -987,7 +1129,10 @@ class ManagerMainWindow(QMainWindow):
         self.inspector_status.setText("Select a component")
         self._clear_form()
         self._clear_function_buttons()
-        self.functions_title.hide()
+        self.functions_toggle.setVisible(False)
+        self.functions_section.setVisible(False)
+        self.properties_toggle.setVisible(False)
+        self.properties_section.setVisible(False)
         self._update_action_states(self.adapter._last_status)
 
     def _clear_form(self) -> None:
@@ -1020,6 +1165,8 @@ class ManagerMainWindow(QMainWindow):
         self.inspector_status.setText(
             f"state={status.get('state', '-')}  mode={status.get('mode', '-')}  restart={status.get('restart_policy', '-')}"
         )
+        self.properties_toggle.setVisible(True)
+        self.properties_section.setVisible(self.properties_toggle.isChecked())
         for row in rows:
             editor = QLineEdit("" if row["value"] is None else str(row["value"]))
             editor.setToolTip(row["description"])
@@ -1028,7 +1175,8 @@ class ManagerMainWindow(QMainWindow):
             self._field_types[row["name"]] = row["type"]
 
         if functions:
-            self.functions_title.show()
+            self.functions_toggle.setVisible(True)
+            self.functions_section.setVisible(self.functions_toggle.isChecked())
             for function in functions:
                 button = QPushButton(function["name"])
                 button.setToolTip(function["description"])
@@ -1039,7 +1187,8 @@ class ManagerMainWindow(QMainWindow):
                 self.functions_layout.addWidget(button)
                 self._function_buttons.append(button)
         else:
-            self.functions_title.hide()
+            self.functions_toggle.setVisible(False)
+            self.functions_section.setVisible(False)
 
     def _refresh_selected_component(self) -> None:
         if self.selected_section:
@@ -1237,8 +1386,9 @@ class ManagerMainWindow(QMainWindow):
         self.refresh_view()
 
     def _refresh_logs(self) -> None:
-        chunks = []
-        in_process_logs = self._gui_log_handler.render()
+        theme = get_theme(self.theme_name)
+        chunks = ["<div style=\"font-family: Menlo, Consolas, monospace; white-space: pre-wrap;\">"]
+        in_process_logs = self._gui_log_handler.render_html(theme)
         if in_process_logs:
             chunks.append(in_process_logs)
         for log_file in self.adapter.log_files():
@@ -1251,10 +1401,14 @@ class ManagerMainWindow(QMainWindow):
                 continue
             tail = lines[-30:]
             if tail:
-                chunks.append(f"== {path.name} ==\n" + "\n".join(tail))
-        text = "\n\n".join(chunks) if chunks else "No component log files available yet."
-        if self.log_output.toPlainText() != text:
-            self.log_output.setPlainText(text)
+                chunks.append(_build_log_html(tail, theme, title=path.name))
+        if len(chunks) == 1:
+            chunks.append(f'<div><span style="color:{theme.subtext};">No component log files available yet.</span></div>')
+        chunks.append("</div>")
+        html = "".join(chunks)
+        if self._last_log_html != html:
+            self._last_log_html = html
+            self.log_output.setHtml(html)
             scrollbar = self.log_output.verticalScrollBar()
             scrollbar.setValue(scrollbar.maximum())
 

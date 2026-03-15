@@ -30,7 +30,7 @@ logger = get_logger(__name__)
 
 COMMON_CONDITIONING_LINES = (10.0, 100.0, 1e3, 1e4, 1e5, 1e6)
 
-@jit(nopython=True, nogil=True, cache=True, fastmath=True)
+@jit(nopython=True, nogil=True, cache=False, fastmath=True)
 def leakyIntegratorNumba(slopes: np.ndarray, 
                          resconstructionMatrix: np.ndarray, 
                          oldCorrection: np.ndarray,
@@ -69,14 +69,14 @@ def leakIntegratorGPU(slopes:np.ndarray,
     correctionGPU[numActiveModes:] = 0
     return np.subtract((1-leak)*oldCorrection, correctionGPU.cpu().numpy())
 
-@jit(nopython=True, nogil=True, cache=True, fastmath=True)
+@jit(nopython=True, nogil=True, cache=False, fastmath=True)
 def compCorrection(CM=np.array([[]], dtype=np.float32),  
                     slopes=np.array([], dtype=np.float32)):
     """Apply a control matrix to a slope vector and return the correction."""
 
     return np.dot(CM,slopes)
 
-@jit(nopython=True, nogil=True, cache=True, fastmath=True)
+@jit(nopython=True, nogil=True, cache=False, fastmath=True)
 def updateCorrection(correction=np.array([], dtype=np.float32), 
                      gCM=np.array([[]], dtype=np.float32),  
                      slopes=np.array([], dtype=np.float32)):

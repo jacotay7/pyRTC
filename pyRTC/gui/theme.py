@@ -84,7 +84,7 @@ def build_main_window_stylesheet(theme: GUITheme) -> str:
         background: {theme.window_bg};
         color: {theme.text};
     }}
-    QFrame#Panel, QListWidget, QPlainTextEdit, QLineEdit, QComboBox, QScrollArea, QGraphicsView {{
+    QFrame#Panel, QListWidget, QPlainTextEdit, QTextEdit, QLineEdit, QComboBox, QScrollArea, QGraphicsView {{
         background: {theme.panel_bg};
         color: {theme.text};
         border: 1px solid {theme.border};
