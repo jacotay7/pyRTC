@@ -6,6 +6,7 @@ from collections import deque
 from html import escape
 import logging
 from pathlib import Path
+import time
 from types import SimpleNamespace
 
 try:
@@ -176,15 +177,54 @@ class GraphEdgeItem:
         self.label_item.setBrush(QBrush(QColor(theme.subtext)))
 
     def update_positions(self) -> None:
-        source_point = self.source_item.connection_anchor("right")
-        target_point = self.target_item.connection_anchor("left")
-        midpoint_x = source_point.x() + max((target_point.x() - source_point.x()) / 2.0, 40.0)
+        source_rect = self.source_item.sceneBoundingRect()
+        target_rect = self.target_item.sceneBoundingRect()
+        flow_left_to_right = target_rect.center().x() >= source_rect.center().x()
+        source_side = "right" if flow_left_to_right else "left"
+        target_side = "left" if flow_left_to_right else "right"
+        source_point = self.source_item.connection_anchor(source_side)
+        target_point = self.target_item.connection_anchor(target_side)
+        source_rect = self.source_item.sceneBoundingRect()
+        target_rect = self.target_item.sceneBoundingRect()
+        lane_seed = abs(hash((self.edge.source_section, self.edge.target_section, self.edge.source_stream))) % 3
+        lane_offset = 16.0 + lane_seed * 10.0
+        stub = 16.0
         path = QPainterPath(source_point)
-        path.lineTo(midpoint_x, source_point.y())
-        path.lineTo(midpoint_x, target_point.y())
+
+        horizontal_gap = target_rect.left() - source_rect.right() if flow_left_to_right else source_rect.left() - target_rect.right()
+        if horizontal_gap >= 48.0:
+            if flow_left_to_right:
+                lane_start_x = source_rect.right() + stub
+                lane_end_x = target_rect.left() - stub
+            else:
+                lane_start_x = source_rect.left() - stub
+                lane_end_x = target_rect.right() + stub
+            midpoint_x = lane_start_x + (lane_end_x - lane_start_x) / 2.0
+            path.lineTo(lane_start_x, source_point.y())
+            path.lineTo(midpoint_x, source_point.y())
+            path.lineTo(midpoint_x, target_point.y())
+            path.lineTo(lane_end_x, target_point.y())
+        else:
+            route_above = source_rect.center().y() <= target_rect.center().y()
+            if route_above:
+                lane_y = min(source_rect.top(), target_rect.top()) - lane_offset
+            else:
+                lane_y = max(source_rect.bottom(), target_rect.bottom()) + lane_offset
+
+            if flow_left_to_right:
+                source_stub_x = source_rect.right() + stub
+                target_stub_x = target_rect.left() - stub
+            else:
+                source_stub_x = source_rect.left() - stub
+                target_stub_x = target_rect.right() + stub
+
+            path.lineTo(source_stub_x, source_point.y())
+            path.lineTo(source_stub_x, lane_y)
+            path.lineTo(target_stub_x, lane_y)
+            path.lineTo(target_stub_x, target_point.y())
         path.lineTo(target_point)
         self.path_item.setPath(path)
-        midpoint = QPointF(midpoint_x, (source_point.y() + target_point.y()) / 2.0)
+        midpoint = path.pointAtPercent(0.5)
         self.label_item.setPos(midpoint.x() - 24.0, midpoint.y() - 18.0)
 
 
@@ -232,12 +272,16 @@ class GraphNodeItem(QGraphicsRectItem):
         self._blink_on = False
         self._drag_state_callback = None
         self._selection_guard = None
+        self._press_time = 0.0
+        self._drag_started = False
+        self._drag_activation_delay = 0.12
         self.setFlags(
             QGraphicsRectItem.ItemIsMovable
             | QGraphicsRectItem.ItemIsSelectable
             | QGraphicsRectItem.ItemSendsGeometryChanges
         )
         self.setAcceptHoverEvents(True)
+        self.setZValue(1)
 
         self.title_item = QGraphicsSimpleTextItem(node.title, self)
         title_font = QFont()
@@ -346,18 +390,29 @@ class GraphNodeItem(QGraphicsRectItem):
         if change == QGraphicsRectItem.ItemSelectedHasChanged:
             self.apply_theme(self.theme)
             if bool(value) and (self._selection_guard is None or self._selection_guard()):
+                self._press_time = time.monotonic()
                 self._selection_callback(self.node.section_name)
         return result
 
     def mousePressEvent(self, event):
-        if self._drag_state_callback is not None:
-            self._drag_state_callback(True)
+        self._press_time = time.monotonic()
+        self._drag_started = False
         super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        if time.monotonic() - self._press_time < self._drag_activation_delay:
+            event.accept()
+            return
+        if not self._drag_started and self._drag_state_callback is not None:
+            self._drag_state_callback(True)
+            self._drag_started = True
+        super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event):
         super().mouseReleaseEvent(event)
         if self._drag_state_callback is not None:
             self._drag_state_callback(False)
+        self._drag_started = False
 
 
 class GraphCanvas(QGraphicsView):
@@ -628,6 +683,11 @@ class ManagerMainWindow(QMainWindow):
         self.inspector_status = QLabel("Select a component")
         self.inspector_status.setObjectName("SubtleText")
         inspector_layout.addWidget(self.inspector_status)
+        self.inspector_empty_state = QLabel("Select a component to inspect its settings and actions.")
+        self.inspector_empty_state.setObjectName("SubtleText")
+        self.inspector_empty_state.setAlignment(Qt.AlignTop)
+        self.inspector_empty_state.setWordWrap(True)
+        inspector_layout.addWidget(self.inspector_empty_state)
         self.properties_toggle = QToolButton()
         self.properties_toggle.setCheckable(True)
         self.properties_toggle.setChecked(True)
@@ -672,6 +732,7 @@ class ManagerMainWindow(QMainWindow):
         self.functions_toggle.setVisible(False)
         self._set_section_visible("properties", True)
         self._set_section_visible("functions", False)
+        inspector_layout.addStretch(1)
 
         splitter.addWidget(self.catalog_panel)
         splitter.addWidget(center_panel)
@@ -716,6 +777,19 @@ class ManagerMainWindow(QMainWindow):
         self.reset_action = QAction("Reset", self)
         self.reset_action.triggered.connect(self.reset_system)
         toolbar.addAction(self.reset_action)
+
+        self.toolbar_zoom_in_action = QAction("Zoom +", self)
+        self.toolbar_zoom_in_action.triggered.connect(self.graph_canvas.zoom_in)
+        toolbar.addAction(self.toolbar_zoom_in_action)
+
+        self.toolbar_zoom_out_action = QAction("Zoom -", self)
+        self.toolbar_zoom_out_action.triggered.connect(self.graph_canvas.zoom_out)
+        toolbar.addAction(self.toolbar_zoom_out_action)
+
+        self.toolbar_zoom_reset_action = QAction("Zoom 1:1", self)
+        self.toolbar_zoom_reset_action.triggered.connect(self.graph_canvas.reset_zoom)
+        toolbar.addAction(self.toolbar_zoom_reset_action)
+
         self.viewer_action = QAction("Launch Viewer", self)
         self.viewer_action.triggered.connect(self.launch_viewer)
         self.viewer_action.setShortcut(QKeySequence("Ctrl+Shift+V"))
@@ -795,6 +869,11 @@ class ManagerMainWindow(QMainWindow):
         self.restart_action = QAction("Restart Selected", self)
         self.restart_action.triggered.connect(self.restart_selected_component)
         self.restart_action.setShortcut(QKeySequence("Ctrl+Shift+R"))
+        self.toggle_logs_action = self.log_dock.toggleViewAction()
+        self.toggle_logs_action.setText("Show Logs")
+        self.toggle_logs_action.setShortcut(QKeySequence("Ctrl+Shift+L"))
+        self.toggle_logs_action.setShortcutContext(Qt.WidgetWithChildrenShortcut)
+        self.addAction(self.toggle_logs_action)
         self.zoom_in_action = QAction("Zoom In", self)
         self.zoom_in_action.triggered.connect(self.graph_canvas.zoom_in)
         self.zoom_in_action.setShortcut(QKeySequence.ZoomIn)
@@ -813,6 +892,7 @@ class ManagerMainWindow(QMainWindow):
         view_menu.addAction(self.viewer_action)
         view_menu.addAction(self.refresh_action)
         view_menu.addAction(self.restart_action)
+        view_menu.addAction(self.toggle_logs_action)
         view_menu.addSeparator()
         view_menu.addAction(self.zoom_in_action)
         view_menu.addAction(self.zoom_out_action)
@@ -1127,6 +1207,7 @@ class ManagerMainWindow(QMainWindow):
         self.component_list.blockSignals(False)
         self.inspector_title.setText("Inspector")
         self.inspector_status.setText("Select a component")
+        self.inspector_empty_state.setVisible(True)
         self._clear_form()
         self._clear_function_buttons()
         self.functions_toggle.setVisible(False)
@@ -1154,6 +1235,7 @@ class ManagerMainWindow(QMainWindow):
         self._clear_function_buttons()
         self._inspector_section = section_name
         self.inspector_title.setText(f"Inspector: {section_name}")
+        self.inspector_empty_state.setVisible(False)
         try:
             rows = self.adapter.get_component_parameters(section_name)
             functions = self.adapter.get_component_functions(section_name)
