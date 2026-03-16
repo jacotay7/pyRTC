@@ -90,7 +90,7 @@ def test_validate_system_config_accepts_synthetic_example():
 
     assert normalized["manager"]["mode"] == "soft-rtc"
     assert normalized["wfs"]["className"] == "SyntheticSHWFS"
-    assert normalized["wfc"]["numModes"] == 32
+    assert normalized["wfc"]["numModes"] == 97
     assert Path(normalized["metadata"]["configPath"]).resolve() == SYNTHETIC_CONFIG_PATH.resolve()
 
 
@@ -231,7 +231,7 @@ def test_validate_system_config_accepts_stream_lineage_overrides():
     conf = read_system_config(SYNTHETIC_CONFIG_PATH, validate=False)
     conf["streams"] = {
         "signal": {
-            "shape": [32],
+            "shape": [98],
             "dtype": "float32",
             "outputComponent": "slopes",
             "inputComponents": ["loop"],
@@ -239,7 +239,7 @@ def test_validate_system_config_accepts_stream_lineage_overrides():
             "lineageSource": "wfs",
         },
         "wfc": {
-            "shape": [32],
+            "shape": [97],
             "dtype": "float32",
             "outputComponent": "loop",
             "inputComponents": ["wfc"],

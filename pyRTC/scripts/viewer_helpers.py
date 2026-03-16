@@ -122,8 +122,8 @@ def compute_window_size(frames, rows, cols, pixel_scale):
     panel_extent = max(max_height, max_width)
     plot_width = cols * panel_extent * pixel_scale
     plot_height = rows * panel_extent * pixel_scale
-    width = int(max(360, plot_width + cols * 110))
-    height = int(max(320, plot_height + rows * 120 + 70))
+    width = int(max(360, min(1320, plot_width + cols * 110)))
+    height = int(max(320, min(900, plot_height + rows * 120 + 70)))
     return width, height
 
 

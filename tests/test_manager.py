@@ -8,6 +8,7 @@ import yaml
 
 from pyRTC.Pipeline import HardComponentRuntime, ImageSHM, RTCManager, _socket_read_json, _socket_send_json, clear_shms, expected_output_shm_specs_for_config, reconcile_expected_output_shms
 from pyRTC.config_schema import read_system_config
+from pyRTC.hardware.SyntheticSystems import _default_wfc_layout, build_synthetic_shwfs_response_matrix
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -29,7 +30,9 @@ DEFAULT_STREAMS = [
 def _write_runtime_synthetic_config(tmp_path: Path) -> Path:
     config = read_system_config(SYNTHETIC_CONFIG_PATH, validate=False)
     im_path = tmp_path / "synthetic_identity_im.npy"
-    np.save(im_path, np.eye(32, dtype=np.float32))
+    layout = _default_wfc_layout(int(config["wfc"]["numActuators"]))
+    response = build_synthetic_shwfs_response_matrix(7, int(config["wfc"]["numModes"]), layout)
+    np.save(im_path, response.astype(np.float32))
     config["loop"]["IMFile"] = str(im_path)
 
     config_path = tmp_path / "synthetic_runtime_config.yaml"

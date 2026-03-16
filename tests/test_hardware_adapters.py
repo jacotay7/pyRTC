@@ -436,17 +436,17 @@ def test_oopao_interface_builds_from_param_dict_and_keeps_source_overrides(monke
 
     sim = module.OOPAOInterface(_oopao_conf(), param=param)
 
-    assert sim.ngs.optBand == "R"
-    assert sim.ngs.magnitude == 9
-    assert sim.src.optBand == "K"
-    assert sim.src.magnitude == 5
-    assert sim.tel is not sim.tel_psf
-    assert sim.atm.initialized_with is sim.tel
-    assert sim.dm.kwargs["nSubap"] == 10
-    assert sim.dm.kwargs["altitude"] is None
-    assert sim.wfs.kwargs["lightRatio"] == 0.1
-    assert sim.tel.kwargs["centralObstruction"] == 0.112
-    assert sim.tel_psf.kwargs["centralObstruction"] == 0.112
+    assert sim.context.ngs.optBand == "R"
+    assert sim.context.ngs.magnitude == 9
+    assert sim.context.src.optBand == "K"
+    assert sim.context.src.magnitude == 5
+    assert sim.context.tel is not sim.context.tel_psf
+    assert sim.context.atm.initialized_with is sim.context.tel
+    assert sim.context.dm.kwargs["nSubap"] == 10
+    assert sim.context.dm.kwargs["altitude"] is None
+    assert sim.context.wfs.kwargs["lightRatio"] == 0.1
+    assert sim.context.tel.kwargs["centralObstruction"] == 0.112
+    assert sim.context.tel_psf.kwargs["centralObstruction"] == 0.112
 
 
 def test_oopao_interface_only_passes_optional_object_kwargs_when_present(monkeypatch):
@@ -477,8 +477,8 @@ def test_oopao_interface_only_passes_optional_object_kwargs_when_present(monkeyp
 
     sim = module.OOPAOInterface(_oopao_conf(), param=param)
 
-    assert sim.tel.kwargs["centralObstruction"] is None
-    assert sim.tel_psf.kwargs["centralObstruction"] is None
+    assert sim.context.tel.kwargs["centralObstruction"] is None
+    assert sim.context.tel_psf.kwargs["centralObstruction"] is None
 
 
 def test_oopao_interface_accepts_prebuilt_objects(monkeypatch):
@@ -519,19 +519,19 @@ def test_oopao_interface_accepts_prebuilt_objects(monkeypatch):
         wfs=wfs,
     )
 
-    assert sim.tel is tel
-    assert sim.tel_psf is tel_psf
-    assert sim.ngs is ngs
-    assert sim.src is src
-    assert sim.atm is atm
-    assert sim.dm is dm
-    assert sim.wfs is wfs
+    assert sim.context.tel is tel
+    assert sim.context.tel_psf is tel_psf
+    assert sim.context.ngs is ngs
+    assert sim.context.src is src
+    assert sim.context.atm is atm
+    assert sim.context.dm is dm
+    assert sim.context.wfs is wfs
 
 
 def test_oopao_interface_requires_param_or_objects(monkeypatch):
     module, _, _, _, _, _ = _install_fake_oopao(monkeypatch)
 
-    with pytest.raises(ValueError, match="embedded default parameter payload"):
+    with pytest.raises(ValueError, match="requires either param=<mapping> or paramFile=<YAML path>"):
         module.OOPAOInterface(_oopao_conf())
 
 
@@ -621,13 +621,17 @@ def test_oopao_wfs_static_dm_does_not_accumulate_without_atmosphere(monkeypatch)
     sys.modules.pop("pyRTC.hardware.OOPAOInterface", None)
     module = importlib.import_module("pyRTC.hardware.OOPAOInterface")
 
+    fake_context = types.SimpleNamespace(
+        tel=_FakeTelescope(),
+        ngs=_FakeSource(),
+        atm=_FakeAtmosphere(),
+        dm=_FakeDM(),
+        wfs=_FakePyramid(),
+        register_component=lambda *args, **kwargs: None,
+    )
     sensor = module._OOPAOWFSensor(
         {"name": "wfs", "width": 2, "height": 2, "darkCount": 1, "functions": []},
-        _FakeTelescope(),
-        _FakeSource(),
-        _FakeAtmosphere(),
-        _FakeDM(),
-        _FakePyramid(),
+        fake_context,
     )
 
     sensor.expose()

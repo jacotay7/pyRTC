@@ -3,6 +3,7 @@ from pathlib import Path
 from pyRTC import RTCManager
 from pyRTC.config_schema import read_system_config
 from pyRTC.gui.manager_adapter import ManagerAdapter, _coerce_runtime_value, _is_live_runtime_field, _ordered_sections
+from pyRTC.hardware.SyntheticSystems import _default_wfc_layout, build_synthetic_shwfs_response_matrix
 from pyRTC.scripts import manager_gui
 
 
@@ -78,7 +79,9 @@ def test_manager_adapter_build_exposes_built_state(tmp_path):
     np_path = tmp_path / "synthetic_identity_im.npy"
     import numpy as np
 
-    np.save(np_path, np.eye(32, dtype=np.float32))
+    layout = _default_wfc_layout(int(config["wfc"]["numActuators"]))
+    response = build_synthetic_shwfs_response_matrix(7, int(config["wfc"]["numModes"]), layout)
+    np.save(np_path, response.astype(np.float32))
     config["loop"]["IMFile"] = str(np_path)
     config_path.write_text(__import__("yaml").safe_dump(config, sort_keys=False), encoding="utf-8")
 
