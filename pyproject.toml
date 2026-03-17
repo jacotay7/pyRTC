@@ -55,6 +55,9 @@ Tracker = "https://github.com/jacotay7/pyRTC/issues"
 aotpy = [
 	"aotpy>=3.2",
 ]
+gui = [
+	"PyQt5",
+]
 gpu = [
 	"torch",
 ]
@@ -86,6 +89,7 @@ pyrtc-view-launch-all = "pyRTC.scripts.view_launch_all:main"
 pyrtc-measure-latency = "pyRTC.scripts.measure_latency:main"
 pyrtc-validate-config = "pyRTC.scripts.validate_config:main"
 pyrtc-export-aotpy = "pyRTC.scripts.export_aotpy:main"
+pyrtc-manager-gui = "pyRTC.scripts.manager_gui:main"
 pyrtc-core-bench = "benchmarks.core_compute_bench:main"
 pyrtc-ao-loop-bench = "benchmarks.ao_loop_bench:main"
 

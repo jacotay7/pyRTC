@@ -1,47 +1,69 @@
 wfs:
   name: SyntheticSHWFS
-  width: 32
-  height: 32
+  width: 49
+  height: 49
   darkCount: 16
+  className: SyntheticSHWFS
   frameRateHz: 200.0
-  subApSpacing: 8
+  subApSpacing: 7
   subApOffsetX: 0
   subApOffsetY: 0
-  numModes: 32
+  numModes: 97
   disturbanceAmplitude: 0.3
   disturbanceFrequencyHz: 1.2
   disturbanceDriftHz: 0.5
   spotFlux: 4200.0
   backgroundLevel: 120.0
   readNoise: 3.0
+  inputStreams: {}
+  outputStreams:
+    wfsRaw: wfsRaw
+    wfs: wfs
   functions:
-    - expose
-
+  - expose
+  classFile: ../../pyRTC/hardware/SyntheticSHWFS.py
 slopes:
   type: SHWFS
   signalType: slopes
-  subApSpacing: 8
+  subApSpacing: 7
   subApOffsetX: 0
   subApOffsetY: 0
   imageNoise: 2.0
   contrast: 3
+  className: SlopesProcess
+  inputStreams:
+    wfs: wfs
+  outputStreams:
+    signal: signal
+    signal2D: signal2D
   functions:
-    - computeSignal
-
+  - computeSignal
+  classFile: ../../pyRTC/SlopesProcess.py
 wfc:
   name: SyntheticWFC
-  numActuators: 32
-  numModes: 32
+  numActuators: 97
+  numModes: 97
+  className: SyntheticWFC
   functions:
-    - sendToHardware
-
+  - sendToHardware
+  inputStreams:
+    wfc: wfc
+  outputStreams:
+    wfc: wfc
+    wfc2D: wfc2D
+  classFile: ../../pyRTC/hardware/SyntheticWFC.py
 loop:
   gain: 0.35
   numDroppedModes: 0
   IMFile: synthetic_identity_im.npy
+  className: Loop
+  inputStreams:
+    signal: signal
+  outputStreams:
+    wfc: wfc
   functions:
-    - standardIntegrator
-
+  - standardIntegrator
+  classFile: ../../pyRTC/Loop.py
 psf:
   name: SyntheticScienceCamera
   width: 64
@@ -52,13 +74,48 @@ psf:
   peakFlux: 24000.0
   baseSigmaPx: 1.8
   residualBlurGain: 2.2
+  className: SyntheticScienceCamera
+  inputStreams: {}
+  outputStreams:
+    psfShort: psfShort
+    psfLong: psfLong
+    strehl: strehl
+    tiptilt: tiptilt
   functions:
-    - expose
-    - integrate
-
+  - expose
+  - integrate
+  classFile: ../../pyRTC/hardware/SyntheticScienceCamera.py
 manager:
   mode: soft-rtc
+  componentClasses:
+    wfs: SyntheticSHWFS
+    slopes: SlopesProcess
+    loop: Loop
+    wfc: SyntheticWFC
+    psf: SyntheticScienceCamera
   componentFiles:
     wfs: ../../pyRTC/hardware/SyntheticSHWFS.py
+    slopes: ../../pyRTC/SlopesProcess.py
+    loop: ../../pyRTC/Loop.py
     wfc: ../../pyRTC/hardware/SyntheticWFC.py
     psf: ../../pyRTC/hardware/SyntheticScienceCamera.py
+  graphLayout:
+    positions:
+      wfc:
+        x: 771.6051689218746
+        y: -213.98204768828106
+      loop:
+        x: 401.8624055367186
+        y: -242.10367788671846
+      wfs:
+        x: -335.64504963906165
+        y: -248.5623061343748
+      slopes:
+        x: 28.095725699219116
+        y: -224.6221272101561
+      psf:
+        x: 18.13759446328146
+        y: 71.77866800859391
+metadata: {}
+streams: {}
+resources: {}

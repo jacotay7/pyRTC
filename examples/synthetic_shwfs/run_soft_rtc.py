@@ -23,7 +23,13 @@ from pyRTC.Loop import Loop
 from pyRTC.Pipeline import clear_shms, initExistingShm
 from pyRTC.SlopesProcess import SlopesProcess
 from pyRTC.config_schema import read_system_config
-from pyRTC.hardware.SyntheticSystems import SyntheticSHWFS, SyntheticScienceCamera, SyntheticWFC
+from pyRTC.hardware.SyntheticSystems import (
+    SyntheticSHWFS,
+    SyntheticScienceCamera,
+    SyntheticWFC,
+    _default_wfc_layout,
+    build_synthetic_shwfs_response_matrix,
+)
 
 
 DEFAULT_STREAMS = (
@@ -49,6 +55,7 @@ def read_yaml_file(file_path):
 def expected_stream_specs(config: dict) -> dict:
     wfs_shape = (int(config["wfs"]["width"]), int(config["wfs"]["height"]))
     psf_shape = (int(config["psf"]["width"]), int(config["psf"]["height"]))
+    signal_shape = _signal_shape(config)
     num_modes = int(config["wfc"]["numModes"])
     signal2d_shape = _signal_2d_shape(config)
     wfc2d_shape = _wfc_2d_shape(config)
@@ -56,7 +63,7 @@ def expected_stream_specs(config: dict) -> dict:
     return {
         "wfsRaw": {"shape": wfs_shape, "dtype": np.uint16},
         "wfs": {"shape": wfs_shape, "dtype": np.int32},
-        "signal": {"shape": (num_modes,), "dtype": np.float32},
+        "signal": {"shape": signal_shape, "dtype": np.float32},
         "signal2D": {"shape": signal2d_shape, "dtype": np.float32},
         "wfc": {"shape": (num_modes,), "dtype": np.float32},
         "wfc2D": {"shape": wfc2d_shape, "dtype": np.float32},
@@ -111,7 +118,6 @@ def build_system(config: dict) -> dict:
     wfs = SyntheticSHWFS(config["wfs"])
     slopes = SlopesProcess(config["slopes"])
     wfc = SyntheticWFC(config["wfc"])
-    wfc.setLayout(np.ones(_wfc_2d_shape(config), dtype=bool))
     loop = Loop(config["loop"])
     psf = SyntheticScienceCamera(config["psf"])
 
@@ -153,10 +159,12 @@ def stop_system(system: dict) -> None:
 
 def ensure_identity_interaction_matrix(config: dict) -> Path:
     output_path = Path(config["loop"]["IMFile"])
-    signal_size = int(np.prod(_signal_2d_shape(config)))
     num_modes = int(config["wfc"]["numModes"])
+    num_regions = _signal_2d_shape(config)[1]
+    layout = _default_wfc_layout(int(config["wfc"]["numActuators"]))
+    interaction_matrix = build_synthetic_shwfs_response_matrix(num_regions, num_modes, layout)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    np.save(output_path, np.eye(signal_size, num_modes, dtype=np.float32))
+    np.save(output_path, interaction_matrix.astype(np.float32))
     return output_path
 
 
@@ -168,13 +176,14 @@ def _signal_2d_shape(config: dict) -> tuple[int, int]:
     return (2 * num_regions, num_regions)
 
 
+def _signal_shape(config: dict) -> tuple[int, ...]:
+    signal2d_shape = _signal_2d_shape(config)
+    return (int(np.prod(signal2d_shape)),)
+
+
 def _wfc_2d_shape(config: dict) -> tuple[int, int]:
-    num_modes = int(config["wfc"]["numModes"])
-    rows = int(round(np.sqrt(float(num_modes * 2))))
-    while rows > 1 and num_modes % rows != 0:
-        rows -= 1
-    cols = num_modes // rows
-    return (rows, cols)
+    num_actuators = int(config["wfc"]["numActuators"])
+    return _default_wfc_layout(num_actuators).shape
 
 
 def _load_soft_example_module():

@@ -119,10 +119,11 @@ def compute_window_size(frames, rows, cols, pixel_scale):
 
     max_height = max(frame.shape[0] for frame in frames)
     max_width = max(frame.shape[1] for frame in frames)
-    plot_width = cols * max_width * pixel_scale
-    plot_height = rows * max_height * pixel_scale
-    width = int(min(1320, max(320, plot_width + cols * 110)))
-    height = int(min(900, max(260, plot_height + rows * 120 + 70)))
+    panel_extent = max(max_height, max_width)
+    plot_width = cols * panel_extent * pixel_scale
+    plot_height = rows * panel_extent * pixel_scale
+    width = int(max(360, min(1320, plot_width + cols * 110)))
+    height = int(max(320, min(900, plot_height + rows * 120 + 70)))
     return width, height
 
 
@@ -157,7 +158,7 @@ class StreamConnection:
         self.last_time = None
         self.last_fps_text = None
         self._closed = False
-        self.cached_frame = normalize_frame(self.shm.read_noblock())
+        self.cached_frame = normalize_frame(np.array(self.shm.read_noblock(), copy=True))
 
     def prime(self):
         """Prime cached count and timestamp state before timer-driven refreshes."""
@@ -189,7 +190,7 @@ class StreamConnection:
         status_changed = fps_text != self.last_fps_text
 
         if changed:
-            self.cached_frame = normalize_frame(self.shm.read_noblock())
+            self.cached_frame = normalize_frame(np.array(self.shm.read_noblock(), copy=True))
 
         self.last_count = new_count
         self.last_time = new_time

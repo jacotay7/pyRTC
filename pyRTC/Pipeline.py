@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 from dataclasses import dataclass
 import importlib
+import importlib.util
 import inspect
 import json 
 import logging
@@ -90,6 +91,29 @@ def normalize_gpu_device(gpuDevice, context: str = ""):
         return None
     return gpuDevice
 
+
+def _socket_send_json(sock: socket.socket, message: dict) -> None:
+    payload = json.dumps(message, separators=(",", ":")) + "\n"
+    sock.sendall(payload.encode("utf-8"))
+
+
+def _socket_read_json(sock: socket.socket, buffer: str) -> tuple[dict, str]:
+    while "\n" not in buffer:
+        chunk = sock.recv(4096)
+        if not chunk:
+            raise ConnectionError("socket closed")
+        buffer += chunk.decode("utf-8")
+
+    line, buffer = buffer.split("\n", 1)
+    while line == "":
+        if "\n" not in buffer:
+            chunk = sock.recv(4096)
+            if not chunk:
+                raise ConnectionError("socket closed")
+            buffer += chunk.decode("utf-8")
+        line, buffer = buffer.split("\n", 1)
+    return json.loads(line), buffer
+
 def work(obj, functionName, affinity):
     """
     The main working thread for the any Pipeline object
@@ -104,9 +128,12 @@ def work(obj, functionName, affinity):
     while obj.alive:
         #If we are meant to be running
         if obj.running:
-            # start = time.time()
-            #Call it
-            workFunction()
+            try:
+                workFunction()
+            except Exception:
+                component_logger = getattr(obj, "logger", logger)
+                component_logger.exception("Worker function '%s' crashed", functionName)
+                time.sleep(0.05)
             # precise_delay(1)
             # diff = time.time()-start
             # times[count % N] = diff
@@ -571,6 +598,7 @@ class hardwareLauncher:
         self.lastLaunchTime = None
         self.lastContactTime = None
         self.lastError = None
+        self._read_buffer = ""
 
         return
 
@@ -680,14 +708,13 @@ class hardwareLauncher:
         return -1
 
     def write(self, message):
-        message = json.dumps(message)
-        self.processSocket.send(message.encode())
+        _socket_send_json(self.processSocket, message)
         return
     
     def read(self):
         try:
-            reply = self.processSocket.recv(4096).decode()
-            return json.loads(reply)
+            reply, self._read_buffer = _socket_read_json(self.processSocket, self._read_buffer)
+            return reply
         except socket.timeout:
             self.lastError = "socket timeout"
             return -1
@@ -795,6 +822,7 @@ class Listener:
 
         self.OKMessage = {"status": "OK"}
         self.BadMessage = {"status": "BAD"}
+        self._read_buffer = ""
 
         return
     
@@ -861,13 +889,12 @@ class Listener:
             self.write(self.BadMessage)
 
     def write(self, message):
-        message = json.dumps(message)
-        self.RTCsocket.send(message.encode())
+        _socket_send_json(self.RTCsocket, message)
         return
     
     def read(self):
-        reply = self.RTCsocket.recv(4096).decode()
-        return json.loads(reply)
+        reply, self._read_buffer = _socket_read_json(self.RTCsocket, self._read_buffer)
+        return reply
     
 def initExistingShm(shmName, gpuDevice=None):
     #Read wfc metadata and open a stream to the shared memory
@@ -886,7 +913,27 @@ def build_component_runtime_config(system_conf: dict, section_name: str) -> dict
     conf = dict(system_conf[section_name])
     conf["_sectionName"] = section_name
     conf["_systemStreams"] = dict(system_conf.get("streams", {}))
+    conf["_systemConfig"] = system_conf
     return conf
+
+
+def _stream_aliases(section_conf: dict, mapping_name: str) -> dict[str, str]:
+    raw_mapping = section_conf.get(mapping_name, {})
+    aliases: dict[str, str] = {}
+    if not isinstance(raw_mapping, dict):
+        return aliases
+    for semantic_name, value in raw_mapping.items():
+        if not isinstance(semantic_name, str):
+            continue
+        if isinstance(value, str):
+            shm_name = value.strip()
+        elif isinstance(value, dict):
+            shm_name = str(value.get("shm", value.get("name", semantic_name))).strip()
+        else:
+            continue
+        if shm_name:
+            aliases[semantic_name] = shm_name
+    return aliases
 
 
 def launchComponent(component, confKey, start = True):
@@ -927,6 +974,130 @@ def launchComponent(component, confKey, start = True):
 DEFAULT_COMPONENT_ORDER = ("modulator", "wfc", "wfs", "slopes", "loop", "psf", "telemetry")
 
 
+def _existing_shm_spec(name: str):
+    try:
+        stream, shape, dtype = initExistingShm(name)
+    except Exception:
+        return None
+    try:
+        return tuple(int(axis) for axis in shape), np.dtype(dtype)
+    finally:
+        try:
+            stream.close()
+        except Exception:
+            logger.debug("Failed closing temporary SHM probe for %s", name, exc_info=True)
+
+
+def _default_layout_shape(num_actuators: int) -> tuple[int, int]:
+    if num_actuators < 1:
+        raise ValueError("num_actuators must be positive")
+    if num_actuators == 1:
+        return 1, 1
+    side = max(
+        int(np.ceil(np.sqrt(float(num_actuators)))),
+        int(np.ceil(np.sqrt(float(4 * num_actuators) / np.pi))),
+    )
+    return side, side
+
+
+def expected_output_shm_specs_for_config(system_conf: dict) -> dict[str, dict[str, object]]:
+    specs: dict[str, dict[str, object]] = {}
+
+    wfs_conf = system_conf.get("wfs")
+    if isinstance(wfs_conf, dict):
+        output_aliases = _stream_aliases(wfs_conf, "outputStreams")
+        width = int(wfs_conf.get("width", 1))
+        height = int(wfs_conf.get("height", 1))
+        downsample = int(wfs_conf.get("downsampleFactor", 0) or 0)
+        image_shape = (width, height)
+        if downsample > 0:
+            image_shape = (max(1, width // downsample), max(1, height // downsample))
+        specs[output_aliases.get("wfsRaw", "wfsRaw")] = {"shape": (width, height), "dtype": np.uint16}
+        specs[output_aliases.get("wfs", "wfs")] = {"shape": image_shape, "dtype": np.int32}
+
+    slopes_conf = system_conf.get("slopes")
+    if isinstance(slopes_conf, dict) and isinstance(wfs_conf, dict):
+        output_aliases = _stream_aliases(slopes_conf, "outputStreams")
+        wfs_type = str(slopes_conf.get("type", "SHWFS")).lower()
+        if wfs_type == "shwfs":
+            downsample = int(wfs_conf.get("downsampleFactor", 0) or 0)
+            width = int(wfs_conf.get("width", 1))
+            if downsample > 0:
+                width = max(1, width // downsample)
+            spacing = int(round(float(slopes_conf.get("subApSpacing", 1))))
+            num_regions = max(1, width // max(1, spacing))
+            signal2d_shape = (2 * num_regions, num_regions)
+            signal_size = int(np.prod(signal2d_shape))
+            specs[output_aliases.get("signal", "signal")] = {"shape": (signal_size,), "dtype": np.float32}
+            specs[output_aliases.get("signal2D", "signal2D")] = {"shape": signal2d_shape, "dtype": np.float32}
+        elif wfs_type == "pywfs":
+            from pyRTC.utils import generate_circular_aperture_mask
+
+            width = int(wfs_conf.get("width", 1))
+            height = int(wfs_conf.get("height", 1))
+            default_radius = min(height - int(0.75 * height), width - int(0.75 * width))
+            pupil_radius = int(slopes_conf.get("pupilsRadius", max(1, default_radius)))
+            pupil_template = generate_circular_aperture_mask(
+                int(np.ceil(2 * pupil_radius)),
+                pupil_radius,
+                float(slopes_conf.get("centralObscurationRatio", 0.0) or 0.0),
+            )
+            pupil_pixel_count = int(np.count_nonzero(pupil_template))
+            signal_size = int(2 * pupil_pixel_count)
+            signal2d_shape = (int(2 * pupil_radius), int(4 * pupil_radius))
+            specs[output_aliases.get("signal", "signal")] = {"shape": (signal_size,), "dtype": np.float32}
+            specs[output_aliases.get("signal2D", "signal2D")] = {"shape": signal2d_shape, "dtype": np.float32}
+
+    wfc_conf = system_conf.get("wfc")
+    if isinstance(wfc_conf, dict):
+        output_aliases = _stream_aliases(wfc_conf, "outputStreams")
+        num_modes = int(wfc_conf.get("numModes", 1))
+        specs[output_aliases.get("wfc", "wfc")] = {"shape": (num_modes,), "dtype": np.float32}
+        display_grid_size = int(wfc_conf.get("displayGridSize", 33))
+        if display_grid_size > 0:
+            specs[output_aliases.get("wfc2D", "wfc2D")] = {"shape": (display_grid_size, display_grid_size), "dtype": np.float32}
+
+    psf_conf = system_conf.get("psf")
+    if isinstance(psf_conf, dict):
+        output_aliases = _stream_aliases(psf_conf, "outputStreams")
+        psf_shape = (int(psf_conf.get("width", 1)), int(psf_conf.get("height", 1)))
+        specs[output_aliases.get("psfShort", "psfShort")] = {"shape": psf_shape, "dtype": np.int32}
+        specs[output_aliases.get("psfLong", "psfLong")] = {"shape": psf_shape, "dtype": np.float64}
+        specs[output_aliases.get("strehl", "strehl")] = {"shape": (1,), "dtype": np.float64}
+        specs[output_aliases.get("tiptilt", "tiptilt")] = {"shape": (1,), "dtype": np.float64}
+
+    return specs
+
+
+def expected_output_shms_for_config(system_conf: dict) -> list[str]:
+    """Return the known output stream names implied by a validated config."""
+
+    return list(expected_output_shm_specs_for_config(system_conf))
+
+
+def reconcile_expected_output_shms(system_conf: dict, *, force_rebuild: bool = False) -> tuple[list[str], list[str]]:
+    specs = expected_output_shm_specs_for_config(system_conf)
+    rebuilt: list[str] = []
+    reused: list[str] = []
+
+    for name, spec in specs.items():
+        current = None if force_rebuild else _existing_shm_spec(name)
+        expected = (tuple(int(axis) for axis in spec["shape"]), np.dtype(spec["dtype"]))
+        if current is None:
+            continue
+        if current != expected:
+            clear_shms([name])
+            rebuilt.append(name)
+        else:
+            reused.append(name)
+
+    if rebuilt:
+        logger.info("Rebuilt mismatched SHMs: %s", ", ".join(rebuilt))
+    if reused:
+        logger.debug("Reused matching SHMs: %s", ", ".join(reused))
+    return rebuilt, reused
+
+
 @dataclass
 class ComponentRuntimeStatus:
     section_name: str
@@ -946,6 +1117,7 @@ class ComponentRuntimeStatus:
     restart_count: int = 0
     restart_policy: str = "never"
     log_file: str | None = None
+    desired_running: bool = False
 
     def to_dict(self) -> dict:
         return {
@@ -966,6 +1138,7 @@ class ComponentRuntimeStatus:
             "restart_count": self.restart_count,
             "restart_policy": self.restart_policy,
             "log_file": self.log_file,
+            "desired_running": self.desired_running,
         }
 
 
@@ -1021,6 +1194,14 @@ class BaseComponentRuntime:
         self.pid = None
         self.start_time = None
 
+    def _set_built(self) -> None:
+        self.state = "built"
+        self.error = None
+        self.start_time = None
+
+    def build(self) -> None:
+        self._set_built()
+
     def refresh_health(self) -> str:
         return self.state
 
@@ -1053,11 +1234,12 @@ class BaseComponentRuntime:
             restart_count=self.restart_count,
             restart_policy=self.restart_policy,
             log_file=self.log_file,
+            desired_running=self.desired_running,
         ).to_dict()
 
 
 class SoftComponentRuntime(BaseComponentRuntime):
-    def __init__(self, section_name, component_class, conf: dict, *, restart_policy="never", heartbeat_timeout=5.0) -> None:
+    def __init__(self, section_name, component_class, conf: dict, *, shared_resource=None, restart_policy="never", heartbeat_timeout=5.0) -> None:
         super().__init__(
             section_name=section_name,
             mode="soft-rtc",
@@ -1066,6 +1248,7 @@ class SoftComponentRuntime(BaseComponentRuntime):
             heartbeat_timeout=heartbeat_timeout,
         )
         self.conf = conf
+        self.shared_resource = shared_resource
         self.component = None
         self.pid = os.getpid()
         self.log_file = _resolve_soft_runtime_log_file(component_class)
@@ -1075,8 +1258,7 @@ class SoftComponentRuntime(BaseComponentRuntime):
             return
         self.desired_running = True
         try:
-            if self.component is None:
-                self.component = self.component_class(self.conf)
+            self.build()
             self.component.start()
             self.pid = os.getpid()
             self._set_running()
@@ -1084,14 +1266,23 @@ class SoftComponentRuntime(BaseComponentRuntime):
             self._record_problem(str(exc), state="failed")
             raise
 
+    def build(self) -> None:
+        if self.component is None:
+            if self.shared_resource is None:
+                self.component = self.component_class(self.conf)
+            else:
+                self.component = self.component_class(self.conf, self.shared_resource)
+        self.pid = os.getpid()
+        self._set_built()
+
     def stop(self) -> None:
         self.desired_running = False
         if self.component is None:
-            self._set_stopped()
+            self._set_built()
             return
         try:
             self.component.stop()
-            self._set_stopped()
+            self._set_built()
         except Exception as exc:
             self._record_problem(str(exc), state="failed")
             raise
@@ -1152,6 +1343,7 @@ class HardComponentRuntime(BaseComponentRuntime):
             return
         self.desired_running = True
         try:
+            self.build()
             if self.launcher is None or not _launcher_process_alive(self.launcher):
                 self.launcher = self.launcher_cls(self.script_path, self.config_path, self.port, timeout=self.rpc_timeout)
                 _apply_runtime_logging_environment(log_dir=self.log_dir, log_file=self.configured_log_file)
@@ -1169,23 +1361,33 @@ class HardComponentRuntime(BaseComponentRuntime):
             self._record_problem(str(exc), state="failed")
             raise
 
+    def build(self) -> None:
+        self._set_built()
+
     def stop(self) -> None:
         self.desired_running = False
         if self.launcher is None:
-            self._set_stopped()
+            self._set_built()
             return
+        launcher = self.launcher
         try:
-            self.launcher.run("stop")
+            launcher.run("stop")
         except Exception:
             pass
         try:
-            self.launcher.shutdown()
+            launcher.shutdown()
         except Exception as exc:
             self._record_problem(str(exc), state="failed")
             raise
-        self._set_stopped()
+        self.launcher = None
+        self._set_built()
 
     def refresh_health(self) -> str:
+        if not self.desired_running:
+            if self.state != "stopped":
+                self._set_stopped()
+            return self.state
+
         if self.launcher is None:
             if self.desired_running:
                 self._record_problem("launcher not initialized", state="failed")
@@ -1306,6 +1508,17 @@ def _import_symbol(path_or_name: str):
     raise ImportError(f"Unable to resolve component symbol '{path_or_name}'")
 
 
+def _import_symbol_from_file(file_path: str, attr_name: str):
+    module_path = Path(file_path).expanduser().resolve()
+    module_name = f"pyrtc_custom_{module_path.stem}_{abs(hash(str(module_path))) & 0xFFFFFFFF:x}"
+    spec = importlib.util.spec_from_file_location(module_name, module_path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"Unable to load component module from '{module_path}'")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return getattr(module, attr_name)
+
+
 def _normalize_manager_mode(mode: str | None) -> str | None:
     if mode is None:
         return None
@@ -1349,6 +1562,7 @@ class RTCManager:
         self.state = "created"
         self.error = None
         self.runtimes = {}
+        self.resources = {}
         self._lock = threading.RLock()
         self._supervisor_thread = None
         self._supervisor_stop_event = threading.Event()
@@ -1383,6 +1597,44 @@ class RTCManager:
         self.error = None
         return self.config
 
+    def build(self) -> dict:
+        with self._lock:
+            if not self.validated:
+                self.validate()
+            reconcile_expected_output_shms(self.config)
+            self._build_runtimes()
+            self.state = "building"
+            built = []
+            try:
+                _apply_runtime_logging_environment(
+                    log_dir=self._manager_log_dir(),
+                    log_file=self._manager_log_file(),
+                )
+                for section_name in self._component_start_order():
+                    runtime = self.runtimes[section_name]
+                    resource_section = getattr(runtime, "resource_section", None)
+                    if resource_section is not None:
+                        provider = self.get_component(resource_section)
+                        if provider is None:
+                            raise RuntimeError(
+                                f"manager: shared resource component '{resource_section}' is not built for '{section_name}'"
+                            )
+                        runtime.shared_resource = provider
+                    runtime.build()
+                    built.append(runtime)
+            except Exception as exc:
+                self.state = "failed"
+                self.error = str(exc)
+                for runtime in reversed(built):
+                    try:
+                        runtime.stop()
+                    except Exception:
+                        pass
+                raise
+            self.state = "built"
+            self.error = None
+            return self._status_payload()
+
     def _component_sections(self) -> list:
         from pyRTC.component_descriptors import list_component_sections
 
@@ -1390,6 +1642,11 @@ class RTCManager:
         for section in list_component_sections():
             if section in self.config and section not in sections:
                 sections.append(section)
+        for section_name, section_conf in self.config.items():
+            if section_name in {"manager", "streams", "metadata", "resources"}:
+                continue
+            if isinstance(section_conf, dict) and section_name not in sections:
+                sections.append(section_name)
         manager_conf = self.config.get("manager", {})
         for mapping_name in ("componentModes", "ports", "componentClasses", "componentFiles"):
             mapping = manager_conf.get(mapping_name, {})
@@ -1405,14 +1662,20 @@ class RTCManager:
 
         manager_conf = self.config.get("manager", {})
         component_classes = manager_conf.get("componentClasses", {})
-        target = component_classes.get(section_name)
+        component_files = manager_conf.get("componentFiles", {})
+        section_conf = self.config[section_name]
+        target = section_conf.get("className", component_classes.get(section_name))
+        class_file = section_conf.get("classFile", component_files.get(section_name))
         if target is None:
-            section_conf = self.config[section_name]
             target = section_conf.get("name")
 
         if target is not None:
             if inspect.isclass(target):
                 return target
+            if isinstance(target, str) and "." not in target and class_file:
+                component_file = Path(class_file).expanduser()
+                if component_file.exists():
+                    return _import_symbol_from_file(str(component_file), target)
             return _import_symbol(target)
 
         descriptor = get_component_descriptor(section_name)
@@ -1436,6 +1699,64 @@ class RTCManager:
         manager_conf = self.config.get("manager", {})
         component_modes = manager_conf.get("componentModes", {})
         return component_modes.get(section_name, manager_conf.get("mode", "soft-rtc"))
+
+    def _resolve_resource_class(self, resource_name: str):
+        resources_conf = self.config.get("resources", {})
+        if not isinstance(resources_conf, dict) or resource_name not in resources_conf:
+            raise KeyError(resource_name)
+        resource_conf = resources_conf[resource_name]
+        target = resource_conf.get("className")
+        class_file = resource_conf.get("classFile")
+        if not isinstance(target, str) or not target.strip():
+            raise ValueError(f"resources.{resource_name}: missing className")
+        if "." not in target and class_file:
+            component_file = Path(class_file).expanduser()
+            if component_file.exists():
+                return _import_symbol_from_file(str(component_file), target)
+        return _import_symbol(target)
+
+    def _build_resources(self) -> None:
+        if self.resources:
+            return
+        resources_conf = self.config.get("resources", {})
+        if not isinstance(resources_conf, dict):
+            return
+        for resource_name, resource_conf in resources_conf.items():
+            resource_class = self._resolve_resource_class(resource_name)
+            self.resources[resource_name] = resource_class(dict(resource_conf), self.config)
+
+    def _component_resource_name(self, section_name: str) -> str | None:
+        section_conf = self.config.get(section_name, {})
+        if not isinstance(section_conf, dict):
+            return None
+        resource_name = section_conf.get("resource")
+        if not isinstance(resource_name, str) or not resource_name.strip():
+            return None
+        return resource_name
+
+    def _component_start_order(self) -> list[str]:
+        ordered: list[str] = []
+        visiting: set[str] = set()
+        visited: set[str] = set()
+        sections = self._component_sections()
+        section_set = set(sections)
+
+        def visit(section_name: str) -> None:
+            if section_name in visited:
+                return
+            if section_name in visiting:
+                raise ValueError(f"manager: resource dependency cycle detected at '{section_name}'")
+            visiting.add(section_name)
+            resource_name = self._component_resource_name(section_name)
+            if resource_name in section_set:
+                visit(resource_name)
+            visiting.remove(section_name)
+            visited.add(section_name)
+            ordered.append(section_name)
+
+        for section_name in sections:
+            visit(section_name)
+        return ordered
 
     def _resolve_port(self, section_name: str) -> int:
         manager_conf = self.config.get("manager", {})
@@ -1470,6 +1791,7 @@ class RTCManager:
     def _build_runtimes(self) -> None:
         if self.runtimes:
             return
+        self._build_resources()
         heartbeat_timeout = self._resolve_heartbeat_timeout()
         rpc_timeout = self._resolve_rpc_timeout()
         manager_log_dir = self._manager_log_dir()
@@ -1478,15 +1800,23 @@ class RTCManager:
             component_class = self._resolve_component_class(section_name)
             mode = self._resolve_component_mode(section_name)
             restart_policy = self._resolve_restart_policy(section_name)
+            resource_name = self._component_resource_name(section_name)
+            shared_resource = self.resources.get(resource_name) if isinstance(resource_name, str) else None
             if mode == "soft-rtc":
                 runtime = SoftComponentRuntime(
                     section_name,
                     component_class,
                     build_component_runtime_config(self.config, section_name),
+                    shared_resource=shared_resource,
                     restart_policy=restart_policy,
                     heartbeat_timeout=heartbeat_timeout,
                 )
+                runtime.resource_section = resource_name if resource_name in self._component_sections() else None
             else:
+                if shared_resource is not None:
+                    raise ValueError(
+                        f"manager: component '{section_name}' uses shared resource '{resource_name}' and cannot run in hard-rtc mode"
+                    )
                 if not self.config_path:
                     raise ValueError(
                         f"manager: hard-rtc component '{section_name}' requires a config_path so child processes can load the YAML"
@@ -1553,6 +1883,7 @@ class RTCManager:
 
         any_failed = False
         any_degraded = False
+        any_running = False
         for section_name in self._component_sections():
             runtime = self.runtimes.get(section_name)
             if runtime is None:
@@ -1567,6 +1898,8 @@ class RTCManager:
                 any_failed = True
             elif runtime.state == "degraded":
                 any_degraded = True
+            elif runtime.state == "running":
+                any_running = True
 
         if any_failed:
             self.state = "failed"
@@ -1582,15 +1915,20 @@ class RTCManager:
                 for section_name, runtime in self.runtimes.items()
                 if runtime.state == "degraded" and runtime.error
             ) or None
-        elif self.state not in {"starting", "stopping", "stopped"}:
+        elif any_running:
             self.state = "running"
+            self.error = None
+        elif any(runtime.state == "built" for runtime in self.runtimes.values()):
+            self.state = "built"
+            self.error = None
+        else:
+            self.state = "stopped"
             self.error = None
 
     def start(self) -> None:
         with self._lock:
-            if not self.validated:
-                self.validate()
-            self._build_runtimes()
+            if self.state not in {"built", "running", "degraded", "failed", "starting"}:
+                self.build()
             self.state = "starting"
             started = []
             try:
@@ -1598,8 +1936,16 @@ class RTCManager:
                     log_dir=self._manager_log_dir(),
                     log_file=self._manager_log_file(),
                 )
-                for section_name in self._component_sections():
+                for section_name in self._component_start_order():
                     runtime = self.runtimes[section_name]
+                    resource_section = getattr(runtime, "resource_section", None)
+                    if resource_section is not None:
+                        provider = self.get_component(resource_section)
+                        if provider is None:
+                            raise RuntimeError(
+                                f"manager: shared resource component '{resource_section}' is not active for '{section_name}'"
+                            )
+                        runtime.shared_resource = provider
                     runtime.start()
                     started.append(runtime)
             except Exception as exc:
@@ -1613,6 +1959,27 @@ class RTCManager:
                 raise
             self.state = "running"
             self.error = None
+            self._start_supervisor()
+
+    def start_component(self, section_name: str) -> None:
+        with self._lock:
+            if self.state not in {"built", "running", "degraded", "failed", "starting"}:
+                self.build()
+            runtime = self.runtimes[section_name]
+            _apply_runtime_logging_environment(
+                log_dir=self._manager_log_dir(),
+                log_file=self._manager_log_file(),
+            )
+            resource_section = getattr(runtime, "resource_section", None)
+            if resource_section is not None:
+                provider = self.get_component(resource_section)
+                if provider is None:
+                    raise RuntimeError(
+                        f"manager: shared resource component '{resource_section}' is not built for '{section_name}'"
+                    )
+                runtime.shared_resource = provider
+            runtime.start()
+            self._refresh_health_locked(supervise=False)
             self._start_supervisor()
 
     def stop(self) -> None:
@@ -1635,8 +2002,16 @@ class RTCManager:
                 self.state = "failed"
                 self.error = "; ".join(failures)
                 raise RuntimeError(self.error)
-            self.state = "stopped"
+            self.state = "built" if self.runtimes else "stopped"
             self.error = None
+
+    def stop_component(self, section_name: str) -> None:
+        with self._lock:
+            runtime = self.runtimes[section_name]
+            runtime.stop()
+            self._refresh_health_locked(supervise=False)
+            if not any(component_runtime.desired_running for component_runtime in self.runtimes.values()):
+                self._stop_supervisor()
 
     def restart_component(self, section_name: str) -> None:
         with self._lock:

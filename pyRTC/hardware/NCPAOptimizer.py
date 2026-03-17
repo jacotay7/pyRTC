@@ -21,6 +21,14 @@ from pyRTC.utils import decrease_nice, get_tmp_filepath, read_yaml_file, setFrom
 
 logger = get_logger(__name__)
 
+
+def _input_stream_name(conf, stream_name: str) -> str:
+    mapping = conf.get("inputStreams", {}) if isinstance(conf.get("inputStreams"), dict) else {}
+    value = mapping.get(stream_name, stream_name)
+    if isinstance(value, dict):
+        value = value.get("shm", value.get("name", stream_name))
+    return str(value)
+
 class NCPAOptimizer(Optimizer):
     """Optimizer that searches modal NCPA corrections.
 
@@ -35,8 +43,8 @@ class NCPAOptimizer(Optimizer):
         try:
             self.loop = loop
             self.slopes = slopes
-            self.wfcShm, self.wfcDims, self.wfcDtype = initExistingShm("wfc")
-            self.strehlShm, _, _ = initExistingShm("strehl")
+            self.wfcShm, self.wfcDims, self.wfcDtype = initExistingShm(_input_stream_name(conf, "wfc"))
+            self.strehlShm, _, _ = initExistingShm(_input_stream_name(conf, "strehl"))
             self.startMode = setFromConfig(conf, "startMode", 0)
             self.endMode = setFromConfig(conf, "endMode", 20)
             self.correctionMag = setFromConfig(conf, "correctionMag", 2e-3)

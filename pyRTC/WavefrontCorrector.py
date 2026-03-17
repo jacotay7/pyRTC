@@ -123,7 +123,7 @@ class WavefrontCorrector(pyRTCComponent):
             self.numModes = conf["numModes"]
             self.m2cFile = setFromConfig(conf, "m2cFile", "")
 
-            self.correctionVector = ImageSHM("wfc", (self.numModes,), np.float32, gpuDevice=self.gpuDevice, consumer=False)
+            self.correctionVector = ImageSHM(self.output_stream_name("wfc"), (self.numModes,), np.float32, gpuDevice=self.gpuDevice, consumer=False)
             self.register_output_stream("wfc", self.correctionVector)
             self.correctionVector2D = None
 
@@ -218,7 +218,7 @@ class WavefrontCorrector(pyRTCComponent):
             self.layout = layout
             if isinstance(self.layout, np.ndarray):
                 self.layout = self.layout > 0
-                self.correctionVector2D = ImageSHM("wfc2D", self.layout.shape, np.float32, gpuDevice=self.gpuDevice, consumer=False)
+                self.correctionVector2D = ImageSHM(self.output_stream_name("wfc2D"), self.layout.shape, np.float32, gpuDevice=self.gpuDevice, consumer=False)
                 self.register_output_stream("wfc2D", self.correctionVector2D, source_streams=["wfc"], lineage_source="wfc")
                 self.write_stream("wfc2D", np.zeros(self.layout.shape, dtype=np.float32), source_streams=["wfc"], lineage_source="wfc")
                 self.correctionVector2D_template = self.read_stream("wfc2D", block=False)

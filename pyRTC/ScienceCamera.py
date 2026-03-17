@@ -102,6 +102,14 @@ class ScienceCamera(pyRTCComponent):
     """
     def __init__(self, conf) -> None:
         try:
+            output_streams = conf.get("outputStreams", {}) if isinstance(conf.get("outputStreams"), dict) else {}
+
+            def _output_name(stream_name: str) -> str:
+                value = output_streams.get(stream_name, stream_name)
+                if isinstance(value, dict):
+                    value = value.get("shm", value.get("name", stream_name))
+                return str(value)
+
             ensure_logging_configured(app_name="pyrtc", component_name=self.__class__.__name__)
             self.logger = get_logger(f"{self.__class__.__module__}.{self.__class__.__name__}")
             self.name = conf["name"]
@@ -110,10 +118,10 @@ class ScienceCamera(pyRTCComponent):
             self.imageDType = np.int32
             self.psfLongDtype = np.float64
 
-            self.psfShort = ImageSHM("psfShort", self.imageShape, self.imageDType)
-            self.psfLong = ImageSHM("psfLong", self.imageShape, self.psfLongDtype)
-            self.strehlShm = ImageSHM("strehl", (1,), float)
-            self.tipTiltShm = ImageSHM("tiptilt", (1,), float)
+            self.psfShort = ImageSHM(_output_name("psfShort"), self.imageShape, self.imageDType)
+            self.psfLong = ImageSHM(_output_name("psfLong"), self.imageShape, self.psfLongDtype)
+            self.strehlShm = ImageSHM(_output_name("strehl"), (1,), float)
+            self.tipTiltShm = ImageSHM(_output_name("tiptilt"), (1,), float)
 
             self.data = np.zeros(self.imageShape, dtype=self.imageRawDType)
             self.dark = np.zeros(self.imageShape, dtype=self.imageDType)

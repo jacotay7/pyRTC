@@ -21,6 +21,14 @@ from pyRTC.utils import decrease_nice, read_yaml_file, setFromConfig, set_affini
 
 logger = get_logger(__name__)
 
+
+def _input_stream_name(conf, stream_name: str) -> str:
+    mapping = conf.get("inputStreams", {}) if isinstance(conf.get("inputStreams"), dict) else {}
+    value = mapping.get(stream_name, stream_name)
+    if isinstance(value, dict):
+        value = value.get("shm", value.get("name", stream_name))
+    return str(value)
+
 class loopOptimizer(Optimizer):
     """Optimizer for high-level AO loop hyperparameters.
 
@@ -34,7 +42,7 @@ class loopOptimizer(Optimizer):
         try:
             self.loop = loop
 
-            self.strehlShm, _, _ = initExistingShm("strehl")
+            self.strehlShm, _, _ = initExistingShm(_input_stream_name(conf, "strehl"))
             self.minGain = setFromConfig(conf, "minGain", 0.3)
             self.maxGain = setFromConfig(conf, "maxGain", 0.6)
             self.maxLeak = setFromConfig(conf, "maxLeak", 0.1)

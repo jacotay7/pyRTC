@@ -89,8 +89,17 @@ def test_validate_system_config_accepts_synthetic_example():
     normalized = read_system_config(SYNTHETIC_CONFIG_PATH)
 
     assert normalized["manager"]["mode"] == "soft-rtc"
-    assert normalized["wfc"]["numModes"] == 32
+    assert normalized["wfs"]["className"] == "SyntheticSHWFS"
+    assert normalized["wfc"]["numModes"] == 97
     assert Path(normalized["metadata"]["configPath"]).resolve() == SYNTHETIC_CONFIG_PATH.resolve()
+
+
+def test_validate_system_config_rejects_invalid_component_class_name():
+    conf = read_system_config(SYNTHETIC_CONFIG_PATH, validate=False)
+    conf["loop"]["className"] = "DefinitelyNotARealComponent"
+
+    with pytest.raises(ConfigValidationError, match="className"):
+        validate_system_config(conf)
 
 
 def test_validate_system_config_resolves_relative_file_paths_against_config_file():
@@ -164,6 +173,39 @@ def test_validate_system_config_accepts_manager_supervision_fields(tmp_path):
     assert normalized["manager"]["componentRestartPolicies"]["loop"] == "always"
 
 
+def test_validate_system_config_rejects_hard_rtc_for_resource_backed_component():
+    conf = read_system_config(SYNTHETIC_CONFIG_PATH, validate=False)
+    conf["resources"] = {
+        "shared": {
+            "className": "pyRTC.pyRTCComponent.pyRTCComponent",
+        }
+    }
+    conf["wfs"]["resource"] = "shared"
+    conf["manager"] = {
+        "mode": "hard-rtc",
+    }
+
+    with pytest.raises(ConfigValidationError, match="soft-rtc"):
+        validate_system_config(conf)
+
+
+def test_validate_system_config_accepts_component_section_as_resource_provider():
+    conf = read_system_config(SYNTHETIC_CONFIG_PATH, validate=False)
+    conf["shared"] = {
+        "className": "pyRTC.pyRTCComponent.pyRTCComponent",
+    }
+    conf["wfs"]["resource"] = "shared"
+    conf["manager"] = {
+        "mode": "soft-rtc",
+        "componentClasses": {"shared": "pyRTC.pyRTCComponent.pyRTCComponent"},
+        "componentFiles": {"shared": "pyRTC/pyRTCComponent.py"},
+    }
+
+    normalized = validate_system_config(conf)
+
+    assert normalized["wfs"]["resource"] == "shared"
+
+
 def test_validate_system_config_rejects_component_restart_policy_for_unknown_section():
     conf = read_system_config(SYNTHETIC_CONFIG_PATH, validate=False)
     conf["manager"] = {
@@ -189,7 +231,7 @@ def test_validate_system_config_accepts_stream_lineage_overrides():
     conf = read_system_config(SYNTHETIC_CONFIG_PATH, validate=False)
     conf["streams"] = {
         "signal": {
-            "shape": [32],
+            "shape": [98],
             "dtype": "float32",
             "outputComponent": "slopes",
             "inputComponents": ["loop"],
@@ -197,7 +239,7 @@ def test_validate_system_config_accepts_stream_lineage_overrides():
             "lineageSource": "wfs",
         },
         "wfc": {
-            "shape": [32],
+            "shape": [97],
             "dtype": "float32",
             "outputComponent": "loop",
             "inputComponents": ["wfc"],

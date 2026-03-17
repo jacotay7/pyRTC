@@ -30,7 +30,7 @@ logger = get_logger(__name__)
 
 COMMON_CONDITIONING_LINES = (10.0, 100.0, 1e3, 1e4, 1e5, 1e6)
 
-@jit(nopython=True, nogil=True, cache=True, fastmath=True)
+@jit(nopython=True, nogil=True, cache=False, fastmath=True)
 def leakyIntegratorNumba(slopes: np.ndarray, 
                          resconstructionMatrix: np.ndarray, 
                          oldCorrection: np.ndarray,
@@ -69,14 +69,14 @@ def leakIntegratorGPU(slopes:np.ndarray,
     correctionGPU[numActiveModes:] = 0
     return np.subtract((1-leak)*oldCorrection, correctionGPU.cpu().numpy())
 
-@jit(nopython=True, nogil=True, cache=True, fastmath=True)
+@jit(nopython=True, nogil=True, cache=False, fastmath=True)
 def compCorrection(CM=np.array([[]], dtype=np.float32),  
                     slopes=np.array([], dtype=np.float32)):
     """Apply a control matrix to a slope vector and return the correction."""
 
     return np.dot(CM,slopes)
 
-@jit(nopython=True, nogil=True, cache=True, fastmath=True)
+@jit(nopython=True, nogil=True, cache=False, fastmath=True)
 def updateCorrection(correction=np.array([], dtype=np.float32), 
                      gCM=np.array([[]], dtype=np.float32),  
                      slopes=np.array([], dtype=np.float32)):
@@ -280,13 +280,13 @@ class Loop(pyRTCComponent):
             self.conf = conf
         
         #Read wfs signal's metadata and open a stream to the shared memory
-            self.signalShm, self.signalShape, self.signalDType = initExistingShm("signal", gpuDevice=self.gpuDevice)
+            self.signalShm, self.signalShape, self.signalDType = initExistingShm(self.input_stream_name("signal"), gpuDevice=self.gpuDevice)
             self.register_input_stream("signal", self.signalShm)
             self.signalSize = int(np.prod(self.signalShape))
             self.nullSignal = np.zeros(self.signalShape, dtype=self.signalDType)
 
         #Read wfc metadata and open a stream to the shared memory
-            self.wfcShm, self.wfcShape, self.wfcDType = initExistingShm("wfc", gpuDevice=self.gpuDevice)
+            self.wfcShm, self.wfcShape, self.wfcDType = initExistingShm(self.output_stream_name("wfc"), gpuDevice=self.gpuDevice)
             self.register_output_stream("wfc", self.wfcShm, source_streams=["signal"], lineage_source="signal")
             self.numModes = int(np.prod(self.wfcShape))
 

@@ -21,6 +21,14 @@ from pyRTC.utils import decrease_nice, read_yaml_file, setFromConfig, set_affini
 
 logger = get_logger(__name__)
 
+
+def _input_stream_name(conf, stream_name: str) -> str:
+    mapping = conf.get("inputStreams", {}) if isinstance(conf.get("inputStreams"), dict) else {}
+    value = mapping.get(stream_name, stream_name)
+    if isinstance(value, dict):
+        value = value.get("shm", value.get("name", stream_name))
+    return str(value)
+
 class PIDOptimizer(Optimizer):
     """Optuna-based tuner for PID-style loop gains.
 
@@ -36,8 +44,8 @@ class PIDOptimizer(Optimizer):
             self.loop = loop
 
             self.mode = 'strehl'
-            self.strehlShm, _, _ = initExistingShm("strehl")
-            self.tipTiltShm, _, _ = initExistingShm("tiptilt")
+            self.strehlShm, _, _ = initExistingShm(_input_stream_name(conf, "strehl"))
+            self.tipTiltShm, _, _ = initExistingShm(_input_stream_name(conf, "tiptilt"))
             self.maxPGain = setFromConfig(conf, "maxPGain", 0.5)
             self.maxIGain = setFromConfig(conf, "maxIGain", 0.05)
             self.maxDGain = setFromConfig(conf, "maxDGain", 0.05)

@@ -11,6 +11,7 @@ from __future__ import annotations
 import os
 import threading
 import time
+from typing import Any
 
 from pyRTC.logging_utils import ensure_logging_configured, get_logger
 from pyRTC.Pipeline import launchComponent, normalize_gpu_device, work
@@ -82,6 +83,8 @@ class pyRTCComponent:
             self.alive = True
             self.running = False
             self.section_name = conf.get("_sectionName")
+            self.className = conf.get("className")
+            self.classFile = conf.get("classFile")
             self.system_streams = dict(conf.get("_systemStreams", {}))
             self.affinity = setFromConfig(conf, "affinity", 0)
             requested_gpu_device = setFromConfig(conf, "gpuDevice", None)
@@ -90,6 +93,8 @@ class pyRTCComponent:
             self._stream_outputs = {}
             self._stream_defaults = self._build_default_stream_flow()
             self._last_stream_metadata = {}
+            self._input_stream_names = self._normalize_stream_name_map(conf.get("inputStreams", {}), direction="input")
+            self._output_stream_names = self._normalize_stream_name_map(conf.get("outputStreams", {}), direction="output")
 
             functions_to_run = setFromConfig(conf, "functions", [])
             self.workThreads = []
@@ -118,6 +123,37 @@ class pyRTCComponent:
 
         return
 
+    def _default_stream_name_map(self, direction: str) -> dict[str, str]:
+        defaults: dict[str, str] = {}
+        try:
+            descriptor = self.describe()
+        except Exception:
+            descriptor = None
+        if descriptor is None:
+            return defaults
+        streams = descriptor.input_streams if direction == "input" else descriptor.output_streams
+        for stream in streams:
+            if stream.name != "*":
+                defaults[str(stream.name)] = str(stream.name)
+        return defaults
+
+    def _normalize_stream_name_map(self, raw_mapping: Any, *, direction: str) -> dict[str, str]:
+        normalized = self._default_stream_name_map(direction)
+        if not isinstance(raw_mapping, dict):
+            return normalized
+        for semantic_name, value in raw_mapping.items():
+            if not isinstance(semantic_name, str) or not semantic_name.strip():
+                continue
+            if isinstance(value, str):
+                shm_name = value.strip()
+            elif isinstance(value, dict):
+                shm_name = str(value.get("shm", value.get("name", semantic_name))).strip()
+            else:
+                continue
+            if shm_name:
+                normalized[str(semantic_name)] = shm_name
+        return normalized
+
     def _build_default_stream_flow(self) -> dict[str, dict[str, object]]:
         """Build default lineage rules from the component descriptor."""
 
@@ -140,6 +176,22 @@ class pyRTCComponent:
             }
         return defaults
 
+    def input_stream_name(self, stream_name: str) -> str:
+        self._ensure_stream_state()
+        return self._input_stream_names.get(str(stream_name), str(stream_name))
+
+    def output_stream_name(self, stream_name: str) -> str:
+        self._ensure_stream_state()
+        return self._output_stream_names.get(str(stream_name), str(stream_name))
+
+    def stream_aliases(self, direction: str) -> dict[str, str]:
+        self._ensure_stream_state()
+        if direction == "input":
+            return dict(self._input_stream_names)
+        if direction == "output":
+            return dict(self._output_stream_names)
+        raise ValueError("direction must be 'input' or 'output'")
+
     def _ensure_stream_state(self) -> None:
         """Initialize stream-tracking state for partially constructed objects."""
 
@@ -151,6 +203,10 @@ class pyRTCComponent:
             self._stream_defaults = {}
         if not hasattr(self, "_last_stream_metadata"):
             self._last_stream_metadata = {}
+        if not hasattr(self, "_input_stream_names"):
+            self._input_stream_names = {}
+        if not hasattr(self, "_output_stream_names"):
+            self._output_stream_names = {}
         if not hasattr(self, "system_streams"):
             self.system_streams = {}
         if not hasattr(self, "section_name"):

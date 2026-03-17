@@ -235,6 +235,43 @@ def test_stream_connection_close_is_idempotent():
     assert connection.metadata_shm.calls == 1
 
 
+def test_stream_connection_poll_copies_frame_data():
+    class _Meta:
+        def __init__(self):
+            self.calls = 0
+
+        def read_noblock(self):
+            self.calls += 1
+            return [self.calls, float(self.calls)]
+
+        def close(self):
+            return None
+
+    class _Shm:
+        def __init__(self):
+            self.arr = np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float32)
+
+        def read_noblock(self):
+            return self.arr
+
+        def close(self):
+            return None
+
+    connection = StreamConnection.__new__(StreamConnection)
+    connection.name = "wfs"
+    connection.metadata_shm = _Meta()
+    connection.shm = _Shm()
+    connection.last_count = 0
+    connection.last_time = 0.0
+    connection.last_fps_text = None
+    connection.cached_frame = np.array([[0.0]], dtype=np.float32)
+
+    first = connection.poll()["frame"]
+    connection.shm.arr[:, :] = 99.0
+
+    assert float(first[0, 0]) == 1.0
+
+
 def test_reset_streams_rebuilds_grid():
     window = MosaicViewerWindow.__new__(MosaicViewerWindow)
     calls = {"count": 0}
