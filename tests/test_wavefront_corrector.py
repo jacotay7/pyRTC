@@ -80,3 +80,39 @@ def test_wavefront_corrector_applies_command_cap(monkeypatch):
     wfc.sendToHardware()
 
     assert np.allclose(wfc.currentShape, np.array([0.5, -0.5, 0.25], dtype=np.float32))
+
+
+def test_wavefront_corrector_clears_wfc2d_outside_layout(monkeypatch):
+    from testsupport import DummySHM
+
+    monkeypatch.setattr(wfc_mod, "ImageSHM", DummySHM)
+
+    conf = {
+        "name": "wfc",
+        "numActuators": 5,
+        "numModes": 5,
+        "m2cFile": "",
+        "functions": [],
+    }
+    wfc = wfc_mod.WavefrontCorrector(conf)
+
+    layout = np.array(
+        [
+            [False, True, False],
+            [True, True, True],
+            [False, True, False],
+        ],
+        dtype=bool,
+    )
+    wfc.setLayout(layout)
+    wfc.setM2C(np.eye(5, dtype=np.float32))
+    wfc.write(np.arange(5, dtype=np.float32))
+
+    # Simulate stale garbage in the non-actuator area from a previous frame.
+    wfc.correctionVector2D_template[:] = 1234.0
+
+    wfc.sendToHardware()
+
+    wfc2d = wfc.correctionVector2D.read_noblock()
+    assert np.all(wfc2d[~layout] == 0.0)
+    assert np.array_equal(wfc2d[layout], np.arange(5, dtype=np.float32))

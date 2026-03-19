@@ -41,6 +41,7 @@ try:
         QSizePolicy,
         QSplitter,
         QStatusBar,
+        QTabWidget,
         QToolBar,
         QToolButton,
         QTextEdit,
@@ -59,7 +60,7 @@ except ImportError as exc:
 
     QAction = QApplication = QComboBox = QDialog = QDialogButtonBox = QDockWidget = QFileDialog = QFormLayout = QFrame = QGraphicsPathItem = (  # type: ignore[assignment]
         QGraphicsRectItem
-    ) = QGraphicsScene = QGraphicsSimpleTextItem = QGraphicsView = QHBoxLayout = QLabel = QLineEdit = QListWidget = QListWidgetItem = QMainWindow = QMessageBox = QPushButton = QPlainTextEdit = QScrollArea = QSizePolicy = QSplitter = QStatusBar = QToolBar = QToolButton = QTextEdit = QVBoxLayout = QWidget = QTimer = QInputDialog = _QtUnavailableBase
+    ) = QGraphicsScene = QGraphicsSimpleTextItem = QGraphicsView = QHBoxLayout = QLabel = QLineEdit = QListWidget = QListWidgetItem = QMainWindow = QMessageBox = QPushButton = QPlainTextEdit = QScrollArea = QSizePolicy = QSplitter = QStatusBar = QTabWidget = QToolBar = QToolButton = QTextEdit = QVBoxLayout = QWidget = QTimer = QInputDialog = _QtUnavailableBase
     QPointF = QRectF = QBrush = QColor = QFont = QKeySequence = QPainter = QPainterPath = QPen = _QtUnavailableBase
     Qt = SimpleNamespace(Horizontal=0, Vertical=0, AlignTop=0, LeftDockWidgetArea=0, BottomDockWidgetArea=0)
 
@@ -693,11 +694,9 @@ class ManagerMainWindow(QMainWindow):
         self.inspector_empty_state.setAlignment(Qt.AlignTop)
         self.inspector_empty_state.setWordWrap(True)
         inspector_layout.addWidget(self.inspector_empty_state)
-        self.properties_toggle = QToolButton()
-        self.properties_toggle.setCheckable(True)
-        self.properties_toggle.setChecked(True)
-        self.properties_toggle.clicked.connect(lambda checked: self._set_section_visible("properties", checked))
-        inspector_layout.addWidget(self.properties_toggle)
+        self.inspector_tabs = QTabWidget()
+        self.inspector_tabs.setDocumentMode(True)
+        self.inspector_tabs.setUsesScrollButtons(False)
         self.properties_section = QWidget()
         properties_layout = QVBoxLayout(self.properties_section)
         properties_layout.setContentsMargins(0, 0, 0, 0)
@@ -716,27 +715,29 @@ class ManagerMainWindow(QMainWindow):
         self.apply_button.clicked.connect(self._apply_selected_component)
         button_row.addWidget(self.apply_button)
         properties_layout.addLayout(button_row)
-        inspector_layout.addWidget(self.properties_section)
 
-        self.functions_toggle = QToolButton()
-        self.functions_toggle.setCheckable(True)
-        self.functions_toggle.setChecked(False)
-        self.functions_toggle.clicked.connect(lambda checked: self._set_section_visible("functions", checked))
-        inspector_layout.addWidget(self.functions_toggle)
         self.functions_section = QWidget()
         functions_section_layout = QVBoxLayout(self.functions_section)
         functions_section_layout.setContentsMargins(0, 0, 0, 0)
         functions_section_layout.setSpacing(8)
+        self.functions_scroll = QScrollArea()
+        self.functions_scroll.setWidgetResizable(True)
         self.functions_container = QWidget()
         self.functions_layout = QVBoxLayout(self.functions_container)
         self.functions_layout.setContentsMargins(0, 0, 0, 0)
         self.functions_layout.setSpacing(8)
-        functions_section_layout.addWidget(self.functions_container)
-        inspector_layout.addWidget(self.functions_section)
-        self.properties_toggle.setVisible(False)
-        self.functions_toggle.setVisible(False)
-        self._set_section_visible("properties", True)
-        self._set_section_visible("functions", False)
+        self.functions_empty_state = QLabel("No functions available for this component.")
+        self.functions_empty_state.setObjectName("SubtleText")
+        self.functions_empty_state.setWordWrap(True)
+        self.functions_layout.addWidget(self.functions_empty_state)
+        self.functions_layout.addStretch(1)
+        self.functions_scroll.setWidget(self.functions_container)
+        functions_section_layout.addWidget(self.functions_scroll)
+
+        self.inspector_tabs.addTab(self.properties_section, "Properties")
+        self.inspector_tabs.addTab(self.functions_section, "Functions")
+        self.inspector_tabs.setVisible(False)
+        inspector_layout.addWidget(self.inspector_tabs, stretch=1)
         inspector_layout.addStretch(1)
 
         splitter.addWidget(self.catalog_panel)
@@ -940,14 +941,6 @@ class ManagerMainWindow(QMainWindow):
         mode = self.mode_selector.itemData(index)
         if isinstance(mode, str):
             self._set_manager_mode(mode)
-
-    def _set_section_visible(self, section_name: str, visible: bool) -> None:
-        if section_name == "properties":
-            self.properties_section.setVisible(visible)
-            self.properties_toggle.setText(f"{'▼' if visible else '▶'} Properties")
-        elif section_name == "functions":
-            self.functions_section.setVisible(visible)
-            self.functions_toggle.setText(f"{'▼' if visible else '▶'} Functions")
 
     def _set_theme(self, theme_name: str) -> None:
         self.theme_name = theme_name
@@ -1211,12 +1204,12 @@ class ManagerMainWindow(QMainWindow):
         self.inspector_title.setText("Inspector")
         self.inspector_status.setText("Select a component")
         self.inspector_empty_state.setVisible(True)
+        self.inspector_tabs.setVisible(False)
         self._clear_form()
         self._clear_function_buttons()
-        self.functions_toggle.setVisible(False)
-        self.functions_section.setVisible(False)
-        self.properties_toggle.setVisible(False)
-        self.properties_section.setVisible(False)
+        self.inspector_tabs.setTabEnabled(0, True)
+        self.inspector_tabs.setTabEnabled(1, False)
+        self.inspector_tabs.setCurrentIndex(0)
         self._update_action_states(self.adapter._last_status)
 
     def _clear_form(self) -> None:
@@ -1231,6 +1224,11 @@ class ManagerMainWindow(QMainWindow):
             widget = item.widget()
             if widget is not None:
                 widget.deleteLater()
+        self.functions_empty_state = QLabel("No functions available for this component.")
+        self.functions_empty_state.setObjectName("SubtleText")
+        self.functions_empty_state.setWordWrap(True)
+        self.functions_layout.addWidget(self.functions_empty_state)
+        self.functions_layout.addStretch(1)
         self._function_buttons = []
 
     def _populate_inspector(self, section_name: str) -> None:
@@ -1239,6 +1237,7 @@ class ManagerMainWindow(QMainWindow):
         self._inspector_section = section_name
         self.inspector_title.setText(f"Inspector: {section_name}")
         self.inspector_empty_state.setVisible(False)
+        self.inspector_tabs.setVisible(True)
         try:
             rows = self.adapter.get_component_parameters(section_name)
             functions = self.adapter.get_component_functions(section_name)
@@ -1250,8 +1249,6 @@ class ManagerMainWindow(QMainWindow):
         self.inspector_status.setText(
             f"state={status.get('state', '-')}  mode={status.get('mode', '-')}  restart={status.get('restart_policy', '-')}"
         )
-        self.properties_toggle.setVisible(True)
-        self.properties_section.setVisible(self.properties_toggle.isChecked())
         for row in rows:
             editor = QLineEdit("" if row["value"] is None else str(row["value"]))
             editor.setToolTip(row["description"])
@@ -1259,9 +1256,10 @@ class ManagerMainWindow(QMainWindow):
             self._field_inputs[row["name"]] = editor
             self._field_types[row["name"]] = row["type"]
 
+        self.functions_empty_state.setVisible(not functions)
+        self.inspector_tabs.setTabEnabled(0, True)
         if functions:
-            self.functions_toggle.setVisible(True)
-            self.functions_section.setVisible(self.functions_toggle.isChecked())
+            self.inspector_tabs.setTabEnabled(1, True)
             for function in functions:
                 button = QPushButton(function["name"])
                 button.setToolTip(function["description"])
@@ -1272,8 +1270,9 @@ class ManagerMainWindow(QMainWindow):
                 self.functions_layout.addWidget(button)
                 self._function_buttons.append(button)
         else:
-            self.functions_toggle.setVisible(False)
-            self.functions_section.setVisible(False)
+            self.inspector_tabs.setTabEnabled(1, False)
+            if self.inspector_tabs.currentIndex() == 1:
+                self.inspector_tabs.setCurrentIndex(0)
 
     def _refresh_selected_component(self) -> None:
         if self.selected_section:

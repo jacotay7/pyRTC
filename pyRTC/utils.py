@@ -495,6 +495,8 @@ def setFromConfig(conf, name, default):
     debugStr = f"There is a type mismatch between the default value for config variable {name} and the given value: {type(val).__name__} != {type(default).__name__}"
 
     if default is not None:
+        if isinstance(default, float) and isinstance(val, (int, np.integer)) and not isinstance(val, bool):
+            return float(val)
         assert isinstance(val, type(default)), debugStr
 
     return val

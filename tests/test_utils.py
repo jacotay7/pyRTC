@@ -96,6 +96,7 @@ def test_set_affinity_invalid_type():
 def test_set_from_config_and_signal2d():
     conf = {"x": 2}
     assert utils.setFromConfig(conf, "x", 1) == 2
+    assert utils.setFromConfig(conf, "x", 1.0) == 2.0
     layout = np.array([[True, False, True, False], [False, True, False, True]])
     signal = np.arange(np.count_nonzero(layout), dtype=float)
     out = utils.signal2D(signal, layout)

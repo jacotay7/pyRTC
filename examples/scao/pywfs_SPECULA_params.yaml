@@ -1,0 +1,69 @@
+speculaInit:
+  device_idx: -1
+  precision: 1
+
+main:
+  root_dir: ./data_cl
+  pixel_pupil: 21
+  pixel_pitch: 0.05
+  total_time: 0.01
+  time_step: 0.001
+
+source:
+  polar_coordinates: [0.0, 0.0]
+  magnitude: 8
+  wavelengthInNm: 750
+
+signals:
+  seeing: 0.3
+  wind_speed: [5.0]
+  wind_direction: [0.0]
+
+pupilstop:
+  mask_diam: 1.0
+  obs_diam: 0.0
+
+atmo:
+  L0: [25.0]
+  heights: [0.0]
+  Cn2: [1.0]
+  fov: 0.0
+  pixel_phasescreens: 256
+  seed: 1
+
+propagation:
+  wavelengthInNm: 750
+
+pyramid:
+  pup_diam: 21
+  pup_dist: 25
+  fov: 2.0
+  mod_amp: 3.0
+  output_resolution: 50
+  wavelengthInNm: 750
+
+detector:
+  size: [50, 50]
+  dt: 0.001
+  bandw: 300
+  photon_noise: false
+  readout_noise: false
+  readout_level: 0.0
+  quantum_eff: 1.0
+
+dm:
+  type_str: zonal
+  n_act: 20
+  geom: square
+  circ_geom: false
+  obsratio: 0.0
+  height: 0.0
+
+basis:
+  type_str: zernike
+  obsratio: 0.0
+
+psf:
+  wavelengthInNm: 1650
+  nd: 4.0
+  start_time: 0.0

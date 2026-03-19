@@ -925,9 +925,11 @@ Once schema and descriptors exist, pyRTC can stop treating YAML as an expert-onl
 
 ## Issue 10
 
+Status: Planned on the current branch on 2026-03-17. Scope narrowed after reviewing the SPECULA repository.
+
 ### Title
 
-Build a SPECULA bridge and reference integration example
+Build a SPECULA soft-RTC bridge and Pyramid-WFS reference example
 
 ### Why this matters
 
@@ -937,12 +939,28 @@ SPECULA is a strategic interoperability target because it represents a modern GP
 
 - `examples/scao/`
 - `pyRTC/hardware/OOPAOInterface.py`
+- `pyRTC/SlopesProcess.py`
 - `pyRTC/Pipeline.py`
 - synthetic and simulation example infrastructure
+- `SPECULA/specula/simul.py`
+- `SPECULA/specula/loop_control.py`
+- `SPECULA/docs/tutorials/scao_basic_tutorial.rst`
+
+### Repo findings that should drive the design
+
+Reviewing the SPECULA repo changes the shape of this issue materially.
+
+- SPECULA is primarily a graph-based, YAML-driven simulation framework organized around `specula.simul.Simul` and `specula.loop_control.LoopControl`.
+- Its lower-level optical pieces are available as direct processing objects such as `AtmoEvolution`, `AtmoPropagation`, `ModulatedPyramid`, `CCD`, and `DM`, but they are still time-stamped processing nodes rather than a simple hardware-style object model.
+- SPECULA requires explicit one-time runtime initialization through `specula.init(...)`, including CPU vs GPU device selection.
+- pyRTC already has the closest design precedent in `pyRTC/hardware/OOPAOInterface.py`: one shared simulation context plus pyRTC-facing wrappers for WFS, WFC, and optional PSF/science-camera behavior.
+- pyRTC already supports pyramid-WFS signal extraction in `pyRTC/SlopesProcess.py`, so a SPECULA PyWFS example reuses an existing pyRTC control path rather than inventing a new one.
+
+These findings argue against a first implementation that tries to ingest arbitrary SPECULA YAML graphs or run pyRTC as a generic plugin inside SPECULA's full simulation engine.
 
 ### Goals
 
-- establish one realistic integration path between pyRTC and SPECULA
+- establish one realistic, narrow integration path between pyRTC and SPECULA
 - isolate bridge logic from pyRTC core runtime code
 - document supported workflows clearly
 
@@ -950,34 +968,141 @@ SPECULA is a strategic interoperability target because it represents a modern GP
 
 - do not attempt full bidirectional feature parity in the first issue
 - do not tightly couple pyRTC internals to SPECULA internals
+- do not support arbitrary SPECULA YAML graphs in v1
+- do not build hard-RTC or manager-driven SPECULA orchestration in v1
+- do not try to support both SHWFS and PyWFS in the same first issue
+- do not require GPU/CuPy for the initial example
 
-### Choose one first-class workflow
+### Chosen first-class workflow
 
-The first implementation should pick one narrow, useful path such as:
+The first implementation should explicitly target this one workflow:
 
-- SPECULA provides simulated WFS frames and pyRTC runs slopes plus control
-- pyRTC provides commands back to a SPECULA-driven simulation
-- offline import or replay of SPECULA-generated data into pyRTC telemetry or streams
+- SPECULA owns the optical simulation state for a simple SCAO Pyramid-WFS system.
+- SPECULA produces detector frames for pyRTC.
+- pyRTC runs `SlopesProcess` and `Loop`.
+- pyRTC sends DM commands back into SPECULA.
+- the integration runs in one process in soft-RTC mode.
 
-Do not try to support all workflows at once.
+This is the right first cut because:
+
+- it matches the successful OOPAO integration pattern already present in the repo
+- it reuses SPECULA's most documented minimal path, namely the basic SCAO pyramid tutorial
+- it keeps the bridge on the control plane and out of pyRTC's hot-path internals
+- it avoids overcommitting to SPECULA's full graph/YAML abstraction before we understand the operator-facing needs
 
 ### Proposed deliverables
 
-- bridge module in a clearly isolated package area
-- one documented example
-- compatibility notes including dependency and platform assumptions
+- a bridge module in a clearly isolated package area, likely `pyRTC/hardware/SPECULAInterface.py`
+- a shared `SPECULASystemContext` responsible for SPECULA initialization and object ownership
+- a `SPECULAWFSensor` adapter exposing SPECULA detector frames through the pyRTC `WavefrontSensor` interface
+- a `SPECULAWFCorrector` adapter mapping pyRTC commands onto the SPECULA DM
+- optional `SPECULAScienceCamera` support only if it is straightforward from the same context; otherwise defer it
+- one reference example under `examples/scao/`, likely a SPECULA counterpart to the existing OOPAO soft-RTC PyWFS example
+- one SPECULA-backed config file and one SPECULA parameter file owned by pyRTC
+- compatibility notes covering optional dependency behavior, CPU/GPU setup, and supported assumptions
+- focused tests for import behavior and adapter data flow
+
+### Implementation plan
+
+#### 1. Build a SPECULA-owned shared context, not a generic `Simul` wrapper
+
+The first version should follow the OOPAO design and create a shared context object that owns the SPECULA simulation state used by several pyRTC components.
+
+That context should:
+
+- call `specula.init(device_idx, precision)` exactly once in a controlled place
+- build only the subset of SPECULA objects required for the example
+- keep direct references to the key optical objects needed by the wrappers
+- manage simple atmosphere on/off control if the example needs calibration with and without turbulence
+
+The object set should stay intentionally small and should be derived from SPECULA's documented basic SCAO pyramid flow:
+
+- source
+- pupil stop
+- atmosphere evolution
+- atmospheric propagation
+- pyramid WFS
+- CCD/detector
+- DM
+
+Do not promise generic support for arbitrary SPECULA YAML files in v1. If a parameter file is used, it should be a pyRTC-owned minimal mapping that mirrors the constructors we actually need, or the context should accept already-built SPECULA objects directly.
+
+#### 2. Keep the bridge at the pyRTC hardware boundary
+
+The adapter layer should look like a simulation-backed hardware integration, not like a rewrite of pyRTC's controller stack.
+
+Recommended adapter roles:
+
+- `SPECULAWFSensor`: advances the SPECULA optical path as needed, produces the detector frame, and publishes it on pyRTC WFS streams
+- `SPECULAWFCorrector`: receives pyRTC loop commands and updates the SPECULA DM command input for the next exposure
+- `SPECULAScienceCamera`: optional stretch goal only if a stable PSF path is easy to expose from the same simulation state
+
+This keeps `SlopesProcess`, `Loop`, telemetry, latency, and manager-facing APIs unchanged.
+
+#### 3. Prefer a Pyramid-WFS example first
+
+The first example should be Pyramid-WFS based, not because SHWFS is unimportant, but because the repo evidence points there:
+
+- SPECULA's clearest beginner tutorial is the basic SCAO pyramid walkthrough
+- pyRTC already has PYWFS signal support in `SlopesProcess`
+- pyRTC already has an OOPAO-backed PyWFS example that defines the operator workflow we want to mirror
+
+That means the first reference example should probably be a SPECULA sibling of `examples/scao/pywfs_oopao_soft_rtc_example.py`, with the same high-level sequence:
+
+- build the simulation-backed WFS and WFC
+- start the pyRTC WFS and slope stages
+- calibrate reference signal and interaction matrix with atmosphere disabled if needed
+- enable atmosphere and close the loop
+- print simple operator-facing status information while running
+
+#### 4. Treat dependency handling as part of the feature, not an afterthought
+
+SPECULA should remain optional.
+
+The bridge should:
+
+- fail clearly and locally if `specula` is not installed
+- avoid changing core import behavior for users who do not need SPECULA
+- default to CPU-safe behavior for the example when no GPU is available
+- document that SPECULA itself is primarily oriented toward Linux and optional CuPy acceleration
+
+#### 5. Keep tests narrow and cheap
+
+The goal is confidence in the bridge, not exhaustive SPECULA validation.
+
+Suggested test coverage:
+
+- import smoke test with graceful skip behavior when SPECULA is absent
+- unit tests for adapter construction and command/frame translation using mocked or simplified SPECULA objects where practical
+- one lightweight end-to-end example test on CPU when SPECULA is present
+
+Avoid a long Monte Carlo simulation or anything that would make the pyRTC test suite fragile.
 
 ### Acceptance criteria
 
-- one SPECULA integration example runs end to end
+- one SPECULA-backed soft-RTC PyWFS example runs end to end
+- pyRTC's existing `SlopesProcess` and `Loop` drive the control path; SPECULA is the optical backend rather than the controller
+- the bridge works on CPU without requiring CuPy
+- missing optional dependencies fail clearly and non-destructively
 - unsupported assumptions are documented rather than left implicit
-- failures due to missing optional dependencies are clear and non-destructive
 
 ### Suggested test cases
 
 - bridge import smoke test when optional dependency is present
 - graceful skip behavior when dependency is absent
-- synthetic or mocked adapter data-path tests where feasible
+- WFS adapter returns a frame with the expected shape and dtype
+- WFC adapter updates the SPECULA DM command state when pyRTC writes a command vector
+- lightweight end-to-end soft-RTC example test on CPU where feasible
+
+### Explicitly deferred work
+
+These are good follow-ons, but should not be bundled into the first SPECULA issue:
+
+- generic ingestion of SPECULA `Simul` YAML graphs
+- manager-based or hard-RTC orchestration of SPECULA-backed components
+- a second sensor family such as SHWFS
+- deeper telemetry/replay interoperability with SPECULA outputs
+- broad bidirectional pyRTC-inside-SPECULA plugin behavior
 
 ### Follow-on issues enabled by this work
 

@@ -403,6 +403,7 @@ class WavefrontCorrector(pyRTCComponent):
         
         #If we have a 2D SHM instance, update it 
         if isinstance(self.correctionVector2D, ImageSHM):
+            self.correctionVector2D_template.fill(0)
             self.correctionVector2D_template[self.layout] = self.currentShape - self.flat
             self.write_stream("wfc2D", self.correctionVector2D_template, source_streams=["wfc"], lineage_source="wfc")
         #Overwrite with hardware instructions after this to send to hardware
