@@ -22,7 +22,7 @@ from typing import Any, Mapping
 import numpy as np
 
 from pyRTC.logging_utils import get_logger
-from pyRTC.Pipeline import Listener
+from pyRTC.Pipeline import ImageSHM, Listener
 from pyRTC.ScienceCamera import ScienceCamera
 from pyRTC.WavefrontCorrector import WavefrontCorrector
 from pyRTC.WavefrontSensor import WavefrontSensor
@@ -162,7 +162,13 @@ def derive_specula_wfc_display_geometry(param: Mapping[str, Any]) -> dict[str, A
     if n_act < 1:
         return None
 
-    return {"displayGridSize": n_act}
+    geom = str(dm_conf.get("geom", "square")).lower()
+    circ_geom = bool(dm_conf.get("circ_geom", geom == "circular"))
+    if geom == "square" and not circ_geom:
+        return {"displayGridSize": n_act}
+
+    layout, _, _ = _circular_zonal_display_mapping(n_act, dm_conf.get("angle_offset", 0.0))
+    return {"displayGridSize": int(layout.shape[0])}
 
 
 def derive_specula_psf_geometry(param: Mapping[str, Any]) -> dict[str, Any] | None:
@@ -372,6 +378,57 @@ def _square_zonal_layout(n_act: int) -> np.ndarray:
     return np.ones((n_act, n_act), dtype=bool)
 
 
+def _circular_ring_counts(n_act: int) -> np.ndarray:
+    if n_act < 1:
+        raise ValueError("SPECULA circular geometry requires n_act >= 1")
+    n_act_radius = int(np.ceil((n_act + 1) / 2.0)) if n_act % 2 == 0 else int(np.ceil(n_act / 2.0))
+    counts = np.arange(n_act_radius, dtype=int) * 6
+    counts[0] = 1
+    return counts
+
+
+def _circular_zonal_display_mapping(n_act: int, angle_offset: float = 0.0) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    ring_counts = _circular_ring_counts(n_act)
+    display_size = int(n_act + len(ring_counts) - 1)
+    center = 0.5 * (display_size - 1)
+    radial_step = 1.0 if len(ring_counts) == 1 else center / float(len(ring_counts) - 1)
+
+    rows = []
+    cols = []
+    layout = np.zeros((display_size, display_size), dtype=bool)
+
+    for ring_index, count in enumerate(ring_counts):
+        if ring_index == 0:
+            row = int(round(center))
+            col = int(round(center))
+            rows.append(row)
+            cols.append(col)
+            layout[row, col] = True
+            continue
+
+        for angle_index in range(int(count)):
+            angle_deg = 360.0 / float(count) * float(angle_index) + float(angle_offset)
+            angle_rad = np.deg2rad(angle_deg)
+            x = center + radial_step * ring_index * np.cos(angle_rad)
+            y = center + radial_step * ring_index * np.sin(angle_rad)
+            row = int(np.rint(y))
+            col = int(np.rint(x))
+            rows.append(row)
+            cols.append(col)
+            layout[row, col] = True
+
+    if int(np.count_nonzero(layout)) != int(np.sum(ring_counts)):
+        raise ValueError("SPECULA circular actuator display mapping produced duplicate grid positions")
+
+    return layout, np.asarray(rows, dtype=np.intp), np.asarray(cols, dtype=np.intp)
+
+
+def _square_zonal_display_mapping(n_act: int) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    layout = _square_zonal_layout(n_act)
+    rows, cols = np.indices(layout.shape, dtype=np.intp)
+    return layout, rows.reshape(-1), cols.reshape(-1)
+
+
 def _square_actuator_support_mask(n_act: int, obsratio: float = 0.0) -> np.ndarray:
     if n_act < 1:
         raise ValueError("square actuator support requires n_act >= 1")
@@ -444,7 +501,13 @@ class SPECULASystemContext:
         self.command = command or self._build_initial_command()
         self.atmo = atmo or self._build_atmo()
         self.dm = dm or self._build_dm()
-        self.dm_num_actuators, self.dm_layout, self.modal_to_command = self._build_dm_mapping()
+        (
+            self.dm_num_actuators,
+            self.dm_layout,
+            self.dm_display_rows,
+            self.dm_display_cols,
+            self.modal_to_command,
+        ) = self._build_dm_mapping()
         self.prop = prop or self._build_propagation()
         self.pyramid = pyramid or self._build_pyramid()
         self.detector = detector or self._build_detector()
@@ -488,6 +551,33 @@ class SPECULASystemContext:
             self.prop.inputs["atmo_layer_list"].set([])
             self._refresh_propagation_setup()
             self.atmosphere_enabled = False
+
+    def set_signal_value(self, signal_name: str, value: Any) -> None:
+        with self._lock:
+            signal = getattr(self, signal_name)
+            array_value = np.asarray(value, dtype=np.float32)
+            if array_value.ndim == 0:
+                array_value = array_value.reshape(1)
+            signal.set_value(array_value)
+            signal.generation_time = self.scheduled_time_t()
+
+    def update_atmo_parameter(self, name: str, value: Any) -> None:
+        with self._lock:
+            atmo_conf = _as_mapping(self.param.get("atmo"), name="atmo")
+            atmo_conf[name] = value
+            self.param["atmo"] = atmo_conf
+            self._rebuild_atmosphere_locked()
+
+    def _rebuild_atmosphere_locked(self) -> None:
+        was_enabled = self.atmosphere_enabled
+        self.atmo = self._build_atmo()
+        self.atmo.inputs["seeing"].set(self.seeing)
+        self.atmo.inputs["wind_speed"].set(self.wind_speed)
+        self.atmo.inputs["wind_direction"].set(self.wind_direction)
+        self.atmo.setup()
+        self.prop.inputs["atmo_layer_list"].set(self.atmo.outputs["layer_list"] if was_enabled else [])
+        self._refresh_propagation_setup()
+        self.atmosphere_enabled = was_enabled
 
     def scheduled_time_t(self) -> int:
         return int(self.step_index * self.dt_t)
@@ -777,7 +867,7 @@ class SPECULASystemContext:
             **dm_conf,
         )
 
-    def _build_dm_mapping(self) -> tuple[int, np.ndarray, np.ndarray]:
+    def _build_dm_mapping(self) -> tuple[int, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         dm_conf = self._simul_object_kwargs("dm")
         dm_type = str(dm_conf.get("type_str", "")).lower()
         if dm_type != "zonal":
@@ -796,14 +886,19 @@ class SPECULASystemContext:
         circ_geom = bool(dm_conf.get("circ_geom", geom == "circular"))
         n_act = int(dm_conf.get("n_act", 0))
         if geom == "square" and not circ_geom:
-            layout = _square_zonal_layout(n_act)
+            layout, display_rows, display_cols = _square_zonal_display_mapping(n_act)
             if int(np.count_nonzero(layout)) != num_actuators:
                 raise ValueError(
                     f"SPECULA zonal square geometry n_act={n_act} implies {int(np.count_nonzero(layout))} actuators, "
                     f"but the SPECULA DM built {num_actuators}."
                 )
         else:
-            layout = _specula_dm_layout(self.dm, num_actuators)
+            layout, display_rows, display_cols = _circular_zonal_display_mapping(n_act, dm_conf.get("angle_offset", 0.0))
+            if int(np.count_nonzero(layout)) != num_actuators:
+                raise ValueError(
+                    f"SPECULA circular geometry n_act={n_act} implies {int(np.count_nonzero(layout))} display sites, "
+                    f"but the SPECULA DM built {num_actuators}."
+                )
 
         wfc_conf = dict(self.system_conf.get("wfc", {}))
         num_modes = int(wfc_conf.get("numModes", num_actuators))
@@ -834,7 +929,13 @@ class SPECULASystemContext:
                 )
             modal_to_command[~actuator_support, :] = 0.0
 
-        return num_actuators, layout.astype(bool), modal_to_command.astype(np.float32)
+        return (
+            num_actuators,
+            layout.astype(bool),
+            display_rows.astype(np.intp),
+            display_cols.astype(np.intp),
+            modal_to_command.astype(np.float32),
+        )
 
     def _build_propagation(self):
         propagation_conf = self._simul_object_kwargs("propagation")
@@ -850,6 +951,8 @@ class SPECULASystemContext:
         psf_conf = self._simul_object_kwargs("psf")
         if not psf_conf:
             return None
+        psf_conf = dict(psf_conf)
+        psf_conf.setdefault("verbose", False)
         return self._bindings.PSF(
             self.simul_params,
             target_device_idx=self.device_idx,
@@ -931,13 +1034,23 @@ class SPECULAWFCorrector(WavefrontCorrector):
         normalized_conf["numActuators"] = int(self.context.dm_num_actuators)
         normalized_conf["numModes"] = int(self.context.modal_to_command.shape[1])
         super().__init__(normalized_conf)
-        self.setLayout(self.context.dm_layout)
+        self.layout = self.context.dm_layout.astype(bool)
+        self.display_rows = np.asarray(self.context.dm_display_rows, dtype=np.intp)
+        self.display_cols = np.asarray(self.context.dm_display_cols, dtype=np.intp)
+        self.correctionVector2D = ImageSHM(self.output_stream_name("wfc2D"), self.layout.shape, np.float32, gpuDevice=self.gpuDevice, consumer=False)
+        self.register_output_stream("wfc2D", self.correctionVector2D, source_streams=["wfc"], lineage_source="wfc")
+        self.correctionVector2D_template = np.zeros(self.layout.shape, dtype=np.float32)
+        self.write_stream("wfc2D", self.correctionVector2D_template, source_streams=["wfc"], lineage_source="wfc")
         self.setM2C(self.context.modal_to_command)
         if self.section_name:
             self.context.register_component(self.section_name, self)
 
     def sendToHardware(self):
         super().sendToHardware()
+        if isinstance(self.correctionVector2D, ImageSHM):
+            self.correctionVector2D_template.fill(0)
+            self.correctionVector2D_template[self.display_rows, self.display_cols] = self.currentShape - self.flat
+            self.write_stream("wfc2D", self.correctionVector2D_template, source_streams=["wfc"], lineage_source="wfc")
         self.context.set_dm_command(self.currentShape.astype(np.float32, copy=False))
 
 
@@ -971,6 +1084,71 @@ class SPECULAInterface(pyRTCComponent):
     @staticmethod
     def sync_system_config(system_conf: Mapping[str, Any]) -> dict[str, Any] | None:
         return sync_specula_pywfs_config(system_conf)
+
+    @staticmethod
+    def gui_runtime_parameters(conf: Mapping[str, Any] | None = None) -> list[dict[str, Any]]:
+        provider_conf = _mapping_or_none(conf) or {}
+        param_mapping = _load_specula_param_mapping(provider_conf=provider_conf) or {}
+        signal_conf = _mapping_or_none(param_mapping.get("signals")) or {}
+        atmo_conf = _mapping_or_none(param_mapping.get("atmo")) or {}
+
+        def _signal_default(name: str, default: Any) -> Any:
+            value = signal_conf.get(name, default)
+            if isinstance(value, (list, tuple)):
+                return [float(item) for item in value]
+            return float(value)
+
+        return [
+            {
+                "name": "useAtmosphere",
+                "type": "bool",
+                "description": "Enable or disable atmospheric layers in the active SPECULA propagation chain.",
+                "default": bool(setFromConfig(provider_conf, "useAtmosphere", False)),
+                "persist": True,
+            },
+            {
+                "name": "seeing",
+                "type": "float",
+                "description": "Live seeing value fed into the SPECULA atmosphere model.",
+                "default": _signal_default("seeing", 0.8),
+            },
+            {
+                "name": "wind_speed",
+                "type": "list[float]",
+                "description": "Live wind-speed vector fed into the SPECULA atmosphere model.",
+                "default": _signal_default("wind_speed", [0.0]),
+            },
+            {
+                "name": "wind_direction",
+                "type": "list[float]",
+                "description": "Live wind-direction vector fed into the SPECULA atmosphere model.",
+                "default": _signal_default("wind_direction", [0.0]),
+            },
+            {
+                "name": "atmo_L0",
+                "type": "list[float]",
+                "description": "Outer-scale values. Updating this rebuilds the SPECULA atmosphere object in place.",
+                "default": [float(item) for item in atmo_conf.get("L0", [25.0])],
+            },
+            {
+                "name": "atmo_heights",
+                "type": "list[float]",
+                "description": "Atmospheric layer heights. Updating this rebuilds the SPECULA atmosphere object in place.",
+                "default": [float(item) for item in atmo_conf.get("heights", [0.0])],
+            },
+            {
+                "name": "atmo_Cn2",
+                "type": "list[float]",
+                "description": "Turbulence-strength fractions per layer. Updating this rebuilds the SPECULA atmosphere object in place.",
+                "default": [float(item) for item in atmo_conf.get("Cn2", [1.0])],
+            },
+            {
+                "name": "atmo_pixel_phasescreens",
+                "type": "int",
+                "description": "Phase-screen pixel size. Updating this rebuilds the SPECULA atmosphere object in place.",
+                "default": int(atmo_conf.get("pixel_phasescreens", 256)),
+            },
+        ]
 
     def __init__(
         self,
@@ -1016,7 +1194,7 @@ class SPECULAInterface(pyRTCComponent):
                 wind_direction=wind_direction,
                 command=command,
             )
-            self.useAtmosphere = True
+            self._useAtmosphere = True
             self.wfcSection = "wfc"
             self.wfsInterface = SPECULAWFSensor(self.system_conf["wfs"], self.context)
             self.dmInterface = SPECULAWFCorrector(self.system_conf["wfc"], self.context)
@@ -1044,7 +1222,7 @@ class SPECULAInterface(pyRTCComponent):
             wind_direction=wind_direction,
             command=command,
         )
-        self.useAtmosphere = bool(setFromConfig(conf, "useAtmosphere", False))
+        self._useAtmosphere = bool(setFromConfig(conf, "useAtmosphere", False))
         self.wfcSection = str(setFromConfig(conf, "wfcSection", "wfc"))
         super().__init__(conf)
         if self.section_name:
@@ -1056,11 +1234,82 @@ class SPECULAInterface(pyRTCComponent):
 
     def addAtmosphere(self):
         self.context.addAtmosphere()
+        self._useAtmosphere = True
         self.logger.info("Enabled SPECULA atmosphere")
 
     def removeAtmosphere(self):
         self.context.removeAtmosphere()
+        self._useAtmosphere = False
         self.logger.info("Disabled SPECULA atmosphere")
+
+    @property
+    def useAtmosphere(self) -> bool:
+        return bool(getattr(self, "_useAtmosphere", False))
+
+    @useAtmosphere.setter
+    def useAtmosphere(self, value: Any) -> None:
+        enabled = bool(value)
+        if enabled:
+            self.addAtmosphere()
+        else:
+            self.removeAtmosphere()
+
+    @property
+    def seeing(self) -> float:
+        values = np.asarray(self.context.seeing.value, dtype=np.float32).reshape(-1)
+        return float(values[0]) if values.size else 0.0
+
+    @seeing.setter
+    def seeing(self, value: Any) -> None:
+        self.context.set_signal_value("seeing", float(value))
+
+    @property
+    def wind_speed(self) -> list[float]:
+        return np.asarray(self.context.wind_speed.value, dtype=np.float32).reshape(-1).astype(float).tolist()
+
+    @wind_speed.setter
+    def wind_speed(self, value: Any) -> None:
+        self.context.set_signal_value("wind_speed", value)
+
+    @property
+    def wind_direction(self) -> list[float]:
+        return np.asarray(self.context.wind_direction.value, dtype=np.float32).reshape(-1).astype(float).tolist()
+
+    @wind_direction.setter
+    def wind_direction(self, value: Any) -> None:
+        self.context.set_signal_value("wind_direction", value)
+
+    @property
+    def atmo_L0(self) -> list[float]:
+        return [float(item) for item in _as_mapping(self.context.param.get("atmo"), name="atmo").get("L0", [])]
+
+    @atmo_L0.setter
+    def atmo_L0(self, value: Any) -> None:
+        self.context.update_atmo_parameter("L0", [float(item) for item in value])
+
+    @property
+    def atmo_heights(self) -> list[float]:
+        return [float(item) for item in _as_mapping(self.context.param.get("atmo"), name="atmo").get("heights", [])]
+
+    @atmo_heights.setter
+    def atmo_heights(self, value: Any) -> None:
+        self.context.update_atmo_parameter("heights", [float(item) for item in value])
+
+    @property
+    def atmo_Cn2(self) -> list[float]:
+        return [float(item) for item in _as_mapping(self.context.param.get("atmo"), name="atmo").get("Cn2", [])]
+
+    @atmo_Cn2.setter
+    def atmo_Cn2(self, value: Any) -> None:
+        self.context.update_atmo_parameter("Cn2", [float(item) for item in value])
+
+    @property
+    def atmo_pixel_phasescreens(self) -> int:
+        return int(_as_mapping(self.context.param.get("atmo"), name="atmo").get("pixel_phasescreens", 0))
+
+    @atmo_pixel_phasescreens.setter
+    def atmo_pixel_phasescreens(self, value: Any) -> None:
+        self.context.update_atmo_parameter("pixel_phasescreens", int(value))
 
     def get_hardware(self):
         if self._standalone_mode:

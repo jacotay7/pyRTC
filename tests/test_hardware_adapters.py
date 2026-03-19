@@ -501,6 +501,7 @@ def _install_fake_specula(monkeypatch):
             }
             self.ref = types.SimpleNamespace(i=np.ones((2, 2), dtype=np.float32))
             self.inputs_changed = False
+            self.verbose = kwargs.get("verbose", True)
 
         def setup(self):
             return None
@@ -782,6 +783,7 @@ def test_specula_standalone_bridge_syncs_pywfs_geometry(monkeypatch):
     assert conf["psf"]["width"] == 48
     assert conf["psf"]["height"] == 48
     assert dm.correctionVector2D.arr.shape == (2, 2)
+    assert sim.context.psf.verbose is False
 
     wfs.expose()
     assert wfs.read(block=False).shape == (12, 12)
@@ -809,6 +811,55 @@ def test_specula_square_dm_zeroes_m2c_outside_circular_support(monkeypatch):
     assert dm.M2C.shape[0] == support.size
     assert np.all(dm.M2C[~support] == 0.0)
     assert np.any(dm.M2C[support] != 0.0)
+
+
+def test_specula_circular_dm_uses_circular_display_diameter(monkeypatch):
+    _install_fake_specula(monkeypatch)
+
+    sys.modules.pop("pyRTC.hardware.SPECULAInterface", None)
+    module = importlib.import_module("pyRTC.hardware.SPECULAInterface")
+
+    conf = {
+        "wfs": {"name": "wfs", "width": 1, "height": 1, "darkCount": 1, "functions": []},
+        "slopes": {"type": "PYWFS", "signalType": "slopes"},
+        "wfc": {"name": "wfc", "numActuators": 7, "numModes": 4, "functions": []},
+    }
+    param = _specula_param()
+    param["dm"] = {"height": 0.0, "type_str": "zonal", "n_act": 2, "circ_geom": True, "obsratio": 0.0}
+
+    assert module.derive_specula_wfc_display_geometry(param)["displayGridSize"] == 3
+    layout, rows, cols = module._circular_zonal_display_mapping(2, 0.0)
+    assert layout.shape == (3, 3)
+    assert len(rows) == 7
+    assert len(cols) == 7
+
+    larger_layout, larger_rows, larger_cols = module._circular_zonal_display_mapping(8, 0.0)
+    assert larger_layout.shape == (12, 12)
+    assert len(set(zip(larger_rows.tolist(), larger_cols.tolist()))) == 61
+
+
+def test_specula_interface_updates_live_atmosphere_controls(monkeypatch):
+    _install_fake_specula(monkeypatch)
+
+    sys.modules.pop("pyRTC.hardware.SPECULAInterface", None)
+    module = importlib.import_module("pyRTC.hardware.SPECULAInterface")
+
+    sim = module.SPECULAInterface(_specula_conf(), param=_specula_param())
+
+    old_atmo = sim.context.atmo
+    sim.seeing = 0.35
+    sim.wind_speed = [7.5]
+    sim.wind_direction = [45.0]
+    sim.atmo_L0 = [30.0]
+    sim.useAtmosphere = False
+
+    assert sim.seeing == pytest.approx(0.35)
+    assert sim.wind_speed == [7.5]
+    assert sim.wind_direction == [45.0]
+    assert sim.atmo_L0 == [30.0]
+    assert sim.context.atmo is not old_atmo
+    assert sim.useAtmosphere is False
+    assert sim.context.atmosphere_enabled is False
 
 
 def test_specula_standalone_bridge_exposes_frames_and_updates_dm(monkeypatch):

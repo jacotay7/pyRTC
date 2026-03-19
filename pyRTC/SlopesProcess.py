@@ -29,6 +29,9 @@ from pyRTC.utils import (
 
 logger = get_logger(__name__)
 
+
+PYWFS_NORMALIZATION_EPS = np.float32(1e-12)
+
 def computeSlopesPYWFSTorch(image: Any,
                             p1Mask: Any,
                             p2Mask: Any,
@@ -68,8 +71,11 @@ def computeSlopesPYWFSTorch(image: Any,
     # Compute Y slopes
     slopes[numPixelsInPupils:] = (p1 + p3) - (p2 + p4)
     
-    # Normalize slopes
-    slopes = slopes / torch.mean(tmp1 + tmp2)
+    # Normalize slopes only when there is measurable pupil flux.
+    mean_flux = torch.mean(tmp1 + tmp2)
+    if torch.abs(mean_flux) <= PYWFS_NORMALIZATION_EPS:
+        return torch.zeros_like(slopes)
+    slopes = slopes / mean_flux
     
     # Subtract reference slopes
     return slopes - refSlopes
@@ -105,8 +111,12 @@ def computeSlopesPYWFSOptimNumpy(image:np.ndarray,
     slopes[:numPixelsInPupils] = np.subtract(tmp1,tmp2)
     # Compute Y slopes
     slopes[numPixelsInPupils:] = np.subtract(np.add(p1,p3),np.add(p2,p4))
-    # Normalize slopes
-    slopes = np.divide(slopes, np.mean(np.add(tmp1,tmp2)))
+    # Normalize slopes only when there is measurable pupil flux.
+    mean_value = np.mean(np.add(tmp1, tmp2))
+    if np.abs(mean_value) <= PYWFS_NORMALIZATION_EPS:
+        slopes.fill(0.0)
+        return slopes
+    slopes = np.divide(slopes, mean_value)
     # Subtract reference slopes
     return slopes - refSlopes
 
@@ -156,7 +166,16 @@ def computeSlopesPYWFSOptimNumba(image:np.ndarray,
         tmp1[i] = p1[i] + p2[i]
         tmp2[i] = p3[i] + p4[i]
         total_sum += tmp1[i] + tmp2[i]
+    if p1_count == 0:
+        for i in range(2 * numPixelsInPupils):
+            slopes[i] = 0.0
+        return slopes
+
     mean_value = total_sum / p1_count
+    if np.abs(mean_value) <= PYWFS_NORMALIZATION_EPS:
+        for i in range(2 * numPixelsInPupils):
+            slopes[i] = 0.0
+        return slopes
 
     for i in range(numPixelsInPupils):
         # Compute Y slopes

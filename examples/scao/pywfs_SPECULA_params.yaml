@@ -15,18 +15,18 @@ source:
   wavelengthInNm: 750
 
 signals:
-  seeing: 0.3
-  wind_speed: [5.0]
-  wind_direction: [0.0]
+  seeing: 0.65
+  wind_speed: [5.0, 9.0, 18.0, 28.0]
+  wind_direction: [0.0, 45.0, 90.0, 135.0]
 
 pupilstop:
   mask_diam: 1.0
   obs_diam: 0.0
 
 atmo:
-  L0: [25.0]
-  heights: [0.0]
-  Cn2: [1.0]
+  L0: [30.0, 30.0, 30.0, 30.0]
+  heights: [0.0, 2500.0, 8000.0, 14000.0]
+  Cn2: [0.55, 0.15, 0.20, 0.10]
   fov: 0.0
   pixel_phasescreens: 256
   seed: 1

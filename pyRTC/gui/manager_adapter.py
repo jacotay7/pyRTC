@@ -47,6 +47,30 @@ _NON_ACTION_METHODS = {
 }
 
 
+def _normalize_runtime_parameter_rows(raw_rows: Any) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    if not isinstance(raw_rows, list):
+        return rows
+    for row in raw_rows:
+        if not isinstance(row, dict):
+            continue
+        name = row.get("name")
+        field_type = row.get("type")
+        if not isinstance(name, str) or not name.strip() or not isinstance(field_type, str) or not field_type.strip():
+            continue
+        rows.append(
+            {
+                "name": name,
+                "type": field_type,
+                "required": bool(row.get("required", False)),
+                "description": str(row.get("description", "")),
+                "default": row.get("default"),
+                "persist": bool(row.get("persist", False)),
+            }
+        )
+    return rows
+
+
 def _is_live_runtime_field(name: str) -> bool:
     if name in _CONFIG_ONLY_FIELDS:
         return False
@@ -650,6 +674,28 @@ class ManagerAdapter:
         rows.sort(key=lambda row: row["name"])
         return rows
 
+    def _runtime_parameter_definitions(self, section_name: str) -> list[dict[str, Any]]:
+        if not self.config or section_name not in self.config:
+            return []
+
+        manager = self.ensure_manager()
+        descriptor = self._descriptor_for_section(section_name)
+        runtime = manager.runtimes.get(section_name) if manager.runtimes else None
+        component_class = getattr(runtime, "component_class", None)
+        if component_class is None:
+            component_class = descriptor.component_class if descriptor is not None else None
+        if component_class is None:
+            return []
+
+        hook = getattr(component_class, "gui_runtime_parameters", None)
+        if not callable(hook):
+            return []
+
+        try:
+            return _normalize_runtime_parameter_rows(hook(self.config[section_name]))
+        except Exception:
+            return []
+
     def run_component_function(self, section_name: str, function_name: str) -> Any:
         manager = self.ensure_manager()
         if section_name not in manager.runtimes:
@@ -725,6 +771,20 @@ class ManagerAdapter:
                     "value": live_value,
                 }
             )
+
+        existing_names = {row["name"] for row in rows}
+        for runtime_row in self._runtime_parameter_definitions(section_name):
+            if runtime_row["name"] in existing_names:
+                continue
+            rows.append(
+                {
+                    "name": runtime_row["name"],
+                    "type": runtime_row["type"],
+                    "required": runtime_row["required"],
+                    "description": runtime_row["description"],
+                    "value": self.get_parameter(section_name, runtime_row["name"], fallback=runtime_row.get("default")),
+                }
+            )
         return rows
 
     def get_parameter(self, section_name: str, name: str, *, fallback: Any = None) -> Any:
@@ -756,18 +816,25 @@ class ManagerAdapter:
         if not self.config or section_name not in self.config:
             raise KeyError(section_name)
         descriptor = self._descriptor_for_section(section_name)
+        runtime_defs = {row["name"]: row for row in self._runtime_parameter_definitions(section_name)}
         field_type = "str"
         if descriptor is not None and name in descriptor.field_map:
             field_type = descriptor.field_map[name].field_type
+        elif name in runtime_defs:
+            field_type = runtime_defs[name]["type"]
         elif name == "classFile":
             field_type = "str | None"
         elif name in {"inputStreams", "outputStreams"}:
             field_type = "dict[str,str]"
         value = _coerce_runtime_value(raw_value, field_type)
-        self.config[section_name][name] = value
+
+        persist_in_config = name in self.config[section_name] or bool(runtime_defs.get(name, {}).get("persist", False))
+        if persist_in_config:
+            self.config[section_name][name] = value
 
         manager = self.ensure_manager()
-        manager.config[section_name][name] = value
+        if persist_in_config:
+            manager.config[section_name][name] = value
         if (
             manager.state in {"running", "degraded", "failed"}
             and section_name in manager.runtimes

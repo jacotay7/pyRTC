@@ -68,6 +68,7 @@ wfc:
     wfc: wfc
   outputStreams:
     wfc: wfc
+    wfc2D: wfc2D
   functions:
   - sendToHardware
   classFile: ../../pyRTC/hardware/SPECULAInterface.py
@@ -106,6 +107,26 @@ manager:
     slopes: ../../pyRTC/SlopesProcess.py
     wfc: ../../pyRTC/hardware/SPECULAInterface.py
     psf: ../../pyRTC/hardware/SPECULAInterface.py
+  graphLayout:
+    positions:
+      wfc:
+        x: 753.7972500000001
+        y: -117.38974999999994
+      wfs:
+        x: -112.16900000000001
+        y: 15.562625000000011
+      slopes:
+        x: 184.66199999999998
+        y: -101.62824999999998
+      loop:
+        x: 480.8071249999999
+        y: 48.646125
+      psf:
+        x: 57.11725000000001
+        y: 256.08349999999996
+      specula:
+        x: 482.8926250000002
+        y: 257.60437500000006
 metadata: {}
 streams: {}
 resources: {}
