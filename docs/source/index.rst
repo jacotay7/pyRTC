@@ -64,6 +64,7 @@ pyRTC is an open-source, community-driven Python package for real-time control o
   :caption: Examples
 
   examples/synthetic_shwfs
+  examples/shwfs
   examples/pywfs
 
 

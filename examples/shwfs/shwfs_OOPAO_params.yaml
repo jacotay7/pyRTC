@@ -1,0 +1,22 @@
+resolution: 120
+diameter: 8
+samplingTime: 0.001
+centralObstruction: 0.112
+
+ngs_band: R
+ngs_magnitude: 8
+science_band: K
+science_magnitude: 8
+
+r0: 0.16
+L0: 25
+fractionalR0: [0.5, 0.2, 0.2, 0.1]
+windSpeed: [5, 10, 15, 20]
+windDirection: [0, 90, 180, 270]
+altitude: [0, 2000, 8000, 14000]
+
+nSubap: 20
+mechCoupling: 0.45
+lightRatio: 0.1
+threshold_cog: 0.01
+is_geometric: false

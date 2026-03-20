@@ -6,6 +6,7 @@ resolution, and stream polling.
 """
 
 import math
+import time
 
 import numpy as np
 
@@ -148,15 +149,24 @@ class StreamConnection:
     metadata handling logic throughout the UI layer.
     """
 
-    def __init__(self, shm_name):
+    DEFAULT_PAUSE_TIMEOUT_SECONDS = 2.0
+
+    def __init__(self, shm_name, *, pause_timeout_seconds=None, current_time_fn=None):
         self.name = shm_name
         self.metadata_shm, shm_shape, shm_dtype = read_shm_metadata(shm_name)
         self.shape = tuple(shm_shape)
         self.display_name = f"{shm_name} ({format_shape(self.shape)})"
         self.shm = ImageSHM(shm_name, shm_shape, shm_dtype)
+        self.pause_timeout_seconds = (
+            self.DEFAULT_PAUSE_TIMEOUT_SECONDS
+            if pause_timeout_seconds is None
+            else max(0.0, float(pause_timeout_seconds))
+        )
+        self.current_time_fn = current_time_fn or time.monotonic
         self.last_count = None
         self.last_time = None
         self.last_fps_text = None
+        self.last_update_monotonic = None
         self._closed = False
         self.cached_frame = normalize_frame(np.array(self.shm.read_noblock(), copy=True))
 
@@ -167,11 +177,13 @@ class StreamConnection:
         self.last_count = metadata[ImageSHM.METADATA_INDEX_COUNT]
         self.last_time = metadata[ImageSHM.METADATA_INDEX_WRITE_TIME]
         self.last_fps_text = None
+        self.last_update_monotonic = self.current_time_fn()
         return self.cached_frame
 
     def poll(self):
         """Poll the latest metadata and return the current viewer snapshot."""
 
+        now = self.current_time_fn()
         metadata = self.metadata_shm.read_noblock()
         new_count = metadata[ImageSHM.METADATA_INDEX_COUNT]
         new_time = metadata[ImageSHM.METADATA_INDEX_WRITE_TIME]
@@ -184,8 +196,13 @@ class StreamConnection:
             old_time = 0 if self.last_time is None else self.last_time
             fps = np.round((new_count - old_count) / max(new_time - old_time, 1e-12), 2)
             fps_text = f"{fps} FPS"
+            self.last_update_monotonic = now
         else:
-            fps_text = "PAUSED"
+            last_update = self.last_update_monotonic
+            if last_update is not None and (now - last_update) < self.pause_timeout_seconds:
+                fps_text = self.last_fps_text or "0.0 FPS"
+            else:
+                fps_text = "PAUSED"
 
         status_changed = fps_text != self.last_fps_text
 
