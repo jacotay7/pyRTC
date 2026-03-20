@@ -4,46 +4,46 @@ speculaInit:
 
 main:
   root_dir: ./data_cl
-  pixel_pupil: 21
-  pixel_pitch: 0.05
+  pixel_pupil: 40
+  pixel_pitch: 0.2
   total_time: 0.01
   time_step: 0.001
 
 source:
   polar_coordinates: [0.0, 0.0]
   magnitude: 8
-  wavelengthInNm: 750
+  wavelengthInNm: 640
 
 signals:
   seeing: 0.65
-  wind_speed: [5.0, 9.0, 18.0, 28.0]
-  wind_direction: [0.0, 45.0, 90.0, 135.0]
+  wind_speed: [5.0, 10.0, 15.0, 20.0]
+  wind_direction: [0.0, 90.0, 180.0, 270.0]
 
 pupilstop:
   mask_diam: 1.0
-  obs_diam: 0.0
+  obs_diam: 0.112
 
 atmo:
-  L0: [30.0, 30.0, 30.0, 30.0]
-  heights: [0.0, 2500.0, 8000.0, 14000.0]
-  Cn2: [0.55, 0.15, 0.20, 0.10]
+  L0: [25.0, 25.0, 25.0, 25.0]
+  heights: [0.0, 2000.0, 8000.0, 14000.0]
+  Cn2: [0.50, 0.20, 0.20, 0.10]
   fov: 0.0
   pixel_phasescreens: 256
   seed: 1
 
 propagation:
-  wavelengthInNm: 750
+  wavelengthInNm: 640
 
 pyramid:
-  pup_diam: 21
-  pup_dist: 25
+  pup_diam: 40
+  pup_dist: 48
   fov: 2.0
   mod_amp: 3.0
-  output_resolution: 50
-  wavelengthInNm: 750
+  output_resolution: 96
+  wavelengthInNm: 640
 
 detector:
-  size: [50, 50]
+  size: [96, 96]
   dt: 0.001
   bandw: 300
   photon_noise: false
@@ -56,14 +56,14 @@ dm:
   n_act: 20
   geom: square
   circ_geom: false
-  obsratio: 0.0
+  obsratio: 0.112
   height: 0.0
 
 basis:
   type_str: zernike
-  obsratio: 0.0
+  obsratio: 0.112
 
 psf:
-  wavelengthInNm: 1650
+  wavelengthInNm: 2200
   nd: 4.0
   start_time: 0.0

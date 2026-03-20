@@ -162,7 +162,7 @@ The script-driven entry point is:
 
 .. code-block:: bash
 
-	python examples/scao/pywfs_oopao_soft_rtc_example.py --duration 10
+	python examples/pywfs/pywfs_oopao_soft_rtc_example.py --duration 10
 
 Use the companion notebook only once you want to step through the same workflow interactively.
 

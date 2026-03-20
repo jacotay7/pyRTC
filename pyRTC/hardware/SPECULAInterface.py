@@ -2,9 +2,8 @@
 
 This module adapts a narrow, pyRTC-owned SPECULA object graph into the
 wavefront-sensor and wavefront-corrector interfaces already used throughout the
-repository. The first implementation is intentionally limited to a soft-RTC,
-single-process Pyramid-WFS workflow where SPECULA owns the optical state and
-pyRTC owns slopes extraction and control.
+repository. SPECULA owns the optical state while pyRTC owns slopes extraction
+and control.
 """
 
 from __future__ import annotations
@@ -152,6 +151,55 @@ def derive_specula_pywfs_geometry(param: Mapping[str, Any]) -> dict[str, Any] | 
     }
 
 
+def derive_specula_shwfs_geometry(param: Mapping[str, Any]) -> dict[str, Any] | None:
+    param = _mapping_or_none(param)
+    if param is None:
+        return None
+
+    sh_conf = _mapping_or_none(param.get("sh"))
+    if sh_conf is None:
+        return None
+
+    subap_on_diameter = int(sh_conf.get("subap_on_diameter", 0) or 0)
+    subap_spacing = int(sh_conf.get("subap_npx", 0) or 0)
+    if subap_on_diameter < 1 or subap_spacing < 1:
+        return None
+
+    packed_width = subap_on_diameter * subap_spacing
+    packed_height = packed_width
+
+    detector_conf = _mapping_or_none(param.get("detector")) or {}
+    detector_size = detector_conf.get("size")
+    if isinstance(detector_size, (list, tuple)) and len(detector_size) >= 2:
+        width = int(detector_size[0])
+        height = int(detector_size[1])
+    else:
+        width = packed_width
+        height = packed_height
+
+    offset_x = max(int(np.round((width - packed_width) / 2.0)), 0)
+    offset_y = max(int(np.round((height - packed_height) / 2.0)), 0)
+
+    return {
+        "width": width,
+        "height": height,
+        "subApSpacing": subap_spacing,
+        "subApOffsetX": offset_x,
+        "subApOffsetY": offset_y,
+    }
+
+
+def _specula_slopes_type(system_conf: Mapping[str, Any] | None) -> str:
+    system_conf = _mapping_or_none(system_conf)
+    if system_conf is None:
+        return "pywfs"
+    slopes_conf = _mapping_or_none(system_conf.get("slopes"))
+    if slopes_conf is None:
+        return "pywfs"
+    slopes_type = str(slopes_conf.get("type", "PYWFS")).strip().lower()
+    return slopes_type or "pywfs"
+
+
 def derive_specula_wfc_display_geometry(param: Mapping[str, Any]) -> dict[str, Any] | None:
     param = _mapping_or_none(param)
     if param is None:
@@ -215,7 +263,8 @@ def sync_specula_pywfs_config(
     if param_mapping is None:
         return None
 
-    geometry = derive_specula_pywfs_geometry(param_mapping)
+    slopes_type = _specula_slopes_type(mutable_system_conf)
+    geometry = derive_specula_shwfs_geometry(param_mapping) if slopes_type == "shwfs" else derive_specula_pywfs_geometry(param_mapping)
     applied: dict[str, Any] = {}
 
     wfs_conf = mutable_system_conf.get("wfs")
@@ -228,15 +277,21 @@ def sync_specula_pywfs_config(
             applied["height"] = int(geometry["height"])
 
     slopes_conf = mutable_system_conf.get("slopes")
-    if isinstance(slopes_conf, dict) and str(slopes_conf.get("type", "")).lower() == "pywfs" and geometry is not None:
-        pupils = geometry.get("pupils")
-        if isinstance(pupils, list) and pupils:
-            slopes_conf["pupils"] = list(pupils)
-            applied["pupils"] = list(pupils)
-        pupil_radius = geometry.get("pupilsRadius")
-        if isinstance(pupil_radius, (int, np.integer)):
-            slopes_conf["pupilsRadius"] = int(pupil_radius)
-            applied["pupilsRadius"] = int(pupil_radius)
+    if isinstance(slopes_conf, dict) and geometry is not None:
+        if str(slopes_conf.get("type", "")).lower() == "pywfs":
+            pupils = geometry.get("pupils")
+            if isinstance(pupils, list) and pupils:
+                slopes_conf["pupils"] = list(pupils)
+                applied["pupils"] = list(pupils)
+            pupil_radius = geometry.get("pupilsRadius")
+            if isinstance(pupil_radius, (int, np.integer)):
+                slopes_conf["pupilsRadius"] = int(pupil_radius)
+                applied["pupilsRadius"] = int(pupil_radius)
+        elif str(slopes_conf.get("type", "")).lower() == "shwfs":
+            for key in ("subApSpacing", "subApOffsetX", "subApOffsetY"):
+                if key in geometry:
+                    slopes_conf[key] = int(geometry[key])
+                    applied[key] = int(geometry[key])
 
     wfc_conf = mutable_system_conf.get("wfc")
     wfc_geometry = derive_specula_wfc_display_geometry(param_mapping)
@@ -303,6 +358,7 @@ def _load_specula_bindings(*, device_idx: int, precision: int) -> SimpleNamespac
         CCD = importlib.import_module("specula.processing_objects.ccd").CCD
         DM = importlib.import_module("specula.processing_objects.dm").DM
         ModulatedPyramid = importlib.import_module("specula.processing_objects.modulated_pyramid").ModulatedPyramid
+        SH = importlib.import_module("specula.processing_objects.sh").SH
         PSF = importlib.import_module("specula.processing_objects.psf").PSF
     except Exception as exc:
         raise ImportError(
@@ -323,6 +379,7 @@ def _load_specula_bindings(*, device_idx: int, precision: int) -> SimpleNamespac
         CCD=CCD,
         DM=DM,
         ModulatedPyramid=ModulatedPyramid,
+        SH=SH,
         PSF=PSF,
     )
 
@@ -509,7 +566,7 @@ class SPECULASystemContext:
             self.modal_to_command,
         ) = self._build_dm_mapping()
         self.prop = prop or self._build_propagation()
-        self.pyramid = pyramid or self._build_pyramid()
+        self.pyramid = pyramid or self._build_wfs_sensor()
         self.detector = detector or self._build_detector()
         self.psf = psf or self._build_psf()
 
@@ -960,7 +1017,15 @@ class SPECULASystemContext:
             **psf_conf,
         )
 
-    def _build_pyramid(self):
+    def _build_wfs_sensor(self):
+        if _specula_slopes_type(self.system_conf) == "shwfs":
+            sh_conf = self._simul_object_kwargs("sh")
+            return self._bindings.SH(
+                target_device_idx=self.device_idx,
+                precision=self.precision,
+                **sh_conf,
+            )
+
         pyramid_conf = self._simul_object_kwargs("pyramid")
         return self._bindings.ModulatedPyramid(
             self.simul_params,
@@ -971,6 +1036,21 @@ class SPECULASystemContext:
 
     def _build_detector(self):
         detector_conf = self._simul_object_kwargs("detector")
+        if _specula_slopes_type(self.system_conf) == "shwfs":
+            sh_conf = self._simul_object_kwargs("sh")
+            subap_on_diameter = int(sh_conf.get("subap_on_diameter", 0) or 0)
+            subap_npx = int(sh_conf.get("subap_npx", 0) or 0)
+            expected_side = subap_on_diameter * subap_npx
+            detector_size = detector_conf.get("size")
+            if isinstance(detector_size, (list, tuple)) and len(detector_size) >= 2:
+                detector_width = int(detector_size[0])
+                detector_height = int(detector_size[1])
+                if detector_width != expected_side or detector_height != expected_side:
+                    raise ValueError(
+                        "SPECULA SHWFS detector size must match subap_on_diameter * subap_npx "
+                        f"({expected_side}x{expected_side}) because the SPECULA CCD expects the SH intensity "
+                        f"image shape exactly. Got detector.size={[detector_width, detector_height]}."
+                    )
         return self._bindings.CCD(
             self.simul_params,
             target_device_idx=self.device_idx,

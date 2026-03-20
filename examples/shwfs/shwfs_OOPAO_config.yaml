@@ -1,7 +1,7 @@
 oopao:
   className: pyRTC.hardware.OOPAOInterface.OOPAOInterface
   classFile: ../../pyRTC/hardware/OOPAOInterface.py
-  paramFile: pywfs_OOPAO_params.yaml
+  paramFile: shwfs_OOPAO_params.yaml
   wfcSection: wfc
   useAtmosphere: false
   inputStreams: {}
@@ -24,9 +24,9 @@ loop:
   - leakyIntegrator
   classFile: ../../pyRTC/Loop.py
 wfs:
-  name: OOPAOWFS
-  width: 28
-  height: 28
+  name: OOPAOSH
+  width: 120
+  height: 120
   darkCount: 1000
   affinity: 3
   className: pyRTC.hardware.OOPAOInterface.OOPAOWFSensor
@@ -39,10 +39,13 @@ wfs:
   - expose
   classFile: ../../pyRTC/hardware/OOPAOInterface.py
 slopes:
-  type: PYWFS
+  type: SHWFS
   signalType: slopes
   affinity: 4
-  flatNorm: true
+  contrast: 0.0
+  subApSpacing: 6
+  subApOffsetX: 0
+  subApOffsetY: 0
   className: SlopesProcess
   inputStreams:
     wfs: wfs
@@ -54,7 +57,7 @@ slopes:
   classFile: ../../pyRTC/SlopesProcess.py
 wfc:
   name: OOPAOWFC
-  numActuators: 100
+  numActuators: 441
   numModes: 80
   flatFile: ''
   saveFile: flat.npy
@@ -76,8 +79,8 @@ wfc:
 psf:
   name: OOPAOPSF
   index: 0
-  width: 200
-  height: 200
+  width: 300
+  height: 300
   darkCount: 10
   integration: 5
   affinity: 3
@@ -109,26 +112,6 @@ manager:
     slopes: ../../pyRTC/SlopesProcess.py
     wfc: ../../pyRTC/hardware/OOPAOInterface.py
     psf: ../../pyRTC/hardware/OOPAOInterface.py
-  graphLayout:
-    positions:
-      oopao:
-        x: 142.41983331640614
-        y: 424.21956642421856
-      wfc:
-        x: 1021.9363610453123
-        y: 235.23111875000006
-      wfs:
-        x: -18.0
-        y: -48.20329374999997
-      slopes:
-        x: 282.23906875
-        y: 188.1436687499999
-      psf:
-        x: 568.4230562499997
-        y: 412.17546874999994
-      loop:
-        x: 588.0280210757815
-        y: -34.74503125
 metadata: {}
 streams: {}
 resources: {}

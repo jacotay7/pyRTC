@@ -11,9 +11,9 @@ from pyRTC.utils import read_yaml_file
 
 def test_pywfs_notebook_surrogate_smoke():
     repo_root = Path(__file__).resolve().parents[2]
-    notebook_path = repo_root / "examples" / "scao" / "pywfs_example_OOPAO.ipynb"
-    config_path = repo_root / "examples" / "scao" / "pywfs_OOPAO_config.yaml"
-    param_path = repo_root / "examples" / "scao" / "pywfs_OOPAO_params.yaml"
+    notebook_path = repo_root / "examples" / "pywfs" / "pywfs_example_OOPAO.ipynb"
+    config_path = repo_root / "examples" / "pywfs" / "pywfs_OOPAO_config.yaml"
+    param_path = repo_root / "examples" / "pywfs" / "pywfs_OOPAO_params.yaml"
 
     assert notebook_path.exists()
     assert config_path.exists()

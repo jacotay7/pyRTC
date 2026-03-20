@@ -445,7 +445,7 @@ class SlopesProcess(pyRTCComponent):
                 self.tmp1, self.tmp2 = np.empty_like(self.p1), np.empty_like(self.p1)
 
             elif self.wfsType == "shwfs":
-                self.shwfsContrast = setFromConfig(self.conf, "contrast", 0)
+                self.shwfsContrast = setFromConfig(self.conf, "contrast", 0.0)
                 self.subApSpacing = self.conf["subApSpacing"]
                 self.regionSize = int(np.round(self.subApSpacing, 0))
                 self.numRegions = self.imageShape[0] // self.regionSize
