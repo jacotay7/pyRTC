@@ -975,11 +975,6 @@ def test_specula_circular_dm_uses_circular_display_diameter(monkeypatch):
     sys.modules.pop("pyRTC.hardware.SPECULAInterface", None)
     module = importlib.import_module("pyRTC.hardware.SPECULAInterface")
 
-    conf = {
-        "wfs": {"name": "wfs", "width": 1, "height": 1, "darkCount": 1, "functions": []},
-        "slopes": {"type": "PYWFS", "signalType": "slopes"},
-        "wfc": {"name": "wfc", "numActuators": 7, "numModes": 4, "functions": []},
-    }
     param = _specula_param()
     param["dm"] = {"height": 0.0, "type_str": "zonal", "n_act": 2, "circ_geom": True, "obsratio": 0.0}
 

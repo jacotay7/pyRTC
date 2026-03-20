@@ -26,7 +26,7 @@ from pyRTC.ScienceCamera import ScienceCamera
 from pyRTC.WavefrontCorrector import WavefrontCorrector
 from pyRTC.WavefrontSensor import WavefrontSensor
 from pyRTC.pyRTCComponent import pyRTCComponent
-from pyRTC.utils import decrease_nice, generate_circular_aperture_mask, read_yaml_file, setFromConfig, set_affinity
+from pyRTC.utils import decrease_nice, read_yaml_file, setFromConfig, set_affinity
 
 
 logger = get_logger(__name__)
