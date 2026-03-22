@@ -293,8 +293,10 @@ def _install_fake_specula(monkeypatch):
     from testsupport import DummySHM
 
     fake_wfs_module = importlib.import_module("pyRTC.WavefrontSensor")
+    fake_science_module = importlib.import_module("pyRTC.ScienceCamera")
     fake_wfc_module = importlib.import_module("pyRTC.WavefrontCorrector")
     monkeypatch.setattr(fake_wfs_module, "ImageSHM", DummySHM)
+    monkeypatch.setattr(fake_science_module, "ImageSHM", DummySHM)
     monkeypatch.setattr(fake_wfc_module, "ImageSHM", DummySHM)
 
     init_calls = []

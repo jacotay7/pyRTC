@@ -173,17 +173,19 @@ class StreamConnection:
     def prime(self):
         """Prime cached count and timestamp state before timer-driven refreshes."""
 
+        current_time_fn = getattr(self, "current_time_fn", time.monotonic)
         metadata = self.metadata_shm.read_noblock()
         self.last_count = metadata[ImageSHM.METADATA_INDEX_COUNT]
         self.last_time = metadata[ImageSHM.METADATA_INDEX_WRITE_TIME]
         self.last_fps_text = None
-        self.last_update_monotonic = self.current_time_fn()
+        self.last_update_monotonic = current_time_fn()
         return self.cached_frame
 
     def poll(self):
         """Poll the latest metadata and return the current viewer snapshot."""
 
-        now = self.current_time_fn()
+        current_time_fn = getattr(self, "current_time_fn", time.monotonic)
+        now = current_time_fn()
         metadata = self.metadata_shm.read_noblock()
         new_count = metadata[ImageSHM.METADATA_INDEX_COUNT]
         new_time = metadata[ImageSHM.METADATA_INDEX_WRITE_TIME]
