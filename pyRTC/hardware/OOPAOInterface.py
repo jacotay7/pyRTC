@@ -1,6 +1,6 @@
 """Bridge between pyRTC components and an OOPAO optical simulation.
 
-This module adapts the OOPAO telescope, atmosphere, deformable-mirror, pyramid
+This module adapts the OOPAO telescope, atmosphere, deformable-mirror, wavefront
 sensor, and PSF-camera objects into the pyRTC component interfaces. It is used
 for simulation-backed development and validation where the control stack should
 behave as if it were driving real hardware.
@@ -30,6 +30,11 @@ from OOPAO.Pyramid import Pyramid
 from OOPAO.Source import Source
 from OOPAO.Telescope import Telescope
 
+try:
+    from OOPAO.ShackHartmann import ShackHartmann
+except ModuleNotFoundError:  # pragma: no cover - exercised by fake-module tests
+    ShackHartmann = None
+
 
 logger = get_logger(__name__)
 
@@ -37,8 +42,21 @@ logger = get_logger(__name__)
 def _unwrap_oopao_context(resource):
     return getattr(resource, "context", resource)
 
+
+def _oopao_slopes_type(system_conf: Mapping[str, Any] | None) -> str:
+    if not isinstance(system_conf, Mapping):
+        return "pywfs"
+    slopes_conf = system_conf.get("slopes")
+    if not isinstance(slopes_conf, Mapping):
+        return "pywfs"
+    slopes_type = slopes_conf.get("type", "PYWFS")
+    if not isinstance(slopes_type, str):
+        return "pywfs"
+    slopes_type = slopes_type.strip().lower()
+    return slopes_type or "pywfs"
+
 class OOPAOWFSensor(WavefrontSensor):
-    """Wavefront-sensor wrapper around an OOPAO pyramid sensor.
+    """Wavefront-sensor wrapper around an OOPAO wavefront sensor.
 
     The wrapper advances the simulated atmosphere when required, propagates the
     guide star through the telescope and deformable mirror, and exposes the
@@ -265,7 +283,14 @@ class OOPAOSystemContext:
         if self.dm is None:
             self.dm = self._build_object("dm", DeformableMirror, telescope=self.tel)
         if self.wfs is None:
-            self.wfs = self._build_object("wfs", Pyramid, telescope=self.tel)
+            slopes_type = _oopao_slopes_type(self.system_conf)
+            if slopes_type == "shwfs":
+                if ShackHartmann is None:
+                    raise ImportError("OOPAO ShackHartmann support is unavailable in the current environment")
+                wfs_factory = ShackHartmann
+            else:
+                wfs_factory = Pyramid
+            self.wfs = self._build_object("wfs", wfs_factory, telescope=self.tel)
 
         if hasattr(self.atm, "initializeAtmosphere"):
             logger.info("Initializing OOPAO atmosphere against the telescope model")

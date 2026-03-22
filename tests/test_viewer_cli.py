@@ -116,7 +116,7 @@ def test_view_compute_window_size_starts_smaller_than_previous_large_defaults():
     assert height <= 900
 
 
-def test_stream_connection_reports_paused_without_new_frame():
+def test_stream_connection_keeps_last_fps_during_pause_grace_period():
     class _Meta:
         def __init__(self):
             self.calls = 0
@@ -141,9 +141,46 @@ def test_stream_connection_reports_paused_without_new_frame():
     connection.name = "signal2D"
     connection.metadata_shm = _Meta()
     connection.shm = _Shm()
+    connection.pause_timeout_seconds = 2.0
+    connection.current_time_fn = lambda: 11.0
     connection.last_count = 1
     connection.last_time = 10.0
     connection.last_fps_text = "1.0 FPS"
+    connection.last_update_monotonic = 10.0
+    connection.cached_frame = view._normalize_frame([[1.0, 2.0], [3.0, 4.0]])
+
+    snapshot = connection.poll()
+
+    assert snapshot["changed"] is False
+    assert snapshot["status_changed"] is False
+    assert snapshot["fps_text"] == "1.0 FPS"
+
+
+def test_stream_connection_reports_paused_after_timeout_without_new_frame():
+    class _Meta:
+        def read_noblock(self):
+            return [1, 10.0]
+
+        def close(self):
+            return None
+
+    class _Shm:
+        def read_noblock(self):
+            return [[1.0, 2.0], [3.0, 4.0]]
+
+        def close(self):
+            return None
+
+    connection = StreamConnection.__new__(StreamConnection)
+    connection.name = "signal2D"
+    connection.metadata_shm = _Meta()
+    connection.shm = _Shm()
+    connection.pause_timeout_seconds = 2.0
+    connection.current_time_fn = lambda: 12.5
+    connection.last_count = 1
+    connection.last_time = 10.0
+    connection.last_fps_text = "1.0 FPS"
+    connection.last_update_monotonic = 10.0
     connection.cached_frame = view._normalize_frame([[1.0, 2.0], [3.0, 4.0]])
 
     snapshot = connection.poll()

@@ -96,10 +96,23 @@ def test_set_affinity_invalid_type():
 def test_set_from_config_and_signal2d():
     conf = {"x": 2}
     assert utils.setFromConfig(conf, "x", 1) == 2
+    assert utils.setFromConfig(conf, "x", 1.0) == 2.0
     layout = np.array([[True, False, True, False], [False, True, False, True]])
     signal = np.arange(np.count_nonzero(layout), dtype=float)
     out = utils.signal2D(signal, layout)
     assert out.shape == layout.shape
+
+
+def test_set_from_config_allows_numeric_scalar_coercions_but_not_fractional_ints():
+    assert utils.setFromConfig({"x": 2.0}, "x", 1) == 2
+    assert utils.setFromConfig({"x": np.float32(3.0)}, "x", 1) == 3
+    assert utils.setFromConfig({"x": np.int32(4)}, "x", 1.0) == 4.0
+
+    try:
+        utils.setFromConfig({"x": 2.5}, "x", 1)
+        assert False
+    except AssertionError:
+        assert True
 
 
 def test_dtype_roundtrip():

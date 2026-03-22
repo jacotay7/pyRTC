@@ -72,6 +72,55 @@ def test_manager_adapter_set_parameter_updates_loaded_config():
     assert adapter.get_parameter("loop", "gain") == 0.55
 
 
+def test_manager_adapter_surfaces_runtime_parameter_hooks_and_applies_live_values():
+    class _FakeComponent:
+        @staticmethod
+        def gui_runtime_parameters(_conf):
+            return [
+                {
+                    "name": "seeing",
+                    "type": "float",
+                    "description": "Live seeing control",
+                    "default": 0.8,
+                }
+            ]
+
+        def __init__(self):
+            self.seeing = 0.8
+
+    class _FakeRuntime:
+        mode = "soft-rtc"
+        component_class = _FakeComponent
+
+    class _FakeManager:
+        def __init__(self, component):
+            self.state = "running"
+            self.runtimes = {"specula": _FakeRuntime()}
+            self.config = {"specula": {"className": "fake.Specula"}}
+            self._component = component
+
+        def get_component(self, section_name):
+            return self._component
+
+        def status(self):
+            return {"components": {"specula": {"state": "running", "mode": "soft-rtc"}}, "state": "running"}
+
+    adapter = ManagerAdapter()
+    adapter.config = {"specula": {"className": "fake.Specula"}}
+    adapter.manager = _FakeManager(_FakeComponent())
+
+    rows = adapter.get_component_parameters("specula")
+    seeing_row = next(row for row in rows if row["name"] == "seeing")
+    assert seeing_row["type"] == "float"
+    assert seeing_row["value"] == 0.8
+
+    updated = adapter.set_parameter("specula", "seeing", "0.55")
+
+    assert updated == 0.55
+    assert adapter.manager.get_component("specula").seeing == 0.55
+    assert "seeing" not in adapter.config["specula"]
+
+
 def test_manager_adapter_build_exposes_built_state(tmp_path):
     adapter = ManagerAdapter()
     config_path = tmp_path / "synthetic_runtime_config.yaml"

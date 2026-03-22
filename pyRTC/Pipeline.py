@@ -37,6 +37,7 @@ from pyRTC.logging_utils import (
     ensure_logging_configured,
     get_logger,
 )
+from pyRTC.config_runtime import sync_runtime_config
 from pyRTC.utils import (
     bind_socket,
     dtype_to_float,
@@ -910,6 +911,8 @@ def initExistingShm(shmName, gpuDevice=None):
 
 
 def build_component_runtime_config(system_conf: dict, section_name: str) -> dict:
+    sync_runtime_config(system_conf)
+
     conf = dict(system_conf[section_name])
     conf["_sectionName"] = section_name
     conf["_systemStreams"] = dict(system_conf.get("streams", {}))
@@ -1001,6 +1004,8 @@ def _default_layout_shape(num_actuators: int) -> tuple[int, int]:
 
 
 def expected_output_shm_specs_for_config(system_conf: dict) -> dict[str, dict[str, object]]:
+    sync_runtime_config(system_conf)
+
     specs: dict[str, dict[str, object]] = {}
 
     wfs_conf = system_conf.get("wfs")

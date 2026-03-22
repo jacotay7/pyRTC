@@ -171,13 +171,33 @@ def test_reconcile_expected_output_shms_clears_only_mismatched_streams(monkeypat
 
 
 def test_expected_output_shm_specs_include_pywfs_signal2d():
-    config = read_system_config(REPO_ROOT / "examples" / "scao" / "pywfs_OOPAO_config.yaml", validate=False)
+    config = read_system_config(REPO_ROOT / "examples" / "pywfs" / "pywfs_OOPAO_config.yaml", validate=False)
 
     specs = expected_output_shm_specs_for_config(config)
 
     assert specs["signal"]["dtype"] == np.float32
     assert specs["signal2D"]["dtype"] == np.float32
-    assert specs["signal2D"]["shape"] == (14, 28)
+    assert specs["signal2D"]["shape"] == (24, 48)
+
+
+def test_expected_output_shm_specs_include_oopao_shwfs_signal2d():
+    config = read_system_config(REPO_ROOT / "examples" / "shwfs" / "shwfs_OOPAO_config.yaml", validate=False)
+
+    specs = expected_output_shm_specs_for_config(config)
+
+    assert specs["signal"]["dtype"] == np.float32
+    assert specs["signal2D"]["dtype"] == np.float32
+    assert specs["signal2D"]["shape"] == (40, 20)
+
+
+def test_expected_output_shm_specs_include_specula_shwfs_signal2d():
+    config = read_system_config(REPO_ROOT / "examples" / "shwfs" / "shwfs_SPECULA_config.yaml", validate=False)
+
+    specs = expected_output_shm_specs_for_config(config)
+
+    assert specs["wfs"]["shape"] == (160, 160)
+    assert specs["signal"]["dtype"] == np.float32
+    assert specs["signal2D"]["shape"] == (40, 20)
 
 
 def test_socket_json_helpers_handle_back_to_back_messages():

@@ -38,6 +38,60 @@ def test_slope_algorithms_numpy_numba():
     assert out.shape == (2 * n,)
 
 
+def test_pywfs_slope_algorithms_return_zero_on_dark_frame():
+    img = np.zeros((4, 4), dtype=np.float32)
+    p1 = np.zeros_like(img, dtype=bool)
+    p2 = np.zeros_like(img, dtype=bool)
+    p3 = np.zeros_like(img, dtype=bool)
+    p4 = np.zeros_like(img, dtype=bool)
+    p1[:2, :2] = True
+    p2[:2, 2:] = True
+    p3[2:, :2] = True
+    p4[2:, 2:] = True
+
+    n = int(np.sum(p1))
+    ref = np.ones(2 * n, dtype=np.float32)
+
+    numpy_out = slopes_mod.computeSlopesPYWFSOptimNumpy(
+        image=img.ravel(),
+        p1Mask=p1.ravel(),
+        p2Mask=p2.ravel(),
+        p3Mask=p3.ravel(),
+        p4Mask=p4.ravel(),
+        p1=np.zeros(n, dtype=np.float32),
+        p2=np.zeros(n, dtype=np.float32),
+        p3=np.zeros(n, dtype=np.float32),
+        p4=np.zeros(n, dtype=np.float32),
+        tmp1=np.zeros(n, dtype=np.float32),
+        tmp2=np.zeros(n, dtype=np.float32),
+        numPixelsInPupils=n,
+        slopes=np.zeros(2 * n, dtype=np.float32),
+        refSlopes=ref,
+    )
+
+    numba_out = slopes_mod.computeSlopesPYWFSOptimNumba(
+        image=img.ravel(),
+        p1Mask=p1.ravel(),
+        p2Mask=p2.ravel(),
+        p3Mask=p3.ravel(),
+        p4Mask=p4.ravel(),
+        p1=np.zeros(n, dtype=np.float32),
+        p2=np.zeros(n, dtype=np.float32),
+        p3=np.zeros(n, dtype=np.float32),
+        p4=np.zeros(n, dtype=np.float32),
+        tmp1=np.zeros(n, dtype=np.float32),
+        tmp2=np.zeros(n, dtype=np.float32),
+        numPixelsInPupils=n,
+        slopes=np.zeros(2 * n, dtype=np.float32),
+        refSlopes=ref,
+    )
+
+    assert np.all(np.isfinite(numpy_out))
+    assert np.all(np.isfinite(numba_out))
+    assert np.all(numpy_out == 0.0)
+    assert np.all(numba_out == 0.0)
+
+
 
 def test_torch_path_disabled(monkeypatch):
     monkeypatch.setattr(slopes_mod, "gpu_torch_available", lambda: False)
