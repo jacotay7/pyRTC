@@ -124,6 +124,7 @@ def validate_loop_config(conf: Any) -> None:
     conf = _require_mapping(conf, component)
 
     _validate_optional_numeric(conf, "numDroppedModes", component, minimum=0)
+    _validate_optional_numeric(conf, "conditioning", component, minimum=1)
     _validate_optional_numeric(conf, "gain", component)
     _validate_optional_numeric(conf, "leakyGain", component)
     _validate_optional_numeric(conf, "hardwareDelay", component, minimum=0)
@@ -134,6 +135,12 @@ def validate_loop_config(conf: Any) -> None:
     _validate_optional_numeric(conf, "iGain", component)
     _validate_optional_numeric(conf, "dGain", component)
     _validate_optional_numeric(conf, "derivativeFilter", component)
+    _validate_optional_numeric(conf, "tikhonovReg", component, minimum=0)
+
+    if "CMMethod" in conf:
+        value = conf["CMMethod"]
+        if not isinstance(value, str) or value.lower() not in {"svd", "tikhonov"}:
+            raise ConfigValidationError(f"{component}: 'CMMethod' must be one of ['svd', 'tikhonov']")
 
     for key in ["controlLimits", "integralLimits", "absoluteLimits"]:
         if key not in conf:
@@ -539,6 +546,11 @@ def setFromConfig(conf, name, default):
     debugStr = f"There is a type mismatch between the default value for config variable {name} and the given value: {type(val).__name__} != {type(default).__name__}"
 
     if default is not None:
+        if isinstance(default, float) and isinstance(val, (int, float, np.integer, np.floating)) and not isinstance(val, bool):
+            return float(val)
+        if isinstance(default, int) and isinstance(val, (int, float, np.integer, np.floating)) and not isinstance(val, bool):
+            if float(val).is_integer():
+                return int(val)
         assert isinstance(val, type(default)), debugStr
 
     return val

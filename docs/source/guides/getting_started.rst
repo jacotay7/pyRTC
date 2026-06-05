@@ -32,6 +32,7 @@ Optional extras:
 
 .. code-block:: bash
 
+	pip install pyrtcao[aotpy]
 	pip install pyrtcao[docs]
 	pip install pyrtcao[gpu]
 	pip install pyrtcao[viewer]
@@ -64,6 +65,37 @@ After installation, verify that the public package imports cleanly:
 .. code-block:: bash
 
 	python -c "import pyRTC; print(pyRTC.__all__)"
+
+Validate a Config Before Launch
+-------------------------------
+
+Before starting a system, validate the full YAML file:
+
+.. code-block:: bash
+
+	pyrtc-validate-config examples/synthetic_shwfs/config.yaml
+
+For automation or GUI-oriented tooling, JSON output is also available:
+
+.. code-block:: bash
+
+	pyrtc-validate-config examples/synthetic_shwfs/config.yaml --format json
+
+Export Telemetry Sessions to AOTPy
+---------------------------------
+
+If you want to move a saved telemetry session into the broader AO ecosystem,
+install the optional AOTPy dependency and export the session after capture:
+
+.. code-block:: bash
+
+	pip install pyrtcao[aotpy]
+	pyrtc-export-aotpy data/session_20260309_120000_abcd1234 exported_session.fits
+
+The exporter only maps the streams actually present in the session. The current
+mapping is conservative: `wfs` becomes detector pixels, `signal` becomes WFS
+measurements when the shape is interpretable, `wfc` becomes command history,
+and `psfShort` or `psfLong` become scoring-camera outputs.
 
 Minimal Component Example
 -------------------------
@@ -130,7 +162,7 @@ The script-driven entry point is:
 
 .. code-block:: bash
 
-	python examples/scao/run_soft_rtc.py --duration 10
+	python examples/pywfs/pywfs_oopao_soft_rtc_example.py --duration 10
 
 Use the companion notebook only once you want to step through the same workflow interactively.
 
@@ -172,7 +204,7 @@ You can also set logging once in the shell for multi-process runs:
 	export PYRTC_LOG_LEVEL=INFO
 	export PYRTC_LOG_DIR=./logs
 	export PYRTC_LOG_COLOR=1
-	python examples/synthetic_shwfs/run_soft_rtc.py --duration 15
+	python examples/synthetic_shwfs/synthetic_shwfs_soft_rtc_example.py --duration 15
 
 Supported environment variables are:
 

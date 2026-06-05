@@ -94,6 +94,9 @@ class WavefrontCorrector(pyRTCComponent):
         Floating actuator matrix.
     frameDelay : int
         Frame delay.
+    commandCap : float or None
+        Optional absolute limit applied to actuator-space commands before they
+        are handed to the hardware adapter.
     saveFile : str
         File to save the shape.
     layout : numpy.ndarray or None
@@ -120,7 +123,8 @@ class WavefrontCorrector(pyRTCComponent):
             self.numModes = conf["numModes"]
             self.m2cFile = setFromConfig(conf, "m2cFile", "")
 
-            self.correctionVector = ImageSHM("wfc", (self.numModes,), np.float32, gpuDevice=self.gpuDevice, consumer=False)
+            self.correctionVector = ImageSHM(self.output_stream_name("wfc"), (self.numModes,), np.float32, gpuDevice=self.gpuDevice, consumer=False)
+            self.register_output_stream("wfc", self.correctionVector)
             self.correctionVector2D = None
 
             self.setLayout(None)
@@ -129,6 +133,7 @@ class WavefrontCorrector(pyRTCComponent):
             self.flatModal = np.zeros(self.numModes, dtype=self.flat.dtype)
             self.currentShape = np.zeros_like(self.flat)
             self.flatFile = setFromConfig(conf, "flatFile", "")
+            self.commandCap = setFromConfig(conf, "commandCap", None)
             self.loadFlat()
 
             self.actuatorStatus = np.array([True] * self.numActuators)
@@ -141,10 +146,11 @@ class WavefrontCorrector(pyRTCComponent):
             self.saveFile = setFromConfig(conf, "saveFile", "wfcShape.npy")
             self.readM2C()
             self.logger.info(
-                "Initialized wavefront corrector name=%s actuators=%s modes=%s",
+                "Initialized wavefront corrector name=%s actuators=%s modes=%s commandCap=%s",
                 self.name,
                 self.numActuators,
                 self.numModes,
+                self.commandCap,
             )
         except Exception:
             logger.exception("Failed to initialize wavefront corrector")
@@ -212,9 +218,10 @@ class WavefrontCorrector(pyRTCComponent):
             self.layout = layout
             if isinstance(self.layout, np.ndarray):
                 self.layout = self.layout > 0
-                self.correctionVector2D = ImageSHM("wfc2D", self.layout.shape, np.float32, gpuDevice=self.gpuDevice, consumer=False)
-                self.correctionVector2D.write(np.zeros(self.layout.shape, dtype=np.float32))
-                self.correctionVector2D_template = self.correctionVector2D.read_noblock()
+                self.correctionVector2D = ImageSHM(self.output_stream_name("wfc2D"), self.layout.shape, np.float32, gpuDevice=self.gpuDevice, consumer=False)
+                self.register_output_stream("wfc2D", self.correctionVector2D, source_streams=["wfc"], lineage_source="wfc")
+                self.write_stream("wfc2D", np.zeros(self.layout.shape, dtype=np.float32), source_streams=["wfc"], lineage_source="wfc")
+                self.correctionVector2D_template = self.read_stream("wfc2D", block=False)
 
                 self.index_map = np.zeros(self.layout.shape, dtype=int)
                 self.index_map[self.layout > 0] = np.arange(np.sum(self.layout)).astype(int) + 1
@@ -375,7 +382,7 @@ class WavefrontCorrector(pyRTCComponent):
         child hardware class and registered to the real-time loop from the config.
         """
         #Read a new modal correction in M2C basis
-        self.currentCorrection = self.correctionVector.read()
+        self.currentCorrection = self.read_stream("wfc")
         #If we added a frame delay
         if self.frameDelay > 0:
             #Roll back shape buffer by 1
@@ -390,11 +397,15 @@ class WavefrontCorrector(pyRTCComponent):
             self.currentShape = ModaltoZonalWithFlat(self.currentCorrection, 
                                                      self.f_M2C,
                                                      self.flat)
+
+        if self.commandCap is not None:
+            self.currentShape = np.clip(self.currentShape, -self.commandCap, self.commandCap)
         
         #If we have a 2D SHM instance, update it 
         if isinstance(self.correctionVector2D, ImageSHM):
+            self.correctionVector2D_template.fill(0)
             self.correctionVector2D_template[self.layout] = self.currentShape - self.flat
-            self.correctionVector2D.write(self.correctionVector2D_template)
+            self.write_stream("wfc2D", self.correctionVector2D_template, source_streams=["wfc"], lineage_source="wfc")
         #Overwrite with hardware instructions after this to send to hardware
         return
 
@@ -408,8 +419,8 @@ class WavefrontCorrector(pyRTCComponent):
             Current correction vector.
         """
         if block:
-            return self.correctionVector.read()
-        return self.correctionVector.read_noblock()
+            return self.read_stream("wfc")
+        return self.read_stream("wfc", block=False)
 
     def write(self, correction):
         """
@@ -423,7 +434,7 @@ class WavefrontCorrector(pyRTCComponent):
         self.currentCorrection = correction
         #We assume that sendToHardware is registered to the real-time loop
         #And that the WFC is running (i.e. start has been called)
-        self.correctionVector.write(self.currentCorrection)
+        self.write_stream("wfc", self.currentCorrection)
         return 
 
     def flatten(self):

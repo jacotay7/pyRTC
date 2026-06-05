@@ -3,6 +3,7 @@ from importlib import import_module
 
 _EXPORTS = {
     "ALPAODM": (".ALPAODM", "ALPAODM"),
+    "SPECULAInterface": (".SPECULAInterface", "SPECULAInterface"),
     "spinCam": (".SpinnakerScienceCam", "spinCam"),
     "XIMEA_WFS": (".ximeaWFS", "XIMEA_WFS"),
     "PIModulator": (".PIModulator", "PIModulator"),
@@ -10,6 +11,7 @@ _EXPORTS = {
     "PIDOptimizer": (".PIDOptimizer", "PIDOptimizer"),
     "SyntheticSHWFS": (".SyntheticSystems", "SyntheticSHWFS"),
     "SyntheticScienceCamera": (".SyntheticSystems", "SyntheticScienceCamera"),
+    "SyntheticWFC": (".SyntheticSystems", "SyntheticWFC"),
     "loopOptimizer": (".loopHyperparamsOptimizer", "loopOptimizer"),
 }
 

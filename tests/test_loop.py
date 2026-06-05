@@ -30,14 +30,41 @@ def test_loop_methods_without_full_init(tmp_path):
     loop.numModes = 4
     loop.numDroppedModes = 1
     loop.numActiveModes = 3
+    loop.CMMethod = "svd"
+    loop.conditioning = None
+    loop.tikhonovReg = 0.0
+    loop.lastSingularValues = np.array([], dtype=np.float64)
+    loop.lastRetainedSingularMask = np.array([], dtype=bool)
+    loop.lastSuggestedConditioning = None
+    loop.lastSingularValueFit = None
     loop.IM = np.random.RandomState(0).randn(6, 4).astype(np.float32)
     loop.CM = np.zeros((4, 6), dtype=np.float32)
     loop.gain = 0.2
     loop.computeCM()
     assert loop.CM.shape == (4, 6)
 
+    loop.computeCM(conditioning=10.0)
+    assert loop.conditioning == 10.0
+    assert loop.lastSingularValues.size == min(loop.IM[:, : loop.numActiveModes].shape)
+
+    loop.computeCM(method="tikhonov", conditioning=10.0, tikhonovReg=0.05)
+    assert loop.CMMethod == "tikhonov"
+    assert np.isclose(loop.tikhonovReg, 0.05)
+
+    suggestion = loop.suggestConditioningNumber()
+    assert suggestion is None or suggestion >= 1.0
+    if suggestion is not None:
+        assert loop.lastSingularValueFit is not None
+        assert "fit_curve" in loop.lastSingularValueFit
+
+    plotted = loop.plotSingularValues()
+    assert plotted is None or plotted >= 1.0
+
     loop.setGain(0.5)
     assert np.allclose(loop.gCM, 0.5 * loop.CM)
+
+    loop.gain = 0.3
+    assert np.allclose(loop.gCM, 0.3 * loop.CM)
 
     loop.setPeturbAmp(0.3)
     assert np.isclose(loop.perturbAmp, 0.3)
@@ -127,3 +154,33 @@ def test_standard_integrator_uses_nonblocking_wfc_read():
 
     assert "correction" in sent
     assert np.max(np.abs(sent["correction"])) > 0
+
+
+def test_loop_compute_cm_zero_matrix_without_failure():
+    loop = loop_mod.Loop.__new__(loop_mod.Loop)
+    loop.numModes = 3
+    loop.numDroppedModes = 0
+    loop.numActiveModes = 3
+    loop.CMMethod = "svd"
+    loop.conditioning = None
+    loop.tikhonovReg = 0.0
+    loop.lastSingularValueFit = None
+    loop.IM = np.zeros((5, 3), dtype=np.float32)
+    loop.CM = np.zeros((3, 5), dtype=np.float32)
+    loop.gain = 0.1
+
+    loop.computeCM()
+
+    assert np.allclose(loop.CM, 0.0)
+    assert loop.lastSingularValues.size == 3
+
+
+def test_conditioning_suggestion_tracks_knee():
+    singular_values = np.array([1.0, 0.5, 0.25, 0.125, 1e-3, 5e-4], dtype=np.float64)
+
+    suggestion, fit = loop_mod.Loop._suggest_conditioning_from_singular_values(singular_values)
+
+    assert suggestion is not None
+    assert fit is not None
+    assert fit["suggested_index"] == 4
+    assert np.isclose(suggestion, 1.0 / singular_values[4])

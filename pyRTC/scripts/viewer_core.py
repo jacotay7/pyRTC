@@ -169,6 +169,53 @@ class AddPlotPlaceholder(QFrame):
         )
 
 
+class UnavailableStreamPlaceholder(QFrame):
+    """Placeholder shown when a requested SHM stream cannot be opened."""
+
+    def __init__(self, shm_name: str, retry_callback):
+        _require_viewer_backend()
+        super().__init__()
+        self.shm_name = shm_name
+        self.retry_callback = retry_callback
+        self.theme = THEMES["dark"]
+        self._build_ui()
+        self.apply_theme(self.theme)
+
+    def _build_ui(self):
+        self.setFrameShape(QFrame.StyledPanel)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(10)
+        layout.addStretch(1)
+
+        self.title_label = QLabel(self.shm_name)
+        self.title_label.setAlignment(Qt.AlignCenter)
+        layout.addWidget(self.title_label)
+
+        self.status_label = QLabel("Stream unavailable")
+        self.status_label.setAlignment(Qt.AlignCenter)
+        layout.addWidget(self.status_label)
+
+        self.retry_button = QPushButton("Reconnect")
+        self.retry_button.setMinimumHeight(44)
+        self.retry_button.clicked.connect(self.retry_callback)
+        layout.addWidget(self.retry_button)
+        layout.addStretch(1)
+
+    def apply_theme(self, theme: ViewerTheme):
+        self.theme = theme
+        self.setStyleSheet(
+            f"QFrame {{ background: {theme.panel_bg}; border: 1px dashed {theme.panel_border}; border-radius: 12px; }}"
+            f"QLabel {{ border: 0; color: {theme.subtext}; background: transparent; font-size: 13px; }}"
+            f"QPushButton {{ background: {theme.button_bg}; color: {theme.button_fg}; border: 1px solid {theme.panel_border}; "
+            f"border-radius: 10px; font-size: 14px; font-weight: 600; padding: 8px 12px; }}"
+            f"QPushButton:hover {{ border-color: {theme.accent}; }}"
+        )
+        self.title_label.setStyleSheet(f"font-weight: 700; font-size: 14px; color: {theme.text};")
+        self.status_label.setStyleSheet(f"font-size: 13px; color: {theme.subtext};")
+
+
 class EdgeArrowButton(QToolButton):
     """Small edge-mounted button used to grow the mosaic layout."""
 
@@ -221,7 +268,7 @@ class Stream2DWidget(QFrame):
         self.log_scale = log_scale
         self.font_size = font_size
         self.theme = THEMES["dark"]
-        self._last_stats_text = ""
+        self._last_range_text = ("", "")
         self._last_status_state = "paused"
         self._disposed = False
         self.colorbar = None
@@ -259,7 +306,7 @@ class Stream2DWidget(QFrame):
 
         outer_layout.addLayout(header_layout)
 
-        self.figure = Figure(figsize=(4.0, 3.4))
+        self.figure = Figure(figsize=(4.0, 4.0))
         self.axes = self.figure.add_subplot(111)
         self.axes.set_anchor("C")
         self.canvas = FigureCanvas(self.figure)
@@ -285,20 +332,29 @@ class Stream2DWidget(QFrame):
         stats_layout = QHBoxLayout()
         stats_layout.setContentsMargins(0, 2, 0, 0)
         stats_layout.setSpacing(8)
+        fixed_width = 132
+        self.min_label = QLabel("")
+        self.min_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        self.min_label.setFixedWidth(fixed_width)
+        self.min_label.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        self.min_label.setVisible(self.show_range)
+        stats_layout.addWidget(self.min_label, alignment=Qt.AlignLeft)
+        stats_layout.addStretch(1)
+
         self.status_label = QLabel("")
         self.status_label.setAlignment(Qt.AlignCenter)
-        self.status_label.setMinimumWidth(92)
+        self.status_label.setFixedWidth(fixed_width)
+        self.status_label.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
         self.status_label.setVisible(self.show_stats)
-        stats_layout.addWidget(self.status_label, alignment=Qt.AlignLeft)
+        stats_layout.addWidget(self.status_label, alignment=Qt.AlignCenter)
+        stats_layout.addStretch(1)
 
-        self.stats_label = QLabel("")
-        self.stats_label.setAlignment(Qt.AlignCenter)
-        self.stats_label.setTextFormat(Qt.RichText)
-        self.stats_label.setMinimumWidth(340)
-        self.stats_label.setMaximumWidth(340)
-        self.stats_label.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
-        self.stats_label.setVisible(self.show_stats or self.show_range)
-        stats_layout.addWidget(self.stats_label, alignment=Qt.AlignCenter)
+        self.max_label = QLabel("")
+        self.max_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        self.max_label.setFixedWidth(fixed_width)
+        self.max_label.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        self.max_label.setVisible(self.show_range)
+        stats_layout.addWidget(self.max_label, alignment=Qt.AlignRight)
         outer_layout.addLayout(stats_layout)
 
         self._build_settings_menu()
@@ -357,7 +413,7 @@ class Stream2DWidget(QFrame):
             self.colorbar_axes = None
 
     def _update_figure_layout(self):
-        self.axes.set_position([0.11, 0.10, 0.66, 0.78])
+        self.axes.set_position([0.10, 0.10, 0.70, 0.80])
         if self.colorbar_axes is not None:
             self.colorbar_axes.set_position([0.84, 0.14, 0.028, 0.72])
 
@@ -380,15 +436,14 @@ class Stream2DWidget(QFrame):
         self.status_label.setVisible(self.show_stats)
         self._apply_status_style()
 
-        parts = []
-        if self.show_range:
-            parts.append(f"min={np.min(frame):.3g}")
-            parts.append(f"max={np.max(frame):.3g}")
-        stats_text = "&nbsp;&nbsp;|&nbsp;&nbsp;".join(parts)
-        self.stats_label.setVisible(bool(stats_text) and (self.show_stats or self.show_range))
-        if stats_text != self._last_stats_text:
-            self.stats_label.setText(stats_text)
-            self._last_stats_text = stats_text
+        min_text = f"min {np.min(frame):.3g}" if self.show_range else ""
+        max_text = f"max {np.max(frame):.3g}" if self.show_range else ""
+        self.min_label.setVisible(self.show_range)
+        self.max_label.setVisible(self.show_range)
+        if (min_text, max_text) != self._last_range_text:
+            self.min_label.setText(min_text)
+            self.max_label.setText(max_text)
+            self._last_range_text = (min_text, max_text)
 
     def _toggle_colorbar(self, checked):
         self.show_colorbar = checked
@@ -401,14 +456,14 @@ class Stream2DWidget(QFrame):
     def _toggle_stats(self, checked):
         self.show_stats = checked
         self.status_label.setVisible(self.show_stats)
-        self.stats_label.setVisible(bool(self._last_stats_text) and (self.show_stats or self.show_range))
         if getattr(self, "stats_action", None) and self.stats_action.isChecked() != checked:
             self.stats_action.setChecked(checked)
         self.refresh(force_draw=True)
 
     def _toggle_range(self, checked):
         self.show_range = checked
-        self.stats_label.setVisible(bool(self._last_stats_text) and (self.show_stats or self.show_range))
+        self.min_label.setVisible(self.show_range)
+        self.max_label.setVisible(self.show_range)
         if getattr(self, "range_action", None) and self.range_action.isChecked() != checked:
             self.range_action.setChecked(checked)
         self.refresh(force_draw=True)
@@ -439,6 +494,7 @@ class Stream2DWidget(QFrame):
             f"QLabel {{ border: 0; color: {theme.text}; background: transparent; }}"
             f"QToolButton {{ border: 0; border-radius: 6px; padding: 5px 8px; "
             f"background: {theme.button_bg}; color: {theme.button_fg}; }}"
+            "QToolButton::menu-indicator { image: none; width: 0px; }"
             f"QToolButton:checked {{ background: {theme.accent}; color: {theme.axes_bg}; }}"
         )
         self.title_label.setStyleSheet(
@@ -446,10 +502,12 @@ class Stream2DWidget(QFrame):
         )
         self.settings_button.setStyleSheet(f"font-size: {max(11, self.font_size)}px;")
         self._apply_status_style()
-        self.stats_label.setStyleSheet(
+        metric_style = (
             f"padding: 6px 8px; border-radius: 6px; background: {theme.stats_bg}; color: {theme.subtext}; "
             f"font-size: {max(12, self.font_size - 1)}px; font-family: monospace;"
         )
+        self.min_label.setStyleSheet(metric_style)
+        self.max_label.setStyleSheet(metric_style)
 
         self.figure.set_facecolor(theme.figure_bg)
         self.axes.set_facecolor(theme.axes_bg)
@@ -564,6 +622,10 @@ class MosaicViewerWindow(QMainWindow):
         self.summary_label = QLabel("Composite stream viewer")
         toolbar_layout.addWidget(self.summary_label)
         toolbar_layout.addStretch(1)
+
+        self.reset_button = QPushButton("Reset SHMs")
+        self.reset_button.clicked.connect(self.reset_streams)
+        toolbar_layout.addWidget(self.reset_button)
 
         self.settings_button = QToolButton()
         self.settings_button.setText("Settings")
@@ -718,6 +780,16 @@ class MosaicViewerWindow(QMainWindow):
 
         self.settings_menu.addSeparator()
 
+        self.reset_action = QAction("Reset SHMs", self)
+        self.reset_action.setShortcut(QKeySequence("F5"))
+        self.reset_action.triggered.connect(self.reset_streams)
+        self.reset_action.setShortcutContext(Qt.WidgetWithChildrenShortcut)
+        self.addAction(self.reset_action)
+        self._registered_actions.append(self.reset_action)
+        self.settings_menu.addAction(self.reset_action)
+
+        self.settings_menu.addSeparator()
+
         self.add_row_action = QAction("Add Row", self)
         self.add_row_action.setShortcut(QKeySequence("Ctrl+Down"))
         self.add_row_action.triggered.connect(self.add_row)
@@ -761,6 +833,7 @@ class MosaicViewerWindow(QMainWindow):
 
         self.panels = {}
         self.placeholders = {}
+        connection_errors = 0
 
         for index, name in enumerate(self.cells):
             row_index = index // self.cols
@@ -770,22 +843,33 @@ class MosaicViewerWindow(QMainWindow):
                 self.placeholders[index] = placeholder
                 self.grid_layout.addWidget(placeholder, row_index, col_index)
             else:
-                panel = Stream2DWidget(
-                    StreamConnection(name),
-                    remove_callback=lambda checked=False, idx=index: self.remove_plot_at(idx),
-                    static_vmin=self.static_vmin,
-                    static_vmax=self.static_vmax,
-                    show_colorbar=self._show_colorbars,
-                    show_stats=self._show_stats,
-                    show_range=self._show_range,
-                    font_size=self.font_size,
-                )
-                self.panels[index] = panel
-                self.grid_layout.addWidget(panel, row_index, col_index)
+                try:
+                    panel = Stream2DWidget(
+                        StreamConnection(name),
+                        remove_callback=lambda checked=False, idx=index: self.remove_plot_at(idx),
+                        static_vmin=self.static_vmin,
+                        static_vmax=self.static_vmax,
+                        show_colorbar=self._show_colorbars,
+                        show_stats=self._show_stats,
+                        show_range=self._show_range,
+                        font_size=self.font_size,
+                    )
+                    self.panels[index] = panel
+                    self.grid_layout.addWidget(panel, row_index, col_index)
+                except Exception:
+                    connection_errors += 1
+                    logging.exception("Viewer panel reconnect failed for cell %s (%s)", index, name)
+                    placeholder = UnavailableStreamPlaceholder(name, self.reset_streams)
+                    self.placeholders[index] = placeholder
+                    self.grid_layout.addWidget(placeholder, row_index, col_index)
 
+        self._last_panel_errors = connection_errors
         self._set_summary(0)
         self.apply_theme(self.theme_name)
         self._resume_refresh(refresh_was_active)
+
+    def reset_streams(self):
+        self.rebuild_grid()
 
     def add_plot_at(self, index):
         shm_name, ok = QInputDialog.getText(self, "Add SHM", "Shared-memory stream name:")
@@ -831,6 +915,7 @@ class MosaicViewerWindow(QMainWindow):
             f"QWidget {{ background: {theme.window_bg}; color: {theme.text}; }}"
             f"QPushButton, QComboBox, QToolButton {{ background: {theme.button_bg}; color: {theme.button_fg}; "
             f"border: 1px solid {theme.panel_border}; border-radius: 6px; padding: 6px 10px; }}"
+            "QToolButton::menu-indicator { image: none; width: 0px; }"
             f"QToolButton:checked {{ background: {theme.accent}; color: {theme.axes_bg}; }}"
             f"QLabel {{ color: {theme.text}; }}"
             f"QMenu {{ background: {theme.panel_bg}; color: {theme.text}; border: 1px solid {theme.panel_border}; }}"
@@ -900,8 +985,8 @@ def launch_mosaic_viewer(argv, shm_names, fps, geometry, pixel_scale, static_vmi
     screen = app.primaryScreen()
     if screen is not None:
         available = screen.availableGeometry()
-        max_width = int(available.width() * 0.78)
-        max_height = int(available.height() * 0.78)
+        max_width = int(available.width() * 0.96)
+        max_height = int(available.height() * 0.94)
         window.resize(min(window.width(), max_width), min(window.height(), max_height))
     window.show()
     return app.exec_()

@@ -1,64 +1,54 @@
-"""Latency-measurement CLI for pyRTC shared-memory streams.
-
-The script samples producer and consumer stream timestamps, estimates end-to-end
-pipeline latency, and optionally writes a histogram plot for offline review.
-"""
+"""Latency-measurement CLI for pyRTC shared-memory streams."""
 
 import argparse
+import json
 from pathlib import Path
+import sys
 
-import matplotlib.pyplot as plt
-import numpy as np
+import pyRTC.latency as latency_helpers
 
 from pyRTC.logging_utils import add_logging_cli_args, configure_logging_from_args
-from pyRTC.Pipeline import initExistingShm
+from pyRTC.Pipeline import RTCManager
+from pyRTC.latency import (
+    format_latency_report,
+    measure_stream_path_latency,
+    plot_latency_histogram,
+)
 
 
-def _safe_mean(values) -> float:
-    arr = np.asarray(values, dtype=np.float64).reshape(-1)
-    if arr.size == 0:
-        return 0.0
-    return float(np.add.reduce(arr, dtype=np.float64) / arr.size)
+def collect_timestamps(streams, samples: int, show_progress: bool = False):
+    """Collect timestamp and count samples for one or more streams.
+
+    This compatibility wrapper preserves the historical import location under
+    ``pyRTC.scripts.measure_latency`` while delegating the implementation to the
+    shared latency helper module.
+    """
+
+    return latency_helpers.collect_timestamps(streams, samples=samples, show_progress=show_progress)
 
 
-def _safe_percentile(values, pct: float) -> float:
-    arr = np.asarray(values, dtype=np.float64).reshape(-1)
-    if arr.size == 0:
-        return 0.0
-    sorted_vals = sorted(float(x) for x in arr)
-    if len(sorted_vals) == 1:
-        return sorted_vals[0]
-    rank = (pct / 100.0) * (len(sorted_vals) - 1)
-    low = int(rank)
-    high = min(low + 1, len(sorted_vals) - 1)
-    if low == high:
-        return sorted_vals[low]
-    weight = rank - low
-    return sorted_vals[low] * (1.0 - weight) + sorted_vals[high] * weight
+def compute_latency_seconds(source_write_times, target_write_times):
+    """Compute latency samples from aligned source and target timestamps.
 
+    This compatibility wrapper preserves the historical import location under
+    ``pyRTC.scripts.measure_latency`` while delegating the implementation to the
+    shared latency helper module.
+    """
 
-def _safe_min(values) -> float:
-    arr = np.asarray(values, dtype=np.float64).reshape(-1)
-    if arr.size == 0:
-        return 0.0
-    return min(float(x) for x in arr)
-
-
-def _safe_max(values) -> float:
-    arr = np.asarray(values, dtype=np.float64).reshape(-1)
-    if arr.size == 0:
-        return 0.0
-    return max(float(x) for x in arr)
+    return latency_helpers.compute_latency_seconds(source_write_times, target_write_times)
 
 
 def _build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Measure latency between two pyRTC shared-memory streams."
+        description="Measure latency between pyRTC shared-memory streams."
     )
-    parser.add_argument("source_shm", type=str, help="Name of source SHM (earlier in pipeline)")
-    parser.add_argument("target_shm", type=str, help="Name of target SHM (later in pipeline)")
-    parser.add_argument("--samples", type=int, default=30000, help="Number of timestamp pairs to collect")
-    parser.add_argument("--tag", type=str, default="latency", help="Output tag used in filename/title")
+    parser.add_argument("source_shm", nargs="?", type=str, help="Name of source SHM (earlier in pipeline)")
+    parser.add_argument("target_shm", nargs="?", type=str, help="Name of target SHM (later in pipeline)")
+    parser.add_argument("--config", type=str, default=None, help="System config used to infer a default latency path")
+    parser.add_argument("--path", nargs="+", default=None, help="Explicit stream path to measure, e.g. --path wfs signal wfc")
+    parser.add_argument("--samples", type=int, default=4096, help="Number of timestamp samples to collect")
+    parser.add_argument("--tag", type=str, default="latency", help="Output tag used in plot title")
+    parser.add_argument("--format", choices=("text", "json"), default="text", help="Report output format")
     parser.add_argument("--bins", type=int, default=200, help="Number of histogram bins")
     parser.add_argument(
         "--xrange",
@@ -69,106 +59,60 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         help="Latency histogram range in seconds",
     )
     parser.add_argument("--no-progress", action="store_true", help="Disable tqdm progress bar")
-    parser.add_argument("--no-show", action="store_true", help="Do not show plot window")
+    parser.add_argument("--show-plot", action="store_true", help="Show a latency histogram window")
     parser.add_argument(
         "--output",
         type=str,
         default=None,
-        help="Output figure path (default: jitter_<source>_to_<target>_<tag>.pdf)",
+        help="Optional output figure path for a latency histogram",
     )
     add_logging_cli_args(parser)
     return parser
 
 
-def collect_timestamps(source_shm, target_shm, samples: int, show_progress: bool = True):
-    """Collect timestamp and counter samples from a source and target stream."""
-
-    source_write_times = np.empty(samples, dtype=np.float64)
-    target_write_times = np.empty(samples, dtype=np.float64)
-    source_counts = np.empty(samples, dtype=np.float64)
-    target_counts = np.empty(samples, dtype=np.float64)
-
-    if show_progress:
-        try:
-            import tqdm
-
-            iterator = tqdm.trange(samples)
-        except ImportError:
-            iterator = range(samples)
-    else:
-        iterator = range(samples)
-
-    for index in iterator:
-        source_shm.hold()
-        source_counts[index] = source_shm.metadata[0]
-        source_write_times[index] = source_shm.metadata[1]
-
-        target_shm.hold()
-        target_counts[index] = target_shm.metadata[0]
-        target_write_times[index] = target_shm.metadata[1]
-
-    return source_counts, source_write_times, target_counts, target_write_times
-
-
-def compute_latency_seconds(source_write_times: np.ndarray, target_write_times: np.ndarray):
-    """Estimate latency samples and compensate for simple frame misalignment."""
-
-    sys_latency = target_write_times - source_write_times
-    frame_shift = 0
-
-    while _safe_mean(sys_latency) < 0 and frame_shift < source_write_times.size - 1:
-        frame_shift += 1
-        sys_latency = target_write_times[frame_shift:] - source_write_times[:-frame_shift]
-
-    return sys_latency, frame_shift
-
-
-def plot_latency_histogram(sys_latency: np.ndarray, args) -> plt.Figure:
-    """Render a log-scaled histogram that highlights high-percentile latency."""
-
-    low, high = args.xrange
-    bins = np.logspace(np.log10(low), np.log10(high), args.bins)
-
-    fig = plt.figure(figsize=(10, 6))
-    plt.hist(
-        sys_latency,
-        bins=bins,
-        log=True,
-        color="k",
-        histtype="step",
-        density=False,
-    )
-
-    p99 = _safe_percentile(sys_latency, 99)
-    p999 = _safe_percentile(sys_latency, 99.9)
-    p9999 = _safe_percentile(sys_latency, 99.99)
-
-    plt.axvline(x=p99, color="green", label=f"1 in 100 > {1e6 * p99:.0f}us")
-    plt.axvline(x=p999, color="orange", label=f"1 in 1,000 > {1e6 * p999:.0f}us")
-    plt.axvline(x=p9999, color="red", label=f"1 in 10,000 > {1e6 * p9999:.0f}us")
-
-    plt.xscale("log")
-    plt.yscale("log")
-
-    xticks = [1e-4, 5e-4, 1e-3, 5e-3]
-    xtick_labels = ["100us", "500us", "1ms", "5ms"]
-    plt.xticks(xticks, xtick_labels)
-
-    plt.xlabel("System Latency [s]", size=16)
-    plt.ylabel("Counts", size=16)
-    plt.title(f"pyRTC Latency ({args.source_shm} -> {args.target_shm}, tag={args.tag})", size=18)
-    plt.ylim(0.5, max(2.0, args.samples / 2))
-    plt.xlim(_safe_min(xticks) * 0.9, _safe_max(xticks) * 1.1)
-    plt.grid(True, which="both", linestyle="--", linewidth=0.5)
-    plt.legend()
-    plt.tight_layout()
-    return fig
-
-
 def _default_output_path(args) -> Path:
-    safe_source = args.source_shm.replace("/", "_")
-    safe_target = args.target_shm.replace("/", "_")
+    source_name = args.source_shm or "path"
+    target_name = args.target_shm or "path"
+    safe_source = source_name.replace("/", "_")
+    safe_target = target_name.replace("/", "_")
     return Path(f"jitter_{safe_source}_to_{safe_target}_{args.tag}.pdf")
+
+
+def _resolve_stream_path(args):
+    if args.path:
+        return [str(stream_name) for stream_name in args.path], False
+    if args.config:
+        manager = RTCManager.from_config_file(args.config)
+        report = manager.latency(
+            source_shm=args.source_shm,
+            target_shm=args.target_shm,
+            samples=args.samples,
+            show_progress=not args.no_progress,
+        )
+        return report, True
+    if args.source_shm and args.target_shm:
+        return [args.source_shm, args.target_shm], False
+    raise SystemExit("Provide source_shm and target_shm, --path, or --config")
+
+
+def _normalize_report_payload(report_payload):
+    """Normalize a latency report into a plain mapping for CLI output."""
+
+    if hasattr(report_payload, "to_dict"):
+        return report_payload.to_dict()
+    return dict(report_payload)
+
+
+def _emit_report(report_payload, output_format: str) -> None:
+    """Write the formatted latency report to stdout and flush it."""
+
+    normalized_payload = _normalize_report_payload(report_payload)
+    if output_format == "json":
+        rendered = json.dumps(normalized_payload, indent=2, sort_keys=True)
+    else:
+        rendered = format_latency_report(normalized_payload)
+    sys.stdout.write(rendered + "\n")
+    sys.stdout.flush()
 
 
 def main(argv=None) -> int:
@@ -182,31 +126,47 @@ def main(argv=None) -> int:
         logger.error("--samples must be at least 2")
         raise SystemExit("--samples must be at least 2")
 
-    source_shm, _, _ = initExistingShm(args.source_shm)
-    target_shm, _, _ = initExistingShm(args.target_shm)
+    resolved, from_manager = _resolve_stream_path(args)
+    if from_manager:
+        report_payload = _normalize_report_payload(resolved)
+        total_latency = None
+    else:
+        report, total_latency = measure_stream_path_latency(
+            resolved,
+            samples=args.samples,
+            show_progress=not args.no_progress,
+            include_total_samples=bool(args.output or args.show_plot),
+        )
+        report_payload = report.to_dict()
 
-    source_counts, source_write_times, target_counts, target_write_times = collect_timestamps(
-        source_shm,
-        target_shm,
-        args.samples,
-        show_progress=not args.no_progress,
-    )
+    _emit_report(report_payload, args.format)
 
-    count_delta = source_counts - target_counts
-    logger.info("Count delta range min=%s max=%s", _safe_min(count_delta), _safe_max(count_delta))
+    if args.output or args.show_plot:
+        if total_latency is None:
+            path = report_payload["stream_path"]
+            _, total_latency = measure_stream_path_latency(
+                path,
+                samples=args.samples,
+                show_progress=not args.no_progress,
+                include_total_samples=True,
+            )
+        title = f"pyRTC Latency ({report_payload['source_shm']} -> {report_payload['target_shm']}, tag={args.tag})"
+        plot_latency_histogram(total_latency, title=title, bins=args.bins, xrange=args.xrange)
+        if args.output:
+            output_path = Path(args.output)
+        elif args.show_plot:
+            output_path = None
+        else:
+            output_path = _default_output_path(args)
+        if output_path is not None:
+            from matplotlib import pyplot as plt
 
-    sys_latency, frame_shift = compute_latency_seconds(source_write_times, target_write_times)
-    logger.info("Applied frame shift: %s", frame_shift)
-    logger.info("Mean latency: %.2f us", _safe_mean(sys_latency) * 1e6)
+            plt.savefig(output_path)
+            logger.info("Saved latency plot to %s", output_path)
+        if args.show_plot:
+            from matplotlib import pyplot as plt
 
-    plot_latency_histogram(sys_latency, args)
-
-    output_path = Path(args.output) if args.output else _default_output_path(args)
-    plt.savefig(output_path)
-    logger.info("Saved latency plot to %s", output_path)
-
-    if not args.no_show:
-        plt.show()
+            plt.show()
 
     return 0
 

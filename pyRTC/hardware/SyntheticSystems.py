@@ -12,6 +12,7 @@ import numpy as np
 
 from pyRTC.Pipeline import initExistingShm
 from pyRTC.ScienceCamera import ScienceCamera
+from pyRTC.WavefrontCorrector import WavefrontCorrector
 from pyRTC.WavefrontSensor import WavefrontSensor
 from pyRTC.utils import setFromConfig
 
@@ -23,6 +24,56 @@ def _numeric_from_config(conf, key, default):
     if not isinstance(value, (int, float)):
         raise TypeError(f"{key} must be numeric, got {type(value).__name__}")
     return value
+
+
+def _layout_sample_positions(layout: np.ndarray) -> np.ndarray:
+    """Return normalized x/y sample positions for active boolean layout cells."""
+
+    active_rows, active_cols = np.nonzero(layout)
+    if active_rows.size == 0:
+        return np.zeros((0, 2), dtype=np.float32)
+
+    center_row = 0.5 * (layout.shape[0] - 1)
+    center_col = 0.5 * (layout.shape[1] - 1)
+    scale = max(center_row, center_col, 1.0)
+    x = (active_cols.astype(np.float32) - center_col) / scale
+    y = (active_rows.astype(np.float32) - center_row) / scale
+    return np.column_stack((x, y)).astype(np.float32)
+
+
+def build_synthetic_shwfs_response_matrix(num_regions: int, num_modes: int, layout: np.ndarray) -> np.ndarray:
+    """Build a deterministic DM-to-slope response matrix for the synthetic AO example."""
+
+    if num_regions < 1:
+        raise ValueError("num_regions must be positive")
+    if num_modes < 1:
+        raise ValueError("num_modes must be positive")
+
+    actuator_positions = _layout_sample_positions(layout)
+    if actuator_positions.shape[0] < num_modes:
+        raise ValueError(
+            f"layout only exposes {actuator_positions.shape[0]} active actuator positions for {num_modes} modes"
+        )
+    actuator_positions = actuator_positions[:num_modes]
+
+    subap_axis = np.linspace(-1.0, 1.0, num_regions, dtype=np.float32)
+    subap_grid_x, subap_grid_y = np.meshgrid(subap_axis, subap_axis)
+    subap_positions = np.column_stack((subap_grid_x.ravel(), subap_grid_y.ravel())).astype(np.float32)
+    signal_size = 2 * subap_positions.shape[0]
+    response = np.zeros((signal_size, num_modes), dtype=np.float32)
+    influence_sigma = np.float32(0.38)
+
+    for mode_index, actuator_position in enumerate(actuator_positions):
+        delta = subap_positions - actuator_position
+        radius_sq = np.sum(delta**2, axis=1)
+        weight = np.exp(-0.5 * radius_sq / (influence_sigma**2)).astype(np.float32)
+        response[: subap_positions.shape[0], mode_index] = delta[:, 0] * weight
+        response[subap_positions.shape[0] :, mode_index] = delta[:, 1] * weight
+
+    norms = np.linalg.norm(response, axis=0)
+    norms[norms == 0.0] = 1.0
+    response /= norms
+    return response
 
 
 class SyntheticSHWFS(WavefrontSensor):
@@ -66,6 +117,7 @@ class SyntheticSHWFS(WavefrontSensor):
         self.numModes = int(setFromConfig(conf, "numModes", self.signalSize))
         if self.numModes < 1:
             raise ValueError("SyntheticSHWFS requires numModes >= 1")
+        self.wfcLayout = _default_wfc_layout(self.numModes)
 
         self.rng = np.random.default_rng(self.seed)
         self.responseMatrix = self._build_response_matrix()
@@ -79,9 +131,7 @@ class SyntheticSHWFS(WavefrontSensor):
             self.numModes,
             dtype=np.float32,
         )
-        self.localCoords = np.arange(self.subApSpacing, dtype=np.float32) - (
-            0.5 * (self.subApSpacing - 1)
-        )
+        self.localCoords = (np.arange(self.subApSpacing, dtype=np.float32) + 0.5) - (0.5 * self.subApSpacing)
         self.localGridX, self.localGridY = np.meshgrid(self.localCoords, self.localCoords)
         self.startTime = time.perf_counter()
         self.lastExposeTime = self.startTime
@@ -94,14 +144,7 @@ class SyntheticSHWFS(WavefrontSensor):
         return
 
     def _build_response_matrix(self):
-        if self.signalSize == self.numModes:
-            return np.eye(self.signalSize, dtype=np.float32)
-
-        response = self.rng.normal(size=(self.signalSize, self.numModes)).astype(np.float32)
-        norms = np.linalg.norm(response, axis=0)
-        norms[norms == 0.0] = 1.0
-        response /= norms
-        return response
+        return build_synthetic_shwfs_response_matrix(self.numRegions, self.numModes, self.wfcLayout)
 
     def _sleep_for_frame_rate(self):
         if self.framePeriod <= 0.0:
@@ -115,7 +158,7 @@ class SyntheticSHWFS(WavefrontSensor):
         if self.correctionShm is not None:
             return
         try:
-            self.correctionShm, _, _ = initExistingShm("wfc", gpuDevice=self.gpuDevice)
+            self.correctionShm, _, _ = initExistingShm(self.input_stream_name("wfc"), gpuDevice=self.gpuDevice)
         except Exception:
             self.correctionShm = None
 
@@ -234,7 +277,7 @@ class SyntheticScienceCamera(ScienceCamera):
         if self.signalShm is not None:
             return
         try:
-            self.signalShm, _, _ = initExistingShm("signal")
+            self.signalShm, _, _ = initExistingShm(self.input_stream_name("signal"))
         except Exception:
             self.signalShm = None
 
@@ -273,3 +316,38 @@ class SyntheticScienceCamera(ScienceCamera):
         self.lastExposeTime = time.perf_counter()
         super().expose()
         return
+
+
+class SyntheticWFC(WavefrontCorrector):
+    """Synthetic wavefront corrector used by onboarding and manager tests.
+
+    The base ``WavefrontCorrector`` implementation already provides the behavior
+    needed for a software-only control loop: it reads the modal correction
+    stream, applies the M2C mapping, and publishes the optional 2D layout view.
+    This subclass exists so configs can refer to a concrete synthetic adapter by
+    name without implying vendor hardware.
+    """
+    def __init__(self, conf):
+        super().__init__(conf)
+        if self.layout is None:
+            self.setLayout(_default_wfc_layout(self.numActuators))
+
+
+def _default_wfc_layout(num_actuators: int) -> np.ndarray:
+    """Return a centered, approximately circular boolean layout for synthetic DMs."""
+
+    if num_actuators < 1:
+        raise ValueError("num_actuators must be positive")
+
+    side = int(np.ceil(np.sqrt(float(num_actuators))))
+    if side % 2 == 0:
+        side += 1
+
+    yy, xx = np.indices((side, side), dtype=np.float32)
+    center = 0.5 * (side - 1)
+    distances = (xx - center) ** 2 + (yy - center) ** 2
+    selected = np.argsort(distances, axis=None)[:num_actuators]
+
+    layout = np.zeros((side, side), dtype=bool)
+    layout.flat[selected] = True
+    return layout

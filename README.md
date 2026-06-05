@@ -101,6 +101,7 @@ pip install pyrtcao
 Optional extras:
 
 ```bash
+pip install pyrtcao[aotpy]
 pip install pyrtcao[docs]
 pip install pyrtcao[gpu]
 pip install pyrtcao[viewer]
@@ -117,6 +118,7 @@ pip install .
 Optional source extras:
 
 ```bash
+pip install .[aotpy]
 pip install .[docs]
 pip install .[gpu]
 pip install .[viewer]
@@ -132,18 +134,33 @@ Verify the install:
 python -c "import pyRTC; print(pyRTC.__all__)"
 ```
 
+Validate a system config before launch:
+
+```bash
+pyrtc-validate-config examples/synthetic_shwfs/config.yaml
+```
+
+Export a telemetry session into AOTPy once the optional dependency is installed:
+
+```bash
+pyrtc-export-aotpy data/session_20260309_120000_abcd1234 session_export.fits
+```
+
 The best first end-to-end path today is the no-hardware synthetic Shack-Hartmann workflow under `examples/synthetic_shwfs/`.
 
 Key files:
 
 - `examples/synthetic_shwfs/config.yaml`
-- `examples/synthetic_shwfs/run_soft_rtc.py`
+- `examples/synthetic_shwfs/synthetic_shwfs_soft_rtc_example.py`
+- `examples/synthetic_shwfs/synthetic_shwfs_hard_rtc_example.py`
 
 Run it with:
 
 ```bash
-python examples/synthetic_shwfs/run_soft_rtc.py --duration 15
+python examples/synthetic_shwfs/synthetic_shwfs_soft_rtc_example.py --duration 15
 ```
+
+That tutorial now logs one `manager.latency(samples=256)` example after startup so you can inspect the full-loop latency breakdown directly from the manager API while the synthetic system is running.
 
 Every primary CLI and example entry point now uses the shared `pyRTC` logger. By default you get timestamped `INFO` logs on the console. You can override that per run with `--log-level DEBUG`, write per-process logs with `--log-dir logs/`, or force one exact file with `--log-file session.log`.
 
@@ -153,7 +170,7 @@ The same settings can be exported for multi-process or repeated runs:
 export PYRTC_LOG_LEVEL=INFO
 export PYRTC_LOG_DIR=./logs
 export PYRTC_LOG_COLOR=1
-python examples/synthetic_shwfs/run_soft_rtc.py --duration 15
+python examples/synthetic_shwfs/synthetic_shwfs_hard_rtc_example.py --duration 15
 ```
 
 It publishes the normal `wfs`, `signal2D`, `wfc2D`, `psfShort`, and `psfLong` streams, so the standard viewer tools work unchanged while you evaluate the control flow and subclassing points.

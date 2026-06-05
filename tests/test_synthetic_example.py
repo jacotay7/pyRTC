@@ -23,11 +23,29 @@ def test_expected_stream_specs_match_example_config():
 
     specs = module.expected_stream_specs(config)
 
-    assert specs["wfs"]["shape"] == (32, 32)
-    assert specs["signal"]["shape"] == (32,)
-    assert specs["signal2D"]["shape"] == (8, 4)
-    assert specs["wfc2D"]["shape"] == (8, 4)
+    assert specs["wfs"]["shape"] == (49, 49)
+    assert specs["signal"]["shape"] == (98,)
+    assert specs["signal2D"]["shape"] == (14, 7)
+    assert specs["wfc2D"]["shape"] == (11, 11)
     assert specs["psfShort"]["shape"] == (64, 64)
+
+
+def test_synthetic_wfc_default_layout_matches_expected_shape():
+    from pyRTC.Pipeline import clear_shms
+    from pyRTC.hardware.SyntheticSystems import SyntheticWFC
+
+    config = _load_example_module().read_yaml_file(str(REPO_ROOT / "examples" / "synthetic_shwfs" / "config.yaml"))
+    clear_shms(["wfc", "wfc2D"])
+    wfc = SyntheticWFC(config["wfc"])
+
+    try:
+        assert wfc.layout.shape == (11, 11)
+        assert int(np.count_nonzero(wfc.layout)) == 97
+        assert wfc.correctionVector2D.read_noblock().shape == (11, 11)
+        assert wfc.correctionVector2D is not None
+    finally:
+        wfc.stop()
+        clear_shms(["wfc", "wfc2D"])
 
 
 def test_ensure_expected_shms_reuses_matching_streams(monkeypatch):

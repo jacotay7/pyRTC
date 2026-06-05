@@ -60,7 +60,7 @@ class ALPAODM(WavefrontCorrector):
 
             self.serial = conf["serial"]
             self.dm = DM(self.serial)
-            self.CAP = conf["commandCap"]
+            self.CAP = self.commandCap
             self.numActuators = int(self.dm.Get('NBOfActuator'))
 
             layout = self.generateLayout()
@@ -73,7 +73,7 @@ class ALPAODM(WavefrontCorrector):
                 self.logger.info("Loaded floating actuators from %s", floating_file)
 
             self.flatten()
-            self.logger.info("Initialized ALPAO DM serial=%s actuators=%s cap=%s", self.serial, self.numActuators, self.CAP)
+            self.logger.info("Initialized ALPAO DM serial=%s actuators=%s cap=%s", self.serial, self.numActuators, self.commandCap)
         except Exception:
             logger.exception("Failed to initialize ALPAO DM")
             raise
@@ -95,8 +95,6 @@ class ALPAODM(WavefrontCorrector):
     def sendToHardware(self):
         #Do all of the normal updating of the super class
         super().sendToHardware()
-        #Cap the Commands to reduce likelihood of DM failiure
-        self.currentShape = np.clip(self.currentShape, -self.CAP, self.CAP)
         #Send the correction to the actual mirror
         self.dm.Send(self.currentShape)
         return

@@ -19,7 +19,7 @@ from pyRTC.utils import setFromConfig
 logger = get_logger(__name__)
 
 
-@jit(nopython=True, nogil=True, cache=True, fastmath=True)
+@jit(nopython=True, nogil=True, cache=False, fastmath=True)
 def downsample_int32_image_jit(image, N):
     """
     Numba-optimized function to downsample a 2D int32 NumPy array by a factor N, returning int32 output.
@@ -69,7 +69,7 @@ def downsample_int32_image_jit(image, N):
     return downsampled_image
 
 
-@jit(nopython=True, nogil=True, cache=True, fastmath=True, parallel=True)
+@jit(nopython=True, nogil=True, cache=False, fastmath=True, parallel=True)
 def rotate_image_jit(image, angle_rad):
     """
     Numba-optimized parallel bilinear interpolation rotation.
@@ -247,18 +247,22 @@ class WavefrontSensor(pyRTCComponent):
                 self.imageShape[0] = self.imageShape[0] // self.downsampleFactor
                 self.imageShape[1] = self.imageShape[1] // self.downsampleFactor
             self.imageRaw = ImageSHM(
-                "wfsRaw",
+                self.output_stream_name("wfsRaw"),
                 self.imageRawShape,
                 self.imageRawDType,
                 gpuDevice=self.gpuDevice,
                 consumer=False,
             )
             self.image = ImageSHM(
-                "wfs",
+                self.output_stream_name("wfs"),
                 self.imageShape,
                 self.imageDType,
                 gpuDevice=self.gpuDevice,
                 consumer=False,
+            )
+            self.register_output_stream("wfsRaw", self.imageRaw)
+            self.register_output_stream(
+                "wfs", self.image, source_streams=["wfsRaw"], lineage_source="wfsRaw"
             )
 
             self.data = np.zeros(self.imageShape, dtype=self.imageRawDType)
@@ -378,7 +382,7 @@ class WavefrontSensor(pyRTCComponent):
         Parameters
         ----------
         """
-        self.imageRaw.write(self.data)
+        self.write_stream("wfsRaw", self.data)
         img = self.data.astype(self.imageDType)
 
         # Apply dark subtraction
@@ -396,7 +400,7 @@ class WavefrontSensor(pyRTCComponent):
             processed_image = rotate_image_jit(processed_image, angle_rad)
 
         # Write the processed image to shared memory
-        self.image.write(processed_image)
+        self.write_stream("wfs", processed_image)
         return
 
     def read(self, block=True) -> NDArray[np.float64]:
@@ -409,9 +413,9 @@ class WavefrontSensor(pyRTCComponent):
             Processed image data.
         """
         if block:
-            return self.image.read(RELEASE_GIL=self.RELEASE_GIL)
+            return self.read_stream("wfs", RELEASE_GIL=self.RELEASE_GIL)
         else:
-            return self.image.read_noblock()
+            return self.read_stream("wfs", block=False)
 
     def readRaw(self, block=True) -> NDArray[np.float64]:
         """
@@ -423,9 +427,9 @@ class WavefrontSensor(pyRTCComponent):
             Processed image data.
         """
         if block:
-            return self.imageRaw.read(RELEASE_GIL=self.RELEASE_GIL)
+            return self.read_stream("wfsRaw", RELEASE_GIL=self.RELEASE_GIL)
         else:
-            return self.imageRaw.read_noblock()
+            return self.read_stream("wfsRaw", block=False)
 
     def takeDark(self) -> None:
         """
