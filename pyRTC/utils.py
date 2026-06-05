@@ -11,53 +11,72 @@ not belong to a single subsystem.
 import yaml
 import sys
 import select
-import os 
+import os
 from astropy.io import fits
 import numpy as np
 import psutil
 from scipy.ndimage import median_filter, gaussian_filter
 import socket
 from datetime import datetime
-import time 
+import time
 import logging
 from typing import Any, Iterable, Mapping, Optional
 
 from pyRTC.logging_utils import get_logger
 
-
 logger = get_logger(__name__)
 
 NP_DATA_TYPES = [
-    np.int8, np.int16, np.int32, np.int64,
-    np.uint8, np.uint16, np.uint32, np.uint64,
-    np.float16, np.float32, np.float64, #np.float128,  # np.float128 availability depends on the system
-    np.complex64, np.complex128, #np.complex256,       # np.complex256 availability depends on the system
+    np.int8,
+    np.int16,
+    np.int32,
+    np.int64,
+    np.uint8,
+    np.uint16,
+    np.uint32,
+    np.uint64,
+    np.float16,
+    np.float32,
+    np.float64,  # np.float128,  # np.float128 availability depends on the system
+    np.complex64,
+    np.complex128,  # np.complex256,       # np.complex256 availability depends on the system
     np.bool_,
     np.object_,
-    np.bytes_, np.str_,
-    np.datetime64, np.timedelta64
+    np.bytes_,
+    np.str_,
+    np.datetime64,
+    np.timedelta64,
 ]
 
 
 class ConfigValidationError(ValueError):
     """Raised when a component configuration does not meet pyRTC expectations."""
+
     pass
 
 
 def _require_mapping(conf: Any, component: str) -> Mapping[str, Any]:
     if not isinstance(conf, Mapping):
-        raise ConfigValidationError(f"{component}: config must be a mapping/dict, got {type(conf).__name__}")
+        raise ConfigValidationError(
+            f"{component}: config must be a mapping/dict, got {type(conf).__name__}"
+        )
     return conf
 
 
-def _validate_optional_numeric(conf: Mapping[str, Any], key: str, component: str, minimum: Optional[float] = None):
+def _validate_optional_numeric(
+    conf: Mapping[str, Any], key: str, component: str, minimum: Optional[float] = None
+):
     if key not in conf:
         return
     value = conf[key]
     if not isinstance(value, (int, float)):
-        raise ConfigValidationError(f"{component}: '{key}' must be numeric, got {type(value).__name__}")
+        raise ConfigValidationError(
+            f"{component}: '{key}' must be numeric, got {type(value).__name__}"
+        )
     if minimum is not None and value < minimum:
-        raise ConfigValidationError(f"{component}: '{key}' must be >= {minimum}, got {value}")
+        raise ConfigValidationError(
+            f"{component}: '{key}' must be >= {minimum}, got {value}"
+        )
 
 
 def validate_wfs_config(conf: Any) -> None:
@@ -79,16 +98,22 @@ def validate_wfc_config(conf: Any) -> None:
     missing = [key for key in required if key not in conf]
     if missing:
         missing_str = ", ".join(missing)
-        raise ConfigValidationError(f"{component}: missing required config key(s): {missing_str}")
+        raise ConfigValidationError(
+            f"{component}: missing required config key(s): {missing_str}"
+        )
 
     if not isinstance(conf["name"], str) or not conf["name"].strip():
         raise ConfigValidationError(f"{component}: 'name' must be a non-empty string")
 
     if not isinstance(conf["numActuators"], int) or conf["numActuators"] <= 0:
-        raise ConfigValidationError(f"{component}: 'numActuators' must be a positive int, got {conf['numActuators']}")
+        raise ConfigValidationError(
+            f"{component}: 'numActuators' must be a positive int, got {conf['numActuators']}"
+        )
 
     if not isinstance(conf["numModes"], int) or conf["numModes"] <= 0:
-        raise ConfigValidationError(f"{component}: 'numModes' must be a positive int, got {conf['numModes']}")
+        raise ConfigValidationError(
+            f"{component}: 'numModes' must be a positive int, got {conf['numModes']}"
+        )
 
     _validate_optional_numeric(conf, "floatingInfluenceRadius", component, minimum=0)
     _validate_optional_numeric(conf, "frameDelay", component, minimum=0)
@@ -115,7 +140,9 @@ def validate_loop_config(conf: Any) -> None:
             continue
         value = conf[key]
         if not isinstance(value, (list, tuple)) or len(value) != 2:
-            raise ConfigValidationError(f"{component}: '{key}' must be a list/tuple of length 2")
+            raise ConfigValidationError(
+                f"{component}: '{key}' must be a list/tuple of length 2"
+            )
 
 
 def validate_component_config(conf: Any, mro_names: Iterable[str]) -> None:
@@ -145,6 +172,7 @@ def precise_delay(microseconds):
     while np.float64(time.perf_counter()) < target_time:
         pass
 
+
 # Function to measure execution time
 def measure_execution_time(f, args, numIters=10):
     """Measure repeated execution-time statistics for a callable.
@@ -152,8 +180,8 @@ def measure_execution_time(f, args, numIters=10):
     The return value is tailored to the repository's lightweight performance
     smoke checks: median, interquartile range, and approximate low/high bounds.
     """
-   
-    #init once
+
+    # init once
     f(*args)
 
     # Measure time
@@ -162,7 +190,7 @@ def measure_execution_time(f, args, numIters=10):
         start_time = time.time()
         f(*args)
         end_time = time.time()
-        exTimes[i] = (end_time - start_time)
+        exTimes[i] = end_time - start_time
 
     sorted_times = np.sort(exTimes)
 
@@ -188,6 +216,7 @@ def measure_execution_time(f, args, numIters=10):
 
     return median, iqr, CI_1, CI_99
 
+
 def change_directory(directory):
     try:
         os.chdir(directory)
@@ -200,6 +229,7 @@ def change_directory(directory):
         logger.exception("Unexpected error while changing directory: %s", e)
     return
 
+
 def add_to_path(directory):
     # Check if the directory exists
     if not os.path.isdir(directory):
@@ -207,18 +237,19 @@ def add_to_path(directory):
         return
 
     # Add the directory to the PATH environment variable
-    current_path = os.environ.get('PATH', '')
+    current_path = os.environ.get("PATH", "")
     if directory not in current_path:
         new_path = f"{directory}:{current_path}"
-        os.environ['PATH'] = new_path
+        os.environ["PATH"] = new_path
         logger.info("Directory '%s' added to PATH", directory)
     else:
         logger.info("Directory '%s' is already in PATH", directory)
 
     return
 
+
 def powerLawOG(numModes, k):
-    return (1- (np.arange(numModes)/numModes)**k)
+    return 1 - (np.arange(numModes) / numModes) ** k
 
 
 def append_to_file(filename, data, dtype=np.float32):
@@ -235,17 +266,18 @@ def append_to_file(filename, data, dtype=np.float32):
     """
     if os.path.exists(filename):
         # If the file exists, append to it
-        with open(filename, 'ab') as f:
+        with open(filename, "ab") as f:
             data.tofile(f)
     else:
         # If the file does not exist, create it and write the initial data
-        with open(filename, 'wb') as f:
+        with open(filename, "wb") as f:
             data.tofile(f)
+
 
 def generate_circular_aperture_mask(N, R, ratio):
     """
     Generates a binary mask of size NxN with a circular aperture of radius R and a central obscuration of radius r.
-    
+
     Parameters:
     N (int): The size of the mask (NxN).
     R (float): The radius of the outer circular aperture.
@@ -255,27 +287,31 @@ def generate_circular_aperture_mask(N, R, ratio):
     numpy.ndarray: Binary mask with the circular aperture.
     """
     r = R * ratio
-    x = np.linspace(-N/2, N/2, N)
-    xx, yy = np.meshgrid(x,x)
-    mask = (xx**2 + yy**2 <= R**2) 
+    x = np.linspace(-N / 2, N / 2, N)
+    xx, yy = np.meshgrid(x, x)
+    mask = xx**2 + yy**2 <= R**2
     if r > 0:
-        mask &= (xx**2 + yy**2 >= r**2)
+        mask &= xx**2 + yy**2 >= r**2
     return mask.astype(bool)
 
+
 def load_data(filename, dtype=None):
-    if filename.endswith('.npy'):
+    if filename.endswith(".npy"):
         data = np.load(filename)
-    elif filename.endswith('.fits'):
+    elif filename.endswith(".fits"):
         with fits.open(filename) as hdul:
-            data = hdul[0].data
+            data = hdul[0].data  # type: ignore
     else:
-        raise ValueError("Unsupported file format. Please provide a .npy or .fits file.")
-    
+        raise ValueError(
+            "Unsupported file format. Please provide a .npy or .fits file."
+        )
+
     if dtype is not None:
         return data.astype(dtype)
     return data
 
-def generate_filepath(base_dir='.', prefix='file', extension='.dat'):
+
+def generate_filepath(base_dir=".", prefix="file", extension=".dat"):
     """
     Generate a file path based on the current date and time.
 
@@ -295,7 +331,7 @@ def generate_filepath(base_dir='.', prefix='file', extension='.dat'):
     current_time = datetime.now()
 
     # Format the date and time
-    timestamp = current_time.strftime('%Y%m%d_%H%M%S')
+    timestamp = current_time.strftime("%Y%m%d_%H%M%S")
 
     # Construct the file name
     filename = f"{prefix}_{timestamp}{extension}"
@@ -305,7 +341,8 @@ def generate_filepath(base_dir='.', prefix='file', extension='.dat'):
 
     return filepath
 
-def get_tmp_filepath(file_path, uniqueStr = 'tmp'):
+
+def get_tmp_filepath(file_path, uniqueStr="tmp"):
     """
     Append '_tmp' to the filename part of the given file path, before the file extension.
 
@@ -326,6 +363,7 @@ def get_tmp_filepath(file_path, uniqueStr = 'tmp'):
 
     return new_file_path
 
+
 def centroid(array):
     arr = np.asarray(array, dtype=np.float64)
     total = np.add.reduce(arr.ravel(), dtype=np.float64) + 1e-4
@@ -334,10 +372,12 @@ def centroid(array):
     y_weighted = np.add.reduce((y_indices * arr).ravel(), dtype=np.float64)
     return np.array([x_weighted / total, y_weighted / total], dtype=np.float64)
 
+
 def add_to_buffer(buffer, vec):
     buffer[:-1] = buffer[1:]
     buffer[-1] = vec
     return
+
 
 def next_power_of_two(n):
     # Handle case for non-positive input
@@ -367,6 +407,7 @@ def robust_variance(data):
     mad = np.median(deviations)
     return (mad / 0.6745) ** 2
 
+
 def cosine_similarity(v1, v2):
     # Calculate the magnitudes of the vectors
     mag_v1 = np.linalg.norm(v1)
@@ -380,21 +421,25 @@ def cosine_similarity(v1, v2):
 
     return dot_product / (mag_v1 * mag_v2)
 
+
 def angle_between_vectors(v1, v2):
 
     # Calculate the cosine of the angle
     return np.abs(np.arccos(cosine_similarity(v1, v2)))
 
+
 def compute_fwhm_dark_subtracted_image(image):
     # Filter to keep only negative values
     negative_pixels = image[image < 1]
-    
+
     # Compute the histogram of negative values
     # Adjust bins and range as necessary for your specific image
-    hist, bins = np.histogram(negative_pixels, bins=np.arange(np.min(negative_pixels), 1)+0.5)
+    hist, bins = np.histogram(
+        negative_pixels, bins=np.arange(np.min(negative_pixels), 1) + 0.5
+    )
     # Since the distribution is symmetric, we can mirror the histogram to get the full distribution
     hist_full = np.concatenate((hist[::-1], hist))
-    
+
     # Compute the bin centers from the bin edges
     bin_centers = (bins[:-1] + bins[1:]) / 2
     bin_centers_full = np.concatenate((-bin_centers[::-1], bin_centers))
@@ -402,17 +447,20 @@ def compute_fwhm_dark_subtracted_image(image):
     # Find the maximum value (mode of the distribution)
     peak_value = np.max(hist_full)
     half_max = peak_value / 2
-    
+
     # Find the points where the histogram crosses the half maximum
     cross_points = np.where(np.diff((hist_full > half_max).astype(int)))[0]
-    
+
     # Assuming the distribution is sufficiently smooth and has a single peak,
     # the FWHM is the distance between the first and last crossing points
-    fwhm_value = np.abs(bin_centers_full[cross_points[-1]] - bin_centers_full[cross_points[0]])
-    
+    fwhm_value = np.abs(
+        bin_centers_full[cross_points[-1]] - bin_centers_full[cross_points[0]]
+    )
+
     return fwhm_value
 
-def clean_image_for_strehl(img, median_filter_size = 3, gaussian_sigma = 1):
+
+def clean_image_for_strehl(img, median_filter_size=3, gaussian_sigma=1):
     corrected_img = np.asarray(img)
 
     if median_filter_size is not None and median_filter_size > 1:
@@ -420,7 +468,7 @@ def clean_image_for_strehl(img, median_filter_size = 3, gaussian_sigma = 1):
             corrected_img,
             size=median_filter_size,
             output=None,
-            mode='reflect',
+            mode="reflect",
             cval=0.0,
             origin=0,
         )
@@ -431,12 +479,13 @@ def clean_image_for_strehl(img, median_filter_size = 3, gaussian_sigma = 1):
             sigma=gaussian_sigma,
             order=0,
             output=None,
-            mode='reflect',
+            mode="reflect",
             cval=0.0,
             truncate=4.0,
         )
 
     return corrected_img
+
 
 def gaussian_2d_grid(i, j, sigma, grid_size):
     i = int(np.asarray(i).reshape(-1)[0])
@@ -453,24 +502,26 @@ def gaussian_2d_grid(i, j, sigma, grid_size):
                 continue  # Skip the center point as its value should be 0
             else:
                 # Compute the Gaussian value
-                grid[x, y] = np.exp(-((x - i)**2 + (y - j)**2) / (2 * sigma**2))
-    
+                grid[x, y] = np.exp(-((x - i) ** 2 + (y - j) ** 2) / (2 * sigma**2))
+
     grid /= np.sum(grid)
 
     return grid
 
+
 def set_affinity(affinity):
     # Unsupported by MacOS
     if isinstance(affinity, int) or isinstance(affinity, float):
-        affinity = [int(affinity),]
+        affinity = [
+            int(affinity),
+        ]
     elif isinstance(affinity, np.ndarray):
         affinity = list(affinity)
     else:
         return -1
-    if sys.platform != 'darwin':
+    if sys.platform != "darwin":
         psutil.Process(os.getpid()).cpu_affinity(affinity)
     return
-
 
 
 def setFromConfig(conf, name, default):
@@ -492,12 +543,14 @@ def setFromConfig(conf, name, default):
 
     return val
 
+
 def signal2D(signal, layout):
     curSignal2D = np.zeros(layout.shape)
-    slopemask = layout[:,:layout.shape[1]//2]
-    curSignal2D[:,:layout.shape[1]//2][slopemask] = signal[:signal.size//2]
-    curSignal2D[:,layout.shape[1]//2:][slopemask] = signal[signal.size//2:]
+    slopemask = layout[:, : layout.shape[1] // 2]
+    curSignal2D[:, : layout.shape[1] // 2][slopemask] = signal[: signal.size // 2]
+    curSignal2D[:, layout.shape[1] // 2 :][slopemask] = signal[signal.size // 2 :]
     return curSignal2D
+
 
 def dtype_to_float(dtype):
     """
@@ -514,6 +567,7 @@ def dtype_to_float(dtype):
             return i
     return -1
 
+
 def float_to_dtype(dtype_float):
     """
     Convert a unique float back to the original NumPy dtype.
@@ -526,6 +580,7 @@ def float_to_dtype(dtype_float):
     """
     return np.dtype(NP_DATA_TYPES[int(dtype_float)])
 
+
 def bind_socket(host, start_port, max_attempts=5):
     """Bind a TCP socket, retrying across a short range of ports.
 
@@ -534,7 +589,9 @@ def bind_socket(host, start_port, max_attempts=5):
     retry logic.
     """
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)  # Allow reuse of socket addresses
+    sock.setsockopt(
+        socket.SOL_SOCKET, socket.SO_REUSEADDR, 1
+    )  # Allow reuse of socket addresses
 
     for attempt in range(max_attempts):
         try:
@@ -555,16 +612,21 @@ def bind_socket(host, start_port, max_attempts=5):
 
     return -1
 
+
 def decrease_nice():
     # Unsupported by MacOS or Windows
-    if sys.platform != 'darwin' and sys.platform != 'win32':
+    if sys.platform != "darwin" and sys.platform != "win32":
         try:
             p = psutil.Process(os.getpid())
             p.nice(-20)  # Unix uses a numeric value (lower means higher priority)
         except Exception:
-            logging.log(level=logging.WARNING, msg="Unable to adjust nice level.\
-                         Give your user sudo privledges without passowrd to use this feature.")
+            logging.log(
+                level=logging.WARNING,
+                msg="Unable to adjust nice level.\
+                         Give your user sudo privledges without passowrd to use this feature.",
+            )
     return
+
 
 # Set CPU affinity and priority for a thread
 def set_affinity_and_priority(thread_id, cpu_cores):
@@ -572,25 +634,28 @@ def set_affinity_and_priority(thread_id, cpu_cores):
     decrease_nice()
     logger.info("Thread %s: priority set to REALTIME", thread_id)
 
+
 def read_yaml_file(file_path):
     """Load a YAML file and return the parsed Python object."""
-    with open(file_path, 'r') as file:
+    with open(file_path, "r") as file:
         conf = yaml.safe_load(file)
     return conf
+
 
 def read_input_with_timeout(timeout):
     # Set the list of file descriptors to watch for input (stdin)
     inputs = [sys.stdin]
-    
+
     # Use select to wait for input or timeout
     readable, _, _ = select.select(inputs, [], [], timeout)
-    
+
     if readable:
         user_input = sys.stdin.readline().strip()
         return user_input
     else:
         return None
-    
+
+
 def is_numeric(s):
     try:
         float(s)

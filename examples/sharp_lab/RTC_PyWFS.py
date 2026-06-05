@@ -3,46 +3,55 @@
 import matplotlib.pyplot as plt
 import os
 import time
-
+import logging
 import numpy as np
 
+from pyRTC.logging_utils import configure_logging, get_logger
 from pyRTC.Pipeline import clear_shms, hardwareLauncher, initExistingShm
 from pyRTC.hardware import loopOptimizer
 from pyRTC.utils import read_yaml_file
-os.chdir("/home/whetstone/pyRTC/examples/sharp_lab")
+
+os.chdir("/home/whetstone/pyrtc_latest/examples/sharp_lab/")
 RECALIBRATE = False
 CLEAR_SHMS =  False
+
+configure_logging(
+    app_name="pyrtc-sharp-lab", component_name="softRTCPyWFS", level=logging.DEBUG
+)
+logger = get_logger(__name__)
+
 # %% Clear SHMs
 if CLEAR_SHMS:
     shm_names = ["wfs", "wfsRaw", "wfc", "wfc2D", "signal", "signal2D", "psfShort", "psfLong"] #list of SHMs to reset
     clear_shms(shm_names)
+
 # %% IMPORTS
-config = '/home/whetstone/pyRTC/examples/sharp_lab/config_pywfs.yaml'
+config = 'calib/config_pywfs.yaml'
 N = np.random.randint(3000,6000)
-folder = "/home/whetstone/pyRTC/examples/sharp_lab/calib/"
+folder = "/home/whetstone/pyrtc_latest/examples/sharp_lab/calib/"
 
 # %% Launch WFS
-wfs = hardwareLauncher("../pyRTC/hardware/ximeaWFS.py", config, N+1)
+wfs = hardwareLauncher("../../pyRTC/hardware/ximeaWFS.py", config, N+1)
 wfs.launch()
 
 # %% Launch slopes
-slopes = hardwareLauncher("../pyRTC/SlopesProcess.py", config, N+2)
+slopes = hardwareLauncher("../../pyRTC/SlopesProcess.py", config, N+2)
 slopes.launch()
 
 # %% Launch PSF Cam
-psfCam = hardwareLauncher("../pyRTC/hardware/SpinnakerScienceCam.py", config, N+10)
+psfCam = hardwareLauncher("../../pyRTC/hardware/SpinnakerScienceCam.py", config, N+10)
 psfCam.launch()
 
 # %% Launch DM
-wfc = hardwareLauncher("../pyRTC/hardware/ALPAODM.py", config, N)
+wfc = hardwareLauncher("../../pyRTC/hardware/ALPAODM.py", config, N)
 wfc.launch()
 
 # %% Launch Modulator
-modulator = hardwareLauncher("../pyRTC/hardware/PIModulator.py", config, N+100)
+modulator = hardwareLauncher("../../pyRTC/hardware/PIModulator.py", config, N+100)
 modulator.launch()
 
 # %% Launch Loop Class
-loop = hardwareLauncher("../pyRTC/Loop.py", config, N+4)
+loop = hardwareLauncher("../../pyRTC/Loop.py", config, N+4)
 loop.launch()
 
 # %% OPTIMIZERS
@@ -51,8 +60,6 @@ pidOptim = PIDOptimizer(read_yaml_file(config)["optimizer"]["pid"], loop)
 # %%
 from pyRTC.hardware.NCPAOptimizer import NCPAOptimizer
 ncpaOptim = NCPAOptimizer(read_yaml_file(config)["optimizer"]["ncpa"], loop, slopes)
-
-
 loopOptim = loopOptimizer(read_yaml_file(config)["optimizer"]["loop"], loop)
 
 # %% Calibrate
@@ -69,6 +76,7 @@ if RECALIBRATE == True:
 
     input("Sources On?")
     input("Is Atmosphere Out?")
+    wfc.run("flatten")
     wfc.run("flatten")
     psfCam.run("takeModelPSF")
     psfCam.setProperty("modelFile", folder + "modelPSF_PyWFS.npy")
@@ -160,6 +168,7 @@ loopOptim.numSteps = 100
 for i in range(1):
     loopOptim.optimize()
 loopOptim.applyNext()
+
 #%% Optimize PID
 pidOptim.numReads = 20
 pidOptim.numSteps = 50
@@ -171,36 +180,50 @@ pidOptim.maxIGain = 1e-1
 for i in range(1):
     pidOptim.optimize()
 pidOptim.applyOptimum()
+
 #%% Optimize NCPA
 import optuna
 optuna.logging.set_verbosity(optuna.logging.WARNING)
 numOptim = 3
-maxAMP = 0.005
-amps = np.linspace(maxAMP, maxAMP/5, numOptim)
+maxAMP = 0.01
+amps = np.linspace(maxAMP, maxAMP/10, numOptim)
+psfCam.setProperty("exposure", 25)
+
 for i in range(numOptim):
     ncpaOptim.resetStudy()
     psfCam.setProperty("integrationLength", 5)
     time.sleep(2)
     ncpaOptim.numReads = 3
-    ncpaOptim.startMode = 0
-    ncpaOptim.endMode = 15 #wfc.getProperty("numModes")
+    ncpaOptim.startMode = 2
+    ncpaOptim.endMode = 20*(i+1) #wfc.getProperty("numModes")
     ncpaOptim.numSteps = 1000
     ncpaOptim.correctionMag = amps[i]
     ncpaOptim.isCL = False
+    
     for i in range(1):
         ncpaOptim.optimize()
-    ncpaOptim.applyNext()
-
+    
+    ncpaOptim.applyOptimum()
+    ncpaOptim.applyOptimum()
+    
     wfc.run("saveShape")
-    # slopes.run("takeRefSlopes")
-    # slopes.setProperty("refSlopesFile", "/home/whetstone/pyRTC/examples/sharp_lab/calib/refPyWFS.npy")
-    # slopes.run("saveRefSlopes")
+    time.sleep(.5)
+    wfc.run("loadFlat")
+    time.sleep(.5)
+    wfc.run("flatten")
+    time.sleep(.5)
+
+    slopes.run("takeRefSlopes")
+    slopes.setProperty("refSlopesFile", folder + "refPyWFS.npy")
+    slopes.run("saveRefSlopes")
+    time.sleep(.5)
+
     psfCam.setProperty("integrationLength", 2000)
     time.sleep(2)
     psfCam.run("takeModelPSF")
-    psfCam.setProperty("modelFile", "/home/whetstone/pyRTC/examples/sharp_lab/calib/modelPSF_PyWFS.npy")
+    psfCam.setProperty("modelFile", folder + "modelPSF_PyWFS.npy")
     psfCam.run("saveModelPSF")
-    wfc.run("loadFlat")
+    
     
 # %%
 """

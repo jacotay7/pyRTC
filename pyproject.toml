@@ -65,7 +65,7 @@ viewer = [
 hardware = [
 	"pipython",
 	"rotpy",
-	"ximea",
+	"ximea-py",
 ]
 docs = [
 	"sphinx",

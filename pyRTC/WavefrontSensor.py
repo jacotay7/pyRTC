@@ -8,6 +8,7 @@ its SHM publication, dark handling, and optional geometric pre-processing.
 
 import matplotlib.pyplot as plt
 import numpy as np
+from numpy.typing import NDArray
 from numba import jit, prange
 
 from pyRTC.logging_utils import get_logger
@@ -15,8 +16,8 @@ from pyRTC.Pipeline import ImageSHM, launchComponent
 from pyRTC.pyRTCComponent import pyRTCComponent
 from pyRTC.utils import setFromConfig
 
-
 logger = get_logger(__name__)
+
 
 @jit(nopython=True, nogil=True, cache=True, fastmath=True)
 def downsample_int32_image_jit(image, N):
@@ -59,7 +60,7 @@ def downsample_int32_image_jit(image, N):
             sum_block = 0
             for di in range(N):
                 for dj in range(N):
-                    sum_block += image_padded[i*N + di, j*N + dj]
+                    sum_block += image_padded[i * N + di, j * N + dj]
             # Compute the mean
             mean_value = sum_block / (N * N)
             # Round and cast to int32
@@ -67,63 +68,67 @@ def downsample_int32_image_jit(image, N):
 
     return downsampled_image
 
+
 @jit(nopython=True, nogil=True, cache=True, fastmath=True, parallel=True)
 def rotate_image_jit(image, angle_rad):
     """
     Numba-optimized parallel bilinear interpolation rotation.
-    
+
     Parameters:
     - image: 2D NumPy array (int32 or float) with shape (H, W)
     - angle_rad: float, rotation angle in radians (positive = counter-clockwise)
-    
+
     Returns:
     - rotated_image: 2D NumPy array with same shape and dtype as input
     """
     h, w = image.shape
     cos_angle = np.cos(angle_rad)
     sin_angle = np.sin(angle_rad)
-    
+
     # Center of rotation
     cx, cy = w / 2.0, h / 2.0
-    
+
     # Output image (same size as input)
     rotated = np.zeros_like(image)
-    
+
     for y in prange(h):
         for x in range(w):
             # Translate to center
             x_centered = x - cx
             y_centered = y - cy
-            
+
             # Rotate (inverse transformation)
             x_orig = x_centered * cos_angle + y_centered * sin_angle + cx
             y_orig = -x_centered * sin_angle + y_centered * cos_angle + cy
-            
+
             # Check if the source coordinates are within bounds
-            if 0 <= x_orig < w-1 and 0 <= y_orig < h-1:
+            if 0 <= x_orig < w - 1 and 0 <= y_orig < h - 1:
                 # Bilinear interpolation
                 x0, x1 = int(np.floor(x_orig)), int(np.ceil(x_orig))
                 y0, y1 = int(np.floor(y_orig)), int(np.ceil(y_orig))
-                
+
                 # Ensure indices are within bounds
                 if x1 >= w:
                     x1 = w - 1
                 if y1 >= h:
                     y1 = h - 1
-                
+
                 # Interpolation weights
                 wx = x_orig - x0
                 wy = y_orig - y0
-                
+
                 # Bilinear interpolation
-                val = (image[y0, x0] * (1 - wx) * (1 - wy) +
-                       image[y0, x1] * wx * (1 - wy) +
-                       image[y1, x0] * (1 - wx) * wy +
-                       image[y1, x1] * wx * wy)
-                
+                val = (
+                    image[y0, x0] * (1 - wx) * (1 - wy)
+                    + image[y0, x1] * wx * (1 - wy)
+                    + image[y1, x0] * (1 - wx) * wy
+                    + image[y1, x1] * wx * wy
+                )
+
                 rotated[y, x] = val
-    
+
     return rotated
+
 
 class WavefrontSensor(pyRTCComponent):
     """
@@ -142,7 +147,7 @@ class WavefrontSensor(pyRTCComponent):
     width : int
         The width of the wavefront sensor image. Required.
     height : int
-        The width of the wavefront sensor image.  Required.      
+        The width of the wavefront sensor image.  Required.
     darkCount : int
         Number of dark frames to average. Default 1000.
     darkFile : str
@@ -241,8 +246,20 @@ class WavefrontSensor(pyRTCComponent):
             if self.downsampleFactor > 0:
                 self.imageShape[0] = self.imageShape[0] // self.downsampleFactor
                 self.imageShape[1] = self.imageShape[1] // self.downsampleFactor
-            self.imageRaw = ImageSHM("wfsRaw", self.imageRawShape, self.imageRawDType, gpuDevice=self.gpuDevice, consumer=False)
-            self.image = ImageSHM("wfs", self.imageShape, self.imageDType, gpuDevice=self.gpuDevice, consumer=False)
+            self.imageRaw = ImageSHM(
+                "wfsRaw",
+                self.imageRawShape,
+                self.imageRawDType,
+                gpuDevice=self.gpuDevice,
+                consumer=False,
+            )
+            self.image = ImageSHM(
+                "wfs",
+                self.imageShape,
+                self.imageDType,
+                gpuDevice=self.gpuDevice,
+                consumer=False,
+            )
 
             self.data = np.zeros(self.imageShape, dtype=self.imageRawDType)
             self.dark = np.zeros(self.imageRawShape, dtype=self.imageDType)
@@ -261,7 +278,7 @@ class WavefrontSensor(pyRTCComponent):
             raise
 
         return
-    
+
     def setRoi(self, roi):
         """
         Sets the region of interest (ROI) for the sensor.
@@ -300,7 +317,7 @@ class WavefrontSensor(pyRTCComponent):
             raise
 
         return
-    
+
     def setBinning(self, binning: int) -> None:
         """
         Sets the binning factor for the sensor.
@@ -318,7 +335,7 @@ class WavefrontSensor(pyRTCComponent):
             raise
 
         return
-    
+
     def setGain(self, gain: float) -> None:
         """
         Sets the gain for the sensor.
@@ -335,7 +352,7 @@ class WavefrontSensor(pyRTCComponent):
             self.logger.exception("Failed to set gain to %s", gain)
             raise
         return
-    
+
     def setBitDepth(self, bitDepth: int) -> None:
         """
         Sets the bit depth for the sensor.
@@ -353,34 +370,36 @@ class WavefrontSensor(pyRTCComponent):
             self.logger.exception("Failed to set bit depth to %s", bitDepth)
             raise
         return
-    
+
     def expose(self) -> None:
         """
         Writes the current image data to shared memory. Both raw, and dark subtracted.
-        
+
         Parameters
         ----------
         """
         self.imageRaw.write(self.data)
         img = self.data.astype(self.imageDType)
-        
+
         # Apply dark subtraction
         processed_image = img - self.dark
-        
+
         # Apply downsampling if configured
         if self.downsampleFactor > 0:
-            processed_image = downsample_int32_image_jit(processed_image, self.downsampleFactor)
-        
+            processed_image = downsample_int32_image_jit(
+                processed_image, self.downsampleFactor
+            )
+
         # Apply rotation if specified
         if self.rotationAngle != 0.0:
             angle_rad = np.radians(self.rotationAngle)
             processed_image = rotate_image_jit(processed_image, angle_rad)
-        
+
         # Write the processed image to shared memory
         self.image.write(processed_image)
         return
 
-    def read(self, block = True) -> None:
+    def read(self, block=True) -> NDArray[np.float64]:
         """
         Reads the dark subtracted image data from shared memory.
 
@@ -390,10 +409,24 @@ class WavefrontSensor(pyRTCComponent):
             Processed image data.
         """
         if block:
-            return self.image.read(RELEASE_GIL = self.RELEASE_GIL)
+            return self.image.read(RELEASE_GIL=self.RELEASE_GIL)
         else:
             return self.image.read_noblock()
-    
+
+    def readRaw(self, block=True) -> NDArray[np.float64]:
+        """
+        Reads the dark subtracted image data from shared memory.
+
+        Returns
+        -------
+        ndarray
+            Processed image data.
+        """
+        if block:
+            return self.imageRaw.read(RELEASE_GIL=self.RELEASE_GIL)
+        else:
+            return self.imageRaw.read_noblock()
+
     def takeDark(self) -> None:
         """
         Captures and sets the dark frame.
@@ -403,16 +436,16 @@ class WavefrontSensor(pyRTCComponent):
                 raise ValueError("darkCount must be at least 1 to acquire a dark frame")
             self.logger.info("Taking dark frame using %s exposures", self.darkCount)
             self.setDark(np.zeros_like(self.dark))
-            dark = np.zeros(self.imageShape, dtype=np.float64)
+            dark = np.zeros(self.imageRawShape, dtype=np.float64)
             for _ in range(self.darkCount):
-                dark += self.read().astype(np.float64)
+                dark += self.readRaw().astype(np.float64)
             dark /= self.darkCount
             self.setDark(dark)
             self.logger.info("Completed dark frame acquisition")
         except Exception:
             self.logger.exception("Failed to acquire dark frame")
             raise
-        return 
+        return
 
     def setDark(self, dark) -> None:
         """
@@ -430,8 +463,8 @@ class WavefrontSensor(pyRTCComponent):
             self.logger.exception("Failed to update dark frame")
             raise
         return
-    
-    def saveDark(self,filename=''):
+
+    def saveDark(self, filename=""):
         """
         Saves the dark frame to a file.
 
@@ -441,18 +474,20 @@ class WavefrontSensor(pyRTCComponent):
             Filename to save the dark frame to. If not specified, uses the dark file path from the configuration.
         """
         try:
-            if filename == '':
+            if filename == "":
                 filename = self.darkFile
-            if filename == '':
+            if filename == "":
                 raise ValueError("No dark frame filename provided")
             np.save(filename, self.dark)
             self.logger.info("Saved dark frame to %s", filename)
         except Exception:
-            self.logger.exception("Failed to save dark frame to %s", filename or self.darkFile)
+            self.logger.exception(
+                "Failed to save dark frame to %s", filename or self.darkFile
+            )
             raise
         return
-    
-    def loadDark(self,filename=''):
+
+    def loadDark(self, filename=""):
         """
         Loads the dark frame from a file.
 
@@ -461,29 +496,31 @@ class WavefrontSensor(pyRTCComponent):
         filename : str, optional
             Filename to load the dark frame from. If not specified, uses the dark file path from the configuration.
         """
-        #If no file given, first try dark file
+        # If no file given, first try dark file
         try:
-            if filename == '':
+            if filename == "":
                 filename = self.darkFile
-            if filename == '':
+            if filename == "":
                 self.dark = np.zeros_like(self.dark)
                 self.logger.info("No dark frame file configured; using zeros")
             else:
                 self.dark = np.load(filename)
                 self.logger.info("Loaded dark frame from %s", filename)
         except Exception:
-            self.logger.exception("Failed to load dark frame from %s", filename or self.darkFile)
+            self.logger.exception(
+                "Failed to load dark frame from %s", filename or self.darkFile
+            )
             raise
         return
-    
+
     def plot(self) -> None:
         """
         Plots the current image data.
         """
         try:
             arr = self.read(block=False)
-            plt.figure(figsize=(8,8))
-            plt.imshow(arr, cmap = 'inferno', origin='lower')
+            plt.figure(figsize=(8, 8))
+            plt.imshow(arr, cmap="inferno", origin="lower")
             plt.colorbar()
             plt.show()
             self.logger.info("Plotted wavefront sensor image")
@@ -491,11 +528,11 @@ class WavefrontSensor(pyRTCComponent):
             self.logger.exception("Failed to plot wavefront sensor image")
             raise
         return
-    
+
     def rotateImage(self, angle_deg: float) -> np.ndarray:
         """
         Rotates the current image data by the specified angle.
-        
+
         This method uses a high-performance numba JIT-compiled bilinear interpolation
         rotation algorithm that is significantly faster than scipy or opencv implementations
         while maintaining good image quality.
@@ -509,7 +546,7 @@ class WavefrontSensor(pyRTCComponent):
         -------
         ndarray
             Rotated image data with the same shape and dtype as the original.
-            
+
         Examples
         --------
         >>> wfs = WavefrontSensor(config)
@@ -526,7 +563,8 @@ class WavefrontSensor(pyRTCComponent):
         except Exception:
             self.logger.exception("Failed to rotate image by %s degrees", angle_deg)
             raise
-    
+
+
 if __name__ == "__main__":
 
-    launchComponent(WavefrontSensor, "wfs", start = True)
+    launchComponent(WavefrontSensor, "wfs", start=True)
