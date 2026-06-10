@@ -58,3 +58,5 @@ coverage.xml
 wheel-test-env
 session_*
 examples/aotpy/output/*
+
+CLAUDE.md
