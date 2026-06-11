@@ -11,7 +11,7 @@ import os
 from pipython import GCSDevice, pitools
 
 from pyRTC.Modulator import Modulator
-from pyRTC.Pipeline import launchComponent
+from pyRTC.manager import launchComponent
 from pyRTC.utils import setFromConfig
 
 class PIModulator(Modulator):

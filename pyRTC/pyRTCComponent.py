@@ -14,7 +14,8 @@ import time
 from typing import Any
 
 from pyRTC.logging_utils import ensure_logging_configured, get_logger
-from pyRTC.Pipeline import launchComponent, normalize_gpu_device, work
+from pyRTC.manager import launchComponent, work
+from pyRTC.streams import normalize_gpu_device
 from pyRTC.utils import setFromConfig, validate_component_config
 
 
@@ -97,7 +98,6 @@ class pyRTCComponent:
 
             functions_to_run = setFromConfig(conf, "functions", [])
             self.workThreads = []
-            self.RELEASE_GIL = True
 
             if isinstance(functions_to_run, list) and len(functions_to_run) > 0:
                 for i, function_name in enumerate(functions_to_run):
@@ -223,7 +223,7 @@ class pyRTCComponent:
         self._ensure_stream_state()
         self._stream_outputs[str(stream_name)] = shm
 
-    def read_stream(self, stream_name: str, *, block: bool = True, timeout: float | None = None):
+    def read_stream(self, stream_name: str, *, block: bool = True, timeout: float | None = None, out=None):
         """Read one registered input or output stream.
 
         Parameters
@@ -237,6 +237,9 @@ class pyRTCComponent:
         timeout : float, optional
             Maximum seconds to wait for a new write when ``block`` is
             ``True``. ``None`` waits indefinitely.
+        out : numpy.ndarray, optional
+            Pre-allocated buffer receiving the payload (zero-alloc reads on
+            the hot path). Ignored for GPU-attached streams.
         """
 
         self._ensure_stream_state()
@@ -248,9 +251,9 @@ class pyRTCComponent:
             and last_seen is not None
             and int(stream.count) == int(last_seen["count"])
         ):
-            payload = stream.read_new(timeout=timeout)
+            payload = stream.read_new(timeout=timeout, out=out)
         else:
-            payload = stream.read()
+            payload = stream.read(out=out)
         self._last_stream_metadata[name] = self._read_stream_metadata(name)
         return payload
 

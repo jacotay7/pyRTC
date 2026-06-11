@@ -129,7 +129,6 @@ def test_loop_methods_without_full_init(tmp_path):
 
 def test_standard_integrator_uses_nonblocking_wfc_read():
     loop = loop_mod.Loop.__new__(loop_mod.Loop)
-    loop.RELEASE_GIL = True
     loop.gCM = np.eye(4, dtype=np.float32) * 0.25
     loop.nullCorrection = np.zeros(4, dtype=np.float32)
     loop.numActiveModes = 3
@@ -138,22 +137,24 @@ def test_standard_integrator_uses_nonblocking_wfc_read():
         count = 1
         write_time = 1.0
 
-        def read(self):
+        def read(self, out=None):
             return np.ones(4, dtype=np.float32)
 
     class _Wfc:
         count = 1
         write_time = 1.0
 
-        def read_new(self, timeout=None):
+        def read_new(self, timeout=None, out=None):
             raise AssertionError("standardIntegrator should not block on wfc")
 
-        def read(self):
+        def read(self, out=None):
             return np.zeros(4, dtype=np.float32)
 
     sent = {}
     loop.signalShm = _Signal()
     loop.wfcShm = _Wfc()
+    loop._signalBuffer = np.empty(4, dtype=np.float32)
+    loop._wfcBuffer = np.empty(4, dtype=np.float32)
     loop.sendToWfc = lambda correction, slopes=None: sent.setdefault("correction", correction.copy())
 
     loop.standardIntegrator()

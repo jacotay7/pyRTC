@@ -113,17 +113,19 @@ def test_synthetic_example_drives_wfc2d_nonzero():
 
     try:
         module.start_system(system)
-        deadline = module.time.perf_counter() + 1.0
+        import time as _time
+
+        deadline = _time.perf_counter() + 1.0
         wfc_abs_max = 0.0
         wfc2d_abs_max = 0.0
-        while module.time.perf_counter() < deadline:
+        while _time.perf_counter() < deadline:
             wfc = system["loop"].wfcShm.read()
             wfc2d = system["wfc"].correctionVector2D.read()
             wfc_abs_max = max(wfc_abs_max, float(np.max(np.abs(wfc))))
             wfc2d_abs_max = max(wfc2d_abs_max, float(np.max(np.abs(wfc2d))))
             if wfc_abs_max > 0.0 and wfc2d_abs_max > 0.0:
                 break
-            module.time.sleep(0.05)
+            _time.sleep(0.05)
     finally:
         module.stop_system(system)
         module.clear_named_shms(list(module.expected_stream_specs(config)))

@@ -157,7 +157,7 @@ def test_pyrtc_component_creates_worker_threads(monkeypatch):
 
 
 def test_pyrtc_component_main_invokes_launch_component(monkeypatch):
-    pipeline_module = importlib.import_module("pyRTC.Pipeline")
+    manager_module = importlib.import_module("pyRTC.manager")
     component_module = importlib.import_module("pyRTC.pyRTCComponent")
     called = {}
 
@@ -166,7 +166,7 @@ def test_pyrtc_component_main_invokes_launch_component(monkeypatch):
         called["component_name"] = component_name
         called["start"] = start
 
-    monkeypatch.setattr(pipeline_module, "launchComponent", fake_launch_component)
+    monkeypatch.setattr(manager_module, "launchComponent", fake_launch_component)
     source = Path(component_module.__file__).read_text(encoding="utf-8")
     exec(compile(source, component_module.__file__, "exec"), {"__name__": "__main__", "__file__": component_module.__file__})
 

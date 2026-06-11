@@ -21,7 +21,7 @@ from typing import Any, Mapping
 import numpy as np
 
 from pyRTC.logging_utils import get_logger
-from pyRTC.Pipeline import Listener
+from pyRTC.rpc import Listener
 from pyRTC.ScienceCamera import ScienceCamera
 from pyRTC.WavefrontCorrector import WavefrontCorrector
 from pyRTC.WavefrontSensor import WavefrontSensor

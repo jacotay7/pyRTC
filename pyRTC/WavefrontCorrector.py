@@ -20,7 +20,8 @@ import matplotlib.pyplot as plt
 from numba import jit
 
 from pyRTC.logging_utils import get_logger
-from pyRTC.Pipeline import create_stream, launchComponent
+from pyRTC.manager import launchComponent
+from pyRTC.streams import create_stream
 from pyRTC.pyRTCComponent import pyRTCComponent
 from pyRTC.utils import gaussian_2d_grid, setFromConfig
 
@@ -125,6 +126,8 @@ class WavefrontCorrector(pyRTCComponent):
 
             self.correctionVector = create_stream(self.output_stream_name("wfc"), (self.numModes,), np.float32, gpuDevice=self.gpuDevice)
             self.register_output_stream("wfc", self.correctionVector)
+            # Pre-allocated hot-path read buffer (ignored for GPU streams).
+            self._wfcBuffer = np.empty((self.numModes,), dtype=np.float32)
             self.correctionVector2D = None
 
             self.setLayout(None)
@@ -382,7 +385,7 @@ class WavefrontCorrector(pyRTCComponent):
         child hardware class and registered to the real-time loop from the config.
         """
         #Read a new modal correction in M2C basis
-        self.currentCorrection = self.read_stream("wfc")
+        self.currentCorrection = self.read_stream("wfc", out=self._wfcBuffer)
         #If we added a frame delay
         if self.frameDelay > 0:
             #Roll back shape buffer by 1

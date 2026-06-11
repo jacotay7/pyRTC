@@ -53,9 +53,14 @@ wfc:
     wfc2D: wfc2D
   classFile: ../../pyRTC/hardware/SyntheticWFC.py
 loop:
-  gain: 0.35
+  gain: 0.3
   numDroppedModes: 0
-  IMFile: synthetic_identity_im.npy
+  conditioning: 30.0
+  IMMethod: docrime
+  pokeAmp: 0.3
+  numItersIM: 800
+  delay: 1
+  IMFile: synthetic_im.npy
   className: Loop
   inputStreams:
     signal: signal

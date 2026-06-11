@@ -1,6 +1,6 @@
 """Launchable hard-RTC entry point for the synthetic wavefront corrector."""
 
-from pyRTC.Pipeline import launchComponent
+from pyRTC.manager import launchComponent
 from pyRTC.hardware.SyntheticSystems import SyntheticWFC
 
 

@@ -8,7 +8,7 @@ import sys
 import pyRTC.latency as latency_helpers
 
 from pyRTC.logging_utils import add_logging_cli_args, configure_logging_from_args
-from pyRTC.Pipeline import RTCManager
+from pyRTC.manager import RTCManager
 from pyRTC.latency import (
     format_latency_report,
     measure_stream_path_latency,

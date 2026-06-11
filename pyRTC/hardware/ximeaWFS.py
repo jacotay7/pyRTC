@@ -9,7 +9,7 @@ interact with the device through the standard ``WavefrontSensor`` interface.
 import time
 
 from pyRTC.logging_utils import get_logger
-from pyRTC.Pipeline import launchComponent
+from pyRTC.manager import launchComponent
 from pyRTC.WavefrontSensor import WavefrontSensor
 from ximea import xiapi
 

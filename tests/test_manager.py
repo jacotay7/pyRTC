@@ -137,8 +137,8 @@ def test_reconcile_expected_output_shms_reuses_matching_streams(monkeypatch):
     specs = expected_output_shm_specs_for_config(config)
     cleared = []
 
-    monkeypatch.setattr("pyRTC.Pipeline._existing_shm_spec", lambda name: (tuple(specs[name]["shape"]), np.dtype(specs[name]["dtype"])) if name in specs else None)
-    monkeypatch.setattr("pyRTC.Pipeline.clear_shms", lambda names: cleared.extend(names))
+    monkeypatch.setattr("pyRTC.streams._existing_shm_spec", lambda name: (tuple(specs[name]["shape"]), np.dtype(specs[name]["dtype"])) if name in specs else None)
+    monkeypatch.setattr("pyRTC.streams.clear_shms", lambda names: cleared.extend(names))
 
     rebuilt, reused = reconcile_expected_output_shms(config)
 
@@ -160,8 +160,8 @@ def test_reconcile_expected_output_shms_clears_only_mismatched_streams(monkeypat
             return (tuple(specs[name]["shape"]), np.dtype(specs[name]["dtype"]))
         return None
 
-    monkeypatch.setattr("pyRTC.Pipeline._existing_shm_spec", _existing)
-    monkeypatch.setattr("pyRTC.Pipeline.clear_shms", lambda names: cleared.extend(names))
+    monkeypatch.setattr("pyRTC.streams._existing_shm_spec", _existing)
+    monkeypatch.setattr("pyRTC.streams.clear_shms", lambda names: cleared.extend(names))
 
     rebuilt, reused = reconcile_expected_output_shms(config)
 
@@ -849,3 +849,47 @@ def test_manager_repeated_failures_increment_restart_count_and_preserve_last_err
     assert loop_status["restart_count"] == 2
     assert loop_status["last_error"] == "child process exited with code 2"
     assert loop_status["state"] == "running"
+
+def test_import_symbol_from_file_reuses_canonical_pyrtc_module():
+    from pyRTC.Loop import Loop
+    from pyRTC.Pipeline import _import_symbol_from_file
+
+    loop_file = REPO_ROOT / "pyRTC" / "Loop.py"
+    resolved = _import_symbol_from_file(str(loop_file), "Loop")
+
+    assert resolved is Loop
+
+
+def test_manager_latency_infers_path_for_classfile_components(monkeypatch):
+    from pyRTC import latency
+
+    class FakeShm:
+        def __init__(self, time_scale):
+            self._count = 0
+            self._time_scale = time_scale
+
+        @property
+        def count(self):
+            self._count += 1
+            return self._count
+
+        @property
+        def write_time(self):
+            return self._count * self._time_scale
+
+    streams = {
+        "wfs": FakeShm(1.0e-3),
+        "signal": FakeShm(1.4e-3),
+        "wfc": FakeShm(1.8e-3),
+    }
+
+    monkeypatch.setattr(latency, "open_stream", lambda name, gpuDevice=None: streams[name])
+
+    # Use the real example config: its components are loaded via classFile,
+    # which used to produce duplicate class objects with empty descriptors
+    # and break stream-path inference.
+    manager = RTCManager.from_config_file(SYNTHETIC_CONFIG_PATH)
+    report = manager.latency(samples=8)
+
+    assert report["stream_path"] == ["wfs", "signal", "wfc"]
+    assert report["inferred_path"] is True

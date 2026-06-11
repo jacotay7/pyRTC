@@ -21,7 +21,7 @@ import sys
 import numpy as np
 
 from pyRTC.logging_utils import get_logger
-from pyRTC.Pipeline import launchComponent
+from pyRTC.manager import launchComponent
 from pyRTC.WavefrontCorrector import WavefrontCorrector
 
 

@@ -11,7 +11,7 @@ import subprocess
 from typing import Any
 import yaml
 
-from pyRTC.Pipeline import DEFAULT_COMPONENT_ORDER, RTCManager
+from pyRTC.manager import DEFAULT_COMPONENT_ORDER, RTCManager
 from pyRTC.component_descriptors import describe_component_class, get_component_descriptor, list_component_descriptors, list_component_sections
 from pyRTC.config_schema import read_system_config
 

@@ -33,7 +33,7 @@ from pathlib import Path
 import numpy as np
 
 from pyRTC.logging_utils import get_logger
-from pyRTC.Pipeline import open_stream
+from pyRTC.streams import open_stream
 from pyRTC.pyRTCComponent import pyRTCComponent
 from pyRTC.utils import setFromConfig
 

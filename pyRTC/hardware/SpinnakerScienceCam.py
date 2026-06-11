@@ -9,7 +9,7 @@ publishes frames into the normal pyRTC science-camera pipeline.
 import numpy as np
 
 from pyRTC.logging_utils import get_logger
-from pyRTC.Pipeline import launchComponent
+from pyRTC.manager import launchComponent
 from pyRTC.ScienceCamera import ScienceCamera
 from rotpy.camera import CameraList
 from rotpy.system import SpinSystem

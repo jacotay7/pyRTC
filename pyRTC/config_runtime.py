@@ -7,53 +7,15 @@ the core pipeline to any specific backend.
 
 from __future__ import annotations
 
-import importlib
-import importlib.util
-from pathlib import Path
 from typing import Any, Mapping
 
+from pyRTC.component_loading import resolve_class_symbol as _resolve_class_symbol
 from pyRTC.logging_utils import get_logger
 
 
 logger = get_logger(__name__)
 
 _NON_COMPONENT_TOP_LEVEL_SECTIONS = {"manager", "streams", "metadata", "resources"}
-
-
-def _import_symbol(path_or_name: str):
-    if "." in path_or_name:
-        module_name, attr_name = path_or_name.rsplit(".", 1)
-        module = importlib.import_module(module_name)
-        return getattr(module, attr_name)
-
-    for module_name in ("pyRTC.hardware", "pyRTC"):
-        try:
-            module = importlib.import_module(module_name)
-            if hasattr(module, path_or_name):
-                return getattr(module, path_or_name)
-        except Exception:
-            continue
-    raise ImportError(f"Unable to resolve component symbol '{path_or_name}'")
-
-
-def _import_symbol_from_file(file_path: str, attr_name: str):
-    module_path = Path(file_path).expanduser().resolve()
-    module_name = f"pyrtc_runtime_{module_path.stem}_{abs(hash(str(module_path))) & 0xFFFFFFFF:x}"
-    spec = importlib.util.spec_from_file_location(module_name, module_path)
-    if spec is None or spec.loader is None:
-        raise ImportError(f"Unable to load component module from '{module_path}'")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return getattr(module, attr_name)
-
-
-def _resolve_class_symbol(class_name: str, class_file: str | None = None):
-    if class_file:
-        component_file = Path(class_file).expanduser()
-        if component_file.exists():
-            attr_name = class_name.rsplit(".", 1)[-1]
-            return _import_symbol_from_file(str(component_file), attr_name)
-    return _import_symbol(class_name)
 
 
 def _iter_configured_classes(system_conf: Mapping[str, Any]):

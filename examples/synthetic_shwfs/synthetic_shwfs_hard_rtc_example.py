@@ -60,6 +60,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="Leave existing pyRTC shared-memory streams in place.",
     )
     parser.add_argument(
+        "--no-calibration",
+        action="store_true",
+        help="Skip the IM calibration step and use the analytic starting IM.",
+    )
+    parser.add_argument(
         "--aotpy",
         action="store_true",
         help="Capture a short telemetry session, export it to AOTPy, and verify readback.",
@@ -69,7 +74,19 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 
 # %% Tutorial helpers
-def ensure_identity_interaction_matrix(config: dict) -> Path:
+def ensure_synthetic_interaction_matrix(config: dict) -> Path:
+    """Write the synthetic system's true response matrix as the loop IM.
+
+    The synthetic WFS generates slopes as ``response @ (disturbance -
+    correction)``, so giving the loop that same response matrix lets the
+    integrator actually close the loop and converge.
+    """
+
+    from pyRTC.hardware.SyntheticSystems import (
+        _default_wfc_layout,
+        build_synthetic_shwfs_response_matrix,
+    )
+
     wfs_conf = config["wfs"]
     slopes_conf = config["slopes"]
     output_path = Path(config["loop"]["IMFile"])
@@ -84,12 +101,12 @@ def ensure_identity_interaction_matrix(config: dict) -> Path:
 
     subap_spacing = int(slopes_conf["subApSpacing"])
     num_regions = min(image_width, image_height) // subap_spacing
-    signal_size = 2 * num_regions * num_regions
+    layout = _default_wfc_layout(int(config["wfc"]["numActuators"]))
+    interaction_matrix = build_synthetic_shwfs_response_matrix(num_regions, num_modes, layout)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    np.save(output_path, np.eye(signal_size, num_modes, dtype=np.float32))
+    np.save(output_path, interaction_matrix.astype(np.float32))
     return output_path
-
 
 def read_scalar_stream(name: str) -> float:
     stream = open_stream(name)
@@ -125,7 +142,7 @@ def main(argv=None) -> int:
     config = manager.config
 
     # Step 2: generate the tiny IM file referenced by that same config.
-    im_path = ensure_identity_interaction_matrix(config)
+    im_path = ensure_synthetic_interaction_matrix(config)
 
     # Step 3: clear old SHMs so the child processes start from a clean state.
     if not args.no_clear_shms:
@@ -147,12 +164,36 @@ def main(argv=None) -> int:
 
         starting_gain = loop.getProperty("gain")
         logger.info("Hard mode proxy read: loop.getProperty('gain') -> %s", starting_gain)
-        logger.info("Hard mode proxy write: loop.setProperty('gain', 0.10)")
-        loop.setProperty("gain", 0.10)
-        logger.info("Remote loop gain is now %s", loop.getProperty("gain"))
 
         # Methods are invoked remotely with run(...).
         wfc.run("flatten")
+
+        # Step 5b: calibrate the interaction matrix through the live pipeline.
+        # The RPC blocks until the child finishes, so allow a long timeout
+        # for the calibration call only.
+        if args.no_calibration:
+            logger.info("Skipping IM calibration (--no-calibration)")
+        else:
+            logger.info("Calibrating IM remotely: loop.run('computeIM') — takes a few seconds")
+            calibration_timeout = 120.0
+            original_timeout = loop.processSocket.gettimeout()
+            loop.processSocket.settimeout(calibration_timeout)
+            try:
+                loop.run("stop")
+                loop.run("flatten")
+                calibration_start = time.perf_counter()
+                loop.run("computeIM")
+                logger.info(
+                    "Calibration finished in %.1fs; closing the loop",
+                    time.perf_counter() - calibration_start,
+                )
+                loop.run("start")
+            finally:
+                loop.processSocket.settimeout(original_timeout)
+
+        logger.info("Hard mode proxy write: loop.setProperty('gain', 0.30)")
+        loop.setProperty("gain", 0.30)
+        logger.info("Remote loop gain is now %s", loop.getProperty("gain"))
 
         # Telemetry works the same way in hard mode because it only reads the
         # published streams and saves them for offline use.

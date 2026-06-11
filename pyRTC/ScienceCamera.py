@@ -10,8 +10,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from pyRTC.logging_utils import ensure_logging_configured, get_logger
-from pyRTC.Pipeline import create_stream
-from pyRTC.Pipeline import launchComponent
+from pyRTC.streams import create_stream
+from pyRTC.manager import launchComponent
 from pyRTC.pyRTCComponent import pyRTCComponent
 from pyRTC.utils import centroid, clean_image_for_strehl, setFromConfig
 

@@ -23,7 +23,7 @@ def open_stream(shmName, gpuDevice=None):
     creating an import cycle with ``pyRTC.Pipeline`` at module import time.
     """
 
-    from pyRTC.Pipeline import open_stream as _open_stream
+    from pyRTC.streams import open_stream as _open_stream
 
     return _open_stream(shmName, gpuDevice=gpuDevice)
 

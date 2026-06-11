@@ -3,7 +3,7 @@
 import argparse
 
 from pyRTC.logging_utils import add_logging_cli_args, configure_logging_from_args
-import pyRTC.Pipeline as Pipeline
+import pyRTC.streams as streams
 
 
 DEFAULT_SHM_NAMES = [
@@ -37,7 +37,7 @@ def main(argv=None) -> int:
     args = parser.parse_args(argv)
     logger = configure_logging_from_args(args, app_name="pyrtc-clear-shms", component_name="clear_shms")
     logger.info("Clearing SHMs: %s", args.shms)
-    Pipeline.clear_shms(args.shms)
+    streams.clear_shms(args.shms)
     return 0
 
 

@@ -11,7 +11,8 @@ import numpy as np
 from numba import jit, prange
 
 from pyRTC.logging_utils import get_logger
-from pyRTC.Pipeline import create_stream, launchComponent
+from pyRTC.manager import launchComponent
+from pyRTC.streams import create_stream
 from pyRTC.pyRTCComponent import pyRTCComponent
 from pyRTC.utils import setFromConfig
 

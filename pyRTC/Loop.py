@@ -22,7 +22,8 @@ from typing import Any
 from numba import jit
 
 from pyRTC.logging_utils import get_logger
-from pyRTC.Pipeline import gpu_torch_available, launchComponent, open_stream
+from pyRTC.manager import launchComponent
+from pyRTC.streams import gpu_torch_available, open_stream
 from pyRTC.pyRTCComponent import pyRTCComponent
 from pyRTC.utils import add_to_buffer, get_tmp_filepath, setFromConfig
 
@@ -85,11 +86,6 @@ def updateCorrection(correction=np.array([], dtype=np.float32),
     return correction - np.dot(gCM,slopes)
 
 # @jit(nopython=True)
-# def updateCorrectionPerturb(correction=np.array([], dtype=np.float32),
-#                             pertub=np.array([], dtype=np.float32),  
-#                      gCM=np.array([[]], dtype=np.float32),  
-#                      slopes=np.array([], dtype=np.float32)):
-#     return correction - np.dot(gCM,slopes) + pertub
 
 class Loop(pyRTCComponent):
     """
@@ -339,6 +335,10 @@ class Loop(pyRTCComponent):
             self.previousWfError = np.zeros_like(self.read_stream("wfc", block=False))
             self.previousDerivative = np.zeros_like(self.previousWfError)
             self.controlOutput = np.zeros_like(self.previousWfError)
+
+            # Pre-allocated hot-path read buffers (ignored for GPU streams).
+            self._signalBuffer = np.empty(self.signalShape, dtype=self.signalDType)
+            self._wfcBuffer = np.empty(self.wfcShape, dtype=self.wfcDType)
 
             self.loadIM()
             self.logger.info("Initialized loop signalShape=%s wfcShape=%s numModes=%s", self.signalShape, self.wfcShape, self.numModes)
@@ -807,8 +807,8 @@ class Loop(pyRTCComponent):
         """
         Standard integrator using the pseudo open loop slopes.
         """
-        residual_slopes = self.read_stream("signal")
-        currentCorrection = self.read_stream("wfc", block=False)
+        residual_slopes = self.read_stream("signal", out=self._signalBuffer)
+        currentCorrection = self.read_stream("wfc", block=False, out=self._wfcBuffer)
         # print(f'slopes: {residual_slopes.shape}, IM: {self.IM.shape}, corr: {currentCorrection.shape}')
 
         newCorrection = self.updateCorrectionPOL(correction=currentCorrection, 
@@ -823,10 +823,10 @@ class Loop(pyRTCComponent):
         """
         Standard integrator.
         """
-        slopes = self.read_stream("signal")
+        slopes = self.read_stream("signal", out=self._signalBuffer)
         newCorrection = leakyIntegratorNumba(slopes, 
                          self.gCM, 
-                 self.read_stream("wfc", block=False).squeeze(),
+                 self.read_stream("wfc", block=False, out=self._wfcBuffer).squeeze(),
                          self.nullCorrection,
                          np.float32(0),#No leak
                          self.numActiveModes)
@@ -837,10 +837,10 @@ class Loop(pyRTCComponent):
         """
         Leaky integrator.
         """
-        slopes = self.read_stream("signal")
+        slopes = self.read_stream("signal", out=self._signalBuffer)
         newCorrection = leakyIntegratorNumba(slopes, 
                          self.gCM, 
-                 self.read_stream("wfc", block=False).squeeze(),
+                 self.read_stream("wfc", block=False, out=self._wfcBuffer).squeeze(),
                          self.nullCorrection,
                          np.float32(self.leakyGain),
                          self.numActiveModes)
@@ -851,8 +851,8 @@ class Loop(pyRTCComponent):
         """
         PID integrator using the pseudo-open loop slopes.
         """
-        slopes = self.read_stream("signal")
-        correction = self.read_stream("wfc", block=False)
+        slopes = self.read_stream("signal", out=self._signalBuffer)
+        correction = self.read_stream("wfc", block=False, out=self._wfcBuffer)
         polSlopes = slopes - self.fIM@correction
         return self.pidIntegrator(slopes=polSlopes, correction=correction)
 

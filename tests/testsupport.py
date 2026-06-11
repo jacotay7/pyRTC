@@ -78,11 +78,14 @@ class DummySHM:
         self._count += 1
         self._write_time = float(self._count)
 
-    def read(self):
+    def read(self, out=None):
+        if out is not None:
+            _np().copyto(out, self.arr)
+            return out
         return _np().copy(self.arr)
 
-    def read_new(self, timeout=None):
-        return self.read()
+    def read_new(self, timeout=None, out=None):
+        return self.read(out=out)
 
     def close(self):
         pass
@@ -108,11 +111,14 @@ class FakeStream:
     def write_time(self):
         return self._write_time
 
-    def read(self):
+    def read(self, out=None):
+        if out is not None:
+            _np().copyto(out, self.arr)
+            return out
         return _np().copy(self.arr)
 
-    def read_new(self, timeout=None):
-        return self.read()
+    def read_new(self, timeout=None, out=None):
+        return self.read(out=out)
 
     def write(self, arr):
         self.writes.append(_np().asarray(arr))

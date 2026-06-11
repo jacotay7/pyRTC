@@ -19,7 +19,8 @@ from typing import Any
 from numba import jit
 
 from pyRTC.logging_utils import get_logger
-from pyRTC.Pipeline import clear_shms, create_stream, gpu_torch_available, launchComponent, open_stream
+from pyRTC.manager import launchComponent
+from pyRTC.streams import clear_shms, create_stream, gpu_torch_available, open_stream
 from pyRTC.pyRTCComponent import pyRTCComponent
 from pyRTC.utils import (
     compute_fwhm_dark_subtracted_image,
@@ -410,6 +411,8 @@ class SlopesProcess(pyRTCComponent):
             self.wfsShm = open_stream(self.input_stream_name("wfs"), gpuDevice=self.gpuDevice)
             self.imageShape = tuple(self.wfsShm.shape)
             self.imageDType = np.dtype(self.wfsShm.dtype)
+            # Pre-allocated hot-path read buffer (ignored for GPU streams).
+            self._imageBuffer = np.empty(self.imageShape, dtype=self.imageDType)
             self.register_input_stream("wfs", self.wfsShm)
 
             self.signalDType = np.float32
@@ -749,7 +752,7 @@ class SlopesProcess(pyRTCComponent):
         """
         Compute the signal from the WFS image.
         """
-        image = self.readImage()
+        image = self.read_stream("wfs", out=self._imageBuffer)
         if self.signalType == "slopes":
             if self.wfsType == "pywfs":
                 if self.gpuDevice is not None and gpu_torch_available():

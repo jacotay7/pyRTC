@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from pyRTC.logging_utils import add_logging_cli_args, configure_logging_from_args
-from pyRTC.Pipeline import open_stream
+from pyRTC.streams import open_stream
 
 
 def rolling_average(data, window_size):

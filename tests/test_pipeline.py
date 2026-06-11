@@ -14,7 +14,9 @@ def _cleanup_shm(shm):
 
 
 def test_normalize_gpu_device_falls_back(monkeypatch):
-    monkeypatch.setattr(pipeline, "TORCH_AVAILABLE", False)
+    import pyRTC.streams as streams
+
+    monkeypatch.setattr(streams, "TORCH_AVAILABLE", False)
     assert pipeline.normalize_gpu_device("cuda:0", "ctx") is None
 
 
@@ -182,9 +184,11 @@ def test_hardware_launcher_inherits_logging_env(monkeypatch, tmp_path):
         captured["env"] = env
         return _DummyProcess()
 
-    monkeypatch.setattr(pipeline, "Popen", _fake_popen)
-    monkeypatch.setattr(pipeline.socket, "socket", lambda *args, **kwargs: _DummySocket())
-    monkeypatch.setattr(pipeline.time, "sleep", lambda _seconds: None)
+    import pyRTC.rpc as rpc
+
+    monkeypatch.setattr(rpc, "Popen", _fake_popen)
+    monkeypatch.setattr(rpc.socket, "socket", lambda *args, **kwargs: _DummySocket())
+    monkeypatch.setattr(rpc.time, "sleep", lambda _seconds: None)
 
     launcher = pipeline.hardwareLauncher("child.py", "config.yaml", 4567, timeout=1.5)
     launcher.launch()

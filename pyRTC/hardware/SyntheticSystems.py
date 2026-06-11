@@ -10,7 +10,7 @@ import time
 
 import numpy as np
 
-from pyRTC.Pipeline import open_stream
+from pyRTC.streams import open_stream
 from pyRTC.ScienceCamera import ScienceCamera
 from pyRTC.WavefrontCorrector import WavefrontCorrector
 from pyRTC.WavefrontSensor import WavefrontSensor
@@ -331,6 +331,21 @@ class SyntheticWFC(WavefrontCorrector):
         super().__init__(conf)
         if self.layout is None:
             self.setLayout(_default_wfc_layout(self.numActuators))
+
+    @classmethod
+    def sync_system_config(cls, system_conf):
+        """Publish the synthetic layout size so SHM planning matches runtime.
+
+        The generic ``wfc2D`` planning spec assumes ``displayGridSize``; the
+        synthetic corrector derives its layout from ``numActuators``, so this
+        hook keeps :func:`expected_output_shm_specs_for_config` consistent
+        with the stream the component actually creates.
+        """
+
+        wfc_conf = system_conf.get("wfc")
+        if isinstance(wfc_conf, dict) and "numActuators" in wfc_conf:
+            layout = _default_wfc_layout(int(wfc_conf["numActuators"]))
+            wfc_conf.setdefault("displayGridSize", int(layout.shape[0]))
 
 
 def _default_wfc_layout(num_actuators: int) -> np.ndarray:

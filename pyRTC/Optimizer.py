@@ -13,7 +13,7 @@ import time
 import optuna
 
 from pyRTC.logging_utils import get_logger
-from pyRTC.Pipeline import Listener
+from pyRTC.rpc import Listener
 from pyRTC.pyRTCComponent import pyRTCComponent
 from pyRTC.utils import decrease_nice, read_yaml_file, set_affinity, setFromConfig
 

@@ -25,14 +25,12 @@ from .logging_utils import add_logging_cli_args, configure_logging, configure_lo
 from .latency import LatencyReport, LatencySegment, LatencyStatistics, format_latency_report
 from .Modulator import Modulator
 from .Optimizer import Optimizer
-from .Pipeline import (
-	Listener,
-	RTCManager,
+from .manager import RTCManager, launchComponent
+from .rpc import Listener, hardwareLauncher
+from .streams import (
 	clear_shms,
 	create_stream,
 	gpu_torch_available,
-	hardwareLauncher,
-	launchComponent,
 	normalize_gpu_device,
 	open_stream,
 )

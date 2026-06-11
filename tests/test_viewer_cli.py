@@ -15,7 +15,7 @@ def test_clear_shms_default(monkeypatch):
     def _clear(names):
         called["names"] = list(names)
 
-    monkeypatch.setattr(clear_shms.Pipeline, "clear_shms", _clear)
+    monkeypatch.setattr(clear_shms.streams, "clear_shms", _clear)
     code = clear_shms.main([])
 
     assert code == 0
@@ -28,7 +28,7 @@ def test_clear_shms_custom(monkeypatch):
     def _clear(names):
         called["names"] = list(names)
 
-    monkeypatch.setattr(clear_shms.Pipeline, "clear_shms", _clear)
+    monkeypatch.setattr(clear_shms.streams, "clear_shms", _clear)
     clear_shms.main(["foo", "bar"])
 
     assert called["names"] == ["foo", "bar"]

@@ -15,7 +15,8 @@ import numpy as np
 
 from pyRTC.logging_utils import get_logger
 from pyRTC.Optimizer import Optimizer
-from pyRTC.Pipeline import Listener, open_stream
+from pyRTC.rpc import Listener
+from pyRTC.streams import open_stream
 from pyRTC.utils import decrease_nice, read_yaml_file, setFromConfig, set_affinity
 
 

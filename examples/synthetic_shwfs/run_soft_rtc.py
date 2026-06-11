@@ -7,7 +7,6 @@ synthetic component stack.
 """
 
 import sys
-import time
 import importlib.util
 from pathlib import Path
 
@@ -20,7 +19,7 @@ if str(REPO_ROOT) not in sys.path:
 
 
 from pyRTC.Loop import Loop
-from pyRTC.Pipeline import clear_shms, open_stream
+from pyRTC.Pipeline import clear_shms
 from pyRTC.SlopesProcess import SlopesProcess
 from pyRTC.config_schema import read_system_config
 from pyRTC.hardware.SyntheticSystems import (
@@ -53,36 +52,15 @@ def read_yaml_file(file_path):
 
 
 def expected_stream_specs(config: dict) -> dict:
-    wfs_shape = (int(config["wfs"]["width"]), int(config["wfs"]["height"]))
-    psf_shape = (int(config["psf"]["width"]), int(config["psf"]["height"]))
-    signal_shape = _signal_shape(config)
-    num_modes = int(config["wfc"]["numModes"])
-    signal2d_shape = _signal_2d_shape(config)
-    wfc2d_shape = _wfc_2d_shape(config)
+    from pyRTC.Pipeline import expected_output_shm_specs_for_config
 
-    return {
-        "wfsRaw": {"shape": wfs_shape, "dtype": np.uint16},
-        "wfs": {"shape": wfs_shape, "dtype": np.int32},
-        "signal": {"shape": signal_shape, "dtype": np.float32},
-        "signal2D": {"shape": signal2d_shape, "dtype": np.float32},
-        "wfc": {"shape": (num_modes,), "dtype": np.float32},
-        "wfc2D": {"shape": wfc2d_shape, "dtype": np.float32},
-        "psfShort": {"shape": psf_shape, "dtype": np.int32},
-        "psfLong": {"shape": psf_shape, "dtype": np.float64},
-        "strehl": {"shape": (1,), "dtype": np.float64},
-        "tiptilt": {"shape": (1,), "dtype": np.float64},
-    }
+    return expected_output_shm_specs_for_config(config)
 
 
 def _existing_shm_spec(name: str):
-    try:
-        stream = open_stream(name)
-    except Exception:
-        return None
-    try:
-        return tuple(stream.shape), np.dtype(stream.dtype)
-    finally:
-        stream.close()
+    from pyRTC.Pipeline import _existing_shm_spec as _pipeline_existing_shm_spec
+
+    return _pipeline_existing_shm_spec(name)
 
 
 def clear_named_shms(names):
@@ -116,7 +94,7 @@ def ensure_expected_shms(config: dict, force_rebuild: bool = False):
 
 
 def build_system(config: dict) -> dict:
-    ensure_identity_interaction_matrix(config)
+    ensure_synthetic_interaction_matrix(config)
 
     wfs = SyntheticSHWFS(config["wfs"])
     slopes = SlopesProcess(config["slopes"])
@@ -160,7 +138,7 @@ def stop_system(system: dict) -> None:
             pass
 
 
-def ensure_identity_interaction_matrix(config: dict) -> Path:
+def ensure_synthetic_interaction_matrix(config: dict) -> Path:
     output_path = Path(config["loop"]["IMFile"])
     num_modes = int(config["wfc"]["numModes"])
     num_regions = _signal_2d_shape(config)[1]
@@ -177,16 +155,6 @@ def _signal_2d_shape(config: dict) -> tuple[int, int]:
     height = int(config["wfs"]["height"])
     num_regions = min(width, height) // spacing
     return (2 * num_regions, num_regions)
-
-
-def _signal_shape(config: dict) -> tuple[int, ...]:
-    signal2d_shape = _signal_2d_shape(config)
-    return (int(np.prod(signal2d_shape)),)
-
-
-def _wfc_2d_shape(config: dict) -> tuple[int, int]:
-    num_actuators = int(config["wfc"]["numActuators"])
-    return _default_wfc_layout(num_actuators).shape
 
 
 def _load_soft_example_module():

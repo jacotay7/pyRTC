@@ -10,8 +10,6 @@ manager and GUI layers can reuse.
 from __future__ import annotations
 
 from copy import deepcopy
-import importlib
-import importlib.util
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -40,31 +38,9 @@ ALLOWED_RESTART_POLICIES = {"never", "on-failure", "always"}
 
 
 def _resolve_class_symbol(class_name: str, class_file: str | None = None):
-    if class_file:
-        module_path = Path(class_file).expanduser()
-        if module_path.exists():
-            module_name = f"pyrtc_schema_{module_path.stem}_{abs(hash(str(module_path.resolve()))) & 0xFFFFFFFF:x}"
-            spec = importlib.util.spec_from_file_location(module_name, module_path)
-            if spec is None or spec.loader is None:
-                raise ImportError(f"Unable to load component module from '{module_path}'")
-            module = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(module)
-            attr_name = class_name.rsplit(".", 1)[-1]
-            return getattr(module, attr_name)
+    from pyRTC.component_loading import resolve_class_symbol
 
-    if "." in class_name:
-        module_name, attr_name = class_name.rsplit(".", 1)
-        module = importlib.import_module(module_name)
-        return getattr(module, attr_name)
-
-    for module_name in ("pyRTC.hardware", "pyRTC"):
-        try:
-            module = importlib.import_module(module_name)
-            if hasattr(module, class_name):
-                return getattr(module, class_name)
-        except Exception:
-            continue
-    raise ImportError(f"Unable to resolve component class '{class_name}'")
+    return resolve_class_symbol(class_name, class_file)
 
 
 def _default_stream_aliases_for_section(section_name: str, section_conf: Mapping[str, Any]) -> tuple[dict[str, str], dict[str, str]]:
@@ -625,6 +601,14 @@ def validate_system_config(conf: Any, *, config_path: str | Path | None = None) 
     """Validate a whole pyRTC system config and return its normalized form."""
 
     normalized = normalize_system_config(conf)
+
+    # Resolve relative paths (classFile, *File/*Dir fields) against the config
+    # file's directory *before* any validation, so component classes referenced
+    # by relative classFile entries resolve regardless of the caller's cwd.
+    if config_path is not None:
+        config_path = Path(config_path).resolve()
+        normalized = _resolve_relative_path_fields(normalized, base_dir=config_path.parent)
+
     _validate_required_section_mappings(normalized)
 
     for section_name in list_component_sections():
@@ -665,8 +649,6 @@ def validate_system_config(conf: Any, *, config_path: str | Path | None = None) 
     _validate_cross_component_consistency(normalized)
 
     if config_path is not None:
-        config_path = Path(config_path).resolve()
-        normalized = _resolve_relative_path_fields(normalized, base_dir=config_path.parent)
         normalized.setdefault("metadata", {})
         normalized["metadata"].setdefault("configPath", str(config_path))
 
