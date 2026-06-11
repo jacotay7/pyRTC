@@ -111,7 +111,7 @@ def test_slopes_process_methods(tmp_path):
     sp.curSignal2D = np.zeros((4, 8), dtype=np.float32)
 
     class _Sig:
-        def read_noblock(self):
+        def read(self):
             return np.zeros(np.count_nonzero(sp.validSubAps), dtype=np.float32)
 
     sp.signal = _Sig()
@@ -176,7 +176,7 @@ def test_set_pupils_registers_pywfs_output_streams(monkeypatch):
         ),
     )
     monkeypatch.setattr(slopes_mod, "clear_shms", lambda names: None)
-    monkeypatch.setattr(slopes_mod, "initExistingShm", lambda name, gpuDevice=None: (_ for _ in ()).throw(FileNotFoundError(name)))
+    monkeypatch.setattr(slopes_mod, "open_stream", lambda name, gpuDevice=None: (_ for _ in ()).throw(FileNotFoundError(name)))
 
     class _FakeShm:
         def __init__(self, name, shape, dtype, gpuDevice=None, consumer=False):
@@ -184,7 +184,7 @@ def test_set_pupils_registers_pywfs_output_streams(monkeypatch):
             self.shape = shape
             self.dtype = dtype
 
-    monkeypatch.setattr(slopes_mod, "ImageSHM", _FakeShm)
+    monkeypatch.setattr(slopes_mod, "create_stream", _FakeShm)
 
     sp.setPupils([(1, 1), (1, 2), (2, 1), (2, 2)], 1)
 

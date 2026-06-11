@@ -8,3 +8,4 @@ optuna
 cmaes
 numexpr
 astropy
+pyshmem>=1.0.4

@@ -20,7 +20,7 @@ if str(REPO_ROOT) not in sys.path:
 
 
 from pyRTC.Loop import Loop
-from pyRTC.Pipeline import clear_shms, initExistingShm
+from pyRTC.Pipeline import clear_shms, open_stream
 from pyRTC.SlopesProcess import SlopesProcess
 from pyRTC.config_schema import read_system_config
 from pyRTC.hardware.SyntheticSystems import (
@@ -76,10 +76,13 @@ def expected_stream_specs(config: dict) -> dict:
 
 def _existing_shm_spec(name: str):
     try:
-        _, shape, dtype = initExistingShm(name)
+        stream = open_stream(name)
     except Exception:
         return None
-    return tuple(shape), np.dtype(dtype)
+    try:
+        return tuple(stream.shape), np.dtype(stream.dtype)
+    finally:
+        stream.close()
 
 
 def clear_named_shms(names):

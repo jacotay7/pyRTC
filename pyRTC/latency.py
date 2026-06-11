@@ -16,16 +16,27 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 
-def initExistingShm(shmName, gpuDevice=None):
+def open_stream(shmName, gpuDevice=None):
     """Attach to an existing SHM stream.
 
     The import lives here so tests can monkeypatch this module directly without
     creating an import cycle with ``pyRTC.Pipeline`` at module import time.
     """
 
-    from pyRTC.Pipeline import initExistingShm as _initExistingShm
+    from pyRTC.Pipeline import open_stream as _open_stream
 
-    return _initExistingShm(shmName, gpuDevice=gpuDevice)
+    return _open_stream(shmName, gpuDevice=gpuDevice)
+
+
+def _wait_for_new_write(stream, poll_interval_seconds: float = 1e-5):
+    """Block until the stream's write counter advances, then return it."""
+
+    baseline = int(stream.count)
+    while True:
+        current = int(stream.count)
+        if current != baseline:
+            return current
+        time.sleep(poll_interval_seconds)
 
 
 def _safe_mean(values) -> float:
@@ -215,9 +226,9 @@ def collect_timestamps(streams, samples: int, show_progress: bool = False):
 
     for index in iterator:
         for stream_name, stream in stream_items:
-            stream.hold()
-            counts[stream_name][index] = stream.metadata[0]
-            write_times[stream_name][index] = stream.metadata[1]
+            _wait_for_new_write(stream)
+            counts[stream_name][index] = stream.count
+            write_times[stream_name][index] = stream.write_time
 
     return counts, write_times
 
@@ -233,14 +244,9 @@ def collect_stream_event_history(
     """Collect per-stream write events over one shared wall-clock window.
 
     Unlike ``collect_timestamps``, this sampler does not block on each stream in
-    sequence. It polls metadata for all requested streams and records each new
-    write event as it appears, which preserves cross-stream timing much better
-    for asynchronous pipelines.
-
-    For older test doubles that only advance metadata when ``hold()`` is called,
-    the sampler performs a lightweight compatibility nudge before reading
-    metadata. Real ``ImageSHM`` instances expose ``frame_metadata()`` and stay on
-    the non-blocking path.
+    sequence. It polls the write counters of all requested streams and records
+    each new write event as it appears, which preserves cross-stream timing
+    much better for asynchronous pipelines.
     """
 
     stream_items = list(streams.items())
@@ -259,7 +265,7 @@ def collect_stream_event_history(
     }
     collected = {stream_name: 0 for stream_name, _ in stream_items}
     last_seen_count = {
-        stream_name: int(np.rint(float(stream.metadata[0])))
+        stream_name: int(stream.count)
         for stream_name, stream in stream_items
     }
 
@@ -280,16 +286,13 @@ def collect_stream_event_history(
             for stream_name, stream in stream_items:
                 if collected[stream_name] >= samples:
                     continue
-                if not hasattr(stream, "frame_metadata") and callable(getattr(stream, "hold", None)):
-                    stream.hold()
-                metadata = stream.metadata
-                current_count = int(np.rint(float(metadata[0])))
+                current_count = int(stream.count)
                 if current_count == last_seen_count[stream_name]:
                     continue
                 last_seen_count[stream_name] = current_count
                 index = collected[stream_name]
                 counts[stream_name][index] = current_count
-                write_times[stream_name][index] = float(metadata[1])
+                write_times[stream_name][index] = float(stream.write_time)
                 collected[stream_name] = index + 1
                 progressed = True
                 if progress_bar is not None:
@@ -306,70 +309,6 @@ def collect_stream_event_history(
             progress_bar.close()
 
     return counts, write_times
-
-
-def _stream_metadata_snapshot(stream) -> dict[str, float | int]:
-    frame_metadata = getattr(stream, "frame_metadata", None)
-    if callable(frame_metadata):
-        snapshot = dict(frame_metadata())
-    else:
-        metadata = getattr(stream, "metadata", None)
-        if metadata is None:
-            snapshot = {
-                "count": 0,
-                "write_time": 0.0,
-                "root_time": 0.0,
-                "upstream_write_time": 0.0,
-                "upstream_consume_time": 0.0,
-            }
-        else:
-            snapshot = {
-                "count": int(metadata[0]),
-                "write_time": float(metadata[1]),
-                "root_time": float(metadata[2]) if len(metadata) > 2 else 0.0,
-                "upstream_write_time": float(metadata[3]) if len(metadata) > 3 else 0.0,
-                "upstream_consume_time": float(metadata[4]) if len(metadata) > 4 else 0.0,
-            }
-    return snapshot
-
-
-def _has_lineage_metadata(stream) -> bool:
-    snapshot = _stream_metadata_snapshot(stream)
-    return (
-        float(snapshot.get("root_time", 0.0)) > 0.0
-        or float(snapshot.get("upstream_write_time", 0.0)) > 0.0
-        or float(snapshot.get("upstream_consume_time", 0.0)) > 0.0
-    )
-
-
-def collect_stream_metadata_history(stream, samples: int, *, show_progress: bool = False, timeout_seconds: float | None = None):
-    if samples < 1:
-        raise ValueError("samples must be at least 1")
-
-    history = []
-    progress_bar = None
-    if show_progress:
-        try:
-            import tqdm
-
-            progress_bar = tqdm.tqdm(total=samples)
-        except ImportError:
-            progress_bar = None
-
-    start_time = time.perf_counter()
-    try:
-        while len(history) < samples:
-            if timeout_seconds is not None and (time.perf_counter() - start_time) >= timeout_seconds:
-                raise TimeoutError("Timed out while collecting stream metadata")
-            stream.hold()
-            history.append(_stream_metadata_snapshot(stream))
-            if progress_bar is not None:
-                progress_bar.update(1)
-    finally:
-        if progress_bar is not None:
-            progress_bar.close()
-
-    return history
 
 
 def compute_latency_seconds(source_write_times: np.ndarray, target_write_times: np.ndarray):
@@ -486,51 +425,6 @@ def _build_latency_segment(
         statistics=LatencyStatistics.from_samples(latency_seconds),
     )
     return segment, np.asarray(latency_seconds, dtype=np.float64)
-
-
-def _metadata_samples(history: Sequence[Mapping[str, Any]], key: str, fallback_key: str | None = None) -> np.ndarray:
-    values = []
-    for entry in history:
-        write_time = float(entry.get("write_time", 0.0))
-        reference = float(entry.get(key, 0.0))
-        if reference <= 0.0 and fallback_key is not None:
-            reference = float(entry.get(fallback_key, 0.0))
-        if reference <= 0.0:
-            continue
-        values.append(max(0.0, write_time - reference))
-    return np.asarray(values, dtype=np.float64)
-
-
-def _build_metadata_segment(source_shm: str, target_shm: str, history: Sequence[Mapping[str, Any]]) -> tuple[LatencySegment, np.ndarray]:
-    latency_seconds = _metadata_samples(history, "upstream_write_time")
-    processing_seconds = _metadata_samples(history, "upstream_consume_time")
-    segment = LatencySegment(
-        source_shm=source_shm,
-        target_shm=target_shm,
-        frame_shift=0,
-        count_offset=0,
-        count_delta_min=0.0,
-        count_delta_max=0.0,
-        statistics=LatencyStatistics.from_samples(latency_seconds),
-        processing_statistics=LatencyStatistics.from_samples(processing_seconds) if processing_seconds.size > 0 else None,
-    )
-    return segment, latency_seconds
-
-
-def _build_metadata_total_segment(source_shm: str, target_shm: str, history: Sequence[Mapping[str, Any]]) -> tuple[LatencySegment, np.ndarray]:
-    latency_seconds = _metadata_samples(history, "root_time", fallback_key="upstream_write_time")
-    processing_seconds = _metadata_samples(history, "upstream_consume_time")
-    segment = LatencySegment(
-        source_shm=source_shm,
-        target_shm=target_shm,
-        frame_shift=0,
-        count_offset=0,
-        count_delta_min=0.0,
-        count_delta_max=0.0,
-        statistics=LatencyStatistics.from_samples(latency_seconds),
-        processing_statistics=LatencyStatistics.from_samples(processing_seconds) if processing_seconds.size > 0 else None,
-    )
-    return segment, latency_seconds
 
 
 def plot_latency_histogram(latency_seconds: np.ndarray, *, title: str, bins: int, xrange: Sequence[float]) -> plt.Figure:
@@ -680,7 +574,7 @@ def measure_stream_path_latency(
     *,
     samples: int = 2048,
     show_progress: bool = False,
-    shm_opener: Callable[[str], tuple[Any, Any, Any]] | None = None,
+    shm_opener: Callable[[str], Any] | None = None,
     include_total_samples: bool = False,
     timeout_seconds: float | None = None,
 ) -> tuple[LatencyReport, np.ndarray | None]:
@@ -694,43 +588,8 @@ def measure_stream_path_latency(
         raise ValueError("stream_path must contain at least two stream names")
 
     unique_stream_names = list(dict.fromkeys(normalized_path))
-    opener = shm_opener or initExistingShm
-    streams = {stream_name: opener(stream_name)[0] for stream_name in unique_stream_names}
-    if all(_has_lineage_metadata(streams[stream_name]) for stream_name in normalized_path[1:]):
-        histories = {
-            stream_name: collect_stream_metadata_history(
-                streams[stream_name],
-                samples=samples,
-                show_progress=show_progress,
-                timeout_seconds=timeout_seconds,
-            )
-            for stream_name in normalized_path[1:]
-        }
-
-        segments = []
-        for source_name, target_name in zip(normalized_path[:-1], normalized_path[1:]):
-            segment, _ = _build_metadata_segment(source_name, target_name, histories[target_name])
-            segments.append(segment)
-
-        total_segment, total_samples = _build_metadata_total_segment(
-            normalized_path[0],
-            normalized_path[-1],
-            histories[normalized_path[-1]],
-        )
-
-        report = LatencyReport(
-            source_shm=normalized_path[0],
-            target_shm=normalized_path[-1],
-            stream_path=tuple(normalized_path),
-            inferred_path=False,
-            sample_count=int(samples),
-            total=total_segment,
-            segments=tuple(segments),
-        )
-        if include_total_samples:
-            return report, total_samples
-        return report, None
-
+    opener = shm_opener or open_stream
+    streams = {stream_name: opener(stream_name) for stream_name in unique_stream_names}
     counts, write_times = collect_stream_event_history(
         streams,
         samples=samples,

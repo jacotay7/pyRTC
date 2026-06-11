@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from pyRTC.logging_utils import add_logging_cli_args, configure_logging_from_args
-from pyRTC.Pipeline import initExistingShm
+from pyRTC.Pipeline import open_stream
 
 
 def rolling_average(data, window_size):
@@ -46,7 +46,7 @@ def main(argv=None) -> int:
     logger = configure_logging_from_args(args, app_name="pyrtc-shm-monitor", component_name=args.shm)
 
     shm_name = args.shm
-    shm, _, _ = initExistingShm(shm_name)
+    shm = open_stream(shm_name)
     logger.info("Monitoring SHM %s interval=%s window_size=%s max_size=%s", shm_name, args.interval, args.window_size, args.max_size)
 
     update_interval = args.interval
@@ -54,7 +54,7 @@ def main(argv=None) -> int:
     max_size = args.max_size
 
     def compute_next_value():
-        return np.max(shm.read_noblock())
+        return np.max(shm.read())
 
     fig, ax = plt.subplots(figsize=(12, 5))
     (line,) = ax.plot([], [], lw=2)

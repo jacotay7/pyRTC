@@ -33,7 +33,7 @@ from pathlib import Path
 import numpy as np
 
 from pyRTC.logging_utils import get_logger
-from pyRTC.Pipeline import initExistingShm
+from pyRTC.Pipeline import open_stream
 from pyRTC.pyRTCComponent import pyRTCComponent
 from pyRTC.utils import setFromConfig
 
@@ -87,14 +87,12 @@ def _session_file(session_path: str | Path) -> Path:
 
 
 def _extract_timestamp(shm) -> float:
-    metadata = getattr(shm, "metadata", None)
-    if metadata is not None:
-        try:
-            timestamp = float(metadata[1])
-            if timestamp > 0:
-                return timestamp
-        except Exception:
-            pass
+    try:
+        timestamp = float(shm.write_time)
+        if timestamp > 0:
+            return timestamp
+    except Exception:
+        pass
     return time.time()
 
 
@@ -367,7 +365,9 @@ class Telemetry(pyRTCComponent):
             stream_records = []
             last_frames_path = ""
             for spec in specs:
-                shm, shm_dims, shm_dtype = initExistingShm(spec["name"])
+                shm = open_stream(spec["name"])
+                shm_dims = tuple(shm.shape)
+                shm_dtype = np.dtype(shm.dtype)
                 stream_name = spec["name"]
                 frame_count = int(spec["frame_count"])
                 stream_dir = session_dir / _sanitize_name(stream_name)
@@ -393,7 +393,7 @@ class Telemetry(pyRTCComponent):
                 )
 
                 for index in range(frame_count):
-                    frame = np.asarray(shm.read(), dtype=dtype)
+                    frame = np.asarray(shm.read_new(), dtype=dtype)
                     frames[index] = frame
                     timestamps[index] = _extract_timestamp(shm)
 

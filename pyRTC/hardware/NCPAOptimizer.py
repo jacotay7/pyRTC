@@ -15,7 +15,7 @@ import numpy as np
 
 from pyRTC.logging_utils import get_logger
 from pyRTC.Optimizer import Optimizer
-from pyRTC.Pipeline import Listener, initExistingShm
+from pyRTC.Pipeline import Listener, open_stream
 from pyRTC.utils import decrease_nice, get_tmp_filepath, read_yaml_file, setFromConfig, set_affinity
 
 
@@ -43,8 +43,10 @@ class NCPAOptimizer(Optimizer):
         try:
             self.loop = loop
             self.slopes = slopes
-            self.wfcShm, self.wfcDims, self.wfcDtype = initExistingShm(_input_stream_name(conf, "wfc"))
-            self.strehlShm, _, _ = initExistingShm(_input_stream_name(conf, "strehl"))
+            self.wfcShm = open_stream(_input_stream_name(conf, "wfc"))
+            self.wfcDims = tuple(self.wfcShm.shape)
+            self.wfcDtype = np.dtype(self.wfcShm.dtype)
+            self.strehlShm = open_stream(_input_stream_name(conf, "strehl"))
             self.startMode = setFromConfig(conf, "startMode", 0)
             self.endMode = setFromConfig(conf, "endMode", 20)
             self.correctionMag = setFromConfig(conf, "correctionMag", 2e-3)
@@ -71,9 +73,8 @@ class NCPAOptimizer(Optimizer):
             self.applyTrial(trial)
 
             result = np.empty(self.numReads)
-            self.strehlShm.read()
             for i in range(self.numReads):
-                result[i] = self.strehlShm.read()
+                result[i] = self.strehlShm.read_new()
             score = np.mean(result)
             self.logger.info("Evaluated NCPA trial score=%s", score)
             return score

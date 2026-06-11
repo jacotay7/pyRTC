@@ -41,7 +41,7 @@ def test_synthetic_wfc_default_layout_matches_expected_shape():
     try:
         assert wfc.layout.shape == (11, 11)
         assert int(np.count_nonzero(wfc.layout)) == 97
-        assert wfc.correctionVector2D.read_noblock().shape == (11, 11)
+        assert wfc.correctionVector2D.read().shape == (11, 11)
         assert wfc.correctionVector2D is not None
     finally:
         wfc.stop()
@@ -117,8 +117,8 @@ def test_synthetic_example_drives_wfc2d_nonzero():
         wfc_abs_max = 0.0
         wfc2d_abs_max = 0.0
         while module.time.perf_counter() < deadline:
-            wfc = system["loop"].wfcShm.read_noblock(SAFE=False)
-            wfc2d = system["wfc"].correctionVector2D.read_noblock()
+            wfc = system["loop"].wfcShm.read()
+            wfc2d = system["wfc"].correctionVector2D.read()
             wfc_abs_max = max(wfc_abs_max, float(np.max(np.abs(wfc))))
             wfc2d_abs_max = max(wfc2d_abs_max, float(np.max(np.abs(wfc2d))))
             if wfc_abs_max > 0.0 and wfc2d_abs_max > 0.0:

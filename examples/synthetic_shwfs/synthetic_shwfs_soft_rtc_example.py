@@ -22,7 +22,7 @@ if str(REPO_ROOT) not in sys.path:
 
 from pyRTC import Telemetry
 from pyRTC.latency import format_latency_report
-from pyRTC.Pipeline import RTCManager, clear_shms, initExistingShm
+from pyRTC.Pipeline import RTCManager, clear_shms, open_stream
 from pyRTC.logging_utils import add_logging_cli_args, configure_logging_from_args, get_logger
 from examples.synthetic_shwfs.aotpy_helpers import export_synthetic_session_to_aotpy
 
@@ -99,15 +99,15 @@ def ensure_identity_interaction_matrix(config: dict) -> Path:
 
 
 def read_scalar_stream(name: str) -> float:
-    stream, _, _ = initExistingShm(name)
-    return float(np.asarray(stream.read_noblock(SAFE=False)).ravel()[0])
+    stream = open_stream(name)
+    return float(np.asarray(stream.read()).ravel()[0])
 
 
 def format_status_line(start_time: float) -> str:
-    signal_stream, _, _ = initExistingShm("signal")
-    correction_stream, _, _ = initExistingShm("wfc")
-    residual = np.asarray(signal_stream.read_noblock(SAFE=False), dtype=np.float32).ravel()
-    correction = np.asarray(correction_stream.read_noblock(SAFE=False), dtype=np.float32).ravel()
+    signal_stream = open_stream("signal")
+    correction_stream = open_stream("wfc")
+    residual = np.asarray(signal_stream.read(), dtype=np.float32).ravel()
+    correction = np.asarray(correction_stream.read(), dtype=np.float32).ravel()
     residual_rms = float(np.sqrt(np.mean(residual**2))) if residual.size else 0.0
     correction_rms = float(np.sqrt(np.mean(correction**2))) if correction.size else 0.0
     strehl = read_scalar_stream("strehl")

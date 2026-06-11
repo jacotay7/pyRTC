@@ -20,7 +20,8 @@ def test_package_exposes_module_helpers():
     assert pyRTC.utils is not None
     assert callable(pyRTC.setFromConfig)
     assert callable(pyRTC.launchComponent)
-    assert callable(pyRTC.initExistingShm)
+    assert callable(pyRTC.open_stream)
+    assert callable(pyRTC.create_stream)
     assert callable(pyRTC.build_descriptor_catalog)
     assert callable(pyRTC.describe_component_class)
     assert callable(pyRTC.list_component_descriptors)

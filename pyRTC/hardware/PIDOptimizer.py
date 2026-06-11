@@ -15,7 +15,7 @@ import numpy as np
 
 from pyRTC.logging_utils import get_logger
 from pyRTC.Optimizer import Optimizer
-from pyRTC.Pipeline import Listener, initExistingShm
+from pyRTC.Pipeline import Listener, open_stream
 from pyRTC.utils import decrease_nice, read_yaml_file, setFromConfig, set_affinity
 
 
@@ -44,8 +44,8 @@ class PIDOptimizer(Optimizer):
             self.loop = loop
 
             self.mode = 'strehl'
-            self.strehlShm, _, _ = initExistingShm(_input_stream_name(conf, "strehl"))
-            self.tipTiltShm, _, _ = initExistingShm(_input_stream_name(conf, "tiptilt"))
+            self.strehlShm = open_stream(_input_stream_name(conf, "strehl"))
+            self.tipTiltShm = open_stream(_input_stream_name(conf, "tiptilt"))
             self.maxPGain = setFromConfig(conf, "maxPGain", 0.5)
             self.maxIGain = setFromConfig(conf, "maxIGain", 0.05)
             self.maxDGain = setFromConfig(conf, "maxDGain", 0.05)
@@ -69,9 +69,9 @@ class PIDOptimizer(Optimizer):
             result = np.empty(self.numReads)
             for i in range(self.numReads):
                 if self.mode == 'strehl':
-                    result[i] = self.strehlShm.read()
+                    result[i] = self.strehlShm.read_new()
                 elif self.mode == 'tiptilt':
-                    result[i] = self.strehlShm.read() - 1 * self.tipTiltShm.read()
+                    result[i] = self.strehlShm.read_new() - 1 * self.tipTiltShm.read()
             score = np.mean(result)
             self.logger.info("Evaluated PID trial mode=%s score=%s", self.mode, score)
             return score

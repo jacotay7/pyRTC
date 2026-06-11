@@ -11,7 +11,7 @@ import numpy as np
 from numba import jit, prange
 
 from pyRTC.logging_utils import get_logger
-from pyRTC.Pipeline import ImageSHM, launchComponent
+from pyRTC.Pipeline import create_stream, launchComponent
 from pyRTC.pyRTCComponent import pyRTCComponent
 from pyRTC.utils import setFromConfig
 
@@ -156,9 +156,9 @@ class WavefrontSensor(pyRTCComponent):
         The data type for raw image.
     imageDType : data-type
         The data type for processed image.
-    imageRaw : ImageSHM
+    imageRaw : pyshmem.SharedMemory
         Shared memory object for raw image.
-    image : ImageSHM
+    image : pyshmem.SharedMemory
         Shared memory object for processed image.
     data : ndarray
         Array to store raw image data.
@@ -241,10 +241,10 @@ class WavefrontSensor(pyRTCComponent):
             if self.downsampleFactor > 0:
                 self.imageShape[0] = self.imageShape[0] // self.downsampleFactor
                 self.imageShape[1] = self.imageShape[1] // self.downsampleFactor
-            self.imageRaw = ImageSHM(self.output_stream_name("wfsRaw"), self.imageRawShape, self.imageRawDType, gpuDevice=self.gpuDevice, consumer=False)
-            self.image = ImageSHM(self.output_stream_name("wfs"), self.imageShape, self.imageDType, gpuDevice=self.gpuDevice, consumer=False)
+            self.imageRaw = create_stream(self.output_stream_name("wfsRaw"), self.imageRawShape, self.imageRawDType, gpuDevice=self.gpuDevice)
+            self.image = create_stream(self.output_stream_name("wfs"), self.imageShape, self.imageDType, gpuDevice=self.gpuDevice)
             self.register_output_stream("wfsRaw", self.imageRaw)
-            self.register_output_stream("wfs", self.image, source_streams=["wfsRaw"], lineage_source="wfsRaw")
+            self.register_output_stream("wfs", self.image)
 
             self.data = np.zeros(self.imageShape, dtype=self.imageRawDType)
             self.dark = np.zeros(self.imageRawShape, dtype=self.imageDType)
@@ -392,7 +392,7 @@ class WavefrontSensor(pyRTCComponent):
             Processed image data.
         """
         if block:
-            return self.read_stream("wfs", RELEASE_GIL=self.RELEASE_GIL)
+            return self.read_stream("wfs")
         else:
             return self.read_stream("wfs", block=False)
     

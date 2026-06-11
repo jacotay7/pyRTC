@@ -20,7 +20,7 @@ import matplotlib.pyplot as plt
 from numba import jit
 
 from pyRTC.logging_utils import get_logger
-from pyRTC.Pipeline import ImageSHM, launchComponent
+from pyRTC.Pipeline import create_stream, launchComponent
 from pyRTC.pyRTCComponent import pyRTCComponent
 from pyRTC.utils import gaussian_2d_grid, setFromConfig
 
@@ -74,9 +74,9 @@ class WavefrontCorrector(pyRTCComponent):
         Affinity setting.
     m2cFile : str
         Path to the mode-to-command file.
-    correctionVector : ImageSHM
+    correctionVector : pyshmem.SharedMemory
         Correction vector.
-    correctionVector2D : ImageSHM or None
+    correctionVector2D : pyshmem.SharedMemory or None
         2D correction vector for display.
     flat : numpy.ndarray
         Initial flat shape.
@@ -123,7 +123,7 @@ class WavefrontCorrector(pyRTCComponent):
             self.numModes = conf["numModes"]
             self.m2cFile = setFromConfig(conf, "m2cFile", "")
 
-            self.correctionVector = ImageSHM(self.output_stream_name("wfc"), (self.numModes,), np.float32, gpuDevice=self.gpuDevice, consumer=False)
+            self.correctionVector = create_stream(self.output_stream_name("wfc"), (self.numModes,), np.float32, gpuDevice=self.gpuDevice)
             self.register_output_stream("wfc", self.correctionVector)
             self.correctionVector2D = None
 
@@ -218,9 +218,9 @@ class WavefrontCorrector(pyRTCComponent):
             self.layout = layout
             if isinstance(self.layout, np.ndarray):
                 self.layout = self.layout > 0
-                self.correctionVector2D = ImageSHM(self.output_stream_name("wfc2D"), self.layout.shape, np.float32, gpuDevice=self.gpuDevice, consumer=False)
-                self.register_output_stream("wfc2D", self.correctionVector2D, source_streams=["wfc"], lineage_source="wfc")
-                self.write_stream("wfc2D", np.zeros(self.layout.shape, dtype=np.float32), source_streams=["wfc"], lineage_source="wfc")
+                self.correctionVector2D = create_stream(self.output_stream_name("wfc2D"), self.layout.shape, np.float32, gpuDevice=self.gpuDevice)
+                self.register_output_stream("wfc2D", self.correctionVector2D)
+                self.write_stream("wfc2D", np.zeros(self.layout.shape, dtype=np.float32))
                 self.correctionVector2D_template = self.read_stream("wfc2D", block=False)
 
                 self.index_map = np.zeros(self.layout.shape, dtype=int)
@@ -402,10 +402,10 @@ class WavefrontCorrector(pyRTCComponent):
             self.currentShape = np.clip(self.currentShape, -self.commandCap, self.commandCap)
         
         #If we have a 2D SHM instance, update it 
-        if isinstance(self.correctionVector2D, ImageSHM):
+        if self.correctionVector2D is not None:
             self.correctionVector2D_template.fill(0)
             self.correctionVector2D_template[self.layout] = self.currentShape - self.flat
-            self.write_stream("wfc2D", self.correctionVector2D_template, source_streams=["wfc"], lineage_source="wfc")
+            self.write_stream("wfc2D", self.correctionVector2D_template)
         #Overwrite with hardware instructions after this to send to hardware
         return
 

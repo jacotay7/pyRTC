@@ -2,7 +2,7 @@
 
 pyRTC provides the building blocks needed to assemble an adaptive-optics real-
 time controller in Python. The package root re-exports the main component base
-classes, orchestration helpers, shared-memory transport primitives, and logging
+classes, orchestration helpers, pyshmem-backed stream helpers, and logging
 utilities so users can build systems from a compact public API surface.
 """
 
@@ -26,14 +26,15 @@ from .latency import LatencyReport, LatencySegment, LatencyStatistics, format_la
 from .Modulator import Modulator
 from .Optimizer import Optimizer
 from .Pipeline import (
-	ImageSHM,
 	Listener,
 	RTCManager,
+	clear_shms,
+	create_stream,
 	gpu_torch_available,
 	hardwareLauncher,
-	initExistingShm,
 	launchComponent,
 	normalize_gpu_device,
+	open_stream,
 )
 from .ScienceCamera import ScienceCamera
 from .SlopesProcess import SlopesProcess
@@ -50,7 +51,8 @@ from .utils import setFromConfig
 from . import Pipeline, utils
 
 __all__ = [
-	"ImageSHM",
+	"clear_shms",
+	"create_stream",
 	"Listener",
 	"Loop",
 	"LatencyReport",
@@ -72,7 +74,7 @@ __all__ = [
 	"gpu_torch_available",
 	"get_logger",
 	"hardwareLauncher",
-	"initExistingShm",
+	"open_stream",
 	"read_system_config",
 	"configure_logging",
 	"configure_logging_from_args",

@@ -464,7 +464,7 @@ def _validate_component_resource_bindings(conf: Mapping[str, Any]) -> None:
 
 
 def _validate_streams_config(conf: Any, *, system_conf: Mapping[str, Any]) -> None:
-    """Validate optional stream metadata and lineage overrides.
+    """Validate optional stream metadata overrides.
 
     The preferred terminology is ``outputComponent`` and ``inputComponents``.
     ``producer`` and ``consumers`` remain supported as backward-compatible
@@ -504,16 +504,6 @@ def _validate_streams_config(conf: Any, *, system_conf: Mapping[str, Any]) -> No
             component_stream = stream_conf["componentStream"]
             if not isinstance(component_stream, str) or not component_stream.strip():
                 raise ConfigValidationError(f"streams.{stream_name}: 'componentStream' must be a non-empty semantic stream name")
-        if "sourceStreams" in stream_conf:
-            source_streams = stream_conf["sourceStreams"]
-            if not isinstance(source_streams, list) or not all(isinstance(item, str) and item.strip() for item in source_streams):
-                raise ConfigValidationError(f"streams.{stream_name}: 'sourceStreams' must be a list of non-empty stream names")
-        if "lineageSource" in stream_conf:
-            lineage_source = stream_conf["lineageSource"]
-            if not isinstance(lineage_source, str) or not lineage_source.strip():
-                raise ConfigValidationError(f"streams.{stream_name}: 'lineageSource' must be a non-empty stream name")
-            if "sourceStreams" in stream_conf and lineage_source not in stream_conf["sourceStreams"]:
-                raise ConfigValidationError(f"streams.{stream_name}: 'lineageSource' must also appear in 'sourceStreams'")
 
 
 def _validate_metadata_config(conf: Any) -> None:

@@ -135,14 +135,20 @@ def test_standard_integrator_uses_nonblocking_wfc_read():
     loop.numActiveModes = 3
 
     class _Signal:
-        def read(self, SAFE=False, RELEASE_GIL=True):
+        count = 1
+        write_time = 1.0
+
+        def read(self):
             return np.ones(4, dtype=np.float32)
 
     class _Wfc:
-        def read(self, SAFE=False):
-            raise AssertionError("standardIntegrator should not block on wfc.read()")
+        count = 1
+        write_time = 1.0
 
-        def read_noblock(self, SAFE=False):
+        def read_new(self, timeout=None):
+            raise AssertionError("standardIntegrator should not block on wfc")
+
+        def read(self):
             return np.zeros(4, dtype=np.float32)
 
     sent = {}

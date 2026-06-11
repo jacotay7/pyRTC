@@ -1,10 +1,10 @@
-"""Shared-memory transport and hard-RTC process helpers for pyRTC.
+"""Stream wiring and hard-RTC process helpers for pyRTC.
 
-This module contains the infrastructure that lets pyRTC components exchange
-frames and command vectors through named shared-memory blocks, optionally mirror
-those blocks onto CUDA tensors for compatible deployments, and launch hardware-
-facing child processes that communicate with the main RTC over a small
-localhost-based JSON protocol.
+Shared-memory transport is provided by the ``pyshmem`` package; this module
+contains the pyRTC-side policy for creating and attaching to those streams
+(:func:`create_stream` / :func:`open_stream`) plus the infrastructure for
+launching hardware-facing child processes that communicate with the main RTC
+over a small localhost-based JSON protocol.
 """
 
 from __future__ import annotations
@@ -14,20 +14,19 @@ from dataclasses import dataclass
 import importlib
 import importlib.util
 import inspect
-import json 
+import json
 import logging
 import os
 import socket
-import struct
 import sys
 import threading
 import time
 from pathlib import Path
 
-from multiprocessing import shared_memory, resource_tracker
 from subprocess import PIPE, Popen
 
 import numpy as np
+import pyshmem
 
 from pyRTC.logging_utils import (
     PYRTC_LOG_DIR_ENV,
@@ -40,9 +39,6 @@ from pyRTC.logging_utils import (
 from pyRTC.config_runtime import sync_runtime_config
 from pyRTC.utils import (
     bind_socket,
-    dtype_to_float,
-    float_to_dtype,
-    precise_delay,
     setFromConfig,
     set_affinity_and_priority,
 )
@@ -52,26 +48,10 @@ logger = get_logger(__name__)
 
 TORCH_AVAILABLE = False
 torch = None
-dtype_mapping = {}
 
 try:
-    import torch
+    import torch  # noqa: F401  (availability probe for normalize_gpu_device)
     TORCH_AVAILABLE = True
-    # Mapping dictionary
-    dtype_mapping = {
-        np.float32: torch.float32,
-        np.float64: torch.float64,
-        np.int32: torch.int32,
-        np.int64: torch.int64,
-        np.uint8: torch.uint8,
-        np.uint16: torch.uint16,
-        np.dtype("float32"): torch.float32,
-        np.dtype("float64"): torch.float64,
-        np.dtype("int32"): torch.int32,
-        np.dtype("int64"): torch.int64,
-        np.dtype("uint8"): torch.uint8,
-        np.dtype("uint16"): torch.uint16,
-    }
 except Exception:
     TORCH_AVAILABLE = False
 
@@ -145,433 +125,94 @@ def work(obj, functionName, affinity):
             time.sleep(1e-3)
     return
 
-class ImageSHM:
-    """Named shared-memory array with metadata and optional GPU mirror state.
+def create_stream(name, shape, dtype, gpuDevice=None):
+    """Create the pyshmem stream backing a component output.
 
-    ``ImageSHM`` is the transport primitive used throughout pyRTC. Each stream
-    has a CPU shared-memory block, a small metadata block containing shape,
-    dtype, and timing information, and optionally a GPU-backed tensor mirror in
-    hard-RTC deployments where CUDA sharing is supported.
-
-    Writers create the stream and update it with NumPy arrays. Readers
-    reconstruct the stream by name and read either safe copies or direct views,
-    depending on their performance and synchronization needs.
+    An existing CPU stream is reused when its shape and dtype already match,
+    so attached readers (viewers, telemetry) keep working across component
+    restarts; on any mismatch the stream is rebuilt. GPU-backed streams are
+    always rebuilt because a previous producer's CUDA tensor cannot be
+    re-exported. GPU streams are created with ``cpu_mirror=True`` so CPU-only
+    processes can always read them.
     """
-
-    METADATA_INDEX_COUNT = 0
-    METADATA_INDEX_WRITE_TIME = 1
-    METADATA_INDEX_ROOT_TIME = 2
-    METADATA_INDEX_UPSTREAM_WRITE_TIME = 3
-    METADATA_INDEX_UPSTREAM_CONSUME_TIME = 4
-    METADATA_INDEX_SIZE = 5
-    METADATA_INDEX_DTYPE = 6
-    METADATA_INDEX_SHAPE_START = 7
-    METADATA_SIZE = 16
-    def __init__(self, name, shape, dtype, gpuDevice=None, consumer=True) -> None:
-
-        self.name = name
-        self.dtype = dtype
-        self.shape = shape
-        self.arr = np.empty(shape, dtype=self.dtype)
-        self.size = self.arr.nbytes
-        self.metadata = np.zeros(self.METADATA_SIZE, dtype=np.float64)
-        self.count = 0
-        self.lastWriteTime = 0
-        self.lastReadTime = 0
-        self.rootTime = 0
-        self.upstreamWriteTime = 0
-        self.upstreamConsumeTime = 0
-        self.areData = "meta" not in name
-        self.gpuDevice = normalize_gpu_device(gpuDevice, name)
-        created_metadata = False
-
-        try:
-            self.shm = shared_memory.SharedMemory(name= name, create=True, size=self.arr.nbytes)
-            logger.debug("Creating shared memory object %s", self.name)
-        except Exception:
-            self.shm = shared_memory.SharedMemory(name=name)
-            logger.debug("Opening existing shared memory object %s", self.name)
-
-        #Doesn't work in windows
-        if sys.platform != 'win32':
-            resource_tracker.unregister(self.shm._name, 'shared_memory')
-            
-        self.arr = np.ndarray(shape, dtype=dtype, buffer=self.shm.buf)
-        #If we are not opening a metadata shm
-        if self.areData:
-            #Create/Open an associated metadata SHM 
-            try:
-                self.metadataShm = shared_memory.SharedMemory(name= name+"_meta", create=True, size=self.metadata.nbytes)
-                logger.debug("Creating shared memory object %s_meta", self.name)
-                created_metadata = True
-            except Exception:
-                self.metadataShm = shared_memory.SharedMemory(name= name+"_meta")
-                logger.debug("Opening existing shared memory object %s_meta", self.name)
-            if sys.platform != 'win32':
-                resource_tracker.unregister(self.metadataShm._name, 'shared_memory')
-            self.metadata = np.ndarray(self.metadata.shape, dtype=self.metadata.dtype, buffer=self.metadataShm.buf)
-            if created_metadata:
-                self.metadata.fill(0)
-                self.updateMetadata(FULL_UPDATE=True)
-            else:
-                self._refresh_local_metadata_cache()
-
-            if self.gpuDevice is not None:
-                self.torchDtype = dtype_mapping.get(self.dtype, None)
-                if self.torchDtype is None:
-                    self.gpuDevice = None
-                    logging.log(level=logging.WARNING, msg=f"{self.name}: dtype {self.dtype} not supported for GPU SHM; defaulting to CPU mode.")
-                    return
-                
-                #If we expect the SHM to already exist
-                if consumer:
-                    self.initGPUMemFromSHM()
-                else:
-                    self.createGPUMemSHM()
-
-        return
-
-    def _refresh_local_metadata_cache(self) -> None:
-        if not self.areData:
-            return
-        self.count = int(self.metadata[self.METADATA_INDEX_COUNT])
-        self.lastWriteTime = float(self.metadata[self.METADATA_INDEX_WRITE_TIME])
-        self.rootTime = float(self.metadata[self.METADATA_INDEX_ROOT_TIME])
-        self.upstreamWriteTime = float(self.metadata[self.METADATA_INDEX_UPSTREAM_WRITE_TIME])
-        self.upstreamConsumeTime = float(self.metadata[self.METADATA_INDEX_UPSTREAM_CONSUME_TIME])
-
-    def frame_metadata(self) -> dict[str, float | int]:
-        if not self.areData:
-            return {
-                "count": 0,
-                "write_time": 0.0,
-                "root_time": 0.0,
-                "upstream_write_time": 0.0,
-                "upstream_consume_time": 0.0,
-            }
-        return {
-            "count": int(self.metadata[self.METADATA_INDEX_COUNT]),
-            "write_time": float(self.metadata[self.METADATA_INDEX_WRITE_TIME]),
-            "root_time": float(self.metadata[self.METADATA_INDEX_ROOT_TIME]),
-            "upstream_write_time": float(self.metadata[self.METADATA_INDEX_UPSTREAM_WRITE_TIME]),
-            "upstream_consume_time": float(self.metadata[self.METADATA_INDEX_UPSTREAM_CONSUME_TIME]),
-        }
-
-    def __del__(self):
-
-        self.close()
-
-    def createGPUMemSHM(self):
-
-        if self.gpuDevice is None or not TORCH_AVAILABLE:
-            return None
-
-        # Create a GPU tensor
-        self.shmGPU = torch.empty(self.shape, dtype=self.torchDtype, device=self.gpuDevice)
-        storage = self.shmGPU.untyped_storage()
-
-        # Get all outputs from storage._share_cuda_()
-        (
-            device_index,
-            handle_bytes,
-            storage_size_bytes,
-            storage_offset_bytes,
-            path_bytes,
-            unknown,
-            additional_bytes,
-            is_host_device  # Assuming the 9th element is a boolean
-        ) = storage._share_cuda_()
-
-        # Prepare variable-length byte fields
-        handle_length = len(handle_bytes)
-        path_length = len(path_bytes)
-        additional_length = len(additional_bytes)
-
-        # Define header format
-        # 'I' - uint32, 'Q' - uint64, 'B' - uint8
-        header_format = 'I I I I I I I I I'  # device_index, handle_length, storage_size, storage_offset, size_bytes, view_size, view_offset, is_host_device
-        header = struct.pack(
-            header_format,
-            device_index,
-            handle_length,
-            storage_size_bytes,
-            storage_offset_bytes,
-            unknown,
-            path_length,
-            additional_length,
-            int(is_host_device),  # Convert bool to int
-            os.getpid(),
+    shape = tuple(int(axis) for axis in shape)
+    dtype = np.dtype(dtype)
+    gpu_device = normalize_gpu_device(gpuDevice, name)
+    if gpu_device is not None and not pyshmem.gpu_available():
+        logger.warning(
+            "%s: gpuDevice %s requested but CUDA is not available; using a CPU stream",
+            name,
+            gpu_device,
         )
-
-        # Total size: header + handle_bytes + path_bytes + additional_bytes
-        total_size = struct.calcsize(header_format) + handle_length + path_length + additional_length
-
-        # Create or open the shared memory segment
-        # try:
-        gpuHandleShm = shared_memory.SharedMemory(
-            name=self.name + "_gpu_handle", create=True, size=total_size)
-        logger.debug("Creating shared memory object %s_gpu_handle", self.name)
-        # except FileExistsError:
-        #     gpuHandleShm = shared_memory.SharedMemory(name=self.name + "_gpu_handle")
-        #     print(f"Opening Existing Shared Memory Object {self.name}_gpu_handle")
-        # if sys.platform != 'win32':
-        #     resource_tracker.unregister(gpuHandleShm._name, 'shared_memory')
-        # Write data to shared memory
-        buf = gpuHandleShm.buf
-        offset = 0
-
-        # Write header
-        buf[offset:offset + struct.calcsize(header_format)] = header
-        offset += struct.calcsize(header_format)
-
-        # Write handle_bytes
-        buf[offset:offset + handle_length] = handle_bytes
-        offset += handle_length
-
-        # Write path_bytes
-        buf[offset:offset + path_length] = path_bytes
-        offset += path_length
-
-        # Write additional_bytes
-        buf[offset:offset + additional_length] = additional_bytes
-        offset += additional_length
-
-        return self.shmGPU
-
-    def initGPUMemFromSHM(self):
-        if self.gpuDevice is None or not TORCH_AVAILABLE:
-            return
-
-        # Open the shared memory segment
-        try:
-            gpuHandleShm = shared_memory.SharedMemory(name=self.name + "_gpu_handle")
-            logger.debug("Opened shared memory object %s_gpu_handle", self.name)
-        except Exception:
-            self.gpuDevice=None
-            logging.log(level=logging.WARNING, msg=f"{self.name}: Trying to initialize GPU memory which does not exist. Defaulting to CPU")
-            return
-            # raise Exception(f"{self.name}: Trying to initialize GPU memory which does not exist")
-        # if sys.platform != 'win32':
-        #     resource_tracker.unregister(gpuHandleShm._name, 'shared_memory')
-        buf = gpuHandleShm.buf
-        offset = 0
-
-        # Define header format
-        header_format = 'I I I I I I I I I'  # device_index, handle_length, storage_size, storage_offset, size_bytes, view_size, view_offset, is_host_device
-        header_size = struct.calcsize(header_format)
-
-        # Read and unpack header
-        header_bytes = bytes(buf[offset:offset + header_size])
-        (
-            device_index,
-            handle_length,
-            storage_size_bytes,
-            storage_offset_bytes,
-            unknown,
-            path_length,
-            additional_length,
-            is_host_device,  # Convert bool to int
-            pid
-        ) = struct.unpack(header_format, header_bytes)
-        if pid == os.getpid():
-            raise Exception(f"{self.name}:GPU SHMs only work in hard real-time mode, set gpuDevice to None or remove from config")
-        offset += header_size
-
-        # Read handle_bytes
-        handle_bytes = bytes(buf[offset:offset + handle_length])
-        offset += handle_length
-
-        # Read path_bytes
-        path_bytes = bytes(buf[offset:offset + path_length])
-        offset += path_length
-
-        # Read additional_bytes
-        # Assuming additional_length is known or fixed; alternatively, store it in header
-        additional_bytes = bytes(buf[offset:offset + additional_length])
-        offset += additional_length
-
-        # Reconstruct the storage
-        storage = torch.UntypedStorage._new_shared_cuda(
-            device_index,
-            handle_bytes,
-            storage_size_bytes,
-            storage_offset_bytes,
-            path_bytes,
-            unknown,
-            additional_bytes,
-            bool(is_host_device)
+        gpu_device = None
+    if gpu_device is not None and dtype not in pyshmem.GPU_SUPPORTED_DTYPES:
+        logger.warning(
+            "%s: dtype %s is not supported for GPU SHM; using a CPU stream",
+            name,
+            dtype,
         )
+        gpu_device = None
 
-        # Create a tensor from the storage
-        self.shmGPU = torch.tensor([], dtype=self.torchDtype, device=device_index).set_(storage).reshape(self.shape)
+    create_kwargs = {}
+    if gpu_device is not None:
+        create_kwargs = {"gpu_device": gpu_device, "cpu_mirror": True}
 
-        return
+    try:
+        return pyshmem.create(name, shape=shape, dtype=dtype, **create_kwargs)
+    except FileExistsError:
+        pass
 
-    def close(self):
-        logger.debug("Closing shared memory object %s", self.name)
+    if gpu_device is None:
+        existing = None
         try:
-            self.shm.close()
+            existing = pyshmem.open(name, gpu_device=False)
         except Exception:
-            logger.debug("Failed to close data SHM %s", self.name, exc_info=True)
+            logger.debug("Failed to reopen existing stream %s", name, exc_info=True)
+        if existing is not None:
+            matches = (
+                not existing.gpu_enabled
+                and tuple(existing.shape) == shape
+                and existing.dtype == dtype
+            )
+            if matches:
+                logger.debug("Reusing existing stream %s", name)
+                return existing
+            existing.close()
 
-        metadata_shm = getattr(self, "metadataShm", None)
-        if metadata_shm is not None:
-            try:
-                metadata_shm.close()
-            except Exception:
-                logger.debug("Failed to close metadata SHM %s_meta", self.name, exc_info=True)
-        return
+    logger.debug("Rebuilding stream %s", name)
+    pyshmem.unlink_quiet(name)
+    return pyshmem.create(name, shape=shape, dtype=dtype, **create_kwargs)
 
-    def write(self, arr, *, root_time: float | None = None, upstream_time: float | None = None, consumer_time: float | None = None):
 
-        #Check if we are a GPU shm
-        if self.gpuDevice is not None:
-            #If you didn't write a numpy array or tensor
-            if not isinstance(arr, np.ndarray) and not isinstance(arr, torch.Tensor): 
-                return -1
-            #If you wrote the wrong shape
-            if arr.shape != self.arr.shape:
-                logging.log(level=logging.ERROR, msg=f"{self.name}: Writing Wrong size array to SHM. Expecting {self.arr.shape}, Got {arr.shape}")
-                return -1
-            #If you passed a tensor
-            if isinstance(arr, torch.Tensor):
-                #copy the tensor to the GPU shm
-                self.shmGPU.copy_(arr)
-                #copy a CPU numpy version to the CPU shm
-                np.copyto(self.arr, arr.cpu().numpy())
-            elif isinstance(arr, np.ndarray):
-                #copy a CPU numpy version to the CPU shm
-                np.copyto(self.arr, arr)
-                #copy the tensor to the GPU shm
-                tensor = torch.from_numpy(arr)
-                self.shmGPU.copy_(tensor)
-        else:
-            #If you didn't write a numpy array
-            if not isinstance(arr, np.ndarray): 
-                return -1
-            #If you wrote the wrong shape
-            if arr.shape != self.arr.shape:
-                logging.log(level=logging.ERROR, msg=f"{self.name}: Writing Wrong size array to SHM. Expecting {self.arr.shape}, Got {arr.shape}")
-                return -1
-            #Copy to SHM
-            np.copyto(self.arr, arr)
+def open_stream(name, gpuDevice=None):
+    """Attach to an existing pyshmem stream.
 
-        #Update metadata
-        self.count += 1
-        self.lastWriteTime = time.time()
-        if root_time is None or float(root_time) <= 0:
-            self.rootTime = self.lastWriteTime
-        else:
-            self.rootTime = float(root_time)
-        self.upstreamWriteTime = 0.0 if upstream_time is None else float(upstream_time)
-        self.upstreamConsumeTime = 0.0 if consumer_time is None else float(consumer_time)
-        if self.areData:
-            self.updateMetadata()
+    Without ``gpuDevice`` the stream is opened CPU-side: GPU-backed streams
+    are read through their CPU mirror and reads return NumPy arrays. With
+    ``gpuDevice`` the producer's CUDA tensor is attached and reads return
+    torch tensors; if the attach fails (e.g. the producer exited), the CPU
+    mirror is used instead.
+    """
+    gpu_device = normalize_gpu_device(gpuDevice, name)
+    if gpu_device is None:
+        return pyshmem.open(name, gpu_device=False)
+    try:
+        return pyshmem.open(name, gpu_device=gpu_device)
+    except FileNotFoundError:
+        raise
+    except Exception:
+        logger.warning(
+            "%s: could not attach GPU device %s; falling back to the CPU mirror",
+            name,
+            gpu_device,
+        )
+        return pyshmem.open(name, gpu_device=False)
 
-        #Return Success
-        return 1
-    
-    def hold(self, timeout=None, RELEASE_GIL = True):
-        if timeout is None:
-            while not self.checkNew():
-                if RELEASE_GIL:
-                    time.sleep(1e-5)
-                else:
-                    precise_delay(5)
-        elif isinstance(timeout, float) or isinstance(timeout,int):
-            start = time.time()
-            while not self.checkNew() and (time.time() - start) < timeout:
-                if RELEASE_GIL:
-                    time.sleep(1e-5)
-                else:
-                    precise_delay(5)
-        return
 
-    def read(self, SAFE=True, GPU = False, RELEASE_GIL = True):
-        self.hold(RELEASE_GIL = RELEASE_GIL)
-        return self.read_noblock(SAFE=SAFE, GPU=GPU)    
-    
-    def read_timeout(self, timeout, SAFE = True, GPU = False, RELEASE_GIL = True):
-        self.hold(timeout=timeout, RELEASE_GIL = RELEASE_GIL)
-        return self.read_noblock(SAFE=SAFE, GPU=GPU)
-    
-    def read_noblock(self, SAFE=True, GPU=False):
-
-        #Mark that we have seen the shm before
-        self.markSeen()
-        #Return a copy of the CPU shm
-        if SAFE:
-            #If the user asks to read the GPU shm
-            if GPU and self.gpuDevice is not None:
-                return self.shmGPU.clone()
-            else:
-                arr = np.copy(self.arr)
-                return arr
-        else:##EXPERIMENTAL if not safe, return the raw shm memory
-            if GPU and self.gpuDevice is not None:
-                return self.shmGPU
-            else:
-                return self.arr
-
-    
-    def checkNew(self):
-        
-        if self.areData:
-            # metadata = np.copy(self.metadata)
-            if self.metadata[1] != self.lastReadTime:
-                self.markSeen()
-                return True
-        else: #If we are just reading a meta data object directly
-            return True
-        return False
-    
-    def markSeen(self):
-        self.lastReadTime = self.metadata[1]
-        return
-
-    def updateMetadata(self, FULL_UPDATE=False):
-        
-        # self.metadata = np.zeros_like(self.metadata)
-        self.metadata[self.METADATA_INDEX_COUNT] = self.count
-        self.metadata[self.METADATA_INDEX_WRITE_TIME] = self.lastWriteTime
-        self.metadata[self.METADATA_INDEX_ROOT_TIME] = self.rootTime
-        self.metadata[self.METADATA_INDEX_UPSTREAM_WRITE_TIME] = self.upstreamWriteTime
-        self.metadata[self.METADATA_INDEX_UPSTREAM_CONSUME_TIME] = self.upstreamConsumeTime
-        if FULL_UPDATE:
-            self.metadata[self.METADATA_INDEX_SIZE] = self.size
-            self.metadata[self.METADATA_INDEX_DTYPE] = dtype_to_float(self.arr.dtype)
-            for i in range(len(self.arr.shape)):
-                if self.METADATA_INDEX_SHAPE_START + i < self.metadata.size:
-                    self.metadata[self.METADATA_INDEX_SHAPE_START + i] = self.arr.shape[i]
-        # np.copyto(self.metadata, metadata)
-        return
-    
 def clear_shms(names):
-    def _close_and_unlink(name):
-        try:
-            shm = shared_memory.SharedMemory(name=name)
-        except FileNotFoundError:
-            return
-        except Exception:
-            logger.debug("Failed opening shared memory object %s for cleanup", name, exc_info=True)
-            return
-
-        try:
-            shm.unlink()
-        except FileNotFoundError:
-            pass
-        except Exception:
-            logger.debug("Failed unlinking shared memory object %s", name, exc_info=True)
-        finally:
-            try:
-                shm.close()
-            except Exception:
-                logger.debug("Failed closing shared memory object %s", name, exc_info=True)
-
-    for n in names:
-        _close_and_unlink(n)
-        _close_and_unlink(f"{n}_meta")
-        _close_and_unlink(f"{n}_gpu_handle")
+    """Destroy the named pyshmem streams, ignoring ones that do not exist."""
+    for name in names:
+        pyshmem.unlink_quiet(name)
 
 
 class hardwareLauncher:
@@ -897,19 +538,6 @@ class Listener:
         reply, self._read_buffer = _socket_read_json(self.RTCsocket, self._read_buffer)
         return reply
     
-def initExistingShm(shmName, gpuDevice=None):
-    #Read wfc metadata and open a stream to the shared memory
-    shmMeta = ImageSHM(shmName+"_meta", (ImageSHM.METADATA_SIZE,), np.float64).read_noblock()
-    shmDType = float_to_dtype(shmMeta[ImageSHM.METADATA_INDEX_DTYPE])
-    shmDims = []
-    i = 0
-    while ImageSHM.METADATA_INDEX_SHAPE_START + i < shmMeta.size and int(shmMeta[ImageSHM.METADATA_INDEX_SHAPE_START + i]) > 0:
-        shmDims.append(int(shmMeta[ImageSHM.METADATA_INDEX_SHAPE_START + i]))
-        i += 1
-    shm = ImageSHM(shmName, shmDims, shmDType, gpuDevice=gpuDevice, consumer=True)
-    return shm, shmDims, shmDType
-
-
 def build_component_runtime_config(system_conf: dict, section_name: str) -> dict:
     sync_runtime_config(system_conf)
 
@@ -979,11 +607,11 @@ DEFAULT_COMPONENT_ORDER = ("modulator", "wfc", "wfs", "slopes", "loop", "psf", "
 
 def _existing_shm_spec(name: str):
     try:
-        stream, shape, dtype = initExistingShm(name)
+        stream = open_stream(name)
     except Exception:
         return None
     try:
-        return tuple(int(axis) for axis in shape), np.dtype(dtype)
+        return tuple(int(axis) for axis in stream.shape), np.dtype(stream.dtype)
     finally:
         try:
             stream.close()

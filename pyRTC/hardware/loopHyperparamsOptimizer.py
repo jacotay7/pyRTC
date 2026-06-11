@@ -15,7 +15,7 @@ import numpy as np
 
 from pyRTC.logging_utils import get_logger
 from pyRTC.Optimizer import Optimizer
-from pyRTC.Pipeline import Listener, initExistingShm
+from pyRTC.Pipeline import Listener, open_stream
 from pyRTC.utils import decrease_nice, read_yaml_file, setFromConfig, set_affinity
 
 
@@ -42,7 +42,7 @@ class loopOptimizer(Optimizer):
         try:
             self.loop = loop
 
-            self.strehlShm, _, _ = initExistingShm(_input_stream_name(conf, "strehl"))
+            self.strehlShm = open_stream(_input_stream_name(conf, "strehl"))
             self.minGain = setFromConfig(conf, "minGain", 0.3)
             self.maxGain = setFromConfig(conf, "maxGain", 0.6)
             self.maxLeak = setFromConfig(conf, "maxLeak", 0.1)
@@ -72,7 +72,7 @@ class loopOptimizer(Optimizer):
 
             result = np.empty(self.numReads)
             for i in range(self.numReads):
-                result[i] = self.strehlShm.read()
+                result[i] = self.strehlShm.read_new()
             score = np.mean(result)
             self.logger.info("Evaluated loop optimizer trial score=%s", score)
             return score

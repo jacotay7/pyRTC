@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from pyRTC.logging_utils import ensure_logging_configured, get_logger
-from pyRTC.Pipeline import ImageSHM
+from pyRTC.Pipeline import create_stream
 from pyRTC.Pipeline import launchComponent
 from pyRTC.pyRTCComponent import pyRTCComponent
 from pyRTC.utils import centroid, clean_image_for_strehl, setFromConfig
@@ -57,13 +57,13 @@ class ScienceCamera(pyRTCComponent):
         Data type of the image.
     psfLongDtype : type
         Data type of the long exposure PSF.
-    psfShort : ImageSHM
+    psfShort : pyshmem.SharedMemory
         Shared memory object for the short exposure PSF.
-    psfLong : ImageSHM
+    psfLong : pyshmem.SharedMemory
         Shared memory object for the long exposure PSF.
-    strehlShm : ImageSHM
+    strehlShm : pyshmem.SharedMemory
         Shared memory object for the Strehl ratio.
-    tipTiltShm : ImageSHM
+    tipTiltShm : pyshmem.SharedMemory
         Shared memory object for the tip-tilt.
     data : numpy.ndarray
         Data array for the image.
@@ -118,10 +118,10 @@ class ScienceCamera(pyRTCComponent):
             self.imageDType = np.int32
             self.psfLongDtype = np.float64
 
-            self.psfShort = ImageSHM(_output_name("psfShort"), self.imageShape, self.imageDType)
-            self.psfLong = ImageSHM(_output_name("psfLong"), self.imageShape, self.psfLongDtype)
-            self.strehlShm = ImageSHM(_output_name("strehl"), (1,), float)
-            self.tipTiltShm = ImageSHM(_output_name("tiptilt"), (1,), float)
+            self.psfShort = create_stream(_output_name("psfShort"), self.imageShape, self.imageDType)
+            self.psfLong = create_stream(_output_name("psfLong"), self.imageShape, self.psfLongDtype)
+            self.strehlShm = create_stream(_output_name("strehl"), (1,), float)
+            self.tipTiltShm = create_stream(_output_name("tiptilt"), (1,), float)
 
             self.data = np.zeros(self.imageShape, dtype=self.imageRawDType)
             self.dark = np.zeros(self.imageShape, dtype=self.imageDType)
@@ -138,9 +138,9 @@ class ScienceCamera(pyRTCComponent):
             self.integrationLength = conf["integration"]
             super().__init__(conf)
             self.register_output_stream("psfShort", self.psfShort)
-            self.register_output_stream("psfLong", self.psfLong, source_streams=["psfShort"], lineage_source="psfShort")
-            self.register_output_stream("strehl", self.strehlShm, source_streams=["psfLong"], lineage_source="psfLong")
-            self.register_output_stream("tiptilt", self.tipTiltShm, source_streams=["psfLong"], lineage_source="psfLong")
+            self.register_output_stream("psfLong", self.psfLong)
+            self.register_output_stream("strehl", self.strehlShm)
+            self.register_output_stream("tiptilt", self.tipTiltShm)
             self.logger.info(
                 "Initialized science camera name=%s image_shape=%s integration=%s",
                 self.name,
@@ -287,7 +287,7 @@ class ScienceCamera(pyRTCComponent):
         x = np.zeros(self.data.shape)
         for i in range(self.integrationLength):
             x += self.read().astype(x.dtype)
-        self.write_stream("psfLong", x/self.integrationLength, source_streams=["psfShort"], lineage_source="psfShort")
+        self.write_stream("psfLong", x/self.integrationLength)
         return 
 
     def read(self, block = True):
@@ -300,7 +300,7 @@ class ScienceCamera(pyRTCComponent):
             Current short exposure PSF.
         """
         if block:
-            return self.read_stream("psfShort", RELEASE_GIL=True)
+            return self.read_stream("psfShort")
         return self.read_stream("psfShort", block=False)
     
     def readLong(self):
@@ -312,7 +312,7 @@ class ScienceCamera(pyRTCComponent):
         numpy.ndarray
             Current long exposure PSF.
         """
-        return self.read_stream("psfLong", RELEASE_GIL=True)
+        return self.read_stream("psfLong")
     
     def takeDark(self):
         """
@@ -501,8 +501,8 @@ class ScienceCamera(pyRTCComponent):
         self.strehl_ratio = np.max(current) / np.max(model)
         self.peak_dist = np.linalg.norm(centroid(current) - centroid(self.model))
 
-        self.write_stream("strehl", np.array([self.strehl_ratio], dtype=float), source_streams=["psfLong"], lineage_source="psfLong")
-        self.write_stream("tiptilt", np.array([self.peak_dist], dtype=float), source_streams=["psfLong"], lineage_source="psfLong")
+        self.write_stream("strehl", np.array([self.strehl_ratio], dtype=float))
+        self.write_stream("tiptilt", np.array([self.peak_dist], dtype=float))
 
         return self.strehl_ratio
 

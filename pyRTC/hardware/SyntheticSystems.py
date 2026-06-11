@@ -10,7 +10,7 @@ import time
 
 import numpy as np
 
-from pyRTC.Pipeline import initExistingShm
+from pyRTC.Pipeline import open_stream
 from pyRTC.ScienceCamera import ScienceCamera
 from pyRTC.WavefrontCorrector import WavefrontCorrector
 from pyRTC.WavefrontSensor import WavefrontSensor
@@ -158,7 +158,7 @@ class SyntheticSHWFS(WavefrontSensor):
         if self.correctionShm is not None:
             return
         try:
-            self.correctionShm, _, _ = initExistingShm(self.input_stream_name("wfc"), gpuDevice=self.gpuDevice)
+            self.correctionShm = open_stream(self.input_stream_name("wfc"), gpuDevice=self.gpuDevice)
         except Exception:
             self.correctionShm = None
 
@@ -176,7 +176,7 @@ class SyntheticSHWFS(WavefrontSensor):
         if self.correctionShm is None:
             return np.zeros(self.numModes, dtype=np.float32)
 
-        correction = np.asarray(self.correctionShm.read_noblock(SAFE=False), dtype=np.float32).ravel()
+        correction = np.asarray(self.correctionShm.read(), dtype=np.float32).ravel()
         if correction.size < self.numModes:
             padded = np.zeros(self.numModes, dtype=np.float32)
             padded[: correction.size] = correction
@@ -277,7 +277,7 @@ class SyntheticScienceCamera(ScienceCamera):
         if self.signalShm is not None:
             return
         try:
-            self.signalShm, _, _ = initExistingShm(self.input_stream_name("signal"))
+            self.signalShm = open_stream(self.input_stream_name("signal"))
         except Exception:
             self.signalShm = None
 
@@ -285,7 +285,7 @@ class SyntheticScienceCamera(ScienceCamera):
         self._ensure_signal_stream()
         if self.signalShm is None:
             return np.zeros(1, dtype=np.float32)
-        return np.asarray(self.signalShm.read_noblock(SAFE=False), dtype=np.float32).ravel()
+        return np.asarray(self.signalShm.read(), dtype=np.float32).ravel()
 
     def expose(self):
         self._sleep_for_frame_rate()

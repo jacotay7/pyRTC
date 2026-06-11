@@ -35,6 +35,7 @@ classifiers = [
 ]
 dependencies = [
 	"numpy>=1.26,<2.3",
+	"pyshmem>=1.0.4",
 	"matplotlib",
 	"PyYAML",
 	"numba",

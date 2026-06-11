@@ -21,7 +21,7 @@ from typing import Any, Mapping
 import numpy as np
 
 from pyRTC.logging_utils import get_logger
-from pyRTC.Pipeline import ImageSHM, Listener
+from pyRTC.Pipeline import Listener
 from pyRTC.ScienceCamera import ScienceCamera
 from pyRTC.WavefrontCorrector import WavefrontCorrector
 from pyRTC.WavefrontSensor import WavefrontSensor
@@ -1117,21 +1117,23 @@ class SPECULAWFCorrector(WavefrontCorrector):
         self.layout = self.context.dm_layout.astype(bool)
         self.display_rows = np.asarray(self.context.dm_display_rows, dtype=np.intp)
         self.display_cols = np.asarray(self.context.dm_display_cols, dtype=np.intp)
-        shm_type = type(self.correctionVector)
-        self.correctionVector2D = shm_type(self.output_stream_name("wfc2D"), self.layout.shape, np.float32, gpuDevice=self.gpuDevice, consumer=False)
-        self.register_output_stream("wfc2D", self.correctionVector2D, source_streams=["wfc"], lineage_source="wfc")
+        # Resolve create_stream through the WavefrontCorrector module so test
+        # doubles patched there are honoured for the 2D display stream too.
+        wfc_module = importlib.import_module("pyRTC.WavefrontCorrector")
+        self.correctionVector2D = wfc_module.create_stream(self.output_stream_name("wfc2D"), self.layout.shape, np.float32, gpuDevice=self.gpuDevice)
+        self.register_output_stream("wfc2D", self.correctionVector2D)
         self.correctionVector2D_template = np.zeros(self.layout.shape, dtype=np.float32)
-        self.write_stream("wfc2D", self.correctionVector2D_template, source_streams=["wfc"], lineage_source="wfc")
+        self.write_stream("wfc2D", self.correctionVector2D_template)
         self.setM2C(self.context.modal_to_command)
         if self.section_name:
             self.context.register_component(self.section_name, self)
 
     def sendToHardware(self):
         super().sendToHardware()
-        if isinstance(self.correctionVector2D, ImageSHM):
+        if self.correctionVector2D is not None:
             self.correctionVector2D_template.fill(0)
             self.correctionVector2D_template[self.display_rows, self.display_cols] = self.currentShape - self.flat
-            self.write_stream("wfc2D", self.correctionVector2D_template, source_streams=["wfc"], lineage_source="wfc")
+            self.write_stream("wfc2D", self.correctionVector2D_template)
         self.context.set_dm_command(self.currentShape.astype(np.float32, copy=False))
 
 
@@ -1150,8 +1152,8 @@ class SPECULAScienceCamera(ScienceCamera):
         if not np.any(self.model):
             self.setModelPSF(model.astype(self.psfLongDtype, copy=False))
         super().expose()
-        self.write_stream("strehl", np.array([strehl], dtype=float), source_streams=["psfShort"], lineage_source="psfShort")
-        self.write_stream("tiptilt", np.array([tiptilt], dtype=float), source_streams=["psfShort"], lineage_source="psfShort")
+        self.write_stream("strehl", np.array([strehl], dtype=float))
+        self.write_stream("tiptilt", np.array([tiptilt], dtype=float))
 
     def integrate(self):
         super().integrate()

@@ -2,6 +2,34 @@
 
 All notable changes to `pyrtcao` will be documented in this file.
 
+## Unreleased
+
+### Changed
+
+- **Shared-memory transport replaced by `pyshmem`.** All shared memory in
+	pyRTC is now provided by the external `pyshmem` package (new required
+	dependency `pyshmem>=1.0.4`), using its native API directly. The legacy
+	`ImageSHM` class, its `_meta` / `_gpu_handle` companion segments, and
+	`initExistingShm` are gone. `pyRTC.Pipeline` now exposes two thin policy
+	helpers instead: `create_stream(name, shape, dtype, gpuDevice=None)`
+	(producer-side create-or-reuse) and `open_stream(name, gpuDevice=None)`
+	(consumer-side attach; CPU view by default, CUDA tensor attach with
+	`gpuDevice`). `clear_shms` now delegates to `pyshmem.unlink_quiet`.
+- `pyRTCComponent.read_stream`/`write_stream` simplified: `read_stream`
+	takes only `block` and `timeout`; the `SAFE`/`GPU`/`RELEASE_GIL`/
+	`record_consumption` flags are removed (GPU vs CPU payloads are decided
+	by how the stream was opened). Blocking reads wait for a write the
+	component has not yet seen; a component's own writes do not mark the
+	stream seen.
+- Per-frame lineage metadata (root_time / upstream_write_time /
+	upstream_consume_time) is no longer stored in shared memory. Latency
+	reporting always uses cross-stream `count`/`write_time` event sampling
+	(`pyRTC.latency.collect_stream_event_history`); the `sourceStreams` /
+	`lineageSource` stream-config keys were removed.
+- GPU streams are created with a CPU mirror, so CPU-only processes
+	(viewers, telemetry) can always read them, and GPU stream sharing now
+	also works in-process (soft-RTC), not just hard-RTC.
+
 ## 1.0.0 - 2026-03-07
 
 First stable public release of `pyrtcao`.

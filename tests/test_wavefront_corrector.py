@@ -15,7 +15,7 @@ def test_modal_to_zonal_with_flat():
 def test_wavefront_corrector_core(monkeypatch, tmp_path):
     from testsupport import DummySHM
 
-    monkeypatch.setattr(wfc_mod, "ImageSHM", DummySHM)
+    monkeypatch.setattr(wfc_mod, "create_stream", DummySHM)
 
     conf = {
         "name": "wfc",
@@ -62,7 +62,7 @@ def test_wavefront_corrector_core(monkeypatch, tmp_path):
 def test_wavefront_corrector_applies_command_cap(monkeypatch):
     from testsupport import DummySHM
 
-    monkeypatch.setattr(wfc_mod, "ImageSHM", DummySHM)
+    monkeypatch.setattr(wfc_mod, "create_stream", DummySHM)
 
     conf = {
         "name": "wfc",
@@ -85,7 +85,7 @@ def test_wavefront_corrector_applies_command_cap(monkeypatch):
 def test_wavefront_corrector_clears_wfc2d_outside_layout(monkeypatch):
     from testsupport import DummySHM
 
-    monkeypatch.setattr(wfc_mod, "ImageSHM", DummySHM)
+    monkeypatch.setattr(wfc_mod, "create_stream", DummySHM)
 
     conf = {
         "name": "wfc",
@@ -113,6 +113,6 @@ def test_wavefront_corrector_clears_wfc2d_outside_layout(monkeypatch):
 
     wfc.sendToHardware()
 
-    wfc2d = wfc.correctionVector2D.read_noblock()
+    wfc2d = wfc.correctionVector2D.read()
     assert np.all(wfc2d[~layout] == 0.0)
     assert np.array_equal(wfc2d[layout], np.arange(5, dtype=np.float32))

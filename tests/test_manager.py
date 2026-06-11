@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 import yaml
 
-from pyRTC.Pipeline import HardComponentRuntime, ImageSHM, RTCManager, _socket_read_json, _socket_send_json, clear_shms, expected_output_shm_specs_for_config, reconcile_expected_output_shms
+from pyRTC.Pipeline import HardComponentRuntime, RTCManager, _socket_read_json, _socket_send_json, clear_shms, create_stream, expected_output_shm_specs_for_config, reconcile_expected_output_shms
 from pyRTC.config_schema import read_system_config
 from pyRTC.hardware.SyntheticSystems import _default_wfc_layout, build_synthetic_shwfs_response_matrix
 
@@ -93,8 +93,8 @@ def test_manager_launches_soft_synthetic_system(tmp_path):
 
 def test_manager_start_clears_stale_output_shms(tmp_path):
     clear_shms(DEFAULT_STREAMS)
-    stale_wfc = ImageSHM("wfc", (1,), np.int8, consumer=False)
-    stale_signal = ImageSHM("signal", (1,), np.int8, consumer=False)
+    stale_wfc = create_stream("wfc", (1,), np.int8)
+    stale_signal = create_stream("signal", (1,), np.int8)
     manager = RTCManager.from_config_file(_write_runtime_synthetic_config(tmp_path))
 
     try:
@@ -225,11 +225,15 @@ def test_manager_latency_infers_loop_path(monkeypatch, tmp_path):
         def __init__(self, time_scale):
             self._count = 0
             self._time_scale = time_scale
-            self.metadata = np.array([0, 0.0], dtype=np.float64)
 
-        def hold(self):
+        @property
+        def count(self):
             self._count += 1
-            self.metadata = np.array([self._count, self._count * self._time_scale], dtype=np.float64)
+            return self._count
+
+        @property
+        def write_time(self):
+            return self._count * self._time_scale
 
     streams = {
         "wfs": FakeShm(1.0e-3),
@@ -237,7 +241,7 @@ def test_manager_latency_infers_loop_path(monkeypatch, tmp_path):
         "wfc": FakeShm(1.8e-3),
     }
 
-    monkeypatch.setattr(latency, "initExistingShm", lambda name, gpuDevice=None: (streams[name], None, None))
+    monkeypatch.setattr(latency, "open_stream", lambda name, gpuDevice=None: streams[name])
 
     manager = RTCManager.from_config_file(_write_runtime_synthetic_config(tmp_path))
     report = manager.latency(samples=8)
@@ -256,18 +260,22 @@ def test_manager_latency_uses_explicit_pair_when_requested(monkeypatch, tmp_path
         def __init__(self, offset):
             self._count = 0
             self._offset = offset
-            self.metadata = np.array([0, offset], dtype=np.float64)
 
-        def hold(self):
+        @property
+        def count(self):
             self._count += 1
-            self.metadata = np.array([self._count, self._count * 1.0e-3 + self._offset], dtype=np.float64)
+            return self._count
+
+        @property
+        def write_time(self):
+            return self._count * 1.0e-3 + self._offset
 
     streams = {
         "signal": FakeShm(2.0e-4),
         "wfc": FakeShm(5.0e-4),
     }
 
-    monkeypatch.setattr(latency, "initExistingShm", lambda name, gpuDevice=None: (streams[name], None, None))
+    monkeypatch.setattr(latency, "open_stream", lambda name, gpuDevice=None: streams[name])
 
     manager = RTCManager.from_config_file(_write_runtime_synthetic_config(tmp_path))
     report = manager.latency(source_shm="signal", target_shm="wfc", samples=8)

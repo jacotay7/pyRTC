@@ -10,7 +10,7 @@ def test_ximea_wfs_init_and_controls(monkeypatch):
     from testsupport import DummySHM
 
     fake_wfs_module = importlib.import_module("pyRTC.WavefrontSensor")
-    monkeypatch.setattr(fake_wfs_module, "ImageSHM", DummySHM)
+    monkeypatch.setattr(fake_wfs_module, "create_stream", DummySHM)
 
     class _Camera:
         def __init__(self):
@@ -81,7 +81,7 @@ def test_spinnaker_science_camera_init_and_controls(monkeypatch):
     from testsupport import DummySHM
 
     fake_science_module = importlib.import_module("pyRTC.ScienceCamera")
-    monkeypatch.setattr(fake_science_module, "ImageSHM", DummySHM)
+    monkeypatch.setattr(fake_science_module, "create_stream", DummySHM)
 
     class _Node:
         def __init__(self):
@@ -184,7 +184,7 @@ def test_alpao_dm_init_and_layout(monkeypatch, tmp_path):
     from testsupport import DummySHM
 
     fake_wfc_module = importlib.import_module("pyRTC.WavefrontCorrector")
-    monkeypatch.setattr(fake_wfc_module, "ImageSHM", DummySHM)
+    monkeypatch.setattr(fake_wfc_module, "create_stream", DummySHM)
 
     class _DM:
         def __init__(self, serial):
@@ -295,9 +295,9 @@ def _install_fake_specula(monkeypatch):
     fake_wfs_module = importlib.import_module("pyRTC.WavefrontSensor")
     fake_science_module = importlib.import_module("pyRTC.ScienceCamera")
     fake_wfc_module = importlib.import_module("pyRTC.WavefrontCorrector")
-    monkeypatch.setattr(fake_wfs_module, "ImageSHM", DummySHM)
-    monkeypatch.setattr(fake_science_module, "ImageSHM", DummySHM)
-    monkeypatch.setattr(fake_wfc_module, "ImageSHM", DummySHM)
+    monkeypatch.setattr(fake_wfs_module, "create_stream", DummySHM)
+    monkeypatch.setattr(fake_science_module, "create_stream", DummySHM)
+    monkeypatch.setattr(fake_wfc_module, "create_stream", DummySHM)
 
     init_calls = []
 
@@ -588,9 +588,9 @@ def _install_fake_oopao(monkeypatch):
     fake_wfs_module = importlib.import_module("pyRTC.WavefrontSensor")
     fake_science_module = importlib.import_module("pyRTC.ScienceCamera")
     fake_wfc_module = importlib.import_module("pyRTC.WavefrontCorrector")
-    monkeypatch.setattr(fake_wfs_module, "ImageSHM", DummySHM)
-    monkeypatch.setattr(fake_science_module, "ImageSHM", DummySHM)
-    monkeypatch.setattr(fake_wfc_module, "ImageSHM", DummySHM)
+    monkeypatch.setattr(fake_wfs_module, "create_stream", DummySHM)
+    monkeypatch.setattr(fake_science_module, "create_stream", DummySHM)
+    monkeypatch.setattr(fake_wfc_module, "create_stream", DummySHM)
 
     class _FakeSource:
         def __init__(self, optBand="I", magnitude=0, **kwargs):
@@ -1174,7 +1174,7 @@ def test_oopao_wfs_static_dm_does_not_accumulate_without_atmosphere(monkeypatch)
     from testsupport import DummySHM
 
     fake_wfs_module = importlib.import_module("pyRTC.WavefrontSensor")
-    monkeypatch.setattr(fake_wfs_module, "ImageSHM", DummySHM)
+    monkeypatch.setattr(fake_wfs_module, "create_stream", DummySHM)
 
     class _FakeSource:
         def __init__(self):

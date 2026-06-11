@@ -20,7 +20,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 
-from pyRTC.Pipeline import RTCManager, clear_shms, initExistingShm
+from pyRTC.Pipeline import RTCManager, clear_shms, open_stream
 from pyRTC.logging_utils import add_logging_cli_args, configure_logging_from_args, get_logger
 
 
@@ -40,14 +40,14 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 
 def format_status_line(start_time: float) -> str:
-    signal_stream, _, _ = initExistingShm("signal")
-    correction_stream, _, _ = initExistingShm("wfc")
-    strehl_stream, _, _ = initExistingShm("strehl")
-    residual = np.asarray(signal_stream.read_noblock(SAFE=False), dtype=np.float32).ravel()
-    correction = np.asarray(correction_stream.read_noblock(SAFE=False), dtype=np.float32).ravel()
+    signal_stream = open_stream("signal")
+    correction_stream = open_stream("wfc")
+    strehl_stream = open_stream("strehl")
+    residual = np.asarray(signal_stream.read(), dtype=np.float32).ravel()
+    correction = np.asarray(correction_stream.read(), dtype=np.float32).ravel()
     residual_rms = float(np.sqrt(np.mean(residual**2))) if residual.size else 0.0
     correction_rms = float(np.sqrt(np.mean(correction**2))) if correction.size else 0.0
-    strehl = float(np.asarray(strehl_stream.read_noblock(SAFE=False)).ravel()[0])
+    strehl = float(np.asarray(strehl_stream.read()).ravel()[0])
     elapsed = time.perf_counter() - start_time
     return (
         f"t={elapsed:5.1f}s "

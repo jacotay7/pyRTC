@@ -10,8 +10,7 @@ import time
 
 import numpy as np
 
-from pyRTC.Pipeline import ImageSHM
-import pyRTC.utils as utils
+from pyRTC.Pipeline import open_stream
 
 
 def is_float_token(value: str) -> bool:
@@ -55,33 +54,21 @@ def normalize_frame(frame):
 
 
 def read_shm_metadata(shm_name):
-    """Read SHM structural metadata for a viewer stream.
+    """Attach to a viewer stream and report its structural metadata.
 
     Parameters
     ----------
     shm_name : str
-        Name of the data SHM whose metadata stream should be inspected.
+        Name of the stream to inspect.
 
     Returns
     -------
     tuple
-        Metadata SHM handle, resolved shape tuple, and resolved numpy dtype.
+        Stream handle, resolved shape tuple, and resolved numpy dtype.
     """
 
-    metadata_shm = ImageSHM(shm_name + "_meta", (ImageSHM.METADATA_SIZE,), np.float64)
-    metadata = metadata_shm.read_noblock()
-    shm_dtype = utils.float_to_dtype(metadata[ImageSHM.METADATA_INDEX_DTYPE])
-    shm_dims = []
-    index = 0
-    while (
-        ImageSHM.METADATA_INDEX_SHAPE_START + index < metadata.size
-        and int(metadata[ImageSHM.METADATA_INDEX_SHAPE_START + index]) > 0
-    ):
-        shm_dims.append(int(metadata[ImageSHM.METADATA_INDEX_SHAPE_START + index]))
-        index += 1
-    if not shm_dims:
-        shm_dims = [1]
-    return metadata_shm, tuple(shm_dims), shm_dtype
+    shm = open_stream(shm_name)
+    return shm, tuple(shm.shape), np.dtype(shm.dtype)
 
 
 def resolve_grid(num_plots: int, geometry: str):
@@ -153,10 +140,9 @@ class StreamConnection:
 
     def __init__(self, shm_name, *, pause_timeout_seconds=None, current_time_fn=None):
         self.name = shm_name
-        self.metadata_shm, shm_shape, shm_dtype = read_shm_metadata(shm_name)
+        self.shm, shm_shape, _shm_dtype = read_shm_metadata(shm_name)
         self.shape = tuple(shm_shape)
         self.display_name = f"{shm_name} ({format_shape(self.shape)})"
-        self.shm = ImageSHM(shm_name, shm_shape, shm_dtype)
         self.pause_timeout_seconds = (
             self.DEFAULT_PAUSE_TIMEOUT_SECONDS
             if pause_timeout_seconds is None
@@ -168,15 +154,14 @@ class StreamConnection:
         self.last_fps_text = None
         self.last_update_monotonic = None
         self._closed = False
-        self.cached_frame = normalize_frame(np.array(self.shm.read_noblock(), copy=True))
+        self.cached_frame = normalize_frame(np.array(self.shm.read(), copy=True))
 
     def prime(self):
         """Prime cached count and timestamp state before timer-driven refreshes."""
 
         current_time_fn = getattr(self, "current_time_fn", time.monotonic)
-        metadata = self.metadata_shm.read_noblock()
-        self.last_count = metadata[ImageSHM.METADATA_INDEX_COUNT]
-        self.last_time = metadata[ImageSHM.METADATA_INDEX_WRITE_TIME]
+        self.last_count = self.shm.count
+        self.last_time = self.shm.write_time
         self.last_fps_text = None
         self.last_update_monotonic = current_time_fn()
         return self.cached_frame
@@ -186,9 +171,8 @@ class StreamConnection:
 
         current_time_fn = getattr(self, "current_time_fn", time.monotonic)
         now = current_time_fn()
-        metadata = self.metadata_shm.read_noblock()
-        new_count = metadata[ImageSHM.METADATA_INDEX_COUNT]
-        new_time = metadata[ImageSHM.METADATA_INDEX_WRITE_TIME]
+        new_count = self.shm.count
+        new_time = self.shm.write_time
         changed = self.last_count is None or self.last_time is None
         if not changed:
             changed = new_count != self.last_count or new_time != self.last_time
@@ -209,7 +193,7 @@ class StreamConnection:
         status_changed = fps_text != self.last_fps_text
 
         if changed:
-            self.cached_frame = normalize_frame(np.array(self.shm.read_noblock(), copy=True))
+            self.cached_frame = normalize_frame(np.array(self.shm.read(), copy=True))
 
         self.last_count = new_count
         self.last_time = new_time
@@ -224,12 +208,9 @@ class StreamConnection:
         }
 
     def close(self):
-        """Close the data and metadata SHMs exactly once."""
+        """Close the stream handle exactly once."""
 
         if self._closed:
             return
         self._closed = True
-        try:
-            self.shm.close()
-        finally:
-            self.metadata_shm.close()
+        self.shm.close()

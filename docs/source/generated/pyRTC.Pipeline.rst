@@ -9,17 +9,17 @@
    .. autosummary::
    
       clear_shms
+      create_stream
       gpu_torch_available
-      initExistingShm
       launchComponent
       normalize_gpu_device
+      open_stream
       work
    
    .. rubric:: Classes
 
    .. autosummary::
    
-      ImageSHM
       Listener
       hardwareLauncher
    

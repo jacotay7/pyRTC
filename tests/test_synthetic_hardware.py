@@ -13,20 +13,19 @@ science_mod = importlib.import_module("pyRTC.ScienceCamera")
 def test_synthetic_shwfs_generates_frame_and_responds_to_correction(monkeypatch):
     streams = {}
 
-    def _make_stream(name, shape, dtype, gpuDevice=None, consumer=True):
-        stream = DummySHM(name, shape, dtype, gpuDevice=gpuDevice, consumer=consumer)
+    def _make_stream(name, shape, dtype, gpuDevice=None):
+        stream = DummySHM(name, shape, dtype, gpuDevice=gpuDevice)
         streams[name] = stream
         return stream
 
-    def _init_existing(name, gpuDevice=None):
-        stream = streams[name]
-        return stream, list(stream.shape), stream.dtype
+    def _open_existing(name, gpuDevice=None):
+        return streams[name]
 
-    monkeypatch.setattr(wfs_mod, "ImageSHM", _make_stream)
-    monkeypatch.setattr(science_mod, "ImageSHM", _make_stream)
-    monkeypatch.setattr(synthetic_mod, "initExistingShm", _init_existing)
+    monkeypatch.setattr(wfs_mod, "create_stream", _make_stream)
+    monkeypatch.setattr(science_mod, "create_stream", _make_stream)
+    monkeypatch.setattr(synthetic_mod, "open_stream", _open_existing)
 
-    streams["wfc"] = DummySHM("wfc", (32,), np.float32, consumer=False)
+    streams["wfc"] = DummySHM("wfc", (32,), np.float32)
 
     sensor = synthetic_mod.SyntheticSHWFS(
         {
@@ -59,20 +58,19 @@ def test_synthetic_shwfs_generates_frame_and_responds_to_correction(monkeypatch)
 def test_synthetic_science_camera_updates_strehl_from_signal(monkeypatch):
     streams = {}
 
-    def _make_stream(name, shape, dtype, gpuDevice=None, consumer=True):
-        stream = DummySHM(name, shape, dtype, gpuDevice=gpuDevice, consumer=consumer)
+    def _make_stream(name, shape, dtype, gpuDevice=None):
+        stream = DummySHM(name, shape, dtype, gpuDevice=gpuDevice)
         streams[name] = stream
         return stream
 
-    def _init_existing(name, gpuDevice=None):
-        stream = streams[name]
-        return stream, list(stream.shape), stream.dtype
+    def _open_existing(name, gpuDevice=None):
+        return streams[name]
 
-    monkeypatch.setattr(wfs_mod, "ImageSHM", _make_stream)
-    monkeypatch.setattr(science_mod, "ImageSHM", _make_stream)
-    monkeypatch.setattr(synthetic_mod, "initExistingShm", _init_existing)
+    monkeypatch.setattr(wfs_mod, "create_stream", _make_stream)
+    monkeypatch.setattr(science_mod, "create_stream", _make_stream)
+    monkeypatch.setattr(synthetic_mod, "open_stream", _open_existing)
 
-    streams["signal"] = DummySHM("signal", (32,), np.float32, consumer=False)
+    streams["signal"] = DummySHM("signal", (32,), np.float32)
     camera = synthetic_mod.SyntheticScienceCamera(
         {
             "name": "synthetic-psf",

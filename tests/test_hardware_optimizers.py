@@ -16,11 +16,18 @@ class _Study:
 
 
 class _Stream:
-    def __init__(self, value=1.0):
+    def __init__(self, value=1.0, shape=(1,), dtype=np.float32):
         self.value = value
+        self.shape = shape
+        self.dtype = np.dtype(dtype)
         self.writes = []
+        self.count = 1
+        self.write_time = 1.0
 
     def read(self):
+        return self.value
+
+    def read_new(self, timeout=None):
         return self.value
 
     def write(self, arr):
@@ -61,7 +68,7 @@ class _Slopes:
 
 def test_pid_optimizer_apply_trial_and_optimum(monkeypatch):
     module = importlib.import_module("pyRTC.hardware.PIDOptimizer")
-    monkeypatch.setattr(module, "initExistingShm", lambda name: (_Stream(), None, None))
+    monkeypatch.setattr(module, "open_stream", lambda name: _Stream())
 
     loop = _Loop()
     optimizer = module.PIDOptimizer({"numSteps": 2, "functions": []}, loop)
@@ -80,7 +87,7 @@ def test_pid_optimizer_apply_trial_and_optimum(monkeypatch):
 
 def test_loop_optimizer_apply_trial_and_optimum(monkeypatch):
     module = importlib.import_module("pyRTC.hardware.loopHyperparamsOptimizer")
-    monkeypatch.setattr(module, "initExistingShm", lambda name: (_Stream(), None, None))
+    monkeypatch.setattr(module, "open_stream", lambda name: _Stream())
 
     loop = _Loop()
     optimizer = module.loopOptimizer({"numSteps": 2, "functions": []}, loop)
@@ -97,14 +104,14 @@ def test_loop_optimizer_apply_trial_and_optimum(monkeypatch):
 
 def test_ncpa_optimizer_apply_trial_open_loop(monkeypatch):
     module = importlib.import_module("pyRTC.hardware.NCPAOptimizer")
-    wfc_stream = _Stream()
+    wfc_stream = _Stream(shape=(6,), dtype=np.float32)
 
-    def _init_existing(name):
+    def _open(name):
         if name == "wfc":
-            return wfc_stream, (6,), np.float32
-        return _Stream(0.8), None, None
+            return wfc_stream
+        return _Stream(0.8)
 
-    monkeypatch.setattr(module, "initExistingShm", _init_existing)
+    monkeypatch.setattr(module, "open_stream", _open)
 
     loop = _Loop()
     slopes = _Slopes()

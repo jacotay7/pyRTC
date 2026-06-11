@@ -9,7 +9,7 @@ sci_mod = importlib.import_module("pyRTC.ScienceCamera")
 def test_science_camera_core(monkeypatch, tmp_path):
     from testsupport import DummySHM
 
-    monkeypatch.setattr(sci_mod, "ImageSHM", DummySHM)
+    monkeypatch.setattr(sci_mod, "create_stream", DummySHM)
 
     conf = {
         "name": "psf",
@@ -60,7 +60,7 @@ def test_science_camera_core(monkeypatch, tmp_path):
 def test_science_camera_default_files_plot_and_error_paths(monkeypatch, tmp_path):
     from testsupport import DummySHM
 
-    monkeypatch.setattr(sci_mod, "ImageSHM", DummySHM)
+    monkeypatch.setattr(sci_mod, "create_stream", DummySHM)
 
     conf = {
         "name": "psf",
@@ -100,7 +100,7 @@ def test_science_camera_default_files_plot_and_error_paths(monkeypatch, tmp_path
 def test_science_camera_setter_and_load_error_paths(monkeypatch):
     from testsupport import DummySHM
 
-    monkeypatch.setattr(sci_mod, "ImageSHM", DummySHM)
+    monkeypatch.setattr(sci_mod, "create_stream", DummySHM)
     cam = sci_mod.ScienceCamera(
         {
             "name": "psf",
