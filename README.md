@@ -79,6 +79,7 @@ The repo is being prepared for a `1.0.0` release. The current release policy is 
 - CLI prefix: `pyrtc-*`
 - Primary supported release surface for `1.0.x`: Linux, Python 3.9-3.13
 - macOS and Windows: smoke-tested in GitHub Actions, but not part of the primary supported deployment story for `1.0.0`
+- Windows: soft-RTC only — Windows named shared memory is freed when the last handle closes, so streams do not survive their producer process and hard-RTC restart/reattach flows are unsupported there
 - GPU behavior: benchmark-validated on a Linux CUDA host for synthetic loop workloads, but still target-environment validation required for operational use
 - Hardware integrations: examples and reference implementations, not universal plug-and-play support
 

@@ -21,6 +21,10 @@ Module Index
    :toctree: generated
    :nosignatures:
 
+   streams
+   rpc
+   manager
+   component_loading
    Pipeline
    utils
 

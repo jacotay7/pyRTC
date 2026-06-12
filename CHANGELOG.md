@@ -2,9 +2,48 @@
 
 All notable changes to `pyrtcao` will be documented in this file.
 
-## Unreleased
+## 1.1.0 - 2026-06-11
+
+### Fixed
+
+- **`manager.latency()` no longer crashes in the synthetic tutorial.**
+	Component classes referenced by `classFile` are now resolved to their
+	canonical modules (`pyRTC.component_loading`, one shared implementation
+	instead of three divergent copies), bare-name lookup is no longer broken
+	by same-named submodule shadowing, and relative `classFile` paths resolve
+	against the config file's directory instead of the caller's cwd.
+- **The synthetic SHWFS tutorial now converges.** The examples calibrate the
+	interaction matrix through the live pipeline (DOCRIME, `conditioning: 30`)
+	instead of loading an identity placeholder: residual RMS drops 0.99 → 0.01
+	and Strehl reaches ~0.97 in both soft and hard modes. A closed-loop
+	convergence regression test runs in `tests/system/`.
+- Hard-RTC child listeners now stop cleanly when the RTC closes the control
+	socket instead of crashing with `BrokenPipeError`.
+
+### Added
+
+- Zero-allocation hot-path reads: `read_stream(..., out=buffer)` forwards a
+	pre-allocated buffer (pyshmem >= 1.0.5), used by the SlopesProcess image
+	read, all Loop integrators, and the WavefrontCorrector command read.
+- Hard-RTC RPC protocol v1: versioned message envelope, type-safe property
+	coercion (booleans round-trip correctly), `run()` returns JSON-serializable
+	method results, error messages propagate to `hardwareLauncher.lastError`,
+	and `run(..., timeout=)` applies a per-call socket timeout.
+- `gpu` pytest marker with CUDA stream tests (auto-skip without CUDA; CI can
+	deselect with `-m "not gpu"`).
+- `benchmarks/check_perf_baseline.py --max-ratio` enforces a performance
+	regression threshold; CI runs it at 5.0x against the committed baseline.
+- Coverage gate extended to `pyRTC.streams`, `pyRTC.rpc`,
+	`pyRTC.component_loading`, and `pyRTC.latency`.
+- Streams guide in the documentation (`guides/streams`).
 
 ### Changed
+
+- **`pyRTC.Pipeline` split into focused modules**: `pyRTC.streams` (pyshmem
+	stream policy + SHM planning), `pyRTC.rpc` (launcher/listener protocol),
+	`pyRTC.manager` (component runtimes + `RTCManager`), and
+	`pyRTC.component_loading`. `pyRTC.Pipeline` remains as a re-export shim
+	for one release.
 
 - **Shared-memory transport replaced by `pyshmem`.** All shared memory in
 	pyRTC is now provided by the external `pyshmem` package (new required

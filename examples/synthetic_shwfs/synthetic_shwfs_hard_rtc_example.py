@@ -175,21 +175,17 @@ def main(argv=None) -> int:
             logger.info("Skipping IM calibration (--no-calibration)")
         else:
             logger.info("Calibrating IM remotely: loop.run('computeIM') — takes a few seconds")
-            calibration_timeout = 120.0
-            original_timeout = loop.processSocket.gettimeout()
-            loop.processSocket.settimeout(calibration_timeout)
-            try:
-                loop.run("stop")
-                loop.run("flatten")
-                calibration_start = time.perf_counter()
-                loop.run("computeIM")
-                logger.info(
-                    "Calibration finished in %.1fs; closing the loop",
-                    time.perf_counter() - calibration_start,
-                )
-                loop.run("start")
-            finally:
-                loop.processSocket.settimeout(original_timeout)
+            loop.run("stop")
+            loop.run("flatten")
+            calibration_start = time.perf_counter()
+            # computeIM runs much longer than the default RPC timeout, so
+            # this call carries its own per-call timeout.
+            loop.run("computeIM", timeout=120.0)
+            logger.info(
+                "Calibration finished in %.1fs; closing the loop",
+                time.perf_counter() - calibration_start,
+            )
+            loop.run("start")
 
         logger.info("Hard mode proxy write: loop.setProperty('gain', 0.30)")
         loop.setProperty("gain", 0.30)

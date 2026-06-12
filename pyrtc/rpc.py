@@ -21,6 +21,71 @@ from pyRTC.utils import bind_socket
 
 logger = get_logger(__name__)
 
+# Version of the launcher/listener message envelope. Bump when the message
+# format changes incompatibly; both sides reject mismatched versions.
+PROTOCOL_VERSION = 1
+
+
+def _coerce_property_value(current, value):
+    """Coerce an RPC-provided value onto the type of the current property.
+
+    JSON round-trips lose Python types, so the listener re-types incoming
+    values against the property's current value. Unlike a bare
+    ``type(current)(value)``, this handles bools (``bool("False")`` is
+    ``True``) and leaves the raw value alone when the current value is
+    ``None`` or no sensible coercion exists.
+    """
+
+    if current is None:
+        return value
+    if isinstance(current, bool):
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, (int, float)):
+            return bool(value)
+        if isinstance(value, str):
+            lowered = value.strip().lower()
+            if lowered in ("true", "1", "yes", "on"):
+                return True
+            if lowered in ("false", "0", "no", "off"):
+                return False
+            raise ValueError(f"cannot interpret {value!r} as a boolean")
+        raise ValueError(f"cannot interpret {value!r} as a boolean")
+    if isinstance(current, int) and not isinstance(current, bool):
+        return int(value)
+    if isinstance(current, float):
+        return float(value)
+    if isinstance(current, str):
+        return str(value)
+    if isinstance(current, (list, tuple)):
+        return type(current)(value)
+    return value
+
+
+def _json_safe(value):
+    """Return a JSON-serializable version of ``value``, or ``None`` if none.
+
+    NumPy scalars and arrays are converted via ``item()``/``tolist()``; other
+    unserializable results are dropped (the RPC reply stays a plain OK).
+    """
+
+    try:
+        json.dumps(value)
+        return value
+    except (TypeError, ValueError):
+        pass
+    for converter in ("item", "tolist"):
+        method = getattr(value, converter, None)
+        if callable(method):
+            try:
+                converted = method()
+                json.dumps(converted)
+                return converted
+            except (TypeError, ValueError):
+                continue
+    return None
+
+
 def _socket_send_json(sock: socket.socket, message: dict) -> None:
     payload = json.dumps(message, separators=(",", ":")) + "\n"
     sock.sendall(payload.encode("utf-8"))
@@ -129,52 +194,79 @@ class hardwareLauncher:
         return
     
     def shutdown(self):
-        message = {"type": "shutdown"}
+        message = {"type": "shutdown", "protocol": PROTOCOL_VERSION}
         try:
             return self.writeAndRead(message)
         finally:
             self.close(force=False)
 
     def getProperty(self, property):
-        message = {"type": "get", "property": property}
+        message = {"type": "get", "property": property, "protocol": PROTOCOL_VERSION}
         return self.writeAndRead(message)
     
     def setProperty(self, property, value):
-        message = {"type": "set", "property": property, "value": value}
+        message = {"type": "set", "property": property, "value": value, "protocol": PROTOCOL_VERSION}
         return self.writeAndRead(message)
 
-    def run(self, function, *args, timeout = None):
-        message = {"type": "run", "function": function}
-        for i, arg in enumerate(args):
-            message[f"arg_{i+1}"] = arg
-        return self.writeAndRead(message)
+    def run(self, function, *args, timeout=None):
+        """Invoke a method on the remote component.
 
-    def writeAndRead(self,message):
-        if self.running:
+        Returns the method's return value when the child reports one (it must
+        be JSON-serializable), otherwise ``1`` for success and ``-1`` for any
+        failure. ``timeout`` temporarily overrides the socket timeout for this
+        call only — long-running calls such as ``computeIM`` need more than
+        the default RPC timeout.
+        """
+        message = {
+            "type": "run",
+            "function": function,
+            "args": list(args),
+            "protocol": PROTOCOL_VERSION,
+        }
+        return self.writeAndRead(message, timeout=timeout)
+
+    def writeAndRead(self, message, *, timeout=None):
+        if not self.running:
+            return -1
+
+        original_timeout = None
+        override_timeout = (
+            timeout is not None
+            and self.processSocket is not None
+            and hasattr(self.processSocket, "gettimeout")
+        )
+        if override_timeout:
+            original_timeout = self.processSocket.gettimeout()
+            self.processSocket.settimeout(float(timeout))
+        try:
             try:
                 self.write(message)
                 reply = self.read()
             except Exception as exc:
                 self.lastError = str(exc)
                 return -1
-            #If there are issues with the reply format
-            if not isinstance(reply, dict) or "status" not in reply.keys():
-                self.lastError = "invalid launcher reply"
-                return -1
-            #If there was an issue on the process end
-            if reply["status"] == 'BAD':
-                self.lastError = "child process returned BAD status"
-                return -1
-            #If our request went through
-            if reply["status"] == 'OK':
-                self.lastContactTime = time.time()
-                self.lastError = None
-                #If the reply came with a property to return
-                if "property" in reply.keys():
-                    return reply["property"]
-                #Otherwise just return OK
-                else:
-                    return 1
+        finally:
+            if override_timeout and self.processSocket is not None:
+                self.processSocket.settimeout(original_timeout)
+
+        #If there are issues with the reply format
+        if not isinstance(reply, dict) or "status" not in reply.keys():
+            self.lastError = "invalid launcher reply"
+            return -1
+        #If there was an issue on the process end
+        if reply["status"] == 'BAD':
+            self.lastError = str(reply.get("error", "child process returned BAD status"))
+            return -1
+        #If our request went through
+        if reply["status"] == 'OK':
+            self.lastContactTime = time.time()
+            self.lastError = None
+            #If the reply came with a property to return
+            if "property" in reply.keys():
+                return reply["property"]
+            #Otherwise just return OK
+            else:
+                return 1
         #default is a fail
         return -1
 
@@ -276,88 +368,117 @@ class Listener:
         self.port = port
 
         server_socket = bind_socket(self.host, self.port)
-
-        # # Create a socket object
-        # server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-
-        # try:
-        #     print(f"{hardware.name}: Binding to {self.host}:{self.port}")
-        #     # Bind the socket to a specific address and port
-        #     server_socket.bind((self.host, self.port))
-        # except OSError as
-        # Listen for incoming connections
         server_socket.listen()
         logger.info("%s: awaiting RTC connection", hardware.name)
         #Connect to the RTC process that spawned you
         self.RTCsocket, self.RTCaddress = server_socket.accept()
 
-        self.OKMessage = {"status": "OK"}
-        self.BadMessage = {"status": "BAD"}
+        self.OKMessage = {"status": "OK", "protocol": PROTOCOL_VERSION}
+        self.BadMessage = {"status": "BAD", "protocol": PROTOCOL_VERSION}
         self._read_buffer = ""
 
         return
     
-    def listen(self):
-        try:
-            request = self.read()
-        except Exception:
-            logger.exception("Failed to read listener request")
-            self.write(self.BadMessage)
-            return
-        if "type" not in request:
-            self.write(self.BadMessage)
-            logger.error("Listener request missing type field: %s", request)
-            return
+    def _bad(self, error: str) -> dict:
+        message = dict(self.BadMessage)
+        message["error"] = str(error)
+        return message
 
-        #Sort behaviour by request type
+    def handle_request(self, request) -> dict:
+        """Dispatch one RPC request dict and return the reply dict.
+
+        Separated from socket I/O so the dispatch logic is directly
+        testable. Never raises: failures produce a BAD reply carrying an
+        ``error`` string.
+        """
+
+        if not isinstance(request, dict) or "type" not in request:
+            logger.error("Listener request missing type field: %s", request)
+            return self._bad("request missing 'type' field")
+
+        protocol = request.get("protocol", PROTOCOL_VERSION)
+        if protocol != PROTOCOL_VERSION:
+            logger.error("Listener protocol mismatch: got %s, expected %s", protocol, PROTOCOL_VERSION)
+            return self._bad(
+                f"protocol version mismatch: got {protocol}, expected {PROTOCOL_VERSION}"
+            )
+
         requestType = request["type"]
         if requestType == "shutdown":
             try:
                 self.hardware.__del__()
                 self.running = False
-                self.write(self.OKMessage)
-            except Exception:
+                return dict(self.OKMessage)
+            except Exception as exc:
                 logger.exception("Listener shutdown request failed")
-                self.write(self.BadMessage)
-        elif requestType == "get":
+                return self._bad(f"shutdown failed: {exc}")
+
+        if requestType == "get":
+            propertyName = request.get("property")
             try:
-                propertyName = request["property"]
-                property = getattr(self.hardware, propertyName)
-                message = self.OKMessage.copy()
-                message["property"] = property
-                self.write(message)
-            except Exception:
-                logger.exception("Listener get request failed for %s", request.get("property"))
-                self.write(self.BadMessage)
-        elif requestType == "set":
+                value = getattr(self.hardware, propertyName)
+                message = dict(self.OKMessage)
+                message["property"] = value
+                return message
+            except Exception as exc:
+                logger.exception("Listener get request failed for %s", propertyName)
+                return self._bad(f"get '{propertyName}' failed: {exc}")
+
+        if requestType == "set":
+            propertyName = request.get("property")
             try:
-                propertyName = request["property"]
-                propertyValue = request["value"]
-                property = getattr(self.hardware, propertyName)
-                setattr(self.hardware, propertyName, type(property)(propertyValue))
-                self.write(self.OKMessage)
-            except Exception:
-                logger.exception("Listener set request failed for %s", request.get("property"))
-                self.write(self.BadMessage)
-        elif requestType == "run":
+                current = getattr(self.hardware, propertyName)
+                coerced = _coerce_property_value(current, request["value"])
+                setattr(self.hardware, propertyName, coerced)
+                return dict(self.OKMessage)
+            except Exception as exc:
+                logger.exception("Listener set request failed for %s", propertyName)
+                return self._bad(f"set '{propertyName}' failed: {exc}")
+
+        if requestType == "run":
+            functionName = request.get("function")
             try:
-                functionName = request["function"]
-                args = []
-                for i in range(0, len(request.keys())-2):
-                    arg = request[f"arg_{i+1}"]
-                    args.append(arg)
+                args = request.get("args", [])
+                if not isinstance(args, list):
+                    return self._bad("'args' must be a list")
                 function = getattr(self.hardware, functionName)
-                if len(args) > 0:
-                    function(*args)
-                else:
-                    function()
-                self.write(self.OKMessage)
-            except Exception:
-                logger.exception("Listener run request failed for %s", request.get("function"))
-                self.write(self.BadMessage)
+                result = function(*args)
+                message = dict(self.OKMessage)
+                if result is not None:
+                    serializable = _json_safe(result)
+                    if serializable is not None:
+                        message["property"] = serializable
+                    else:
+                        logger.debug(
+                            "Dropping non-JSON-serializable result of %s: %r",
+                            functionName,
+                            type(result),
+                        )
+                return message
+            except Exception as exc:
+                logger.exception("Listener run request failed for %s", functionName)
+                return self._bad(f"run '{functionName}' failed: {exc}")
+
+        logger.error("Unknown listener request type: %s", requestType)
+        return self._bad(f"unknown request type: {requestType}")
+
+    def listen(self):
+        try:
+            request = self.read()
+        except (ConnectionError, OSError):
+            logger.info("RTC connection closed; stopping listener")
+            self.running = False
+            return
+        except Exception as exc:
+            logger.exception("Failed to read listener request")
+            reply = self._bad(f"unreadable request: {exc}")
         else:
-            logger.error("Unknown listener request type: %s", requestType)
-            self.write(self.BadMessage)
+            reply = self.handle_request(request)
+        try:
+            self.write(reply)
+        except (ConnectionError, OSError):
+            logger.info("RTC connection closed before reply was sent; stopping listener")
+            self.running = False
 
     def write(self, message):
         _socket_send_json(self.RTCsocket, message)

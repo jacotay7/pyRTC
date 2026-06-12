@@ -5,9 +5,12 @@ stated goals: performance as a primary design constraint, the synthetic SHWFS
 workflow as the front door, a conservative Linux-first release posture, and
 ML-assisted control research as a target audience.
 
-**Status as of 2026-06-11:** A1, A2, B3, C6, C8 are done (full suite: 235
-passed, lint clean). Remaining: C7, D9, D10, B4, D11, E12, plus a final
-benchmark re-run against `benchmarks/ao_loop_bench_baseline.json`.
+**Status as of 2026-06-11 (second pass):** A1, A2, B3, B4, C6, C7, C8, D9,
+D10, D11, E12 are done. Verified: 285 tests passed with the extended coverage
+gate at 85.5% (GPU lane deselected, as on CI), system + notebook smoke green,
+ruff clean, `pyrtc-ao-loop-bench` within 1.5x of the committed baseline, live
+soft and hard tutorials converge. Remaining: **F1 (naming standardization)**,
+plus the second gate extension round (Loop/SlopesProcess/manager) noted in D9.
 
 ## A. Front door (user-visible bugs in the advertised quick start)
 
@@ -44,10 +47,13 @@ benchmark re-run against `benchmarks/ao_loop_bench_baseline.json`.
   (signal + wfc), and `WavefrontCorrector.sendToHardware` (wfc). `out=` is
   ignored for GPU-attached streams by design.
 
-- [ ] **B4 — Perf baseline gate in CI.** Wire the 10x10/20x20 CPU bench into
-  CI with a generous ratio threshold (≥1.5× to absorb runner noise) using
-  `benchmarks/check_perf_baseline.py`. GPU columns must be skipped on GitHub
-  runners (no CUDA): use `--cpu-only` / system-size flags.
+- [x] **B4 — Perf baseline gate in CI.** *Done.* The checker previously only
+  verified metric *presence*; `check_perf_baseline.py --max-ratio` now fails
+  on latency metrics above the threshold or throughput metrics below its
+  inverse (unit-tested in `tests/perf/`). CI runs the perf-smoke comparison
+  with `--max-ratio 5.0` (deliberately generous: the committed baseline is
+  from the fast lab host and GitHub runners are slow/noisy); use
+  `--max-ratio 1.5` on the lab host — the AO-loop bench passes that today.
 
 - [ ] **B5 — Profile the per-write lock.** Benchmarks show no regression
   today (baseline ratio ~1.01). Revisit only if 60x60-GPU-scale profiles show
@@ -64,14 +70,17 @@ benchmark re-run against `benchmarks/ao_loop_bench_baseline.json`.
   re-export shim kept for one release; all internal imports use the new
   modules. Tests that monkeypatch by module path were retargeted.
 
-- [ ] **C7 — Harden the hard-RTC RPC.** The `get/set/run` protocol coerces
-  with `type(property)(value)` (breaks for bools/None), silently drops `run()`
-  return values, and has no protocol version. Add a versioned message
-  envelope, safe type coercion, and return values for `run` (now isolated in
-  `pyRTC/rpc.py`, so the change is contained). Note: `hardwareLauncher.run`
-  accepts a `timeout` argument it ignores — honor it (the hard-RTC tutorial
-  currently works around this by touching `processSocket.settimeout` for the
-  long `computeIM` call).
+- [x] **C7 — Harden the hard-RTC RPC.** *Done.* Protocol v1 envelope
+  (mismatches rejected with an error reply), type-safe `set` coercion
+  (booleans round-trip; `_coerce_property_value`), `run` passes an explicit
+  `args` list and returns JSON-serializable results (NumPy converted via
+  `item()`/`tolist()`), child error strings propagate to
+  `hardwareLauncher.lastError`, `run(..., timeout=)` applies a per-call
+  socket timeout (the hard tutorial now uses it for `computeIM`), and the
+  listener stops cleanly on RTC disconnect instead of raising
+  `BrokenPipeError`. `Listener.handle_request` is pure/testable;
+  `tests/test_rpc.py` covers dispatch, coercion, lifecycle, and a
+  socketpair round trip.
 
 - [x] **C8 — Hygiene pass.** *Done.* Dead commented code removed from
   `work()` and `Loop.py`; vestigial `RELEASE_GIL` attribute removed;
@@ -80,38 +89,36 @@ benchmark re-run against `benchmarks/ao_loop_bench_baseline.json`.
 
 ## D. Testing and platform posture
 
-- [ ] **D9 — Extend the coverage gate.** `pytest.ini` gates only 7 modules.
-  Add `Loop.py`, `SlopesProcess.py`, and the new `streams.py` / `rpc.py` /
-  `manager.py` module-by-module, with new tests where coverage falls short.
-  (Measure first: `python -m pytest --cov=pyRTC.streams --cov=pyRTC.manager
-  --cov=pyRTC.rpc --cov=pyRTC.Loop --cov=pyRTC.SlopesProcess ...`.)
+- [x] **D9 — Extend the coverage gate (round one).** *Done for
+  `streams` (85%), `rpc` (82%), `component_loading` (90%), `latency` (79%)* —
+  all added to the `pytest.ini` gate; combined gated total 85.5% under CI
+  conditions (`-m "not gpu"`). New test files: `tests/test_rpc.py`,
+  `tests/test_streams.py`, `tests/test_component_loading.py`.
+  **Round two (still open):** `Loop.py` (71%), `SlopesProcess.py` (50%),
+  `manager.py` (74%) need a dedicated test-writing session before they can
+  join the gate without dropping the floor.
 
-- [ ] **D10 — GPU test lane.** Add a `gpu` pytest marker (register in
-  `pytest.ini`) with real-pyshmem-stream tests for the
-  `create_stream`/`open_stream` GPU paths (GPU producer + CPU-mirror
-  consumer + CUDA-attached consumer + uint16 fallback — a working snippet
-  exists in the session history as the "GPU smoke" script). **GitHub runners
-  have no CUDA**, so every GPU test needs
-  `@pytest.mark.skipif(not pyshmem.gpu_available(), reason="CUDA is not available")`
-  and CI should also deselect with `-m "not gpu"`; the lane runs on the lab
-  machine before releases.
+- [x] **D10 — GPU test lane.** *Done.* `gpu` marker registered in
+  `pytest.ini`; `tests/test_gpu_streams.py` covers GPU producer with CPU
+  mirror, NumPy reads from CPU consumers, CUDA-tensor reads from GPU
+  consumers, tensor writes, the uint16 CPU fallback, and `read_new(out=)` on
+  the mirror — 6 tests, all passing on the lab machine. Every test is
+  `skipif(not pyshmem.gpu_available())` (GitHub runners have no CUDA) and the
+  lane deselects cleanly with `-m "not gpu"`.
 
-- [ ] **D11 — Windows semantics.** pyshmem's Windows named shared memory dies
-  with the last handle (no POSIX persistence). Hard-RTC restart/reattach
-  flows silently assume persistence — document Windows as soft-RTC-only for
-  the 1.x line (README release posture + CLAUDE.md).
+- [x] **D11 — Windows semantics.** *Done.* README release posture and the
+  streams guide now state Windows is soft-RTC-only for the 1.x line (named
+  shared memory dies with the last handle; no hard-RTC restart/reattach).
 
 ## E. Docs and release
 
-- [ ] **E12 — Docs + version.** Add a streams guide documenting
-  `create_stream`/`open_stream` and the `pyshmem` CLI; refresh the generated
-  API docs (source rst updated; built HTML in `docs/source/_build` is stale —
-  consider not committing build output); add rst pages for the new
-  `pyRTC.streams` / `pyRTC.rpc` / `pyRTC.manager` modules; ship as **1.1.0**
-  (`pyproject.toml` still says the old version) with the CHANGELOG
-  "Unreleased" section renamed. CHANGELOG should also gain entries for A1/A2
-  fixes and the Pipeline split. Update `CLAUDE.md` architecture section for
-  the new module layout (it still describes everything under `Pipeline.py`).
+- [x] **E12 — Docs + version.** *Done.* `guides/streams.rst` added to the
+  docs toctree; `api_reference.rst` + generated rst stubs cover
+  `streams`/`rpc`/`manager`/`component_loading`; version bumped to **1.1.0**
+  with a full CHANGELOG entry; CLAUDE.md architecture/testing sections
+  describe the new module layout, gate set, and `gpu` marker. (Still open:
+  the committed built HTML under `docs/source/_build` is stale — consider
+  removing build output from the repo when next regenerating docs.)
 
 ## Final verification checklist (run before calling this done)
 
@@ -123,6 +130,32 @@ benchmark re-run against `benchmarks/ao_loop_bench_baseline.json`.
   ~1.01)
 - Live run of `examples/synthetic_shwfs/synthetic_shwfs_soft_rtc_example.py`
   (expect calibration ~5 s, then residual_rms ≈ 0.01, strehl ≈ 0.97)
+
+## F. Repo-wide conventions
+
+- [ ] **F1 — Standardize naming to snake_case across the entire repository
+  (no backwards compatibility).** Eliminate camelCase everywhere:
+  - **Python identifiers**: functions, methods, attributes, and locals
+    (`launchComponent` → `launch_component`, `getProperty` → `get_property`,
+    `computeIM` → `compute_im`, `numModes` → `num_modes`,
+    `hardwareLauncher` → rename class to `HardwareLauncher` or fold into the
+    rpc rename, …). Class names stay PEP 8 `CapWords`.
+  - **Config keys** in YAML system configs and `component_descriptors`
+    (`gpuDevice` → `gpu_device`, `IMFile` → `im_file`,
+    `numDroppedModes` → `num_dropped_modes`, `inputStreams` →
+    `input_streams`, …) with all example configs and validation updated
+    together. No alias layer — old keys become validation errors.
+  - **Module filenames**: `WavefrontSensor.py` → `wavefront_sensor.py` etc.,
+    updating imports, `componentFiles` entries, docs, and CI references.
+  - **Open question to settle before starting**: whether the import package
+    itself becomes lowercase `pyrtc` (full consistency, matches the
+    user-facing name; CLAUDE.md currently says the import name stays
+    `pyRTC`).
+  - Suggested order: (1) config keys + descriptors, (2) Python identifiers
+    module-by-module with the test suite green after each, (3) module/file
+    renames, (4) docs/README/CLAUDE.md sweep. Each phase is a separate
+    commit; RPC property names travel over the wire, so hard-RTC examples
+    must be re-run live after phase 2.
 
 ## Deferred / future pyshmem additions
 
