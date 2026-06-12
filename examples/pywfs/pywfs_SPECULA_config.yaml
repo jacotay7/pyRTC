@@ -1,7 +1,7 @@
 specula:
   class_name: pyrtc.hardware.specula_interface.SPECULAInterface
   class_file: ../../pyrtc/hardware/specula_interface.py
-  paramFile: pywfs_SPECULA_params.yaml
+  param_file: pywfs_SPECULA_params.yaml
   wfc_section: wfc
   use_atmosphere: false
   input_streams: {}

@@ -1,7 +1,7 @@
 oopao:
   class_name: pyrtc.hardware.oopao_interface.OOPAOInterface
   class_file: ../../pyrtc/hardware/oopao_interface.py
-  paramFile: shwfs_OOPAO_params.yaml
+  param_file: shwfs_OOPAO_params.yaml
   wfc_section: wfc
   use_atmosphere: false
   input_streams: {}
