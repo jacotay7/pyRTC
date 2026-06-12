@@ -17,7 +17,7 @@ from rotpy.system import SpinSystem
 
 logger = get_logger(__name__)
 
-class SpinCam(ScienceCamera):
+class SpinnakerScienceCamera(ScienceCamera):
     """Science-camera wrapper for cameras exposed through ``rotpy``.
 
     This adapter is intended for hardware deployments that use the FLIR
@@ -81,7 +81,7 @@ class SpinCam(ScienceCamera):
         try:
             super().set_exposure(exposure)
             self.camera.camera_nodes.ExposureTime.set_node_value(exposure, verify=True)
-            self.logger.info("Applied Spinnaker exposure=%s", exposure)
+            self.logger.info("Applied Spinnaker exposure=%s", self.exposure)
         except Exception:
             self.logger.exception("Failed to apply Spinnaker exposure=%s", exposure)
             raise
@@ -160,5 +160,4 @@ class SpinCam(ScienceCamera):
 
 if __name__ == "__main__":
 
-    launch_component(SpinCam, "psf", start = True)
-
+    launch_component(SpinnakerScienceCamera, "psf", start = True)

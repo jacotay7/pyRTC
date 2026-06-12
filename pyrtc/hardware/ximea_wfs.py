@@ -16,7 +16,7 @@ from ximea import xiapi
 
 logger = get_logger(__name__)
 
-class XIMEA_WFS(WavefrontSensor):
+class XIMEAWFS(WavefrontSensor):
     """Wavefront-sensor adapter for a XIMEA camera.
 
     The class handles device connection, runtime camera configuration, and
@@ -143,4 +143,4 @@ class XIMEA_WFS(WavefrontSensor):
 
 if __name__ == "__main__":
 
-    launch_component(XIMEA_WFS, "wfs", start = True)
+    launch_component(XIMEAWFS, "wfs", start = True)

@@ -25,7 +25,7 @@ of pyrtc, which holds all components in the same python process. See below for h
 
   As an example (see hardware/ximea_wfs.py):
 
-  from pyrtc.hardware import XIMEA_WFS
+  from pyrtc.hardware import XIMEAWFS
 
   Here, I will just initialize the Wavefront Sensor Superclass as an example
   """

@@ -64,7 +64,7 @@ def test_ximea_wfs_init_and_controls(monkeypatch):
         "gain": 3,
     }
 
-    cam = module.XIMEA_WFS(conf)
+    cam = module.XIMEAWFS(conf)
     assert cam.cam.opened == ("XI_OPEN_BY_SN", "123")
     assert cam.cam.started is True
     assert cam.cam.params["width"] == 8
@@ -167,7 +167,7 @@ def test_spinnaker_science_camera_init_and_controls(monkeypatch):
         "gamma": 2.0,
     }
 
-    cam = module.SpinCam(conf)
+    cam = module.SpinnakerScienceCamera(conf)
     assert cam.camera.started is True
     assert cam.camera.camera_nodes.ExposureAuto.value == "Off"
     assert cam.camera.camera_nodes.GainAuto.value == "Off"
@@ -231,8 +231,8 @@ def test_alpao_dm_init_and_layout(monkeypatch, tmp_path):
 @pytest.mark.parametrize(
     ("symbol_name", "module_name", "missing_dependency"),
     [
-        ("XIMEA_WFS", ".ximea_wfs", "ximea"),
-        ("SpinCam", ".spinnaker_science_cam", "rotpy"),
+        ("XIMEAWFS", ".ximea_wfs", "ximea"),
+        ("SpinnakerScienceCamera", ".spinnaker_science_cam", "rotpy"),
         ("ALPAODM", ".alpao_dm", "Lib64.asdk"),
         ("PIModulator", ".pi_modulator", "pipython"),
     ],

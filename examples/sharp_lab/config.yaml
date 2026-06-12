@@ -43,7 +43,7 @@ wfs:
   dark_count: 2000
   dark_file: "/home/whetstone/pyrtc/examples/sharp_lab/calib/dark.npy"
   affinity: 3
-  class_name: XIMEA_WFS
+  class_name: XIMEAWFS
   input_streams: {}
   output_streams:
     wfs_raw: wfs_raw
@@ -133,7 +133,7 @@ psf:
   model_file: "/home/whetstone/pyrtc/examples/sharp_lab/calib/model_psf.npy"
   integration: 1
   affinity: 6
-  class_name: SpinCam
+  class_name: SpinnakerScienceCamera
   input_streams: {}
   output_streams:
     psf_short: psf_short
@@ -191,11 +191,11 @@ optimizer:
 manager:
   mode: soft-rtc
   component_classes:
-    wfs: pyrtc.hardware.XIMEA_WFS
+    wfs: pyrtc.hardware.XIMEAWFS
     slopes: pyrtc.slopes_process.SlopesProcess
     loop: pyrtc.loop.Loop
     wfc: pyrtc.hardware.alpao_dm
-    psf: pyrtc.hardware.SpinCam
+    psf: pyrtc.hardware.SpinnakerScienceCamera
   component_files:
     wfs: ../../pyrtc/hardware/ximea_wfs.py
     slopes: ../../pyrtc/slopes_process.py

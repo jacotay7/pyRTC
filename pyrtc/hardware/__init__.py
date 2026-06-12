@@ -4,8 +4,8 @@ from importlib import import_module
 _EXPORTS = {
     "ALPAODM": (".alpao_dm", "ALPAODM"),
     "SPECULAInterface": (".specula_interface", "SPECULAInterface"),
-    "SpinCam": (".spinnaker_science_cam", "SpinCam"),
-    "XIMEA_WFS": (".ximea_wfs", "XIMEA_WFS"),
+    "SpinnakerScienceCamera": (".spinnaker_science_cam", "SpinnakerScienceCamera"),
+    "XIMEAWFS": (".ximea_wfs", "XIMEAWFS"),
     "PIModulator": (".pi_modulator", "PIModulator"),
     "NCPAOptimizer": (".ncpa_optimizer", "NCPAOptimizer"),
     "PIDOptimizer": (".pid_optimizer", "PIDOptimizer"),
