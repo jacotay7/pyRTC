@@ -11,6 +11,7 @@ import json
 import os
 import socket
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -135,6 +136,9 @@ class HardwareLauncher:
         self.last_contact_time = None
         self.last_error = None
         self._read_buffer = ""
+        # Serializes write_and_read across threads so the manager's health
+        # checks can't interleave with user-driven get/set calls.
+        self._rpc_lock = threading.Lock()
 
         return
 
@@ -204,9 +208,9 @@ class HardwareLauncher:
         message = {"type": "get", "property": property, "protocol": PROTOCOL_VERSION}
         return self.write_and_read(message)
 
-    def set_property(self, property, value):
+    def set_property(self, property, value, timeout=None):
         message = {"type": "set", "property": property, "value": value, "protocol": PROTOCOL_VERSION}
-        return self.write_and_read(message)
+        return self.write_and_read(message, timeout=timeout)
 
     def run(self, function, *args, timeout=None):
         """Invoke a method on the remote component.
@@ -226,6 +230,13 @@ class HardwareLauncher:
         return self.write_and_read(message, timeout=timeout)
 
     def write_and_read(self, message, *, timeout=None):
+        if not self.running:
+            return -1
+
+        with self._rpc_lock:
+            return self._locked_write_and_read(message, timeout=timeout)
+
+    def _locked_write_and_read(self, message, *, timeout=None):
         if not self.running:
             return -1
 

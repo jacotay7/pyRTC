@@ -120,10 +120,44 @@ class OOPAOWFCorrector(WavefrontCorrector):
         if self.section_name:
             self.context.register_component(self.section_name, self)
 
-        #Set-up additional pyrtc parameters from simulation
-        num_actuators = self.dm.validAct.size
-        self.set_layout(self.dm.validAct.reshape(int(np.sqrt(num_actuators)),
-                                                            int(np.sqrt(num_actuators))))
+        #Set-up additional pyrtc parameters from simulation.
+        # The OOPAO ``validAct`` mask is a flat boolean array with one entry
+        # per pupil-grid position (e.g. 441 entries for a 21x21 grid), where
+        # only a subset (e.g. 357) are valid actuators. The configured
+        # ``num_actuators`` from the config represents the grid size, but
+        # pyrtc's correction vectors must be sized to the count of valid
+        # actuators so that ``current_shape[self.layout]`` broadcasts cleanly.
+        # Resize the dependent buffers accordingly and use ``validAct``
+        # reshaped to its native grid shape as the 2D layout for the SHM
+        # visualization.
+        valid_actuators = int(np.sum(self.dm.validAct))
+        if valid_actuators <= 0:
+            raise RuntimeError("OOPAO deformable mirror has no valid actuators")
+        if valid_actuators != self.num_actuators:
+            self.logger.info(
+                "Adjusting num_actuators from configured %s to %s valid OOPAO actuators",
+                self.num_actuators,
+                valid_actuators,
+            )
+            self.num_actuators = valid_actuators
+            self.flat = np.zeros(self.num_actuators, dtype=np.float32)
+            self.flat_modal = np.zeros(self.num_modes, dtype=self.flat.dtype)
+            self.current_shape = np.zeros_like(self.flat)
+            self.actuator_status = np.array([True] * self.num_actuators)
+            self.float_matrix = np.eye(self.num_actuators, dtype=self.flat.dtype)
+            self.set_m2c(None)
+
+        # The OOPAO ``validAct`` mask is a flat boolean array describing
+        # a 2D grid of candidate actuator positions, where only a subset of
+        # cells are valid actuators. The grid is usually square (e.g. 441
+        # entries for a 21x21 grid). We have no reliable accessor on the
+        # ``DeformableMirror`` for the underlying grid shape, so assume a
+        # square layout. The downstream ``set_layout`` simply stores the
+        # boolean mask and only uses ``sum(layout)`` cells, so the exact
+        # shape only matters for the visualization SHM.
+        grid_size = int(np.sqrt(self.dm.validAct.size))
+        layout = np.asarray(self.dm.validAct).reshape(grid_size, grid_size).astype(bool)
+        self.set_layout(layout)
 
     def read_m2c(self, filename=''):
         self.set_m2c(None)
@@ -166,7 +200,18 @@ class OOPAOScienceCamera(ScienceCamera):
     def _compute_psf(self, opd_no_pupil):
         self.src ** self.tel
         self.src.OPD_no_pupil = opd_no_pupil
-        self.tel.compute_psf(zero_padding_factor=5)
+        # OOPAO 4.x renamed ``compute_psf`` to ``computePSF`` and the
+        # ``zero_padding_factor`` argument to ``zeroPaddingFactor``. The new
+        # method/argument is canonical; we fall back to the legacy
+        # snake_case name for older OOPAO releases.
+        if hasattr(self.tel, "computePSF"):
+            try:
+                self.tel.computePSF(zeroPaddingFactor=5)
+            except TypeError:
+                # Older 4.x betas accepted snake_case as well.
+                self.tel.computePSF(zero_padding_factor=5)
+        else:
+            self.tel.compute_psf(zero_padding_factor=5)
         return np.array(self.tel.PSF, dtype=np.float64, copy=True)
 
     def _render_reference_psf(self):
@@ -179,9 +224,35 @@ class OOPAOScienceCamera(ScienceCamera):
         if psf.size == 0:
             return np.zeros(self.image_shape, dtype=np.float64)
 
+        # OOPAO's native PSF shape is driven by ``Telescope.resolution`` and
+        # the zero-padding factor (default 2 in OOPAO 4.x). When the
+        # configured detector is a different shape, rebin the OOPAO PSF
+        # down to the detector grid so the rest of the pipeline can consume
+        # the same shape it was built for.
+        target_shape = tuple(self.image_shape)
+        if psf.shape != target_shape:
+            psf = self._rebin_psf(psf, target_shape)
+
         scaled = psf / self._reference_peak
         scaled *= np.iinfo(self.image_raw_dtype).max
         return np.clip(scaled, 0, np.iinfo(self.image_raw_dtype).max)
+
+    @staticmethod
+    def _rebin_psf(psf: np.ndarray, target_shape: tuple[int, int]) -> np.ndarray:
+        """Block-average ``psf`` to ``target_shape`` while preserving total flux."""
+        src_h, src_w = psf.shape
+        dst_h, dst_w = target_shape
+        if (src_h, src_w) == (dst_h, dst_w):
+            return psf
+        if src_h % dst_h != 0 or src_w % dst_w != 0:
+            # Fall back to a simple resize via interpolation if the shapes
+            # are not evenly divisible.
+            ys = np.linspace(0, src_h - 1, dst_h).astype(int)
+            xs = np.linspace(0, src_w - 1, dst_w).astype(int)
+            return psf[np.ix_(ys, xs)]
+        block_h, block_w = src_h // dst_h, src_w // dst_w
+        trimmed = psf[: dst_h * block_h, : dst_w * block_w]
+        return trimmed.reshape(dst_h, block_h, dst_w, block_w).mean(axis=(1, 3))
 
     def _current_opd_no_pupil(self):
         base_opd = np.zeros(self.tel.pupil.shape, dtype=np.float64)

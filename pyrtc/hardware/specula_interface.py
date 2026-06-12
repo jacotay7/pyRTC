@@ -730,6 +730,15 @@ class SPECULASystemContext:
                     self.prop._block_size[layer] = div
                     break
 
+        # SPECULA caches per-layer and per-source heights in dicts keyed by
+        # the Layer/Source objects themselves. When the layer list changes
+        # (e.g. toggling the atmosphere on), we have to rebuild those caches
+        # before setup_interpolators() can look them up correctly.
+        if hasattr(self.prop, "_build_layer_heights"):
+            self.prop._build_layer_heights()
+        if hasattr(self.prop, "_build_source_heights"):
+            self.prop._build_source_heights()
+
         self.prop.setup_interpolators()
         if getattr(self.prop, "doFresnel", False):
             self.prop.doFresnel_setup()
@@ -1009,7 +1018,11 @@ class SPECULASystemContext:
         if not psf_conf:
             return None
         psf_conf = dict(psf_conf)
-        psf_conf.setdefault("verbose", False)
+        # The ``verbose`` argument was removed from recent SPECULA releases;
+        # the new equivalents are ``compute_profile_metrics`` and
+        # ``compute_metrics_in_trigger``. Drop ``verbose`` if the user supplied
+        # it from an older config so we do not break on the new API.
+        psf_conf.pop("verbose", None)
         return self._bindings.PSF(
             self.simul_params,
             target_device_idx=self.device_idx,
