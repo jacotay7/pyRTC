@@ -533,7 +533,7 @@ def _install_fake_specula(monkeypatch):
             }
             self.ref = types.SimpleNamespace(i=np.ones((2, 2), dtype=np.float32))
             self.inputs_changed = False
-            self.verbose = kwargs.get("verbose", True)
+            self.verbose = kwargs.get("verbose", False)
 
         def setup(self):
             return None

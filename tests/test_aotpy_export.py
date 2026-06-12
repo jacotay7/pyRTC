@@ -30,15 +30,21 @@ def _make_test_session(monkeypatch, tmp_path, *, include_science=True):
     class _SHM:
         def __init__(self, data, timestamp):
             self._data = np.asarray(data)
+            self.shape = self._data.shape
+            self.dtype = self._data.dtype
+            self.write_time = timestamp
             self.metadata = np.array([0.0, timestamp], dtype=np.float64)
+
+        def read_new(self, timeout=None):
+            return self._data
 
         def read(self):
             return self._data
 
     streams = {
-        "wfs": (_SHM(np.arange(16, dtype=np.int32).reshape(4, 4), 100.0), [4, 4], np.int32),
-        "signal": (_SHM(np.array([1.0, 2.0, 3.0, 4.0], dtype=np.float32), 101.0), [4], np.float32),
-        "wfc": (_SHM(np.array([0.1, 0.2], dtype=np.float32), 102.0), [2], np.float32),
+        "wfs": _SHM(np.arange(16, dtype=np.int32).reshape(4, 4), 100.0),
+        "signal": _SHM(np.array([1.0, 2.0, 3.0, 4.0], dtype=np.float32), 101.0),
+        "wfc": _SHM(np.array([0.1, 0.2], dtype=np.float32), 102.0),
     }
     semantic_tags = {
         "wfs": ["wfs"],
@@ -48,14 +54,14 @@ def _make_test_session(monkeypatch, tmp_path, *, include_science=True):
     stream_names = ["wfs", "signal", "wfc"]
 
     if include_science:
-        streams["psf_short"] = (_SHM(np.ones((8, 8), dtype=np.int32), 103.0), [8, 8], np.int32)
-        streams["psf_long"] = (_SHM(np.full((8, 8), 2.0, dtype=np.float64), 104.0), [8, 8], np.float64)
+        streams["psf_short"] = _SHM(np.ones((8, 8), dtype=np.int32), 103.0)
+        streams["psf_long"] = _SHM(np.full((8, 8), 2.0, dtype=np.float64), 104.0)
         semantic_tags["psf_short"] = ["psf", "science"]
         semantic_tags["psf_long"] = ["psf", "science"]
         stream_names.extend(["psf_short", "psf_long"])
 
     monkeypatch.setattr(aotpy_export, "_import_aotpy", lambda: aotpy)
-    monkeypatch.setattr(telemetry_module, "initExistingShm", lambda name: streams[name])
+    monkeypatch.setattr(telemetry_module, "open_stream", lambda name: streams[name])
 
     telemetry = Telemetry({"data_dir": str(tmp_path), "functions": []})
     return telemetry.save(
@@ -109,12 +115,19 @@ def test_aotpy_export_surfaces_missing_optional_dependency(monkeypatch, tmp_path
 
     class _SHM:
         def __init__(self):
+            self._data = np.array([1.0, 2.0], dtype=np.float32)
+            self.shape = self._data.shape
+            self.dtype = self._data.dtype
+            self.write_time = 10.0
             self.metadata = np.array([0.0, 10.0], dtype=np.float64)
 
-        def read(self):
-            return np.array([1.0, 2.0], dtype=np.float32)
+        def read_new(self, timeout=None):
+            return self._data
 
-    monkeypatch.setattr(telemetry_module, "initExistingShm", lambda name: (_SHM(), [2], np.float32))
+        def read(self):
+            return self._data
+
+    monkeypatch.setattr(telemetry_module, "open_stream", lambda name: _SHM())
     monkeypatch.setattr(aotpy_export.importlib, "import_module", lambda name: (_ for _ in ()).throw(ImportError("missing aotpy")))
 
     telemetry = Telemetry({"data_dir": str(tmp_path), "functions": []})
