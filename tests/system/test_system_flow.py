@@ -42,7 +42,7 @@ def test_loop_wfc_system_flow_smoke(monkeypatch):
         }
     )
 
-    loop.IM = np.eye(loop.signal_size, loop.num_modes, dtype=np.float32)
+    loop.im = np.eye(loop.signal_size, loop.num_modes, dtype=np.float32)
     loop.compute_cm()
     loop.set_gain(0.5)
 

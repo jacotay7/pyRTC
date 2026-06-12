@@ -55,7 +55,7 @@ class NCPAOptimizer(Optimizer):
             self.is_cl = False
             self.orig_ref_slopes = None
             self.valid_sub_aps = None
-            self.IM = None
+            self.im = None
 
             super().__init__(conf)
             self.logger.info(
@@ -90,7 +90,7 @@ class NCPAOptimizer(Optimizer):
                 modal_coefs[i] = np.float32(trial.suggest_float(f'{i}', -self.correction_mag, self.correction_mag))
             if self.is_cl:
                 ref_slopes_adjust = np.zeros_like(self.orig_ref_slopes)
-                ref_slopes_adjust[self.valid_sub_aps] = self.IM @ modal_coefs
+                ref_slopes_adjust[self.valid_sub_aps] = self.im @ modal_coefs
                 ref_slopes = self.orig_ref_slopes + ref_slopes_adjust
                 np.save(self.new_ref_slopes_file, ref_slopes)
                 self.slopes.set_property("ref_slopes_file", self.new_ref_slopes_file)
@@ -114,7 +114,7 @@ class NCPAOptimizer(Optimizer):
 
             if self.is_cl:
                 ref_slopes_adjust = np.zeros_like(self.orig_ref_slopes)
-                ref_slopes_adjust[self.valid_sub_aps] = self.IM @ modal_coefs
+                ref_slopes_adjust[self.valid_sub_aps] = self.im @ modal_coefs
                 ref_slopes = self.orig_ref_slopes + ref_slopes_adjust
                 if overwrite:
                     np.save(self.ref_slopes_file, ref_slopes)
@@ -141,7 +141,7 @@ class NCPAOptimizer(Optimizer):
             self.is_cl = self.loop.get_property("running")
             if self.is_cl:
                 self.valid_sub_aps = np.load(self.slopes.get_property("valid_sub_aps_file"))
-                self.IM = np.load(self.loop.get_property("im_file"))
+                self.im = np.load(self.loop.get_property("im_file"))
 
                 self.orig_ref_slopes = np.load(self.ref_slopes_file)
                 self.new_ref_slopes_file = get_tmp_filepath(self.ref_slopes_file)

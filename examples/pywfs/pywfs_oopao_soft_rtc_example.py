@@ -163,7 +163,7 @@ def prepare_loop(system: dict, *, gain: float, poke_amp: float, compute_im: bool
         sim.add_atmosphere()
     else:
         logger.info("Skipping IM calibration and using an identity-style fallback")
-        loop.IM = np.eye(loop.signal_size, loop.num_modes, dtype=loop.signal_dtype)
+        loop.im = np.eye(loop.signal_size, loop.num_modes, dtype=loop.signal_dtype)
         loop.compute_cm()
 
     loop.set_gain(gain)

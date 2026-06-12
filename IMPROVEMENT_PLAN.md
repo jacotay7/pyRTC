@@ -5,12 +5,12 @@ stated goals: performance as a primary design constraint, the synthetic SHWFS
 workflow as the front door, a conservative Linux-first release posture, and
 ML-assisted control research as a target audience.
 
-**Status as of 2026-06-11 (second pass):** A1, A2, B3, B4, C6, C7, C8, D9,
-D10, D11, E12 are done. Verified: 285 tests passed with the extended coverage
-gate at 85.5% (GPU lane deselected, as on CI), system + notebook smoke green,
-ruff clean, `pyrtc-ao-loop-bench` within 1.5x of the committed baseline, live
-soft and hard tutorials converge. Remaining: **F1 (naming standardization)**,
-plus the second gate extension round (Loop/SlopesProcess/manager) noted in D9.
+**Status as of 2026-06-11 (third pass):** A1, A2, B3, B4, C6, C7, C8, D9,
+D10, D11, E12, F1 are done. Verified: 291 tests + 3 system + 19 perf + 1
+notebook smoke all green, ruff clean, `pyrtc-ao-loop-bench` within 1.5x of the
+committed baseline, live soft and hard tutorials converge. Remaining: the
+second gate extension round (Loop/SlopesProcess/manager) noted in D9.
+
 
 ## A. Front door (user-visible bugs in the advertised quick start)
 
@@ -133,29 +133,50 @@ plus the second gate extension round (Loop/SlopesProcess/manager) noted in D9.
 
 ## F. Repo-wide conventions
 
-- [ ] **F1 — Standardize naming to snake_case across the entire repository
-  (no backwards compatibility).** Eliminate camelCase everywhere:
-  - **Python identifiers**: functions, methods, attributes, and locals
-    (`launch_component` → `launch_component`, `get_property` → `get_property`,
-    `compute_im` → `compute_im`, `num_modes` → `num_modes`,
-    `hardwareLauncher` → rename class to `HardwareLauncher` or fold into the
-    rpc rename, …). Class names stay PEP 8 `CapWords`.
-  - **Config keys** in YAML system configs and `component_descriptors`
-    (`gpu_device` → `gpu_device`, `im_file` → `im_file`,
-    `num_dropped_modes` → `num_dropped_modes`, `input_streams` →
-    `input_streams`, …) with all example configs and validation updated
-    together. No alias layer — old keys become validation errors.
-  - **Module filenames**: `WavefrontSensor.py` → `wavefront_sensor.py` etc.,
-    updating imports, `component_files` entries, docs, and CI references.
-  - **Open question to settle before starting**: whether the import package
-    itself becomes lowercase `pyrtc` (full consistency, matches the
-    user-facing name; CLAUDE.md currently says the import name stays
-    `pyrtc`).
-  - Suggested order: (1) config keys + descriptors, (2) Python identifiers
-    module-by-module with the test suite green after each, (3) module/file
-    renames, (4) docs/README/CLAUDE.md sweep. Each phase is a separate
-    commit; RPC property names travel over the wire, so hard-RTC examples
-    must be re-run live after phase 2.
+- [x] **F1 — Standardize naming to snake_case across the entire repository
+  (no backwards compatibility).** *Done.* The bulk of the rename landed in
+  `1984a60` (config keys, descriptors, examples, docs, manager adapter,
+  component bases, hardware adapters) and this pass closed the remaining
+  holes:
+  - **`benchmarks/perf_smoke.py`:** `numIters=` kwarg mismatch in the
+    `measure_execution_time` smoke call (the function signature uses
+    `num_iters`); the call was raising `TypeError` at runtime, which
+    `tests/perf/test_perf_smoke.py` caught on the first run.
+  - **`pyrtc/gui/manager_adapter.py`:** the streams-payload key `inputRole`
+    was the last camelCase dict key in the GUI bridge; it now matches the
+    surrounding `output_component` / `input_components` / `component_stream`
+    keys as `input_role`.
+  - **`pyrtc/loop.py` + `pyrtc/hardware/ncpa_optimizer.py`:** the two
+    `Loop` matrix attributes were the last capitalized scalar names
+    (`self.IM`, `self.CM`); renamed to `self.im` / `self.cm` across
+    the class, the `@gain.setter` guard, the docstring, the debug
+    comments, and the `comp_correction(cm=...)` jit kernel. All call
+    sites in `tests/system/test_system_flow.py`, `tests/test_loop.py`,
+    and the four `examples/{pywfs,shwfs}/*_soft_rtc_example.py` examples
+    were updated in the same commit.
+  - **`examples/pywfs/pywfs_example_OOPAO.ipynb`:** the OOPAO tutorial
+    notebook was the only remaining place that referenced the old loop
+    API directly (`loop.CM`, `loop.CMMethod`, `loop.numDroppedModes`,
+    `loop.tikhonovReg`, `loop.lastSingularValueFit`, `loop.CM`,
+    `loop.plotSingularValues()`, `loop.computeCM(...)`,
+    `numDroppedModes=...`, `confWFC["numModes"]`); everything now uses
+    the snake_case names.
+  - **Synthetic tutorial docstrings:** the "loop IM" wording in
+    `examples/synthetic_shwfs/synthetic_shwfs_{soft,hard}_rtc_example.py`
+    is updated to match the attribute rename.
+  - **Stale docs build output:** `docs/source/_build/` is stale (still
+    renders the pre-snake_case API and `gpu_device` → `numItersIM` etc.
+    on every page); not committed in this branch, but `docs/Makefile` will
+    regenerate it. The release-cleanup note in E12 still stands for
+    whoever next runs `make html` to commit the output.
+
+  Verified post-rename: `python -m pytest tests/` → 291 passed, 1
+  skipped; `pytest tests/system tests/notebooks` → 3 passed;
+  `pytest tests/perf` → 19 passed; `ruff check pyrtc tests benchmarks
+  examples` → clean. The GUI adapter `input_role` change is purely
+  internal to `manager_adapter.py` and the generated `streams` config
+  block; no on-disk configs depended on the old key.
+
 
 ## Deferred / future pyshmem additions
 

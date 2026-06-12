@@ -52,7 +52,7 @@ def _safe_percentile(values, pct: float) -> float:
 
 def _benchmark_measure_execution_time(num_iters: int):
     start = time.perf_counter()
-    median, iqr, ci1, ci99 = measure_execution_time(_noop, (1,), numIters=num_iters)
+    median, iqr, ci1, ci99 = measure_execution_time(_noop, (1,), num_iters=num_iters)
     elapsed = time.perf_counter() - start
     return {
         "median": float(median),

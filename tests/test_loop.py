@@ -37,15 +37,15 @@ def test_loop_methods_without_full_init(tmp_path):
     loop.last_retained_singular_mask = np.array([], dtype=bool)
     loop.last_suggested_conditioning = None
     loop.last_singular_value_fit = None
-    loop.IM = np.random.RandomState(0).randn(6, 4).astype(np.float32)
-    loop.CM = np.zeros((4, 6), dtype=np.float32)
+    loop.im = np.random.RandomState(0).randn(6, 4).astype(np.float32)
+    loop.cm = np.zeros((4, 6), dtype=np.float32)
     loop.gain = 0.2
     loop.compute_cm()
-    assert loop.CM.shape == (4, 6)
+    assert loop.cm.shape == (4, 6)
 
     loop.compute_cm(conditioning=10.0)
     assert loop.conditioning == 10.0
-    assert loop.last_singular_values.size == min(loop.IM[:, : loop.num_active_modes].shape)
+    assert loop.last_singular_values.size == min(loop.im[:, : loop.num_active_modes].shape)
 
     loop.compute_cm(method="tikhonov", conditioning=10.0, tikhonov_reg=0.05)
     assert loop.cm_method == "tikhonov"
@@ -61,28 +61,28 @@ def test_loop_methods_without_full_init(tmp_path):
     assert plotted is None or plotted >= 1.0
 
     loop.set_gain(0.5)
-    assert np.allclose(loop.g_cm, 0.5 * loop.CM)
+    assert np.allclose(loop.g_cm, 0.5 * loop.cm)
 
     loop.gain = 0.3
-    assert np.allclose(loop.g_cm, 0.3 * loop.CM)
+    assert np.allclose(loop.g_cm, 0.3 * loop.cm)
 
     loop.set_peturb_amp(0.3)
     assert np.isclose(loop.perturb_amp, 0.3)
 
     loop.im_file = str(tmp_path / "im.npy")
     loop.save_im()
-    loop.IM = np.zeros_like(loop.IM)
+    loop.im = np.zeros_like(loop.im)
     loop.load_im()
-    assert np.any(loop.IM != 0)
+    assert np.any(loop.im != 0)
 
-    loop.f_im = np.copy(loop.IM)
+    loop.f_im = np.copy(loop.im)
     correction = np.ones(4, dtype=np.float32)
     slopes = np.ones(6, dtype=np.float32)
     upd = loop.update_correction_pol(correction, slopes)
     assert upd.shape == (4,)
 
     # pid integrator path
-    loop.CM = np.eye(4, 6, dtype=np.float32)
+    loop.cm = np.eye(4, 6, dtype=np.float32)
     loop.leaky_gain = 0.0
     loop.control_limits = [-1.0, 1.0]
     loop.integral_limits = [-5.0, 5.0]
@@ -172,13 +172,13 @@ def test_loop_compute_cm_zero_matrix_without_failure():
     loop.conditioning = None
     loop.tikhonov_reg = 0.0
     loop.last_singular_value_fit = None
-    loop.IM = np.zeros((5, 3), dtype=np.float32)
-    loop.CM = np.zeros((3, 5), dtype=np.float32)
+    loop.im = np.zeros((5, 3), dtype=np.float32)
+    loop.cm = np.zeros((3, 5), dtype=np.float32)
     loop.gain = 0.1
 
     loop.compute_cm()
 
-    assert np.allclose(loop.CM, 0.0)
+    assert np.allclose(loop.cm, 0.0)
     assert loop.last_singular_values.size == 3
 
 

@@ -68,6 +68,21 @@ All notable changes to `pyrtcao` will be documented in this file.
 - GPU streams are created with a CPU mirror, so CPU-only processes
 	(viewers, telemetry) can always read them, and GPU stream sharing now
 	also works in-process (soft-RTC), not just hard-RTC.
+- **All remaining camelCase names converted to snake_case.** The two
+	`Loop` matrix attributes were the last capitalized scalar names in
+	pyrtc: `Loop.im`/`Loop.cm` (formerly `Loop.IM`/`Loop.CM`), the
+	`comp_correction(cm=...)` jit kernel argument, and the `inputRole`
+	streams-payload key in the GUI adapter. The `benchmarks/perf_smoke.py`
+	`measure_execution_time` call site used the old `numIters=` keyword
+	(it now passes `num_iters=`, matching the function signature; the
+	mismatch was silently raising `TypeError` in `tests/perf`). The
+	`pywfs_example_OOPAO.ipynb` tutorial, the four `examples/{pywfs,shwfs}/*_soft_rtc_example.py`
+	files, and `tests/test_loop.py` / `tests/system/test_system_flow.py`
+	were updated to the new attribute and method names. There is no
+	backwards-compatibility alias — any out-of-tree code that referenced
+	`loop.IM` / `loop.CM` / `loop.computeCM` / `loop.plotSingularValues`
+	/ `loop.lastSingularValueFit` / `loop.CMMethod` / `loop.numDroppedModes`
+	/ `loop.tikhonovReg` must move to the snake_case equivalents.
 
 ## 1.0.0 - 2026-03-07
 

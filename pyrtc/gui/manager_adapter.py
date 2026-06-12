@@ -523,7 +523,7 @@ class ManagerAdapter:
             "input_components": current_inputs,
         }
         payload["component_stream"] = resolved_output_role
-        payload["inputRole"] = resolved_input_role
+        payload["input_role"] = resolved_input_role
         streams_conf[normalized_name] = payload
         self._rebuild_manager()
 
@@ -537,7 +537,7 @@ class ManagerAdapter:
         if isinstance(stream_conf, dict):
             output_component = stream_conf.get("output_component", stream_conf.get("producer"))
             component_stream = stream_conf.get("component_stream", stream_name)
-            input_role = stream_conf.get("inputRole", component_stream)
+            input_role = stream_conf.get("input_role", component_stream)
             if isinstance(output_component, str) and output_component in self.config:
                 producer_outputs = self.config[output_component].get("output_streams", {})
                 if isinstance(producer_outputs, dict):

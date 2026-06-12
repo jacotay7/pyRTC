@@ -71,11 +71,11 @@ def leak_integrator_gpu(slopes:np.ndarray,
     return np.subtract((1-leak)*old_correction, correction_gpu.cpu().numpy())
 
 @jit(nopython=True, nogil=True, cache=False, fastmath=True)
-def comp_correction(CM=np.array([[]], dtype=np.float32),  
+def comp_correction(cm=np.array([[]], dtype=np.float32),
                     slopes=np.array([], dtype=np.float32)):
     """Apply a control matrix to a slope vector and return the correction."""
 
-    return np.dot(CM,slopes)
+    return np.dot(cm, slopes)
 
 @jit(nopython=True, nogil=True, cache=False, fastmath=True)
 def update_correction(correction=np.array([], dtype=np.float32), 
@@ -153,9 +153,9 @@ class Loop(Component):
         Data type of the 2D wavefront sensor signal.
     signal_2d_size : int
         Size of the 2D wavefront sensor signal.
-    signal2D_width : int
+    signal_2d_width : int
         Width of the 2D wavefront sensor signal.
-    signal2D_height : int
+    signal_2d_height : int
         Height of the 2D wavefront sensor signal.
     wfc_dtype : type
         Data type of the wavefront corrector.
@@ -169,9 +169,9 @@ class Loop(Component):
         Number of active modes.
     flat : numpy.ndarray
         Flat correction vector.
-    IM : numpy.ndarray
+    im : numpy.ndarray
         Interaction matrix.
-    CM : numpy.ndarray
+    cm : numpy.ndarray
         Control matrix.
     gain : float
         Gain for the integrator.
@@ -295,8 +295,8 @@ class Loop(Component):
             self.flat = np.zeros(self.num_modes, dtype=self.wfc_dtype)
             self.null_correction = np.zeros_like(self.flat)
 
-            self.IM = np.zeros((self.signal_size, self.num_modes),dtype=self.signal_dtype)
-            self.CM = np.zeros((self.num_modes, self.signal_size),dtype=self.signal_dtype)
+            self.im = np.zeros((self.signal_size, self.num_modes),dtype=self.signal_dtype)
+            self.cm = np.zeros((self.num_modes, self.signal_size),dtype=self.signal_dtype)
             self.gain = set_from_config(self.conf, "gain", 0.1)
             self.leaky_gain = set_from_config(self.conf, "leaky_gain", 0.0)
             self.perturb_amp = 0
@@ -355,8 +355,8 @@ class Loop(Component):
     @gain.setter
     def gain(self, gain):
         self._gain = float(gain)
-        if hasattr(self, "CM"):
-            self.g_cm = self._gain * self.CM
+        if hasattr(self, "cm"):
+            self.g_cm = self._gain * self.cm
 
     def set_gain(self, gain):
         """
@@ -411,7 +411,7 @@ class Loop(Component):
             #Burn the first new image since we were moving the DM during the exposure
             self.read_stream("signal")
             #Average out N new WFS frames
-            tmp_plus = np.zeros_like(self.IM[:,i])
+            tmp_plus = np.zeros_like(self.im[:,i])
             for n in range(self.num_iters_im):
                 tmp_plus += self.read_stream("signal")
             tmp_plus /= self.num_iters_im
@@ -425,13 +425,13 @@ class Loop(Component):
             #Burn the first new image since we were moving the DM during the exposure
             self.read_stream("signal")
             #Average out N new WFS frames
-            tmp_minus = np.zeros_like(self.IM[:,i])
+            tmp_minus = np.zeros_like(self.im[:,i])
             for n in range(self.num_iters_im):
                 tmp_minus += self.read_stream("signal")
             tmp_minus /= self.num_iters_im
 
             #Compute the normalized difference
-            self.IM[:,i] = (tmp_plus-tmp_minus)/(2*self.poke_amp)
+            self.im[:,i] = (tmp_plus-tmp_minus)/(2*self.poke_amp)
 
         return
     
@@ -475,7 +475,7 @@ class Loop(Component):
 
         self.docrime_cross /= self.num_iters_im 
         self.docrime_auto /= self.num_iters_im
-        self.IM = self.docrime_cross @np.linalg.inv(self.docrime_auto)
+        self.im = self.docrime_cross @np.linalg.inv(self.docrime_auto)
 
         self.docrime_cross = np.zeros_like(self.docrime_cross)
         self.docrime_auto = np.zeros_like(self.docrime_auto)
@@ -515,7 +515,7 @@ class Loop(Component):
                 filename = self.im_file
             if filename == '':
                 raise ValueError("No interaction matrix filename provided")
-            np.save(filename, self.IM)
+            np.save(filename, self.im)
             component_logger.info("Saved interaction matrix to %s", filename)
         except Exception:
             component_logger.exception("Failed to save interaction matrix to %s", filename or getattr(self, "im_file", ""))
@@ -535,10 +535,10 @@ class Loop(Component):
             if filename == '':
                 filename = self.im_file
             if filename == '':
-                self.IM = np.zeros_like(self.IM)
+                self.im = np.zeros_like(self.im)
                 component_logger.info("No interaction matrix file configured; using zeros")
             else:
-                self.IM = np.load(filename)
+                self.im = np.load(filename)
                 component_logger.info("Loaded interaction matrix from %s", filename)
             self.compute_cm()
         except Exception:
@@ -631,9 +631,9 @@ class Loop(Component):
         return best_fit["conditioning"], best_fit
 
     def get_singular_values(self) -> np.ndarray:
-        if self.IM.size == 0:
+        if self.im.size == 0:
             return np.array([], dtype=np.float64)
-        return np.linalg.svd(self.IM, compute_uv=False)
+        return np.linalg.svd(self.im, compute_uv=False)
 
     def suggest_conditioning_number(self):
         singular_values = self.get_singular_values()
@@ -686,11 +686,11 @@ class Loop(Component):
         num_modes = matrix.shape[1]
 
         if matrix.size == 0:
-            return np.zeros((num_modes, matrix.shape[0]), dtype=self.CM.dtype), np.array([], dtype=np.float64), np.array([], dtype=bool)
+            return np.zeros((num_modes, matrix.shape[0]), dtype=self.cm.dtype), np.array([], dtype=np.float64), np.array([], dtype=bool)
 
         singular_values = np.linalg.svd(matrix, compute_uv=False)
         if singular_values.size == 0 or singular_values[0] <= 0:
-            return np.zeros((num_modes, matrix.shape[0]), dtype=self.CM.dtype), singular_values, np.zeros_like(singular_values, dtype=bool)
+            return np.zeros((num_modes, matrix.shape[0]), dtype=self.cm.dtype), singular_values, np.zeros_like(singular_values, dtype=bool)
 
         U, singular_values, Vh = np.linalg.svd(matrix, full_matrices=False)
         retained = singular_values > 0
@@ -706,7 +706,7 @@ class Loop(Component):
             inverse_singular_values[retained] = singular_values[retained] / (singular_values[retained] ** 2 + tikhonov_reg ** 2)
 
         inverse = (Vh.T * inverse_singular_values) @ U.T
-        return inverse.astype(self.CM.dtype, copy=False), singular_values, retained
+        return inverse.astype(self.cm.dtype, copy=False), singular_values, retained
     
     def compute_cm(self, method=None, num_dropped_modes=None, conditioning=None, tikhonov_reg=None):
         """
@@ -746,7 +746,7 @@ class Loop(Component):
             self.num_active_modes = self.num_modes - self.num_dropped_modes
             if self.num_active_modes < 0:
                 raise ValueError("Invalid number of modes used in CM. Check num_dropped_modes")
-            active_im = self.IM[:, :self.num_active_modes]
+            active_im = self.im[:, :self.num_active_modes]
             inverse, singular_values, retained = self._compute_inverse_from_svd(
                 active_im,
                 method=self.cm_method,
@@ -754,11 +754,11 @@ class Loop(Component):
                 tikhonov_reg=self.tikhonov_reg,
             )
 
-            self.CM[:, :] = 0
-            self.CM[:self.num_active_modes, :] = inverse
-            self.CM[self.num_active_modes:, :] = 0
-            self.g_cm = self.gain * self.CM
-            self.f_im = np.copy(self.IM)
+            self.cm[:, :] = 0
+            self.cm[:self.num_active_modes, :] = inverse
+            self.cm[self.num_active_modes:, :] = 0
+            self.g_cm = self.gain * self.cm
+            self.f_im = np.copy(self.im)
             self.f_im[:, self.num_active_modes:] = 0
             self.last_singular_values = singular_values
             self.last_retained_singular_mask = retained
@@ -796,8 +796,8 @@ class Loop(Component):
         numpy.ndarray
             Updated correction vector.
         """   
-        # Compute POL Slopes s_{POL} = s_{RES} + IM*c_{n-1}
-        # print(f'slopes: {slopes.shape}, IM: {self.IM.shape}, corr: {correction.shape}')
+        # Compute POL Slopes s_{POL} = s_{RES} + im*c_{n-1}
+        # print(f'slopes: {slopes.shape}, im: {self.im.shape}, corr: {correction.shape}')
         s_pol = slopes - self.f_im@correction
 
         # Update Command Vector c_n = g*CM*s_{POL} + (1 − g) c_{n-1}  https://arxiv.org/pdf/1903.12124.pdf Eq 3
@@ -809,7 +809,7 @@ class Loop(Component):
         """
         residual_slopes = self.read_stream("signal", out=self._signalBuffer)
         current_correction = self.read_stream("wfc", block=False, out=self._wfcBuffer)
-        # print(f'slopes: {residual_slopes.shape}, IM: {self.IM.shape}, corr: {current_correction.shape}')
+        # print(f'slopes: {residual_slopes.shape}, im: {self.im.shape}, corr: {current_correction.shape}')
 
         new_correction = self.update_correction_pol(correction=current_correction, 
                                                  slopes=residual_slopes)
@@ -873,7 +873,7 @@ class Loop(Component):
             correction = self.read_stream("wfc", block=False)
 
         #Compute raw error term (numba accelerated)
-        wf_error = comp_correction(CM=self.CM, 
+        wf_error = comp_correction(cm=self.cm, 
                                     slopes=slopes)
         derivative = (wf_error - self.previous_wf_error) 
         
@@ -967,7 +967,7 @@ class Loop(Component):
 
     def plot_im(self, row=None):
 
-        plt.imshow(self.IM, cmap = 'inferno', aspect='auto')
+        plt.imshow(self.im, cmap = 'inferno', aspect='auto')
         plt.show()
 
 if __name__ == "__main__":
