@@ -850,12 +850,28 @@ def test_manager_repeated_failures_increment_restart_count_and_preserve_last_err
     assert loop_status["last_error"] == "child process exited with code 2"
     assert loop_status["state"] == "running"
 
+def _installed_pyrtc_loop_path() -> Path:
+    """Return the path to the installed pyrtc.loop module on disk.
+
+    Tests must target the copy of pyrtc that's actually importable in
+    the current environment, which is the installed wheel on CI
+    (location reported by importlib.util.find_spec) — not the
+    local source checkout. The two diverge as soon as pip install .
+    runs in CI, so referencing REPO_ROOT directly causes duplicate
+    class objects to be exec'd.
+    """
+    import importlib.util, os
+    spec = importlib.util.find_spec("pyrtc.loop")
+    if spec is None or spec.origin is None:
+        raise RuntimeError("pyrtc.loop is not importable")
+    return Path(os.path.normpath(spec.origin))
+
+
 def test_import_symbol_from_file_reuses_canonical_pyrtc_module():
     from pyrtc.loop import Loop
     from pyrtc.pipeline import _import_symbol_from_file
 
-    loop_file = REPO_ROOT / "pyrtc" / "loop.py"
-    resolved = _import_symbol_from_file(str(loop_file), "Loop")
+    resolved = _import_symbol_from_file(str(_installed_pyrtc_loop_path()), "Loop")
 
     assert resolved is Loop
 

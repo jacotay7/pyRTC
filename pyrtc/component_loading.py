@@ -13,6 +13,7 @@ from __future__ import annotations
 import importlib
 import importlib.util
 import inspect
+import os
 from pathlib import Path
 
 from pyrtc.logging_utils import get_logger
@@ -20,25 +21,60 @@ from pyrtc.logging_utils import get_logger
 logger = get_logger(__name__)
 
 
-def canonical_pyrtc_module_name(module_path: Path) -> str | None:
-    """Map a file inside the pyrtc package back to its canonical module name."""
+def _pyrtc_package_paths() -> list[Path]:
+    """Return the on-disk locations of the loaded ``pyrtc`` package.
 
-    package_root = Path(__file__).resolve().parent
+    Uses the *loaded* package's ``__path__`` so resolution works no matter
+    whether ``pyrtc`` was imported from an installed wheel (e.g. CI's
+    ``pip install .``), an editable install, or a local checkout that
+    happens to be on ``sys.path``. Falls back to the directory containing
+    this file if the package can't be located (e.g. a stale build that
+    failed to install the package).
+    """
+
     try:
-        relative = module_path.relative_to(package_root)
-    except ValueError:
-        return None
+        pkg = importlib.import_module("pyrtc")
+    except Exception:
+        return [Path(__file__).resolve().parent]
+
+    raw_paths = getattr(pkg, "__path__", None)
+    if not raw_paths:
+        return [Path(__file__).resolve().parent]
+
+    return [Path(os.path.normpath(p)) for p in raw_paths if p]
+
+
+def canonical_pyrtc_module_name(module_path: Path) -> str | None:
+    """Map a file inside the loaded ``pyrtc`` package to its module name.
+
+    Returns ``None`` for files outside the package (including an editable
+    source checkout when ``pyrtc`` was installed as a regular wheel) or
+    for non-``.py`` paths. Callers fall back to a file-based import in
+    that case.
+    """
+
     if module_path.suffix != ".py":
         return None
-    return ".".join(("pyrtc", *relative.with_suffix("").parts))
+
+    for package_root in _pyrtc_package_paths():
+        try:
+            relative = module_path.relative_to(package_root)
+        except ValueError:
+            continue
+        return ".".join(("pyrtc", *relative.with_suffix("").parts))
+    return None
 
 
 def import_symbol_from_file(file_path: str, attr_name: str):
     """Load ``attr_name`` from a Python file, preferring canonical modules.
 
-    When the file belongs to the pyrtc package itself (configs commonly point
-    ``class_file`` at e.g. ``pyrtc/loop.py``), the canonical module is imported
-    instead of exec'ing a second copy.
+    When the file belongs to the loaded ``pyrtc`` package (configs may
+    point ``class_file`` at e.g. the installed ``pyrtc/loop.py``), the
+    canonical module is imported instead of exec'ing a second copy. Files
+    outside the package — including a local source checkout that isn't
+    the package being executed — are loaded via a spec-based import so
+    a separate module object is created only when there is no canonical
+    module to reuse.
     """
 
     module_path = Path(file_path).expanduser().resolve()
