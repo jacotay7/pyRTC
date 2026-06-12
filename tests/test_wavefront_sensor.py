@@ -1,7 +1,7 @@
 import numpy as np
 import importlib
 
-wfs_mod = importlib.import_module("pyRTC.WavefrontSensor")
+wfs_mod = importlib.import_module("pyrtc.wavefront_sensor")
 
 
 def test_downsample_and_rotate_helpers():
@@ -15,36 +15,36 @@ def test_downsample_and_rotate_helpers():
 def test_wavefront_sensor_basic(monkeypatch, tmp_path):
     from testsupport import DummySHM
 
-    monkeypatch.setattr(wfs_mod, "ImageSHM", DummySHM)
+    monkeypatch.setattr(wfs_mod, "create_stream", DummySHM)
 
     conf = {
         "name": "w",
         "width": 8,
         "height": 8,
-        "darkCount": 2,
-        "darkFile": "",
+        "dark_count": 2,
+        "dark_file": "",
         "functions": [],
     }
     wfs = wfs_mod.WavefrontSensor(conf)
     assert wfs.name == "w"
 
-    wfs.setRoi([2, 3, 4, 5])
-    wfs.setExposure(1.2)
-    wfs.setBinning(2)
-    wfs.setGain(3.4)
-    wfs.setBitDepth(12)
+    wfs.set_roi([2, 3, 4, 5])
+    wfs.set_exposure(1.2)
+    wfs.set_binning(2)
+    wfs.set_gain(3.4)
+    wfs.set_bit_depth(12)
 
     wfs.data = np.ones((8, 8), dtype=np.uint16) * 4
-    wfs.setDark(np.ones((8, 8), dtype=np.int32))
+    wfs.set_dark(np.ones((8, 8), dtype=np.int32))
     wfs.expose()
     out = wfs.read(block=False)
     assert out.shape == (8, 8)
     assert np.all(out == 3)
 
     dark_file = tmp_path / "dark.npy"
-    wfs.saveDark(str(dark_file))
-    wfs.setDark(np.zeros((8, 8), dtype=np.int32))
-    wfs.loadDark(str(dark_file))
+    wfs.save_dark(str(dark_file))
+    wfs.set_dark(np.zeros((8, 8), dtype=np.int32))
+    wfs.load_dark(str(dark_file))
     assert np.all(wfs.dark == 1)
 
     # dark-taking path
@@ -54,9 +54,9 @@ def test_wavefront_sensor_basic(monkeypatch, tmp_path):
         return frames.pop(0)
 
     wfs.read = fake_read
-    wfs.takeDark()
+    wfs.take_dark()
     assert np.all(wfs.dark == 3)
 
     wfs.read = lambda block=False: np.ones((8, 8), dtype=np.int32)
-    rot = wfs.rotateImage(10.0)
+    rot = wfs.rotate_image(10.0)
     assert rot.shape == (8, 8)

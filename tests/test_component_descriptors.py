@@ -1,6 +1,6 @@
 import pytest
 
-from pyRTC.component_descriptors import (
+from pyrtc.component_descriptors import (
     ComponentDescriptor,
     ConfigFieldDescriptor,
     build_descriptor_catalog,
@@ -12,13 +12,13 @@ from pyRTC.component_descriptors import (
     unregister_component_descriptor,
     validate_config_with_descriptor,
 )
-from pyRTC.hardware.SyntheticSystems import SyntheticSHWFS
-from pyRTC.Loop import Loop
-from pyRTC.ScienceCamera import ScienceCamera
-from pyRTC.SlopesProcess import SlopesProcess
-from pyRTC.Telemetry import Telemetry
-from pyRTC.WavefrontCorrector import WavefrontCorrector
-from pyRTC.WavefrontSensor import WavefrontSensor
+from pyrtc.hardware.synthetic_systems import SyntheticSHWFS
+from pyrtc.loop import Loop
+from pyrtc.science_camera import ScienceCamera
+from pyrtc.slopes_process import SlopesProcess
+from pyrtc.telemetry import Telemetry
+from pyrtc.wavefront_corrector import WavefrontCorrector
+from pyrtc.wavefront_sensor import WavefrontSensor
 
 
 def test_builtin_descriptors_cover_core_sections():
@@ -41,7 +41,7 @@ def test_wfs_descriptor_exposes_expected_contract():
     assert descriptor.component_class is WavefrontSensor
     assert descriptor.worker_functions == ("expose",)
     assert descriptor.required_field_names == ("width", "height")
-    assert [stream.name for stream in descriptor.output_streams] == ["wfsRaw", "wfs"]
+    assert [stream.name for stream in descriptor.output_streams] == ["wfs_raw", "wfs"]
 
 
 def test_loop_descriptor_exposes_expected_worker_functions():
@@ -49,8 +49,8 @@ def test_loop_descriptor_exposes_expected_worker_functions():
 
     assert descriptor is not None
     assert descriptor.component_class is Loop
-    assert "standardIntegrator" in descriptor.worker_functions
-    assert "leakyIntegrator" in descriptor.worker_functions
+    assert "standard_integrator" in descriptor.worker_functions
+    assert "leaky_integrator" in descriptor.worker_functions
 
 
 def test_component_classes_expose_describe():
@@ -77,7 +77,7 @@ def test_descriptor_to_dict_is_machine_readable():
     assert payload["class_path"].endswith("ScienceCamera")
     assert isinstance(payload["required_fields"], list)
     assert "fields" in payload
-    assert payload["fields"]["darkCount"]["required"] is True
+    assert payload["fields"]["dark_count"]["required"] is True
 
 
 def test_descriptor_catalog_is_keyed_by_section():
@@ -90,9 +90,9 @@ def test_descriptor_catalog_is_keyed_by_section():
 
 def test_component_descriptor_supports_field_lookup_by_name():
     descriptor = get_component_descriptor("loop")
-    field_descriptor = descriptor["hardwareDelay"]
+    field_descriptor = descriptor["hardware_delay"]
 
-    assert field_descriptor.name == "hardwareDelay"
+    assert field_descriptor.name == "hardware_delay"
     assert field_descriptor["field_type"] == "float"
     assert field_descriptor["default"] == 0.0
 
@@ -123,13 +123,15 @@ def test_component_descriptor_get_returns_default_for_unknown_field():
 
 
 def test_descriptor_validation_rejects_wrong_field_type():
-    with pytest.raises(TypeError, match="darkCount"):
-        validate_config_with_descriptor("psf", {"name": "cam", "width": 32, "height": 32, "darkCount": "16", "integration": 4})
+    with pytest.raises(TypeError, match="dark_count"):
+        validate_config_with_descriptor(
+            "psf", {"name": "cam", "width": 32, "height": 32, "dark_count": "16", "integration": 4}
+        )
 
 
 def test_descriptor_validation_rejects_missing_required_field():
-    with pytest.raises(ValueError, match="numModes"):
-        validate_config_with_descriptor("wfc", {"name": "dm", "numActuators": 32})
+    with pytest.raises(ValueError, match="num_modes"):
+        validate_config_with_descriptor("wfc", {"name": "dm", "num_actuators": 32})
 
 
 def test_register_custom_descriptor_supports_future_extensions():

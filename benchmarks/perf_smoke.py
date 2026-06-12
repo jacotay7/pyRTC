@@ -15,9 +15,9 @@ from pathlib import Path
 import numpy as np
 from benchmarks.core_compute_bench import run_core_compute_benchmarks
 
-from pyRTC.logging_utils import add_logging_cli_args, configure_logging_from_args, get_logger
-from pyRTC.scripts.measure_latency import compute_latency_seconds
-from pyRTC.utils import measure_execution_time
+from pyrtc.logging_utils import add_logging_cli_args, configure_logging_from_args, get_logger
+from pyrtc.scripts.measure_latency import compute_latency_seconds
+from pyrtc.utils import measure_execution_time
 
 
 logger = get_logger(__name__)
@@ -52,7 +52,7 @@ def _safe_percentile(values, pct: float) -> float:
 
 def _benchmark_measure_execution_time(num_iters: int):
     start = time.perf_counter()
-    median, iqr, ci1, ci99 = measure_execution_time(_noop, (1,), numIters=num_iters)
+    median, iqr, ci1, ci99 = measure_execution_time(_noop, (1,), num_iters=num_iters)
     elapsed = time.perf_counter() - start
     return {
         "median": float(median),
@@ -78,16 +78,42 @@ def _benchmark_latency_math(num_samples: int):
 
 
 def _build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Run lightweight pyRTC performance smoke checks.")
-    parser.add_argument("--output", type=str, default="benchmarks/perf_smoke_report.json", help="JSON output path")
-    parser.add_argument("--num-iters", type=int, default=200, help="Iterations for measure_execution_time benchmark")
-    parser.add_argument("--num-samples", type=int, default=10000, help="Sample size for latency math benchmark")
-    parser.add_argument("--skip-core", action="store_true", help="Skip core compute benchmark section")
-    parser.add_argument("--core-iterations", type=int, default=1000, help="Timed iterations per core compute kernel")
-    parser.add_argument("--core-warmup", type=int, default=100, help="Warmup iterations per core compute kernel")
-    parser.add_argument("--core-system-sizes", type=int, nargs="+", default=[10, 20, 60], help="Core benchmark system sizes as NxN grids")
-    parser.add_argument("--core-full", action="store_true", help="Use larger benchmark problem sizes instead of quick mode")
-    parser.add_argument("--core-cpu-only", action="store_true", help="Disable GPU attempts for core compute benchmarks")
+    parser = argparse.ArgumentParser(description="Run lightweight pyrtc performance smoke checks.")
+    parser.add_argument(
+        "--output", type=str, default="benchmarks/perf_smoke_report.json", help="JSON output path"
+    )
+    parser.add_argument(
+        "--num-iters", type=int, default=200, help="Iterations for measure_execution_time benchmark"
+    )
+    parser.add_argument(
+        "--num-samples", type=int, default=10000, help="Sample size for latency math benchmark"
+    )
+    parser.add_argument(
+        "--skip-core", action="store_true", help="Skip core compute benchmark section"
+    )
+    parser.add_argument(
+        "--core-iterations", type=int, default=1000, help="Timed iterations per core compute kernel"
+    )
+    parser.add_argument(
+        "--core-warmup", type=int, default=100, help="Warmup iterations per core compute kernel"
+    )
+    parser.add_argument(
+        "--core-system-sizes",
+        type=int,
+        nargs="+",
+        default=[10, 20, 60],
+        help="Core benchmark system sizes as NxN grids",
+    )
+    parser.add_argument(
+        "--core-full",
+        action="store_true",
+        help="Use larger benchmark problem sizes instead of quick mode",
+    )
+    parser.add_argument(
+        "--core-cpu-only",
+        action="store_true",
+        help="Disable GPU attempts for core compute benchmarks",
+    )
     add_logging_cli_args(parser)
     return parser
 
@@ -130,7 +156,9 @@ def run_perf_smoke(
 def main(argv=None) -> int:
     parser = _build_parser()
     args = parser.parse_args(argv)
-    configure_logging_from_args(args, app_name="pyrtc-perf-smoke", component_name="benchmarks.perf_smoke")
+    configure_logging_from_args(
+        args, app_name="pyrtc-perf-smoke", component_name="benchmarks.perf_smoke"
+    )
 
     report = run_perf_smoke(
         num_iters=args.num_iters,

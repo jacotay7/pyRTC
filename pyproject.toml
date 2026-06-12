@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pyrtcao"
-version = "1.0.0"
+version = "1.1.0"
 description = "Adaptive optics real-time control software written in Python."
 readme = { file = "README.md", content-type = "text/markdown" }
 requires-python = ">=3.9"
@@ -35,6 +35,7 @@ classifiers = [
 ]
 dependencies = [
 	"numpy>=1.26,<2.3",
+	"pyshmem>=1.0.5",
 	"matplotlib",
 	"PyYAML",
 	"numba",
@@ -82,19 +83,19 @@ docs = [
 ]
 
 [project.scripts]
-pyrtc-view = "pyRTC.scripts.view:main"
-pyrtc-shm-monitor = "pyRTC.scripts.shm_monitor:main"
-pyrtc-clear-shms = "pyRTC.scripts.clear_shms:main"
-pyrtc-view-launch-all = "pyRTC.scripts.view_launch_all:main"
-pyrtc-measure-latency = "pyRTC.scripts.measure_latency:main"
-pyrtc-validate-config = "pyRTC.scripts.validate_config:main"
-pyrtc-export-aotpy = "pyRTC.scripts.export_aotpy:main"
-pyrtc-manager-gui = "pyRTC.scripts.manager_gui:main"
+pyrtc-view = "pyrtc.scripts.view:main"
+pyrtc-shm-monitor = "pyrtc.scripts.shm_monitor:main"
+pyrtc-clear-shms = "pyrtc.scripts.clear_shms:main"
+pyrtc-view-launch-all = "pyrtc.scripts.view_launch_all:main"
+pyrtc-measure-latency = "pyrtc.scripts.measure_latency:main"
+pyrtc-validate-config = "pyrtc.scripts.validate_config:main"
+pyrtc-export-aotpy = "pyrtc.scripts.export_aotpy:main"
+pyrtc-manager-gui = "pyrtc.scripts.manager_gui:main"
 pyrtc-core-bench = "benchmarks.core_compute_bench:main"
 pyrtc-ao-loop-bench = "benchmarks.ao_loop_bench:main"
 
 [tool.setuptools.packages.find]
-include = ["pyRTC", "pyRTC.*", "benchmarks", "benchmarks.*"]
+include = ["pyrtc", "pyrtc.*", "benchmarks", "benchmarks.*"]
 
 [tool.ruff]
 line-length = 100
@@ -111,4 +112,4 @@ select = ["E", "F"]
 ignore = ["E402", "E501"]
 
 [tool.ruff.lint.per-file-ignores]
-"pyRTC/hardware/*.py" = ["E722"]
+"pyrtc/hardware/*.py" = ["E722"]

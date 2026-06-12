@@ -6,7 +6,7 @@ import argparse
 import json
 from pathlib import Path
 
-from pyRTC.logging_utils import add_logging_cli_args, configure_logging_from_args, get_logger
+from pyrtc.logging_utils import add_logging_cli_args, configure_logging_from_args, get_logger
 
 
 logger = get_logger(__name__)
@@ -21,14 +21,14 @@ CPU_KERNELS = [
     ("wavefront_sensor.downsample_int32_image_jit", "WFS downsample"),
     ("wavefront_sensor.rotate_image_jit", "WFS rotate"),
     ("wavefront_corrector.ModaltoZonalWithFlat", "WFC modal->zonal"),
-    ("loop.leakyIntegratorNumba", "Loop integrator"),
-    ("slopes.computeSlopesPYWFSOptimNumba", "PYWFS slopes"),
-    ("slopes.computeSlopesSHWFSOptimNumba", "SHWFS slopes"),
+    ("loop.leaky_integrator_numba", "Loop integrator"),
+    ("slopes.compute_slopes_pywfs_optim_numba", "PYWFS slopes"),
+    ("slopes.compute_slopes_shwfs_optim_numba", "SHWFS slopes"),
 ]
 
 GPU_KERNELS = {
-    "loop.leakyIntegratorNumba": "loop.leakIntegratorGPU",
-    "slopes.computeSlopesPYWFSOptimNumba": "slopes.computeSlopesPYWFSTorch",
+    "loop.leaky_integrator_numba": "loop.leak_integrator_gpu",
+    "slopes.compute_slopes_pywfs_optim_numba": "slopes.compute_slopes_pywfs_torch",
 }
 
 
@@ -42,7 +42,7 @@ def _fmt_metric(stats: dict | None) -> str:
     hz = float(stats["p99_hz"])
     us = float(stats["p99_s"]) * 1e6
     if hz >= 1000:
-        return f"{hz/1000:.1f} kHz / {us:.1f} us"
+        return f"{hz / 1000:.1f} kHz / {us:.1f} us"
     return f"{hz:.0f} Hz / {us:.1f} us"
 
 
@@ -121,7 +121,9 @@ def build_markdown(report: dict) -> str:
     lines.append("")
     lines.append("Values are reported as `p99 throughput / p99 latency`.")
     lines.append("")
-    lines.append("| Kernel | 10x10 CPU | 10x10 GPU | 20x20 CPU | 20x20 GPU | 60x60 CPU | 60x60 GPU |")
+    lines.append(
+        "| Kernel | 10x10 CPU | 10x10 GPU | 20x20 CPU | 20x20 GPU | 60x60 CPU | 60x60 GPU |"
+    )
     lines.append("| --- | --- | --- | --- | --- | --- | --- |")
 
     for kernel_key, label in CPU_KERNELS:
@@ -143,9 +145,15 @@ def build_markdown(report: dict) -> str:
 
 
 def main(argv=None) -> int:
-    parser = argparse.ArgumentParser(description="Generate README markdown tables from a benchmark JSON report.")
-    parser.add_argument("--report", default="benchmarks/readme_benchmark_report.json", help="Benchmark JSON path")
-    parser.add_argument("--output", default="benchmarks/readme_benchmark_table.md", help="Markdown output path")
+    parser = argparse.ArgumentParser(
+        description="Generate README markdown tables from a benchmark JSON report."
+    )
+    parser.add_argument(
+        "--report", default="benchmarks/readme_benchmark_report.json", help="Benchmark JSON path"
+    )
+    parser.add_argument(
+        "--output", default="benchmarks/readme_benchmark_table.md", help="Markdown output path"
+    )
     add_logging_cli_args(parser)
     args = parser.parse_args(argv)
     configure_logging_from_args(

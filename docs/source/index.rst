@@ -1,4 +1,4 @@
-.. pyRTC documentation master file, created by
+.. pyrtc documentation master file, created by
    sphinx-quickstart on Tue May 14 10:01:34 2024.
    You can adapt this file completely to your liking, but it should at least
    contain the root `toctree` directive.
@@ -12,7 +12,7 @@ It is aimed at simulation-driven AO development, laboratory integration work, an
 For the first stable release series:
 
 - PyPI distribution name: ``pyrtcao``
-- Python import name: ``pyRTC``
+- Python import name: ``pyrtc``
 - Command-line prefix: ``pyrtc-*``
 - Primary supported release surface: Linux on Python 3.9 through 3.13
 - macOS and Windows currently have smoke-workflow coverage only
@@ -25,7 +25,7 @@ Github repository: https://github.com/jacotay7/pyRTC
 Main Features
 --------------
 
-pyRTC is an open-source, community-driven Python package for real-time control of AO systems, built with the following core goals:
+pyrtc is an open-source, community-driven Python package for real-time control of AO systems, built with the following core goals:
 
 - **Customizable High-Performance AO Pipeline:** Provide an efficient RTC pipeline with potential for full user customization.
 - **Abstraction of Core AO System Components:** Facilitate support for a broad range of AO system architectures.
@@ -50,6 +50,7 @@ pyRTC is an open-source, community-driven Python package for real-time control o
 
   guides/getting_started
   guides/architecture
+  guides/streams
   guides/telemetry_aotpy_export
   guides/developers_guide
 
@@ -68,7 +69,7 @@ pyRTC is an open-source, community-driven Python package for real-time control o
   examples/pywfs
 
 
-Citing pyRTC
+Citing pyrtc
 ------------------------
 To cite this project in publications:
 

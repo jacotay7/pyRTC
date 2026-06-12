@@ -25,27 +25,29 @@ def test_expected_stream_specs_match_example_config():
 
     assert specs["wfs"]["shape"] == (49, 49)
     assert specs["signal"]["shape"] == (98,)
-    assert specs["signal2D"]["shape"] == (14, 7)
-    assert specs["wfc2D"]["shape"] == (11, 11)
-    assert specs["psfShort"]["shape"] == (64, 64)
+    assert specs["signal_2d"]["shape"] == (14, 7)
+    assert specs["wfc_2d"]["shape"] == (11, 11)
+    assert specs["psf_short"]["shape"] == (64, 64)
 
 
 def test_synthetic_wfc_default_layout_matches_expected_shape():
-    from pyRTC.Pipeline import clear_shms
-    from pyRTC.hardware.SyntheticSystems import SyntheticWFC
+    from pyrtc.pipeline import clear_shms
+    from pyrtc.hardware.synthetic_systems import SyntheticWFC
 
-    config = _load_example_module().read_yaml_file(str(REPO_ROOT / "examples" / "synthetic_shwfs" / "config.yaml"))
-    clear_shms(["wfc", "wfc2D"])
+    config = _load_example_module().read_yaml_file(
+        str(REPO_ROOT / "examples" / "synthetic_shwfs" / "config.yaml")
+    )
+    clear_shms(["wfc", "wfc_2d"])
     wfc = SyntheticWFC(config["wfc"])
 
     try:
         assert wfc.layout.shape == (11, 11)
         assert int(np.count_nonzero(wfc.layout)) == 97
-        assert wfc.correctionVector2D.read_noblock().shape == (11, 11)
-        assert wfc.correctionVector2D is not None
+        assert wfc.correction_vector_2d.read().shape == (11, 11)
+        assert wfc.correction_vector_2d is not None
     finally:
         wfc.stop()
-        clear_shms(["wfc", "wfc2D"])
+        clear_shms(["wfc", "wfc_2d"])
 
 
 def test_ensure_expected_shms_reuses_matching_streams(monkeypatch):
@@ -91,17 +93,17 @@ def test_ensure_expected_shms_clears_only_incompatible_streams(monkeypatch):
 
 def test_hardware_package_import_is_lazy(capsys):
     for module_name in [
-        "pyRTC.hardware",
-        "pyRTC.hardware.ALPAODM",
-        "pyRTC.hardware.SyntheticSystems",
+        "pyrtc.hardware",
+        "pyrtc.hardware.alpao_dm",
+        "pyrtc.hardware.synthetic_systems",
     ]:
         sys.modules.pop(module_name, None)
 
-    hardware = importlib.import_module("pyRTC.hardware")
+    hardware = importlib.import_module("pyrtc.hardware")
     captured = capsys.readouterr()
 
     assert captured.out == ""
-    assert "pyRTC.hardware.ALPAODM" not in sys.modules
+    assert "pyrtc.hardware.alpao_dm" not in sys.modules
     assert hardware.SyntheticSHWFS.__name__ == "SyntheticSHWFS"
 
 
@@ -113,17 +115,19 @@ def test_synthetic_example_drives_wfc2d_nonzero():
 
     try:
         module.start_system(system)
-        deadline = module.time.perf_counter() + 1.0
+        import time as _time
+
+        deadline = _time.perf_counter() + 1.0
         wfc_abs_max = 0.0
         wfc2d_abs_max = 0.0
-        while module.time.perf_counter() < deadline:
-            wfc = system["loop"].wfcShm.read_noblock(SAFE=False)
-            wfc2d = system["wfc"].correctionVector2D.read_noblock()
+        while _time.perf_counter() < deadline:
+            wfc = system["loop"].wfc_shm.read()
+            wfc2d = system["wfc"].correction_vector_2d.read()
             wfc_abs_max = max(wfc_abs_max, float(np.max(np.abs(wfc))))
             wfc2d_abs_max = max(wfc2d_abs_max, float(np.max(np.abs(wfc2d))))
             if wfc_abs_max > 0.0 and wfc2d_abs_max > 0.0:
                 break
-            module.time.sleep(0.05)
+            _time.sleep(0.05)
     finally:
         module.stop_system(system)
         module.clear_named_shms(list(module.expected_stream_specs(config)))

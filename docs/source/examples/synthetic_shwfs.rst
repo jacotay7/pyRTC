@@ -23,7 +23,7 @@ The example assets live under `examples/synthetic_shwfs/`:
 - `synthetic_shwfs_soft_rtc_example.py`: manager-driven soft-RTC tutorial script with direct object access
 - `synthetic_shwfs_hard_rtc_example.py`: manager-driven hard-RTC tutorial script with proxy-style access
 
-The synthetic hardware implementations live in `pyRTC/hardware/SyntheticSystems.py`.
+The synthetic hardware implementations live in `pyrtc/hardware/synthetic_systems.py`.
 
 Why This Example Exists
 -----------------------
@@ -33,9 +33,9 @@ The OOPAO notebook remains useful, but it is not the best first touchpoint for r
 This synthetic SHWFS path keeps the mental model simple:
 
 1. `SyntheticSHWFS.expose()` generates a lenslet image from a deterministic disturbance and the current `wfc` correction.
-2. `SlopesProcess.computeSignal()` turns that image into SHWFS slopes.
-3. `Loop.standardIntegrator()` reads `signal`, computes a correction, and writes `wfc`.
-4. `WavefrontCorrector.sendToHardware()` updates `wfc2D` for display.
+2. `SlopesProcess.compute_signal()` turns that image into SHWFS slopes.
+3. `Loop.standard_integrator()` reads `signal`, computes a correction, and writes `wfc`.
+4. `WavefrontCorrector.send_to_hardware()` updates `wfc_2d` for display.
 5. `SyntheticScienceCamera.expose()` reads residual slopes and generates a synthetic PSF plus Strehl estimate.
 
 Running It
@@ -48,7 +48,7 @@ From the repository root:
 	python examples/synthetic_shwfs/synthetic_shwfs_soft_rtc_example.py --duration 15
 	python examples/synthetic_shwfs/synthetic_shwfs_hard_rtc_example.py --duration 15
 
-Both launchers read the same YAML file, generate the tiny interaction matrix referenced by that config, clear the standard pyRTC streams by default, and start the full chain through `RTCManager`.
+Both launchers read the same YAML file, generate the tiny interaction matrix referenced by that config, clear the standard pyrtc streams by default, and start the full chain through `RTCManager`.
 
 The mode switch is intentionally obvious in the code:
 
@@ -69,8 +69,8 @@ The hard example demonstrates remote proxy syntax:
 .. code-block:: python
 
 	loop = hard_manager.get_component("loop")
-	current_gain = loop.getProperty("gain")
-	loop.setProperty("gain", 0.10)
+	current_gain = loop.get_property("gain")
+	loop.set_property("gain", 0.10)
 	wfc = hard_manager.get_component("wfc")
 	wfc.run("flatten")
 
@@ -93,7 +93,7 @@ The intended telemetry workflow is intentionally small and NumPy-native:
 
 .. code-block:: python
 
-	from pyRTC import Telemetry
+	from pyrtc import Telemetry
 
 	telem = Telemetry()
 	telem.save("wfs", 1000)
@@ -102,8 +102,8 @@ The intended telemetry workflow is intentionally small and NumPy-native:
 	print(data["wfs"]["frames"].shape)
 	print(data["wfs"]["timestamps"].shape)
 
-Each save creates one session directory under ``dataDir``. For each captured
-stream pyRTC writes:
+Each save creates one session directory under ``data_dir``. For each captured
+stream pyrtc writes:
 
 - ``frames.npy`` for the frame stack
 - ``timestamps.npy`` for producer timestamps
@@ -119,13 +119,13 @@ The preferred way to inspect the demo is a single composite viewer window:
 
 .. code-block:: bash
 
-	pyrtc-view wfs signal2D wfc2D psfShort psfLong --geometry 2x3
+	pyrtc-view wfs signal_2d wfc_2d psf_short psf_long --geometry 2x3
 
 If you want a smaller science-camera-only view, open:
 
 .. code-block:: bash
 
-	pyrtc-view psfShort psfLong --geometry row
+	pyrtc-view psf_short psf_long --geometry row
 
 The composite viewer auto-sizes to the stream dimensions, so it is usually a better default than opening many separate windows.
 
@@ -140,32 +140,32 @@ The synthetic config deliberately uses the same top-level sections you will keep
 	  name: SyntheticSHWFS
 	  width: 32
 	  height: 32
-	  frameRateHz: 200
-	  subApSpacing: 8
+	  frame_rate_hz: 200
+	  sub_ap_spacing: 8
 	  functions:
 	    - expose
 
 	slopes:
 	  type: SHWFS
-	  signalType: slopes
-	  subApSpacing: 8
-	  subApOffsetX: 0
-	  subApOffsetY: 0
+	  signal_type: slopes
+	  sub_ap_spacing: 8
+	  sub_ap_offset_x: 0
+	  sub_ap_offset_y: 0
 	  functions:
-	    - computeSignal
+	    - compute_signal
 
 	wfc:
 	  name: SyntheticWFC
-	  numActuators: 32
-	  numModes: 32
+	  num_actuators: 32
+	  num_modes: 32
 	  functions:
-	    - sendToHardware
+	    - send_to_hardware
 
 	loop:
 	  gain: 0.35
-	  IMFile: synthetic_identity_im.npy
+	  im_file: synthetic_identity_im.npy
 	  functions:
-	    - standardIntegrator
+	    - standard_integrator
 
 	psf:
 	  name: SyntheticScienceCamera
@@ -178,10 +178,10 @@ The synthetic config deliberately uses the same top-level sections you will keep
 
 	manager:
 	  mode: soft-rtc
-	  componentFiles:
-	    wfs: ../../pyRTC/hardware/SyntheticSHWFS.py
-	    wfc: ../../pyRTC/hardware/SyntheticWFC.py
-	    psf: ../../pyRTC/hardware/SyntheticScienceCamera.py
+	  component_files:
+	    wfs: ../../pyrtc/hardware/synthetic_shwfs.py
+	    wfc: ../../pyrtc/hardware/synthetic_wfc.py
+	    psf: ../../pyrtc/hardware/synthetic_science_camera.py
 
 The transition from synthetic hardware to real hardware should mostly leave `slopes`, `loop`, and high-level wiring alone. In a typical integration, the first file you replace is the `wfs` section and the subclass behind it.
 
@@ -194,7 +194,7 @@ For a wavefront sensor, the important rule is: populate `self.data` and then cal
 
 .. code-block:: python
 
-	from pyRTC.WavefrontSensor import WavefrontSensor
+	from pyrtc.wavefront_sensor import WavefrontSensor
 
 
 	class MyWavefrontSensor(WavefrontSensor):
@@ -210,7 +210,7 @@ For a science camera, the pattern is the same: generate or acquire a frame in `s
 
 .. code-block:: python
 
-	from pyRTC.ScienceCamera import ScienceCamera
+	from pyrtc.science_camera import ScienceCamera
 
 
 	class MyScienceCamera(ScienceCamera):

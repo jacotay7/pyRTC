@@ -6,22 +6,34 @@ import numpy as np
 import pytest
 import yaml
 
-from pyRTC.Pipeline import HardComponentRuntime, ImageSHM, RTCManager, _socket_read_json, _socket_send_json, clear_shms, expected_output_shm_specs_for_config, reconcile_expected_output_shms
-from pyRTC.config_schema import read_system_config
-from pyRTC.hardware.SyntheticSystems import _default_wfc_layout, build_synthetic_shwfs_response_matrix
+from pyrtc.pipeline import (
+    HardComponentRuntime,
+    RTCManager,
+    _socket_read_json,
+    _socket_send_json,
+    clear_shms,
+    create_stream,
+    expected_output_shm_specs_for_config,
+    reconcile_expected_output_shms,
+)
+from pyrtc.config_schema import read_system_config
+from pyrtc.hardware.synthetic_systems import (
+    _default_wfc_layout,
+    build_synthetic_shwfs_response_matrix,
+)
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SYNTHETIC_CONFIG_PATH = REPO_ROOT / "examples" / "synthetic_shwfs" / "config.yaml"
 DEFAULT_STREAMS = [
     "wfs",
-    "wfsRaw",
+    "wfs_raw",
     "wfc",
-    "wfc2D",
+    "wfc_2d",
     "signal",
-    "signal2D",
-    "psfShort",
-    "psfLong",
+    "signal_2d",
+    "psf_short",
+    "psf_long",
     "strehl",
     "tiptilt",
 ]
@@ -30,34 +42,36 @@ DEFAULT_STREAMS = [
 def _write_runtime_synthetic_config(tmp_path: Path) -> Path:
     config = read_system_config(SYNTHETIC_CONFIG_PATH, validate=False)
     im_path = tmp_path / "synthetic_identity_im.npy"
-    layout = _default_wfc_layout(int(config["wfc"]["numActuators"]))
-    response = build_synthetic_shwfs_response_matrix(7, int(config["wfc"]["numModes"]), layout)
+    layout = _default_wfc_layout(int(config["wfc"]["num_actuators"]))
+    response = build_synthetic_shwfs_response_matrix(7, int(config["wfc"]["num_modes"]), layout)
     np.save(im_path, response.astype(np.float32))
-    config["loop"]["IMFile"] = str(im_path)
+    config["loop"]["im_file"] = str(im_path)
 
     config_path = tmp_path / "synthetic_runtime_config.yaml"
     config_path.write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
     return config_path
 
 
-def _configure_hard_manager(manager: RTCManager, launcher_cls, *, log_dir=None, manager_overrides=None) -> RTCManager:
+def _configure_hard_manager(
+    manager: RTCManager, launcher_cls, *, log_dir=None, manager_overrides=None
+) -> RTCManager:
     manager.config = copy.deepcopy(manager.config)
     manager.config["manager"] = {
         "mode": "hard-rtc",
-        "healthCheckInterval": 60.0,
-        "componentClasses": {
-            "wfs": "pyRTC.WavefrontSensor",
-            "slopes": "pyRTC.SlopesProcess",
-            "loop": "pyRTC.Loop",
-            "wfc": "pyRTC.WavefrontCorrector",
-            "psf": "pyRTC.ScienceCamera",
+        "health_check_interval": 60.0,
+        "component_classes": {
+            "wfs": "pyrtc.wavefront_sensor.WavefrontSensor",
+            "slopes": "pyrtc.slopes_process.SlopesProcess",
+            "loop": "pyrtc.loop.Loop",
+            "wfc": "pyrtc.wavefront_corrector.WavefrontCorrector",
+            "psf": "pyrtc.science_camera.ScienceCamera",
         },
-        "componentFiles": {
-            "wfs": str(REPO_ROOT / "pyRTC" / "WavefrontSensor.py"),
-            "slopes": str(REPO_ROOT / "pyRTC" / "SlopesProcess.py"),
-            "loop": str(REPO_ROOT / "pyRTC" / "Loop.py"),
-            "wfc": str(REPO_ROOT / "pyRTC" / "WavefrontCorrector.py"),
-            "psf": str(REPO_ROOT / "pyRTC" / "ScienceCamera.py"),
+        "component_files": {
+            "wfs": str(REPO_ROOT / "pyrtc" / "wavefront_sensor.py"),
+            "slopes": str(REPO_ROOT / "pyrtc" / "slopes_process.py"),
+            "loop": str(REPO_ROOT / "pyrtc" / "loop.py"),
+            "wfc": str(REPO_ROOT / "pyrtc" / "wavefront_corrector.py"),
+            "psf": str(REPO_ROOT / "pyrtc" / "science_camera.py"),
         },
         "ports": {
             "wfs": 5601,
@@ -68,7 +82,7 @@ def _configure_hard_manager(manager: RTCManager, launcher_cls, *, log_dir=None, 
         },
     }
     if log_dir is not None:
-        manager.config["manager"]["logDir"] = str(log_dir)
+        manager.config["manager"]["log_dir"] = str(log_dir)
     if manager_overrides:
         manager.config["manager"].update(manager_overrides)
     manager.launcher_cls = launcher_cls
@@ -93,8 +107,8 @@ def test_manager_launches_soft_synthetic_system(tmp_path):
 
 def test_manager_start_clears_stale_output_shms(tmp_path):
     clear_shms(DEFAULT_STREAMS)
-    stale_wfc = ImageSHM("wfc", (1,), np.int8, consumer=False)
-    stale_signal = ImageSHM("signal", (1,), np.int8, consumer=False)
+    stale_wfc = create_stream("wfc", (1,), np.int8)
+    stale_signal = create_stream("signal", (1,), np.int8)
     manager = RTCManager.from_config_file(_write_runtime_synthetic_config(tmp_path))
 
     try:
@@ -137,8 +151,13 @@ def test_reconcile_expected_output_shms_reuses_matching_streams(monkeypatch):
     specs = expected_output_shm_specs_for_config(config)
     cleared = []
 
-    monkeypatch.setattr("pyRTC.Pipeline._existing_shm_spec", lambda name: (tuple(specs[name]["shape"]), np.dtype(specs[name]["dtype"])) if name in specs else None)
-    monkeypatch.setattr("pyRTC.Pipeline.clear_shms", lambda names: cleared.extend(names))
+    monkeypatch.setattr(
+        "pyrtc.streams._existing_shm_spec",
+        lambda name: (
+            (tuple(specs[name]["shape"]), np.dtype(specs[name]["dtype"])) if name in specs else None
+        ),
+    )
+    monkeypatch.setattr("pyrtc.streams.clear_shms", lambda names: cleared.extend(names))
 
     rebuilt, reused = reconcile_expected_output_shms(config)
 
@@ -160,8 +179,8 @@ def test_reconcile_expected_output_shms_clears_only_mismatched_streams(monkeypat
             return (tuple(specs[name]["shape"]), np.dtype(specs[name]["dtype"]))
         return None
 
-    monkeypatch.setattr("pyRTC.Pipeline._existing_shm_spec", _existing)
-    monkeypatch.setattr("pyRTC.Pipeline.clear_shms", lambda names: cleared.extend(names))
+    monkeypatch.setattr("pyrtc.streams._existing_shm_spec", _existing)
+    monkeypatch.setattr("pyrtc.streams.clear_shms", lambda names: cleared.extend(names))
 
     rebuilt, reused = reconcile_expected_output_shms(config)
 
@@ -171,33 +190,39 @@ def test_reconcile_expected_output_shms_clears_only_mismatched_streams(monkeypat
 
 
 def test_expected_output_shm_specs_include_pywfs_signal2d():
-    config = read_system_config(REPO_ROOT / "examples" / "pywfs" / "pywfs_OOPAO_config.yaml", validate=False)
+    config = read_system_config(
+        REPO_ROOT / "examples" / "pywfs" / "pywfs_OOPAO_config.yaml", validate=False
+    )
 
     specs = expected_output_shm_specs_for_config(config)
 
     assert specs["signal"]["dtype"] == np.float32
-    assert specs["signal2D"]["dtype"] == np.float32
-    assert specs["signal2D"]["shape"] == (24, 48)
+    assert specs["signal_2d"]["dtype"] == np.float32
+    assert specs["signal_2d"]["shape"] == (24, 48)
 
 
 def test_expected_output_shm_specs_include_oopao_shwfs_signal2d():
-    config = read_system_config(REPO_ROOT / "examples" / "shwfs" / "shwfs_OOPAO_config.yaml", validate=False)
+    config = read_system_config(
+        REPO_ROOT / "examples" / "shwfs" / "shwfs_OOPAO_config.yaml", validate=False
+    )
 
     specs = expected_output_shm_specs_for_config(config)
 
     assert specs["signal"]["dtype"] == np.float32
-    assert specs["signal2D"]["dtype"] == np.float32
-    assert specs["signal2D"]["shape"] == (40, 20)
+    assert specs["signal_2d"]["dtype"] == np.float32
+    assert specs["signal_2d"]["shape"] == (40, 20)
 
 
 def test_expected_output_shm_specs_include_specula_shwfs_signal2d():
-    config = read_system_config(REPO_ROOT / "examples" / "shwfs" / "shwfs_SPECULA_config.yaml", validate=False)
+    config = read_system_config(
+        REPO_ROOT / "examples" / "shwfs" / "shwfs_SPECULA_config.yaml", validate=False
+    )
 
     specs = expected_output_shm_specs_for_config(config)
 
     assert specs["wfs"]["shape"] == (160, 160)
     assert specs["signal"]["dtype"] == np.float32
-    assert specs["signal2D"]["shape"] == (40, 20)
+    assert specs["signal_2d"]["shape"] == (40, 20)
 
 
 def test_socket_json_helpers_handle_back_to_back_messages():
@@ -219,17 +244,21 @@ def test_socket_json_helpers_handle_back_to_back_messages():
 
 
 def test_manager_latency_infers_loop_path(monkeypatch, tmp_path):
-    from pyRTC import latency
+    from pyrtc import latency
 
     class FakeShm:
         def __init__(self, time_scale):
             self._count = 0
             self._time_scale = time_scale
-            self.metadata = np.array([0, 0.0], dtype=np.float64)
 
-        def hold(self):
+        @property
+        def count(self):
             self._count += 1
-            self.metadata = np.array([self._count, self._count * self._time_scale], dtype=np.float64)
+            return self._count
+
+        @property
+        def write_time(self):
+            return self._count * self._time_scale
 
     streams = {
         "wfs": FakeShm(1.0e-3),
@@ -237,7 +266,7 @@ def test_manager_latency_infers_loop_path(monkeypatch, tmp_path):
         "wfc": FakeShm(1.8e-3),
     }
 
-    monkeypatch.setattr(latency, "initExistingShm", lambda name, gpuDevice=None: (streams[name], None, None))
+    monkeypatch.setattr(latency, "open_stream", lambda name, gpu_device=None: streams[name])
 
     manager = RTCManager.from_config_file(_write_runtime_synthetic_config(tmp_path))
     report = manager.latency(samples=8)
@@ -250,24 +279,28 @@ def test_manager_latency_infers_loop_path(monkeypatch, tmp_path):
 
 
 def test_manager_latency_uses_explicit_pair_when_requested(monkeypatch, tmp_path):
-    from pyRTC import latency
+    from pyrtc import latency
 
     class FakeShm:
         def __init__(self, offset):
             self._count = 0
             self._offset = offset
-            self.metadata = np.array([0, offset], dtype=np.float64)
 
-        def hold(self):
+        @property
+        def count(self):
             self._count += 1
-            self.metadata = np.array([self._count, self._count * 1.0e-3 + self._offset], dtype=np.float64)
+            return self._count
+
+        @property
+        def write_time(self):
+            return self._count * 1.0e-3 + self._offset
 
     streams = {
         "signal": FakeShm(2.0e-4),
         "wfc": FakeShm(5.0e-4),
     }
 
-    monkeypatch.setattr(latency, "initExistingShm", lambda name, gpuDevice=None: (streams[name], None, None))
+    monkeypatch.setattr(latency, "open_stream", lambda name, gpu_device=None: streams[name])
 
     manager = RTCManager.from_config_file(_write_runtime_synthetic_config(tmp_path))
     report = manager.latency(source_shm="signal", target_shm="wfc", samples=8)
@@ -304,24 +337,26 @@ def test_manager_mode_override_uses_hard_runtime_with_short_alias(monkeypatch):
     calls = []
 
     class FakeLauncher:
-        def __init__(self, hardwareFile, configFile, port, timeout=None):
-            self.hardwareFile = hardwareFile
-            self.configFile = configFile
+        def __init__(self, hardware_file, config_file, port, timeout=None):
+            self.hardware_file = hardware_file
+            self.config_file = config_file
             self.port = port
             self.timeout = timeout
 
         def launch(self):
-            calls.append(("launch", self.hardwareFile, self.port))
+            calls.append(("launch", self.hardware_file, self.port))
 
         def run(self, function, *args, timeout=None):
             calls.append(("run", function, self.port))
             return 1
 
         def shutdown(self):
-            calls.append(("shutdown", self.hardwareFile, self.port))
+            calls.append(("shutdown", self.hardware_file, self.port))
             return 1
 
-    manager = RTCManager.from_config_file(SYNTHETIC_CONFIG_PATH, mode="hard", launcher_cls=FakeLauncher)
+    manager = RTCManager.from_config_file(
+        SYNTHETIC_CONFIG_PATH, mode="hard", launcher_cls=FakeLauncher
+    )
 
     manager.start()
     status = manager.status()
@@ -337,7 +372,7 @@ def test_hard_runtime_stays_stopped_after_manual_stop():
     calls = []
 
     class FakeLauncher:
-        def __init__(self, hardwareFile, configFile, port, timeout=None):
+        def __init__(self, hardware_file, config_file, port, timeout=None):
             self.port = port
 
         def launch(self):
@@ -374,40 +409,40 @@ def test_manager_uses_hard_runtime_with_launcher_integration(monkeypatch):
     calls = []
 
     class FakeLauncher:
-        def __init__(self, hardwareFile, configFile, port, timeout=None):
-            self.hardwareFile = hardwareFile
-            self.configFile = configFile
+        def __init__(self, hardware_file, config_file, port, timeout=None):
+            self.hardware_file = hardware_file
+            self.config_file = config_file
             self.port = port
             self.timeout = timeout
 
         def launch(self):
-            calls.append(("launch", self.hardwareFile, self.port))
+            calls.append(("launch", self.hardware_file, self.port))
 
         def run(self, function, *args, timeout=None):
             calls.append(("run", function, self.port))
             return 1
 
         def shutdown(self):
-            calls.append(("shutdown", self.hardwareFile, self.port))
+            calls.append(("shutdown", self.hardware_file, self.port))
             return 1
 
     manager = RTCManager.from_config_file(SYNTHETIC_CONFIG_PATH, launcher_cls=FakeLauncher)
     manager.config = copy.deepcopy(manager.config)
     manager.config["manager"] = {
         "mode": "hard-rtc",
-        "componentClasses": {
-            "wfs": "pyRTC.WavefrontSensor",
-            "slopes": "pyRTC.SlopesProcess",
-            "loop": "pyRTC.Loop",
-            "wfc": "pyRTC.WavefrontCorrector",
-            "psf": "pyRTC.ScienceCamera",
+        "component_classes": {
+            "wfs": "pyrtc.wavefront_sensor.WavefrontSensor",
+            "slopes": "pyrtc.slopes_process.SlopesProcess",
+            "loop": "pyrtc.loop.Loop",
+            "wfc": "pyrtc.wavefront_corrector.WavefrontCorrector",
+            "psf": "pyrtc.science_camera.ScienceCamera",
         },
-        "componentFiles": {
-            "wfs": str(REPO_ROOT / "pyRTC" / "WavefrontSensor.py"),
-            "slopes": str(REPO_ROOT / "pyRTC" / "SlopesProcess.py"),
-            "loop": str(REPO_ROOT / "pyRTC" / "Loop.py"),
-            "wfc": str(REPO_ROOT / "pyRTC" / "WavefrontCorrector.py"),
-            "psf": str(REPO_ROOT / "pyRTC" / "ScienceCamera.py"),
+        "component_files": {
+            "wfs": str(REPO_ROOT / "pyrtc" / "wavefront_sensor.py"),
+            "slopes": str(REPO_ROOT / "pyrtc" / "slopes_process.py"),
+            "loop": str(REPO_ROOT / "pyrtc" / "loop.py"),
+            "wfc": str(REPO_ROOT / "pyrtc" / "wavefront_corrector.py"),
+            "psf": str(REPO_ROOT / "pyrtc" / "science_camera.py"),
         },
         "ports": {
             "wfs": 5601,
@@ -425,7 +460,7 @@ def test_manager_uses_hard_runtime_with_launcher_integration(monkeypatch):
     assert status["state"] == "running"
     assert status["components"]["loop"]["mode"] == "hard-rtc"
     assert status["components"]["loop"]["port"] == 5603
-    assert any(entry[:2] == ("launch", str(REPO_ROOT / "pyRTC" / "Loop.py")) for entry in calls)
+    assert any(entry[:2] == ("launch", str(REPO_ROOT / "pyrtc" / "loop.py")) for entry in calls)
     assert any(entry[:2] == ("run", "start") for entry in calls)
     assert any(entry[0] == "shutdown" for entry in calls)
 
@@ -433,17 +468,35 @@ def test_manager_uses_hard_runtime_with_launcher_integration(monkeypatch):
 def test_manager_requires_config_path_for_hard_mode_from_dict():
     manager = RTCManager.from_config(
         {
-            "wfs": {"name": "wavefrontSensor", "width": 16, "height": 16, "darkCount": 1, "functions": ["expose"]},
-            "slopes": {"type": "SHWFS", "signalType": "slopes", "subApSpacing": 8, "subApOffsetX": 0, "subApOffsetY": 0, "functions": ["computeSignal"]},
-            "wfc": {"name": "dm", "numActuators": 8, "numModes": 8, "functions": ["sendToHardware"]},
-            "loop": {"gain": 0.1, "numDroppedModes": 0, "functions": ["standardIntegrator"]},
+            "wfs": {
+                "name": "wavefrontSensor",
+                "width": 16,
+                "height": 16,
+                "dark_count": 1,
+                "functions": ["expose"],
+            },
+            "slopes": {
+                "type": "SHWFS",
+                "signal_type": "slopes",
+                "sub_ap_spacing": 8,
+                "sub_ap_offset_x": 0,
+                "sub_ap_offset_y": 0,
+                "functions": ["compute_signal"],
+            },
+            "wfc": {
+                "name": "dm",
+                "num_actuators": 8,
+                "num_modes": 8,
+                "functions": ["send_to_hardware"],
+            },
+            "loop": {"gain": 0.1, "num_dropped_modes": 0, "functions": ["standard_integrator"]},
             "manager": {
                 "mode": "hard-rtc",
-                "componentClasses": {
-                    "wfs": "pyRTC.WavefrontSensor",
-                    "slopes": "pyRTC.SlopesProcess",
-                    "loop": "pyRTC.Loop",
-                    "wfc": "pyRTC.WavefrontCorrector",
+                "component_classes": {
+                    "wfs": "pyrtc.wavefront_sensor.WavefrontSensor",
+                    "slopes": "pyrtc.slopes_process.SlopesProcess",
+                    "loop": "pyrtc.loop.Loop",
+                    "wfc": "pyrtc.wavefront_corrector.WavefrontCorrector",
                 },
             },
         }
@@ -457,21 +510,21 @@ def test_manager_supports_explicit_manager_declared_sections():
     calls = []
 
     class FakeLauncher:
-        def __init__(self, hardwareFile, configFile, port, timeout=None):
-            self.hardwareFile = hardwareFile
-            self.configFile = configFile
+        def __init__(self, hardware_file, config_file, port, timeout=None):
+            self.hardware_file = hardware_file
+            self.config_file = config_file
             self.port = port
             self.timeout = timeout
 
         def launch(self):
-            calls.append(("launch", self.hardwareFile, self.port))
+            calls.append(("launch", self.hardware_file, self.port))
 
         def run(self, function, *args, timeout=None):
             calls.append(("run", function, self.port))
             return 1
 
         def shutdown(self):
-            calls.append(("shutdown", self.hardwareFile, self.port))
+            calls.append(("shutdown", self.hardware_file, self.port))
             return 1
 
     manager = RTCManager.from_config_file(SYNTHETIC_CONFIG_PATH, launcher_cls=FakeLauncher)
@@ -479,21 +532,21 @@ def test_manager_supports_explicit_manager_declared_sections():
     manager.config["modulator"] = {"name": "tutorial-modulator", "frequency": 300, "amplitude": 600}
     manager.config["manager"] = {
         "mode": "hard-rtc",
-        "componentClasses": {
-            "modulator": "pyRTC.pyRTCComponent.pyRTCComponent",
-            "wfs": "pyRTC.WavefrontSensor",
-            "slopes": "pyRTC.SlopesProcess",
-            "loop": "pyRTC.Loop",
-            "wfc": "pyRTC.WavefrontCorrector",
-            "psf": "pyRTC.ScienceCamera",
+        "component_classes": {
+            "modulator": "pyrtc.component.Component",
+            "wfs": "pyrtc.wavefront_sensor.WavefrontSensor",
+            "slopes": "pyrtc.slopes_process.SlopesProcess",
+            "loop": "pyrtc.loop.Loop",
+            "wfc": "pyrtc.wavefront_corrector.WavefrontCorrector",
+            "psf": "pyrtc.science_camera.ScienceCamera",
         },
-        "componentFiles": {
-            "modulator": str(REPO_ROOT / "pyRTC" / "pyRTCComponent.py"),
-            "wfs": str(REPO_ROOT / "pyRTC" / "WavefrontSensor.py"),
-            "slopes": str(REPO_ROOT / "pyRTC" / "SlopesProcess.py"),
-            "loop": str(REPO_ROOT / "pyRTC" / "Loop.py"),
-            "wfc": str(REPO_ROOT / "pyRTC" / "WavefrontCorrector.py"),
-            "psf": str(REPO_ROOT / "pyRTC" / "ScienceCamera.py"),
+        "component_files": {
+            "modulator": str(REPO_ROOT / "pyrtc" / "Component.py"),
+            "wfs": str(REPO_ROOT / "pyrtc" / "wavefront_sensor.py"),
+            "slopes": str(REPO_ROOT / "pyrtc" / "slopes_process.py"),
+            "loop": str(REPO_ROOT / "pyrtc" / "loop.py"),
+            "wfc": str(REPO_ROOT / "pyrtc" / "wavefront_corrector.py"),
+            "psf": str(REPO_ROOT / "pyrtc" / "science_camera.py"),
         },
         "ports": {
             "modulator": 5600,
@@ -508,7 +561,9 @@ def test_manager_supports_explicit_manager_declared_sections():
     manager.start()
     manager.stop()
 
-    assert any(entry[:2] == ("launch", str(REPO_ROOT / "pyRTC" / "pyRTCComponent.py")) for entry in calls)
+    assert any(
+        entry[:2] == ("launch", str(REPO_ROOT / "pyrtc" / "Component.py")) for entry in calls
+    )
 
 
 def test_manager_injects_shared_resources_into_soft_runtimes(tmp_path):
@@ -533,19 +588,19 @@ def test_manager_injects_shared_resources_into_soft_runtimes(tmp_path):
     manager = RTCManager.from_config(
         {
             "demo": {
-                "className": "ignored",
+                "class_name": "ignored",
                 "resource": "shared",
-                "inputStreams": {},
-                "outputStreams": {},
+                "input_streams": {},
+                "output_streams": {},
             },
             "resources": {
                 "shared": {
-                    "className": "ignored",
+                    "class_name": "ignored",
                 }
             },
             "manager": {
                 "mode": "soft-rtc",
-                "componentClasses": {"demo": "ignored"},
+                "component_classes": {"demo": "ignored"},
             },
         },
         config_path=str(tmp_path / "resource_demo.yaml"),
@@ -598,26 +653,28 @@ def test_manager_injects_component_provider_resources_into_soft_runtimes(tmp_pat
     manager = RTCManager.from_config(
         {
             "provider": {
-                "className": "ignored",
-                "inputStreams": {},
-                "outputStreams": {},
+                "class_name": "ignored",
+                "input_streams": {},
+                "output_streams": {},
             },
             "consumer": {
-                "className": "ignored",
+                "class_name": "ignored",
                 "resource": "provider",
-                "inputStreams": {},
-                "outputStreams": {},
+                "input_streams": {},
+                "output_streams": {},
             },
             "manager": {
                 "mode": "soft-rtc",
-                "componentClasses": {"provider": "ignored", "consumer": "ignored"},
+                "component_classes": {"provider": "ignored", "consumer": "ignored"},
             },
         },
         config_path=str(tmp_path / "component_resource_demo.yaml"),
     )
     manager.validated = True
     manager.state = "validated"
-    manager._resolve_component_class = lambda section_name: FakeProvider if section_name == "provider" else FakeConsumer
+    manager._resolve_component_class = lambda section_name: (
+        FakeProvider if section_name == "provider" else FakeConsumer
+    )
 
     manager.start()
     try:
@@ -630,9 +687,9 @@ def test_manager_injects_component_provider_resources_into_soft_runtimes(tmp_pat
 
 def test_manager_status_includes_health_metadata_for_hard_runtime(tmp_path):
     class HealthLauncher:
-        def __init__(self, hardwareFile, configFile, port, timeout=None):
-            self.hardwareFile = hardwareFile
-            self.configFile = configFile
+        def __init__(self, hardware_file, config_file, port, timeout=None):
+            self.hardware_file = hardware_file
+            self.config_file = config_file
             self.port = port
             self.timeout = timeout
             self.pid = 7000 + port
@@ -686,7 +743,7 @@ def test_manager_status_includes_health_metadata_for_hard_runtime(tmp_path):
 
 def test_manager_marks_component_degraded_when_health_check_fails():
     class DegradedLauncher:
-        def __init__(self, hardwareFile, configFile, port, timeout=None):
+        def __init__(self, hardware_file, config_file, port, timeout=None):
             self.port = port
             self.health_state = "running"
             self.pid = 8000 + port
@@ -740,7 +797,7 @@ def test_manager_restarts_failed_child_when_policy_is_on_failure():
         launches = 0
         loop_failed_once = False
 
-        def __init__(self, hardwareFile, configFile, port, timeout=None):
+        def __init__(self, hardware_file, config_file, port, timeout=None):
             type(self).launches += 1
             self.port = port
             self.pid = 9000 + type(self).launches
@@ -778,7 +835,7 @@ def test_manager_restarts_failed_child_when_policy_is_on_failure():
     manager = _configure_hard_manager(
         RTCManager.from_config_file(SYNTHETIC_CONFIG_PATH, launcher_cls=RestartingLauncher),
         RestartingLauncher,
-        manager_overrides={"restartPolicy": "on-failure"},
+        manager_overrides={"restart_policy": "on-failure"},
     )
 
     manager.start()
@@ -799,7 +856,7 @@ def test_manager_repeated_failures_increment_restart_count_and_preserve_last_err
     class FlappingLauncher:
         launches = 0
 
-        def __init__(self, hardwareFile, configFile, port, timeout=None):
+        def __init__(self, hardware_file, config_file, port, timeout=None):
             type(self).launches += 1
             self.port = port
             self.pid = 10000 + type(self).launches
@@ -827,7 +884,7 @@ def test_manager_repeated_failures_increment_restart_count_and_preserve_last_err
     manager = _configure_hard_manager(
         RTCManager.from_config_file(SYNTHETIC_CONFIG_PATH, launcher_cls=FlappingLauncher),
         FlappingLauncher,
-        manager_overrides={"restartPolicy": "on-failure"},
+        manager_overrides={"restart_policy": "on-failure"},
     )
 
     manager.start()
@@ -841,3 +898,66 @@ def test_manager_repeated_failures_increment_restart_count_and_preserve_last_err
     assert loop_status["restart_count"] == 2
     assert loop_status["last_error"] == "child process exited with code 2"
     assert loop_status["state"] == "running"
+
+
+def _installed_pyrtc_loop_path() -> Path:
+    """Return the path to the installed pyrtc.loop module on disk.
+
+    Tests must target the copy of pyrtc that's actually importable in
+    the current environment, which is the installed wheel on CI
+    (location reported by importlib.util.find_spec) — not the
+    local source checkout. The two diverge as soon as pip install .
+    runs in CI, so referencing REPO_ROOT directly causes duplicate
+    class objects to be exec'd.
+    """
+    import importlib.util
+    import os
+
+    spec = importlib.util.find_spec("pyrtc.loop")
+    if spec is None or spec.origin is None:
+        raise RuntimeError("pyrtc.loop is not importable")
+    return Path(os.path.normpath(spec.origin))
+
+
+def test_import_symbol_from_file_reuses_canonical_pyrtc_module():
+    from pyrtc.loop import Loop
+    from pyrtc.pipeline import _import_symbol_from_file
+
+    resolved = _import_symbol_from_file(str(_installed_pyrtc_loop_path()), "Loop")
+
+    assert resolved is Loop
+
+
+def test_manager_latency_infers_path_for_classfile_components(monkeypatch):
+    from pyrtc import latency
+
+    class FakeShm:
+        def __init__(self, time_scale):
+            self._count = 0
+            self._time_scale = time_scale
+
+        @property
+        def count(self):
+            self._count += 1
+            return self._count
+
+        @property
+        def write_time(self):
+            return self._count * self._time_scale
+
+    streams = {
+        "wfs": FakeShm(1.0e-3),
+        "signal": FakeShm(1.4e-3),
+        "wfc": FakeShm(1.8e-3),
+    }
+
+    monkeypatch.setattr(latency, "open_stream", lambda name, gpu_device=None: streams[name])
+
+    # Use the real example config: its components are loaded via class_file,
+    # which used to produce duplicate class objects with empty descriptors
+    # and break stream-path inference.
+    manager = RTCManager.from_config_file(SYNTHETIC_CONFIG_PATH)
+    report = manager.latency(samples=8)
+
+    assert report["stream_path"] == ["wfs", "signal", "wfc"]
+    assert report["inferred_path"] is True

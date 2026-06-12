@@ -3,7 +3,7 @@
 This uses the same PyWFS lab YAML as the soft example, but switches runtime
 behavior at the manager call site with ``mode="hard"``. In hard mode the
 manager returns control proxies, so parameter reads and writes go through
-``getProperty`` and ``setProperty`` and methods go through ``run``.
+``get_property`` and ``set_property`` and methods go through ``run``.
 """
 
 # %% Imports
@@ -20,34 +20,51 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 
-from pyRTC.Pipeline import RTCManager, clear_shms, initExistingShm
-from pyRTC.logging_utils import add_logging_cli_args, configure_logging_from_args, get_logger
+from pyrtc.pipeline import RTCManager, clear_shms, open_stream
+from pyrtc.logging_utils import add_logging_cli_args, configure_logging_from_args, get_logger
 
 
 logger = get_logger("examples.sharp_lab.pywfs.hard")
 CONFIG_PATH = REPO_ROOT / "examples" / "sharp_lab" / "config_pywfs.yaml"
-DEFAULT_STREAMS = ["wfs", "wfsRaw", "wfc", "wfc2D", "signal", "signal2D", "psfShort", "psfLong", "strehl", "tiptilt"]
+DEFAULT_STREAMS = [
+    "wfs",
+    "wfs_raw",
+    "wfc",
+    "wfc_2d",
+    "signal",
+    "signal_2d",
+    "psf_short",
+    "psf_long",
+    "strehl",
+    "tiptilt",
+]
 
 
 # %% CLI
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run the SHARP lab PyWFS stack in hard-RTC mode.")
-    parser.add_argument("--duration", type=float, default=10.0, help="Seconds to run before stopping.")
-    parser.add_argument("--status-interval", type=float, default=1.0, help="Seconds between status lines.")
-    parser.add_argument("--no-clear-shms", action="store_true", help="Reuse any existing SHM blocks.")
+    parser.add_argument(
+        "--duration", type=float, default=10.0, help="Seconds to run before stopping."
+    )
+    parser.add_argument(
+        "--status-interval", type=float, default=1.0, help="Seconds between status lines."
+    )
+    parser.add_argument(
+        "--no-clear-shms", action="store_true", help="Reuse any existing SHM blocks."
+    )
     add_logging_cli_args(parser)
     return parser
 
 
 def format_status_line(start_time: float) -> str:
-    signal_stream, _, _ = initExistingShm("signal")
-    correction_stream, _, _ = initExistingShm("wfc")
-    strehl_stream, _, _ = initExistingShm("strehl")
-    residual = np.asarray(signal_stream.read_noblock(SAFE=False), dtype=np.float32).ravel()
-    correction = np.asarray(correction_stream.read_noblock(SAFE=False), dtype=np.float32).ravel()
+    signal_stream = open_stream("signal")
+    correction_stream = open_stream("wfc")
+    strehl_stream = open_stream("strehl")
+    residual = np.asarray(signal_stream.read(), dtype=np.float32).ravel()
+    correction = np.asarray(correction_stream.read(), dtype=np.float32).ravel()
     residual_rms = float(np.sqrt(np.mean(residual**2))) if residual.size else 0.0
     correction_rms = float(np.sqrt(np.mean(correction**2))) if correction.size else 0.0
-    strehl = float(np.asarray(strehl_stream.read_noblock(SAFE=False)).ravel()[0])
+    strehl = float(np.asarray(strehl_stream.read()).ravel()[0])
     elapsed = time.perf_counter() - start_time
     return (
         f"t={elapsed:5.1f}s "
@@ -60,7 +77,9 @@ def format_status_line(start_time: float) -> str:
 # %% Main walkthrough
 def main(argv=None) -> int:
     args = build_arg_parser().parse_args(argv)
-    configure_logging_from_args(args, app_name="pyrtc-sharp-lab", component_name="sharp_lab_pywfs_hard")
+    configure_logging_from_args(
+        args, app_name="pyrtc-sharp-lab", component_name="sharp_lab_pywfs_hard"
+    )
 
     manager = RTCManager.from_config_file(CONFIG_PATH, mode="hard")
 
@@ -70,7 +89,7 @@ def main(argv=None) -> int:
     logger.info("SHARP lab PyWFS hard-RTC tutorial")
     logger.info("Config: %s", CONFIG_PATH)
     logger.info("Manager call: RTCManager.from_config_file(CONFIG_PATH, mode='hard')")
-    logger.info("Viewer: pyrtc-view wfs signal psfShort psfLong --geometry 2x2")
+    logger.info("Viewer: pyrtc-view wfs signal psf_short psf_long --geometry 2x2")
 
     manager.start()
     try:
@@ -78,13 +97,18 @@ def main(argv=None) -> int:
         modulator = manager.get_component("modulator")
         wfc = manager.get_component("wfc")
 
-        logger.info("Hard mode proxy read: loop.getProperty('gain') -> %s", loop.getProperty("gain"))
-        logger.info("Hard mode proxy write: loop.setProperty('gain', 0.10)")
-        loop.setProperty("gain", 0.10)
-        logger.info("Remote loop gain is now %s", loop.getProperty("gain"))
-        logger.info("Hard mode proxy read: modulator.getProperty('amplitude') -> %s", modulator.getProperty("amplitude"))
-        logger.info("Hard mode proxy write: modulator.setProperty('amplitude', 600)")
-        modulator.setProperty("amplitude", 600)
+        logger.info(
+            "Hard mode proxy read: loop.get_property('gain') -> %s", loop.get_property("gain")
+        )
+        logger.info("Hard mode proxy write: loop.set_property('gain', 0.10)")
+        loop.set_property("gain", 0.10)
+        logger.info("Remote loop gain is now %s", loop.get_property("gain"))
+        logger.info(
+            "Hard mode proxy read: modulator.get_property('amplitude') -> %s",
+            modulator.get_property("amplitude"),
+        )
+        logger.info("Hard mode proxy write: modulator.set_property('amplitude', 600)")
+        modulator.set_property("amplitude", 600)
 
         wfc.run("flatten")
 

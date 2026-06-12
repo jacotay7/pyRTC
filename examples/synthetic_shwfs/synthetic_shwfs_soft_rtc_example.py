@@ -20,10 +20,10 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 
-from pyRTC import Telemetry
-from pyRTC.latency import format_latency_report
-from pyRTC.Pipeline import RTCManager, clear_shms, initExistingShm
-from pyRTC.logging_utils import add_logging_cli_args, configure_logging_from_args, get_logger
+from pyrtc import Telemetry
+from pyrtc.latency import format_latency_report
+from pyrtc.pipeline import RTCManager, clear_shms, open_stream
+from pyrtc.logging_utils import add_logging_cli_args, configure_logging_from_args, get_logger
 from examples.synthetic_shwfs.aotpy_helpers import export_synthetic_session_to_aotpy
 
 
@@ -31,13 +31,13 @@ logger = get_logger("examples.synthetic_shwfs.soft")
 CONFIG_PATH = REPO_ROOT / "examples" / "synthetic_shwfs" / "config.yaml"
 DEFAULT_STREAMS = [
     "wfs",
-    "wfsRaw",
+    "wfs_raw",
     "wfc",
-    "wfc2D",
+    "wfc_2d",
     "signal",
-    "signal2D",
-    "psfShort",
-    "psfLong",
+    "signal_2d",
+    "psf_short",
+    "psf_long",
     "strehl",
     "tiptilt",
 ]
@@ -45,8 +45,12 @@ DEFAULT_STREAMS = [
 
 # %% Command-line interface
 def build_arg_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Run the synthetic SHWFS tutorial in soft-RTC mode.")
-    parser.add_argument("--duration", type=float, default=15.0, help="Seconds to run before stopping.")
+    parser = argparse.ArgumentParser(
+        description="Run the synthetic SHWFS tutorial in soft-RTC mode."
+    )
+    parser.add_argument(
+        "--duration", type=float, default=15.0, help="Seconds to run before stopping."
+    )
     parser.add_argument(
         "--latency-samples",
         type=int,
@@ -62,7 +66,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--no-clear-shms",
         action="store_true",
-        help="Leave existing pyRTC shared-memory streams in place.",
+        help="Leave existing pyrtc shared-memory streams in place.",
+    )
+    parser.add_argument(
+        "--no-calibration",
+        action="store_true",
+        help="Skip the IM calibration step and use the analytic starting IM.",
     )
     parser.add_argument(
         "--aotpy",
@@ -74,40 +83,51 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 
 # %% Tutorial helpers
-def ensure_identity_interaction_matrix(config: dict) -> Path:
-    """Create the tiny IM file referenced by the shared synthetic config."""
+def ensure_synthetic_interaction_matrix(config: dict) -> Path:
+    """Write the synthetic system's true response matrix as the loop IM.
+
+    The synthetic WFS generates slopes as ``response @ (disturbance -
+    correction)``, so giving the loop that same response matrix lets the
+    integrator actually close the loop and converge.
+    """
+
+    from pyrtc.hardware.synthetic_systems import (
+        _default_wfc_layout,
+        build_synthetic_shwfs_response_matrix,
+    )
 
     wfs_conf = config["wfs"]
     slopes_conf = config["slopes"]
-    output_path = Path(config["loop"]["IMFile"])
-    num_modes = int(config["wfc"]["numModes"])
+    output_path = Path(config["loop"]["im_file"])
+    num_modes = int(config["wfc"]["num_modes"])
 
     image_width = int(wfs_conf["width"])
     image_height = int(wfs_conf["height"])
-    downsample = int(wfs_conf.get("downsampleFactor", 0))
+    downsample = int(wfs_conf.get("downsample_factor", 0))
     if downsample > 0:
         image_width //= downsample
         image_height //= downsample
 
-    subap_spacing = int(slopes_conf["subApSpacing"])
+    subap_spacing = int(slopes_conf["sub_ap_spacing"])
     num_regions = min(image_width, image_height) // subap_spacing
-    signal_size = 2 * num_regions * num_regions
+    layout = _default_wfc_layout(int(config["wfc"]["num_actuators"]))
+    interaction_matrix = build_synthetic_shwfs_response_matrix(num_regions, num_modes, layout)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    np.save(output_path, np.eye(signal_size, num_modes, dtype=np.float32))
+    np.save(output_path, interaction_matrix.astype(np.float32))
     return output_path
 
 
 def read_scalar_stream(name: str) -> float:
-    stream, _, _ = initExistingShm(name)
-    return float(np.asarray(stream.read_noblock(SAFE=False)).ravel()[0])
+    stream = open_stream(name)
+    return float(np.asarray(stream.read()).ravel()[0])
 
 
 def format_status_line(start_time: float) -> str:
-    signal_stream, _, _ = initExistingShm("signal")
-    correction_stream, _, _ = initExistingShm("wfc")
-    residual = np.asarray(signal_stream.read_noblock(SAFE=False), dtype=np.float32).ravel()
-    correction = np.asarray(correction_stream.read_noblock(SAFE=False), dtype=np.float32).ravel()
+    signal_stream = open_stream("signal")
+    correction_stream = open_stream("wfc")
+    residual = np.asarray(signal_stream.read(), dtype=np.float32).ravel()
+    correction = np.asarray(correction_stream.read(), dtype=np.float32).ravel()
     residual_rms = float(np.sqrt(np.mean(residual**2))) if residual.size else 0.0
     correction_rms = float(np.sqrt(np.mean(correction**2))) if correction.size else 0.0
     strehl = read_scalar_stream("strehl")
@@ -135,7 +155,9 @@ def log_latency_example(manager: RTCManager, *, samples: int) -> None:
     """
 
     if samples < 2:
-        logger.info("Skipping manager.latency() tutorial example because latency_samples=%s", samples)
+        logger.info(
+            "Skipping manager.latency() tutorial example because latency_samples=%s", samples
+        )
         return
 
     logger.info("Manager latency example: manager.latency(samples=%s)", samples)
@@ -147,14 +169,16 @@ def log_latency_example(manager: RTCManager, *, samples: int) -> None:
 # %% Main walkthrough
 def main(argv=None) -> int:
     args = build_arg_parser().parse_args(argv)
-    configure_logging_from_args(args, app_name="pyrtc-synthetic-shwfs", component_name="synthetic_soft_example")
+    configure_logging_from_args(
+        args, app_name="pyrtc-synthetic-shwfs", component_name="synthetic_soft_example"
+    )
 
     # Step 1: use the single shared config file and choose soft mode right here.
     manager = RTCManager.from_config_file(CONFIG_PATH, mode="soft")
     config = manager.config
 
     # Step 2: generate the tiny IM file referenced by that same config.
-    im_path = ensure_identity_interaction_matrix(config)
+    im_path = ensure_synthetic_interaction_matrix(config)
 
     # Step 3: reset the common streams unless the user explicitly wants to reuse them.
     if not args.no_clear_shms:
@@ -164,7 +188,7 @@ def main(argv=None) -> int:
     logger.info("Config: %s", CONFIG_PATH)
     logger.info("Manager call: RTCManager.from_config_file(CONFIG_PATH, mode='soft')")
     logger.info("Interaction matrix: %s", im_path)
-    logger.info("Viewer: pyrtc-view wfs signal2D psfShort psfLong --geometry 2x2")
+    logger.info("Viewer: pyrtc-view wfs signal_2d psf_short psf_long --geometry 2x2")
 
     # Step 4: start the full stack.
     manager.start()
@@ -174,13 +198,40 @@ def main(argv=None) -> int:
         loop = manager.get_component("loop")
         wfc = manager.get_component("wfc")
 
-        logger.info("Soft mode returns live objects: loop=%s wfc=%s", type(loop).__name__, type(wfc).__name__)
-        logger.info("Direct update example: loop.gain = 0.10")
-        loop.gain = 0.10
-        logger.info("Loop gain is now %0.2f", loop.gain)
+        logger.info(
+            "Soft mode returns live objects: loop=%s wfc=%s",
+            type(loop).__name__,
+            type(wfc).__name__,
+        )
 
         # Methods are also called directly in soft mode.
         wfc.flatten()
+
+        # Step 5b: calibrate the interaction matrix through the live pipeline.
+        # The analytic file written above is only a starting point; measuring
+        # the IM end-to-end (DOCRIME by default, see loop.im_method) captures
+        # the real WFS gain so the integrator actually converges.
+        if args.no_calibration:
+            logger.info("Skipping IM calibration (--no-calibration)")
+        else:
+            logger.info(
+                "Calibrating IM with %s (%s iterations) — takes a few seconds",
+                loop.im_method,
+                loop.num_iters_im,
+            )
+            loop.stop()
+            loop.flatten()
+            calibration_start = time.perf_counter()
+            loop.compute_im()
+            logger.info(
+                "Calibration finished in %.1fs; closing the loop",
+                time.perf_counter() - calibration_start,
+            )
+            loop.start()
+
+        logger.info("Direct update example: loop.gain = 0.30")
+        loop.gain = 0.30
+        logger.info("Loop gain is now %0.2f", loop.gain)
 
         # Give the running system a brief moment to produce stream lineage,
         # then show the manager latency helper once in the tutorial logs.
@@ -189,7 +240,9 @@ def main(argv=None) -> int:
 
         # Telemetry is an ordinary helper object: capture one or more streams,
         # then reopen the most recent save as NumPy arrays plus timestamps.
-        telem = Telemetry({"dataDir": str(REPO_ROOT / "examples" / "synthetic_shwfs" / "telemetry")})
+        telem = Telemetry(
+            {"data_dir": str(REPO_ROOT / "examples" / "synthetic_shwfs" / "telemetry")}
+        )
         telem.save(["wfs", "wfc"], 10)
         telemetry_data = telem.read_last_save()
         logger.info(

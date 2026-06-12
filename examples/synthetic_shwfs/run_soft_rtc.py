@@ -7,7 +7,6 @@ synthetic component stack.
 """
 
 import sys
-import time
 import importlib.util
 from pathlib import Path
 
@@ -19,11 +18,11 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 
-from pyRTC.Loop import Loop
-from pyRTC.Pipeline import clear_shms, initExistingShm
-from pyRTC.SlopesProcess import SlopesProcess
-from pyRTC.config_schema import read_system_config
-from pyRTC.hardware.SyntheticSystems import (
+from pyrtc.loop import Loop
+from pyrtc.pipeline import clear_shms
+from pyrtc.slopes_process import SlopesProcess
+from pyrtc.config_schema import read_system_config
+from pyrtc.hardware.synthetic_systems import (
     SyntheticSHWFS,
     SyntheticScienceCamera,
     SyntheticWFC,
@@ -33,14 +32,14 @@ from pyRTC.hardware.SyntheticSystems import (
 
 
 DEFAULT_STREAMS = (
-    "wfsRaw",
+    "wfs_raw",
     "wfs",
     "signal",
-    "signal2D",
+    "signal_2d",
     "wfc",
-    "wfc2D",
-    "psfShort",
-    "psfLong",
+    "wfc_2d",
+    "psf_short",
+    "psf_long",
     "strehl",
     "tiptilt",
 )
@@ -53,33 +52,15 @@ def read_yaml_file(file_path):
 
 
 def expected_stream_specs(config: dict) -> dict:
-    wfs_shape = (int(config["wfs"]["width"]), int(config["wfs"]["height"]))
-    psf_shape = (int(config["psf"]["width"]), int(config["psf"]["height"]))
-    signal_shape = _signal_shape(config)
-    num_modes = int(config["wfc"]["numModes"])
-    signal2d_shape = _signal_2d_shape(config)
-    wfc2d_shape = _wfc_2d_shape(config)
+    from pyrtc.pipeline import expected_output_shm_specs_for_config
 
-    return {
-        "wfsRaw": {"shape": wfs_shape, "dtype": np.uint16},
-        "wfs": {"shape": wfs_shape, "dtype": np.int32},
-        "signal": {"shape": signal_shape, "dtype": np.float32},
-        "signal2D": {"shape": signal2d_shape, "dtype": np.float32},
-        "wfc": {"shape": (num_modes,), "dtype": np.float32},
-        "wfc2D": {"shape": wfc2d_shape, "dtype": np.float32},
-        "psfShort": {"shape": psf_shape, "dtype": np.int32},
-        "psfLong": {"shape": psf_shape, "dtype": np.float64},
-        "strehl": {"shape": (1,), "dtype": np.float64},
-        "tiptilt": {"shape": (1,), "dtype": np.float64},
-    }
+    return expected_output_shm_specs_for_config(config)
 
 
 def _existing_shm_spec(name: str):
-    try:
-        _, shape, dtype = initExistingShm(name)
-    except Exception:
-        return None
-    return tuple(shape), np.dtype(dtype)
+    from pyrtc.pipeline import _existing_shm_spec as _pipeline_existing_shm_spec
+
+    return _pipeline_existing_shm_spec(name)
 
 
 def clear_named_shms(names):
@@ -113,7 +94,7 @@ def ensure_expected_shms(config: dict, force_rebuild: bool = False):
 
 
 def build_system(config: dict) -> dict:
-    ensure_identity_interaction_matrix(config)
+    ensure_synthetic_interaction_matrix(config)
 
     wfs = SyntheticSHWFS(config["wfs"])
     slopes = SlopesProcess(config["slopes"])
@@ -157,11 +138,11 @@ def stop_system(system: dict) -> None:
             pass
 
 
-def ensure_identity_interaction_matrix(config: dict) -> Path:
-    output_path = Path(config["loop"]["IMFile"])
-    num_modes = int(config["wfc"]["numModes"])
+def ensure_synthetic_interaction_matrix(config: dict) -> Path:
+    output_path = Path(config["loop"]["im_file"])
+    num_modes = int(config["wfc"]["num_modes"])
     num_regions = _signal_2d_shape(config)[1]
-    layout = _default_wfc_layout(int(config["wfc"]["numActuators"]))
+    layout = _default_wfc_layout(int(config["wfc"]["num_actuators"]))
     interaction_matrix = build_synthetic_shwfs_response_matrix(num_regions, num_modes, layout)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     np.save(output_path, interaction_matrix.astype(np.float32))
@@ -169,25 +150,17 @@ def ensure_identity_interaction_matrix(config: dict) -> Path:
 
 
 def _signal_2d_shape(config: dict) -> tuple[int, int]:
-    spacing = int(round(float(config["slopes"]["subApSpacing"])))
+    spacing = int(round(float(config["slopes"]["sub_ap_spacing"])))
     width = int(config["wfs"]["width"])
     height = int(config["wfs"]["height"])
     num_regions = min(width, height) // spacing
     return (2 * num_regions, num_regions)
 
 
-def _signal_shape(config: dict) -> tuple[int, ...]:
-    signal2d_shape = _signal_2d_shape(config)
-    return (int(np.prod(signal2d_shape)),)
-
-
-def _wfc_2d_shape(config: dict) -> tuple[int, int]:
-    num_actuators = int(config["wfc"]["numActuators"])
-    return _default_wfc_layout(num_actuators).shape
-
-
 def _load_soft_example_module():
-    spec = importlib.util.spec_from_file_location("synthetic_shwfs_soft_rtc_example", _SOFT_EXAMPLE_PATH)
+    spec = importlib.util.spec_from_file_location(
+        "synthetic_shwfs_soft_rtc_example", _SOFT_EXAMPLE_PATH
+    )
     if spec is None or spec.loader is None:
         raise ImportError(f"Unable to load soft example from {_SOFT_EXAMPLE_PATH}")
     module = importlib.util.module_from_spec(spec)

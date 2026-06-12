@@ -52,61 +52,78 @@ except Exception:
 
 
 class DummySHM:
-    def __init__(self, name, shape, dtype, gpuDevice=None, consumer=True):
+    """In-memory stand-in mimicking the pyshmem.SharedMemory API."""
+
+    def __init__(self, name, shape, dtype, gpu_device=None):
         self.name = name
         self.shape = tuple(shape)
         self.dtype = _np().dtype(dtype)
-        self.gpuDevice = gpuDevice
+        self.gpu_device = gpu_device
         self.arr = _np().zeros(self.shape, dtype=self.dtype)
-        self.metadata = _np().zeros(16, dtype=_np().float64)
         self._count = 0
+        self._write_time = 0.0
 
-    def write(self, arr, *, root_time=None, upstream_time=None, consumer_time=None):
+    @property
+    def count(self):
+        return self._count
+
+    @property
+    def write_time(self):
+        return self._write_time
+
+    def write(self, arr):
         np = _np()
         arr = np.asarray(arr, dtype=self.dtype)
         np.copyto(self.arr, arr.reshape(self.shape))
         self._count += 1
-        write_time = float(self._count)
-        self.metadata[0] = self._count
-        self.metadata[1] = write_time
-        self.metadata[2] = write_time if root_time is None else float(root_time)
-        self.metadata[3] = 0.0 if upstream_time is None else float(upstream_time)
-        self.metadata[4] = 0.0 if consumer_time is None else float(consumer_time)
-        return 1
+        self._write_time = float(self._count)
 
-    def frame_metadata(self):
-        return {
-            "count": int(self.metadata[0]),
-            "write_time": float(self.metadata[1]),
-            "root_time": float(self.metadata[2]),
-            "upstream_write_time": float(self.metadata[3]),
-            "upstream_consume_time": float(self.metadata[4]),
-        }
+    def read(self, out=None):
+        if out is not None:
+            _np().copyto(out, self.arr)
+            return out
+        return _np().copy(self.arr)
 
-    def read(self, SAFE=True, GPU=False, RELEASE_GIL=True):
-        if SAFE:
-            return _np().copy(self.arr)
-        return self.arr
+    def read_new(self, timeout=None, out=None):
+        return self.read(out=out)
 
-    def read_noblock(self, SAFE=True, GPU=False):
-        if SAFE:
-            return _np().copy(self.arr)
-        return self.arr
+    def close(self):
+        pass
+
+    def unlink(self):
+        pass
 
 
 class FakeStream:
+    """Minimal pyshmem-like stream double recording writes."""
+
     def __init__(self, arr):
         self.arr = _np().asarray(arr)
         self.writes = []
+        self._count = 1
+        self._write_time = 1.0
 
-    def read(self, SAFE=True, RELEASE_GIL=True):
+    @property
+    def count(self):
+        return self._count
+
+    @property
+    def write_time(self):
+        return self._write_time
+
+    def read(self, out=None):
+        if out is not None:
+            _np().copyto(out, self.arr)
+            return out
         return _np().copy(self.arr)
 
-    def read_noblock(self, SAFE=True):
-        return _np().copy(self.arr)
+    def read_new(self, timeout=None, out=None):
+        return self.read(out=out)
 
-    def write(self, arr, *, root_time=None, upstream_time=None, consumer_time=None):
+    def write(self, arr):
         self.writes.append(_np().asarray(arr))
+        self._count += 1
+        self._write_time = float(self._count)
 
 
 @pytest.fixture

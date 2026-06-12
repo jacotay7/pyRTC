@@ -3,14 +3,14 @@
 `pyrtc` is an adaptive optics real-time control toolkit written in Python.
 
 The user-facing name stays `pyrtc`.
-For packaging only, the published PyPI package name is `pyrtcao`, while the Python import name remains `pyRTC`:
+For packaging only, the published PyPI package name is `pyrtcao`, while the Python import name remains `pyrtc`:
 
 ```bash
 pip install pyrtcao
 ```
 
 ```python
-import pyRTC
+import pyrtc
 ```
 
 Documentation: [https://pyrtc-ao.readthedocs.io/en/latest/](https://pyrtc-ao.readthedocs.io/en/latest/)
@@ -75,10 +75,11 @@ The repo is being prepared for a `1.0.0` release. The current release policy is 
 
 - User-facing project name: `pyrtc`
 - PyPI distribution name: `pyrtcao`
-- Python import name: `pyRTC`
+- Python import name: `pyrtc`
 - CLI prefix: `pyrtc-*`
 - Primary supported release surface for `1.0.x`: Linux, Python 3.9-3.13
 - macOS and Windows: smoke-tested in GitHub Actions, but not part of the primary supported deployment story for `1.0.0`
+- Windows: soft-RTC only — Windows named shared memory is freed when the last handle closes, so streams do not survive their producer process and hard-RTC restart/reattach flows are unsupported there
 - GPU behavior: benchmark-validated on a Linux CUDA host for synthetic loop workloads, but still target-environment validation required for operational use
 - Hardware integrations: examples and reference implementations, not universal plug-and-play support
 
@@ -88,7 +89,7 @@ The repo is being prepared for a `1.0.0` release. The current release policy is 
 - Soft-RTC mode for single-process development and simulation workflows
 - Hard-RTC mode for process-isolated hardware integration via shared memory and launcher utilities
 - Optional viewer and benchmarking tools for stream inspection and performance checks
-- Example hardware adapters and simulation-oriented examples under `pyRTC/hardware` and `examples/`
+- Example hardware adapters and simulation-oriented examples under `pyrtc/hardware` and `examples/`
 
 ## Installation
 
@@ -111,7 +112,7 @@ pip install pyrtcao[viewer]
 
 ```bash
 git clone https://github.com/jacotay7/pyRTC.git
-cd pyRTC
+cd pyrtc
 pip install .
 ```
 
@@ -124,14 +125,14 @@ pip install .[gpu]
 pip install .[viewer]
 ```
 
-If GPU mode is configured through `gpuDevice` but PyTorch is unavailable, supported paths fall back to CPU mode with a warning instead of failing immediately.
+If GPU mode is configured through `gpu_device` but PyTorch is unavailable, supported paths fall back to CPU mode with a warning instead of failing immediately.
 
 ## Quick Start
 
 Verify the install:
 
 ```bash
-python -c "import pyRTC; print(pyRTC.__all__)"
+python -c "import pyrtc; print(pyrtc.__all__)"
 ```
 
 Validate a system config before launch:
@@ -162,7 +163,7 @@ python examples/synthetic_shwfs/synthetic_shwfs_soft_rtc_example.py --duration 1
 
 That tutorial now logs one `manager.latency(samples=256)` example after startup so you can inspect the full-loop latency breakdown directly from the manager API while the synthetic system is running.
 
-Every primary CLI and example entry point now uses the shared `pyRTC` logger. By default you get timestamped `INFO` logs on the console. You can override that per run with `--log-level DEBUG`, write per-process logs with `--log-dir logs/`, or force one exact file with `--log-file session.log`.
+Every primary CLI and example entry point now uses the shared `pyrtc` logger. By default you get timestamped `INFO` logs on the console. You can override that per run with `--log-level DEBUG`, write per-process logs with `--log-dir logs/`, or force one exact file with `--log-file session.log`.
 
 The same settings can be exported for multi-process or repeated runs:
 
@@ -173,12 +174,12 @@ export PYRTC_LOG_COLOR=1
 python examples/synthetic_shwfs/synthetic_shwfs_hard_rtc_example.py --duration 15
 ```
 
-It publishes the normal `wfs`, `signal2D`, `wfc2D`, `psfShort`, and `psfLong` streams, so the standard viewer tools work unchanged while you evaluate the control flow and subclassing points.
+It publishes the normal `wfs`, `signal_2d`, `wfc_2d`, `psf_short`, and `psf_long` streams, so the standard viewer tools work unchanged while you evaluate the control flow and subclassing points.
 
 Recommended composite viewer command while the demo is running:
 
 ```bash
-pyrtc-view wfs signal2D wfc2D psfShort psfLong --geometry 2x3
+pyrtc-view wfs signal_2d wfc_2d psf_short psf_long --geometry 2x3
 ```
 
 The documentation will live on Read the Docs. Placeholder entry points for now:
@@ -212,7 +213,7 @@ Use `soft-RTC` first unless you have a clear need for process isolation or hardw
 Real AO deployments are hardware-specific. The repo includes two kinds of support for that:
 
 - abstract core classes for the AO pipeline
-- example integrations in `pyRTC/hardware`
+- example integrations in `pyrtc/hardware`
 
 These hardware files should be treated as reference implementations and starting points, not as a guarantee that every SDK and device combination will work unchanged.
 
@@ -281,7 +282,7 @@ For release validation from a source checkout, the built-wheel smoke path is aut
 ```bash
 python -m build
 python -m twine check dist/*
-python pyRTC/scripts/validate_dist_install.py --dist-dir dist
+python pyrtc/scripts/validate_dist_install.py --dist-dir dist
 ```
 
 The tracked release plan for the first stable version lives in `RELEASE_1_0_PLAN.md`.

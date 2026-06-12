@@ -1,8 +1,8 @@
 import numpy as np
 import pytest
 
-from pyRTC import latency
-from pyRTC.scripts import measure_latency
+from pyrtc import latency
+from pyrtc.scripts import measure_latency
 
 
 def test_compute_latency_applies_frame_shift():
@@ -34,8 +34,8 @@ def test_count_aligned_latency_removes_startup_count_offset():
 
 
 def test_measure_stream_path_latency_uses_shared_event_history(monkeypatch):
-    def _fake_open(name, gpuDevice=None):
-        return object(), None, None
+    def _fake_open(name, gpu_device=None):
+        return object()
 
     def _fake_collect(streams, samples, **kwargs):
         assert set(streams) == {"wfs", "signal", "wfc"}
@@ -67,67 +67,34 @@ def test_measure_stream_path_latency_uses_shared_event_history(monkeypatch):
     assert report.segments[1].statistics.mean_seconds == pytest.approx(0.003)
 
 
-def test_measure_stream_path_latency_prefers_lineage_metadata(monkeypatch):
-    class FakeLineageShm:
-        def __init__(self, entries):
-            self._entries = list(entries)
+def test_collect_timestamps_reads_metadata(monkeypatch):
+    class FakeShm:
+        def __init__(self, events):
+            self._events = list(events)
             self._index = -1
 
-        def frame_metadata(self):
-            if self._index < 0:
-                return self._entries[0]
-            return self._entries[self._index]
+        def advance(self):
+            self._index = min(self._index + 1, len(self._events) - 1)
+            return self._events[self._index][0]
 
-        def hold(self):
-            self._index = min(self._index + 1, len(self._entries) - 1)
+        @property
+        def count(self):
+            return self._events[max(self._index, 0)][0]
 
-    streams = {
-        "wfs": FakeLineageShm([
-            {"count": 1, "write_time": 1.0, "root_time": 1.0, "upstream_write_time": 0.0, "upstream_consume_time": 0.0},
-        ]),
-        "signal": FakeLineageShm([
-            {"count": 1, "write_time": 1.001, "root_time": 1.0, "upstream_write_time": 1.0, "upstream_consume_time": 1.0005},
-            {"count": 2, "write_time": 1.006, "root_time": 1.005, "upstream_write_time": 1.005, "upstream_consume_time": 1.0054},
-        ]),
-        "wfc": FakeLineageShm([
-            {"count": 1, "write_time": 1.004, "root_time": 1.0, "upstream_write_time": 1.001, "upstream_consume_time": 1.0015},
-            {"count": 2, "write_time": 1.009, "root_time": 1.005, "upstream_write_time": 1.006, "upstream_consume_time": 1.0066},
-        ]),
-    }
+        @property
+        def write_time(self):
+            return self._events[max(self._index, 0)][1]
 
-    report, total_samples = latency.measure_stream_path_latency(
-        ["wfs", "signal", "wfc"],
-        samples=2,
-        shm_opener=lambda name: (streams[name], None, None),
-        include_total_samples=True,
+    import pyrtc.latency as latency_helpers
+
+    monkeypatch.setattr(
+        latency_helpers,
+        "_wait_for_new_write",
+        lambda stream, poll_interval_seconds=1e-5: stream.advance(),
     )
 
-    assert np.allclose(total_samples, np.array([0.004, 0.004], dtype=np.float64))
-    assert report.segments[0].statistics.mean_seconds == pytest.approx(0.001)
-    assert report.segments[1].statistics.mean_seconds == pytest.approx(0.003)
-
-
-def test_collect_timestamps_reads_metadata():
-    class FakeShm:
-        def __init__(self, metadata_values):
-            self._values = metadata_values
-            self._index = 0
-            self.metadata = self._values[self._index]
-
-        def hold(self):
-            self.metadata = self._values[self._index]
-            self._index += 1
-
-    source = FakeShm([
-        np.array([1, 0.10]),
-        np.array([2, 0.20]),
-        np.array([3, 0.30]),
-    ])
-    target = FakeShm([
-        np.array([5, 0.15]),
-        np.array([6, 0.25]),
-        np.array([7, 0.35]),
-    ])
+    source = FakeShm([(1, 0.10), (2, 0.20), (3, 0.30)])
+    target = FakeShm([(5, 0.15), (6, 0.25), (7, 0.35)])
 
     counts, write_times = measure_latency.collect_timestamps(
         {"source": source, "target": target}, samples=3, show_progress=False
@@ -143,13 +110,17 @@ def test_main_no_show(monkeypatch, tmp_path):
     class FakeShm:
         def __init__(self):
             self._count = 0
-            self.metadata = np.array([0, 0.0], dtype=np.float64)
 
-        def hold(self):
+        @property
+        def count(self):
             self._count += 1
-            self.metadata = np.array([self._count, self._count * 1e-3], dtype=np.float64)
+            return self._count
 
-    monkeypatch.setattr(latency, "initExistingShm", lambda name, gpuDevice=None: (FakeShm(), None, None))
+        @property
+        def write_time(self):
+            return self._count * 1e-3
+
+    monkeypatch.setattr(latency, "open_stream", lambda name, gpu_device=None: FakeShm())
     monkeypatch.setattr(measure_latency, "plot_latency_histogram", lambda *args, **kwargs: None)
 
     def _fake_savefig(path):
@@ -163,8 +134,8 @@ def test_main_no_show(monkeypatch, tmp_path):
     out = tmp_path / "lat.pdf"
     code = measure_latency.main(
         [
-            "wfsRaw",
-            "wfc2D",
+            "wfs_raw",
+            "wfc_2d",
             "--samples",
             "20",
             "--no-progress",
@@ -191,14 +162,16 @@ def test_main_config_json_output(monkeypatch):
 
     monkeypatch.setattr(measure_latency, "_emit_report", _capture_emit)
 
-    code = measure_latency.main([
-        "--config",
-        "examples/synthetic_shwfs/config.yaml",
-        "--format",
-        "json",
-        "--samples",
-        "16",
-    ])
+    code = measure_latency.main(
+        [
+            "--config",
+            "examples/synthetic_shwfs/config.yaml",
+            "--format",
+            "json",
+            "--samples",
+            "16",
+        ]
+    )
 
     assert code == 0
     assert emitted["format"] == "json"
@@ -207,55 +180,57 @@ def test_main_config_json_output(monkeypatch):
 
 
 def test_format_latency_report_includes_max_speed_in_khz():
-    report_text = latency.format_latency_report({
-        "source_shm": "wfs",
-        "target_shm": "wfc",
-        "stream_path": ["wfs", "signal", "wfc"],
-        "inferred_path": True,
-        "sample_count": 16,
-        "total": {
+    report_text = latency.format_latency_report(
+        {
             "source_shm": "wfs",
             "target_shm": "wfc",
-            "frame_shift": 0,
-            "count_offset": 0,
-            "count_delta_min": 0.0,
-            "count_delta_max": 0.0,
-            "statistics": {
-                "sample_count": 16,
-                "mean_seconds": 1e-3,
-                "std_seconds": 1e-4,
-                "jitter_seconds": 1e-4,
-                "min_seconds": 9e-4,
-                "max_seconds": 1.2e-3,
-                "p50_seconds": 1e-3,
-                "p95_seconds": 1.1e-3,
-                "p99_seconds": 1.15e-3,
-                "p999_seconds": 1.19e-3,
-            },
-        },
-        "segments": [
-            {
+            "stream_path": ["wfs", "signal", "wfc"],
+            "inferred_path": True,
+            "sample_count": 16,
+            "total": {
                 "source_shm": "wfs",
-                "target_shm": "signal",
+                "target_shm": "wfc",
                 "frame_shift": 0,
                 "count_offset": 0,
                 "count_delta_min": 0.0,
                 "count_delta_max": 0.0,
                 "statistics": {
                     "sample_count": 16,
-                    "mean_seconds": 5e-4,
-                    "std_seconds": 2e-5,
-                    "jitter_seconds": 2e-5,
-                    "min_seconds": 4.5e-4,
-                    "max_seconds": 5.2e-4,
-                    "p50_seconds": 5e-4,
-                    "p95_seconds": 5.1e-4,
-                    "p99_seconds": 5.15e-4,
-                    "p999_seconds": 5.19e-4,
+                    "mean_seconds": 1e-3,
+                    "std_seconds": 1e-4,
+                    "jitter_seconds": 1e-4,
+                    "min_seconds": 9e-4,
+                    "max_seconds": 1.2e-3,
+                    "p50_seconds": 1e-3,
+                    "p95_seconds": 1.1e-3,
+                    "p99_seconds": 1.15e-3,
+                    "p999_seconds": 1.19e-3,
                 },
             },
-        ],
-    })
+            "segments": [
+                {
+                    "source_shm": "wfs",
+                    "target_shm": "signal",
+                    "frame_shift": 0,
+                    "count_offset": 0,
+                    "count_delta_min": 0.0,
+                    "count_delta_max": 0.0,
+                    "statistics": {
+                        "sample_count": 16,
+                        "mean_seconds": 5e-4,
+                        "std_seconds": 2e-5,
+                        "jitter_seconds": 2e-5,
+                        "min_seconds": 4.5e-4,
+                        "max_seconds": 5.2e-4,
+                        "p50_seconds": 5e-4,
+                        "p95_seconds": 5.1e-4,
+                        "p99_seconds": 5.15e-4,
+                        "p999_seconds": 5.19e-4,
+                    },
+                },
+            ],
+        }
+    )
 
     assert "Mean: 1.000 ms" in report_text
     assert "Max speed (from full-loop P99): 1.150 ms (max speed 0.870 kHz)" in report_text

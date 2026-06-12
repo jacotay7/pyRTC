@@ -2,114 +2,135 @@ import os
 
 import numpy as np
 
-import pyRTC.Pipeline as pipeline
-from pyRTC.logging_utils import configure_logging
+import pyrtc.pipeline as pipeline
+from pyrtc.logging_utils import configure_logging
 
 
-def _cleanup_shm(obj):
+def _cleanup_shm(shm):
     try:
-        obj.close()
+        shm.unlink()
     except Exception:
         pass
-    try:
-        obj.shm.unlink()
-    except Exception:
-        pass
-    if hasattr(obj, "metadataShm"):
-        try:
-            obj.metadataShm.close()
-        except Exception:
-            pass
-        try:
-            obj.metadataShm.unlink()
-        except Exception:
-            pass
 
 
 def test_normalize_gpu_device_falls_back(monkeypatch):
-    monkeypatch.setattr(pipeline, "TORCH_AVAILABLE", False)
+    import pyrtc.streams as streams
+
+    monkeypatch.setattr(streams, "TORCH_AVAILABLE", False)
     assert pipeline.normalize_gpu_device("cuda:0", "ctx") is None
 
 
-def test_image_shm_cpu_read_write(unique_name):
+def test_create_stream_cpu_read_write(unique_name):
     name = unique_name("img")
-    shm = pipeline.ImageSHM(name, (4, 3), np.float32, gpuDevice=None, consumer=False)
-    arr = np.arange(12, dtype=np.float32).reshape(4, 3)
-    assert shm.write(arr) == 1
-    out = shm.read_noblock()
-    assert np.array_equal(out, arr)
-    _cleanup_shm(shm)
-
-
-def test_image_shm_lineage_metadata(unique_name):
-    name = unique_name("lineage")
-    shm = pipeline.ImageSHM(name, (2,), np.float32, gpuDevice=None, consumer=False)
+    shm = pipeline.create_stream(name, (4, 3), np.float32)
     try:
-        shm.write(np.array([1.0, 2.0], dtype=np.float32), root_time=10.0, upstream_time=11.0, consumer_time=12.0)
-        metadata = shm.frame_metadata()
-
-        assert metadata["count"] == 1
-        assert metadata["root_time"] == 10.0
-        assert metadata["upstream_write_time"] == 11.0
-        assert metadata["upstream_consume_time"] == 12.0
+        arr = np.arange(12, dtype=np.float32).reshape(4, 3)
+        shm.write(arr)
+        assert np.array_equal(shm.read(), arr)
+        assert shm.count == 1
+        assert shm.write_time > 0
     finally:
         _cleanup_shm(shm)
 
 
-def test_init_existing_shm(unique_name):
+def test_create_stream_reuses_matching_stream(unique_name):
+    name = unique_name("reuse")
+    first = pipeline.create_stream(name, (2, 2), np.int32)
+    try:
+        first.write(np.array([[1, 2], [3, 4]], dtype=np.int32))
+        second = pipeline.create_stream(name, (2, 2), np.int32)
+        assert np.array_equal(second.read(), np.array([[1, 2], [3, 4]], dtype=np.int32))
+        second.close()
+    finally:
+        _cleanup_shm(first)
+
+
+def test_create_stream_rebuilds_on_mismatch(unique_name):
+    name = unique_name("rebuild")
+    first = pipeline.create_stream(name, (2, 2), np.int32)
+    first.close()
+    second = pipeline.create_stream(name, (3,), np.float32)
+    try:
+        assert tuple(second.shape) == (3,)
+        assert second.dtype == np.float32
+    finally:
+        _cleanup_shm(second)
+
+
+def test_open_stream_attaches_to_existing(unique_name):
     name = unique_name("existing")
-    prod = pipeline.ImageSHM(name, (2, 2), np.int32, consumer=False)
-    prod.write(np.array([[1, 2], [3, 4]], dtype=np.int32))
-    cons, dims, dtype = pipeline.initExistingShm(name)
-    out = cons.read_noblock()
-    assert dims == [2, 2]
-    assert dtype == np.dtype(np.int32)
-    assert np.array_equal(out, np.array([[1, 2], [3, 4]], dtype=np.int32))
-    _cleanup_shm(cons)
-    _cleanup_shm(prod)
+    prod = pipeline.create_stream(name, (2, 2), np.int32)
+    try:
+        prod.write(np.array([[1, 2], [3, 4]], dtype=np.int32))
+        cons = pipeline.open_stream(name)
+        assert tuple(cons.shape) == (2, 2)
+        assert np.dtype(cons.dtype) == np.dtype(np.int32)
+        assert np.array_equal(cons.read(), np.array([[1, 2], [3, 4]], dtype=np.int32))
+        cons.close()
+    finally:
+        _cleanup_shm(prod)
+
+
+def test_open_stream_missing_raises(unique_name):
+    name = unique_name("missing")
+    try:
+        pipeline.open_stream(name)
+    except FileNotFoundError:
+        pass
+    else:
+        raise AssertionError("expected FileNotFoundError")
 
 
 def test_clear_shms(unique_name):
+    import pyshmem
+
     name = unique_name("clear")
-    shm = pipeline.ImageSHM(name, (1,), np.uint8, consumer=False)
-    _ = pipeline.ImageSHM(name + "_meta", (pipeline.ImageSHM.METADATA_SIZE,), np.float64, consumer=False)
+    shm = pipeline.create_stream(name, (1,), np.uint8)
+    shm.close()
     pipeline.clear_shms([name])
-    _cleanup_shm(shm)
+    assert name not in pyshmem.list_streams()
+    # clearing again must not raise
+    pipeline.clear_shms([name])
 
 
 def test_expected_output_specs_follow_component_output_aliases():
     config = {
         "wfs": {
-            "className": "WavefrontSensor",
+            "class_name": "WavefrontSensor",
             "width": 16,
             "height": 16,
-            "darkCount": 1,
-            "outputStreams": {"wfsRaw": "raw_custom", "wfs": "wfs_custom"},
+            "dark_count": 1,
+            "output_streams": {"wfs_raw": "raw_custom", "wfs": "wfs_custom"},
         },
         "slopes": {
-            "className": "SlopesProcess",
+            "class_name": "SlopesProcess",
             "type": "SHWFS",
-            "signalType": "slopes",
-            "subApSpacing": 4,
-            "subApOffsetX": 0,
-            "subApOffsetY": 0,
-            "outputStreams": {"signal": "signal_custom", "signal2D": "signal2d_custom"},
+            "signal_type": "slopes",
+            "sub_ap_spacing": 4,
+            "sub_ap_offset_x": 0,
+            "sub_ap_offset_y": 0,
+            "output_streams": {"signal": "signal_custom", "signal_2d": "signal2d_custom"},
         },
         "wfc": {
-            "className": "WavefrontCorrector",
+            "class_name": "WavefrontCorrector",
             "name": "dm",
-            "numActuators": 8,
-            "numModes": 8,
-            "outputStreams": {"wfc": "wfc_custom", "wfc2D": "wfc2d_custom"},
+            "num_actuators": 8,
+            "num_modes": 8,
+            "output_streams": {"wfc": "wfc_custom", "wfc_2d": "wfc2d_custom"},
         },
         "psf": {
-            "className": "ScienceCamera",
+            "class_name": "ScienceCamera",
             "name": "cam",
             "width": 8,
             "height": 8,
-            "darkCount": 1,
+            "dark_count": 1,
             "integration": 1,
-            "outputStreams": {"psfShort": "short_custom", "psfLong": "long_custom", "strehl": "strehl_custom", "tiptilt": "tiptilt_custom"},
+            "output_streams": {
+                "psf_short": "short_custom",
+                "psf_long": "long_custom",
+                "strehl": "strehl_custom",
+                "tiptilt": "tiptilt_custom",
+            },
         },
     }
 
@@ -125,7 +146,7 @@ def test_expected_output_specs_follow_component_output_aliases():
 
 
 def test_hardware_launcher_write_and_read():
-    hl = pipeline.hardwareLauncher("dummy.py", "c.yaml", 9999)
+    hl = pipeline.HardwareLauncher("dummy.py", "c.yaml", 9999)
     calls = []
 
     def _write(msg):
@@ -137,7 +158,7 @@ def test_hardware_launcher_write_and_read():
     hl.running = True
     hl.write = _write
     hl.read = _read
-    assert hl.getProperty("x") == 42
+    assert hl.get_property("x") == 42
     assert calls[0]["type"] == "get"
 
 
@@ -168,11 +189,13 @@ def test_hardware_launcher_inherits_logging_env(monkeypatch, tmp_path):
         captured["env"] = env
         return _DummyProcess()
 
-    monkeypatch.setattr(pipeline, "Popen", _fake_popen)
-    monkeypatch.setattr(pipeline.socket, "socket", lambda *args, **kwargs: _DummySocket())
-    monkeypatch.setattr(pipeline.time, "sleep", lambda _seconds: None)
+    import pyrtc.rpc as rpc
 
-    launcher = pipeline.hardwareLauncher("child.py", "config.yaml", 4567, timeout=1.5)
+    monkeypatch.setattr(rpc, "Popen", _fake_popen)
+    monkeypatch.setattr(rpc.socket, "socket", lambda *args, **kwargs: _DummySocket())
+    monkeypatch.setattr(rpc.time, "sleep", lambda _seconds: None)
+
+    launcher = pipeline.HardwareLauncher("child.py", "config.yaml", 4567, timeout=1.5)
     launcher.launch()
 
     assert captured["command"][0] == os.sys.executable

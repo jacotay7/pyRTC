@@ -1,13 +1,13 @@
 .. wfs:
 
-.. currentmodule:: pyRTC.SlopesProcess
+.. currentmodule:: pyrtc.slopes_process
 
 
 Slopes Process
 ==============
 
 The slopes process is responsible for converting images from the wavefront sensor into a measurement consumable by the
-AO loop. This object is the producer of the `signal` and `signal2D` shared memory objects
+AO loop. This object is the producer of the `signal` and `signal_2d` shared memory objects
 which contain the vectorized and 2D mapped images of the slopes respectively. It is a consumer of the `wfs` shared memory object
 which contains the image stream from the wavefront sensor. The images are then be processed to compute the intermediate data product 
 used for wavefront reconstruction.
@@ -15,9 +15,9 @@ used for wavefront reconstruction.
 Soft-RTC Example
 ----------------
 
-The following is an example of how to initialize a SlopesProcess component in pyRTC. 
+The following is an example of how to initialize a SlopesProcess component in pyrtc. 
 
-Here we are in the `soft-RTC` mode of pyRTC, which holds all components in the same python process. 
+Here we are in the `soft-RTC` mode of pyrtc, which holds all components in the same python process. 
 See below for how to launch a hard-RTC equivalent.
 
 .. code-block:: python
@@ -29,9 +29,9 @@ See below for how to launch a hard-RTC equivalent.
   """
 
   #%% Run in interactive python or jupyter notebook to keep process alive
-  from pyRTC.SlopesProcess import SlopesProcess
+  from pyrtc.slopes_process import SlopesProcess
   import matplotlib.pyplot as plt
-  from pyRTC.utils import read_yaml_file
+  from pyrtc.utils import read_yaml_file
 
   confWFS = {
   "width": 256,
@@ -40,16 +40,16 @@ See below for how to launch a hard-RTC equivalent.
 
   confSlopes = {
     "type": "SHWFS",
-    "signalType": "slopes",
-    "refSlopesFile": "", #"/home/whetstone/pyRTC/examples/sharp_lab/calib/ref.npy",
-    "validSubApsFile": "", #"/home/whetstone/pyRTC/examples/sharp_lab/calib/validSubAps.npy",
-    "subApSpacing": 16,
-    "subApOffsetX": 0,
-    "subApOffsetY": 0,
-    "imageNoise": 0.5,
+    "signal_type": "slopes",
+    "ref_slopes_file": "", #"/home/whetstone/pyrtc/examples/sharp_lab/calib/ref.npy",
+    "valid_sub_aps_file": "", #"/home/whetstone/pyrtc/examples/sharp_lab/calib/valid_sub_aps.npy",
+    "sub_ap_spacing": 16,
+    "sub_ap_offset_x": 0,
+    "sub_ap_offset_y": 0,
+    "image_noise": 0.5,
     "contrast": 20,
     "affinity": 4,
-    "functions": ["computeSignal"],
+    "functions": ["compute_signal"],
   }
 
   conf = {"wfs": confWFS, "slopes": confSlopes}
@@ -72,22 +72,22 @@ See below for how to launch a hard-RTC equivalent.
 
   """
   Monitor the SHM in realtime by running the viewer command in a terminal
-  pyrtc-view signal2D &
+  pyrtc-view signal_2d &
   """
 
 Hard-RTC Example
 ----------------
 
-The following is an example of how to initialize a SlopesProcess component in pyRTC. 
+The following is an example of how to initialize a SlopesProcess component in pyrtc. 
 
-Here we are in the `hard-RTC` mode of pyRTC, which holds all components in the separate python processes. 
+Here we are in the `hard-RTC` mode of pyrtc, which holds all components in the separate python processes. 
 This circumvents the python Global Interpreter Lock.
 
 See above for how to launch a soft-RTC equivalent.
 
 .. code-block:: python
 
-  from pyRTC.Pipeline import hardwareLauncher
+  from pyrtc.pipeline import HardwareLauncher
 
   """
   For the Hard-RTC, you will need to set-up a config before hand and store it in a yaml file.
@@ -96,24 +96,24 @@ See above for how to launch a soft-RTC equivalent.
 
   slopes:
     type: SHWFS
-    signalType: slopes
-    refSlopesFile: "/home/whetstone/pyRTC/examples/sharp_lab/calib/ref.npy"
-    validSubApsFile: "/home/whetstone/pyRTC/examples/sharp_lab/calib/validSubAps.npy"
-    subApSpacing: 16
-    subApOffsetX: 8
-    subApOffsetY: 4
-    imageNoise: 0.5
+    signal_type: slopes
+    ref_slopes_file: "/home/whetstone/pyrtc/examples/sharp_lab/calib/ref.npy"
+    valid_sub_aps_file: "/home/whetstone/pyrtc/examples/sharp_lab/calib/valid_sub_aps.npy"
+    sub_ap_spacing: 16
+    sub_ap_offset_x: 8
+    sub_ap_offset_y: 4
+    image_noise: 0.5
     contrast: 20
     affinity: 4
     functions:
-    - computeSignal
+    - compute_signal
   """
 
   config = 'path/to/config.yaml'
   port = 3005
 
   #Initialize the hardware launcher for your WFS child hardware class
-  slopes = hardwareLauncher('path/to/pyRTC/SlopesProcess.py', config, port)
+  slopes = HardwareLauncher('path/to/pyrtc/slopes_process.py', config, port)
 
   """
   Launch the process.
@@ -127,14 +127,14 @@ See above for how to launch a soft-RTC equivalent.
 
   """
   Once the connection has been made successfully, you can run any function in the hardware class
-  using the run function. You can also get and set properties of the hardware using getProperty()
-  and setProperty() respectively.
+  using the run function. You can also get and set properties of the hardware using get_property()
+  and set_property() respectively.
   """
-  slopes.run("loadValidSubAps")
+  slopes.run("load_valid_sub_aps")
 
-  slopes.setProperty("refSlopesFile", "test123")
+  slopes.set_property("ref_slopes_file", "test123")
 
-  print(slopes.getProperty("refSlopesFile"))
+  print(slopes.get_property("ref_slopes_file"))
 
 
 Parameters

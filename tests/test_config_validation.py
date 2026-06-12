@@ -4,9 +4,9 @@ from pathlib import Path
 
 import pytest
 
-from pyRTC.config_schema import read_system_config, validate_system_config
-from pyRTC.scripts import validate_config as validate_config_cli
-from pyRTC.utils import (
+from pyrtc.config_schema import read_system_config, validate_system_config
+from pyrtc.scripts import validate_config as validate_config_cli
+from pyrtc.utils import (
     ConfigValidationError,
     validate_loop_config,
     validate_wfc_config,
@@ -19,7 +19,7 @@ SYNTHETIC_CONFIG_PATH = REPO_ROOT / "examples" / "synthetic_shwfs" / "config.yam
 
 
 def test_validate_wfs_config_accepts_valid_defaults():
-    validate_wfs_config({"width": 16, "height": 16, "darkCount": 10})
+    validate_wfs_config({"width": 16, "height": 16, "dark_count": 10})
 
 
 def test_validate_wfs_config_rejects_invalid_width():
@@ -29,88 +29,92 @@ def test_validate_wfs_config_rejects_invalid_width():
 
 def test_validate_wfc_config_requires_keys():
     with pytest.raises(ConfigValidationError):
-        validate_wfc_config({"numActuators": 97, "numModes": 80})
+        validate_wfc_config({"num_actuators": 97, "num_modes": 80})
 
 
 def test_validate_wfc_config_rejects_bad_modes():
     with pytest.raises(ConfigValidationError):
-        validate_wfc_config({"name": "dm", "numActuators": 97, "numModes": 0})
+        validate_wfc_config({"name": "dm", "num_actuators": 97, "num_modes": 0})
 
 
 def test_validate_wfc_config_accepts_valid_minimal():
-    validate_wfc_config({"name": "dm", "numActuators": 97, "numModes": 80})
+    validate_wfc_config({"name": "dm", "num_actuators": 97, "num_modes": 80})
 
 
 def test_validate_loop_config_allows_negative_gain():
-    validate_loop_config({"gain": -0.1, "pGain": -0.2, "iGain": -0.3, "dGain": -0.4})
+    validate_loop_config({"gain": -0.1, "p_gain": -0.2, "i_gain": -0.3, "d_gain": -0.4})
 
 
 def test_validate_loop_config_rejects_bad_limits_shape():
     with pytest.raises(ConfigValidationError):
-        validate_loop_config({"controlLimits": [0.0, 1.0, 2.0]})
+        validate_loop_config({"control_limits": [0.0, 1.0, 2.0]})
 
 
 def test_validate_loop_config_accepts_valid_config():
     validate_loop_config(
         {
-            "CMMethod": "tikhonov",
+            "cm_method": "tikhonov",
             "conditioning": 1000,
             "gain": 0.1,
-            "leakyGain": 0.01,
-            "numDroppedModes": 0,
-            "tikhonovReg": 0.001,
-            "controlLimits": [-1.0, 1.0],
-            "integralLimits": [-0.5, 0.5],
-            "absoluteLimits": [-2.0, 2.0],
+            "leaky_gain": 0.01,
+            "num_dropped_modes": 0,
+            "tikhonov_reg": 0.001,
+            "control_limits": [-1.0, 1.0],
+            "integral_limits": [-0.5, 0.5],
+            "absolute_limits": [-2.0, 2.0],
         }
     )
 
 
 def test_validate_system_config_accepts_float_shwfs_subap_spacing():
     conf = read_system_config(SYNTHETIC_CONFIG_PATH, validate=False)
-    conf["slopes"]["subApSpacing"] = 8.5
+    conf["slopes"]["sub_ap_spacing"] = 8.5
 
     normalized = validate_system_config(conf, config_path=SYNTHETIC_CONFIG_PATH)
 
-    assert normalized["slopes"]["subApSpacing"] == 8.5
+    assert normalized["slopes"]["sub_ap_spacing"] == 8.5
 
 
 def test_validate_loop_config_rejects_bad_cm_method():
-    with pytest.raises(ConfigValidationError, match="CMMethod"):
-        validate_loop_config({"CMMethod": "ridge-ish"})
+    with pytest.raises(ConfigValidationError, match="cm_method"):
+        validate_loop_config({"cm_method": "ridge-ish"})
 
 
 def test_validate_loop_config_rejects_bad_tikhonov_regularization():
-    with pytest.raises(ConfigValidationError, match="tikhonovReg"):
-        validate_loop_config({"tikhonovReg": -0.1})
+    with pytest.raises(ConfigValidationError, match="tikhonov_reg"):
+        validate_loop_config({"tikhonov_reg": -0.1})
 
 
 def test_validate_system_config_accepts_synthetic_example():
     normalized = read_system_config(SYNTHETIC_CONFIG_PATH)
 
     assert normalized["manager"]["mode"] == "soft-rtc"
-    assert normalized["wfs"]["className"] == "SyntheticSHWFS"
-    assert normalized["wfc"]["numModes"] == 97
-    assert Path(normalized["metadata"]["configPath"]).resolve() == SYNTHETIC_CONFIG_PATH.resolve()
+    assert normalized["wfs"]["class_name"] == "SyntheticSHWFS"
+    assert normalized["wfc"]["num_modes"] == 97
+    assert Path(normalized["metadata"]["config_path"]).resolve() == SYNTHETIC_CONFIG_PATH.resolve()
 
 
 def test_validate_system_config_rejects_invalid_component_class_name():
     conf = read_system_config(SYNTHETIC_CONFIG_PATH, validate=False)
-    conf["loop"]["className"] = "DefinitelyNotARealComponent"
+    conf["loop"]["class_name"] = "DefinitelyNotARealComponent"
 
-    with pytest.raises(ConfigValidationError, match="className"):
+    with pytest.raises(ConfigValidationError, match="class_name"):
         validate_system_config(conf)
 
 
 def test_validate_system_config_resolves_relative_file_paths_against_config_file():
     conf = read_system_config(SYNTHETIC_CONFIG_PATH, validate=False)
-    conf["loop"]["IMFile"] = "synthetic_identity_im.npy"
-    conf["manager"] = {"mode": "hard-rtc", "componentFiles": {"loop": "../../pyRTC/Loop.py"}}
+    conf["loop"]["im_file"] = "synthetic_identity_im.npy"
+    conf["manager"] = {"mode": "hard-rtc", "component_files": {"loop": "../../pyrtc/loop.py"}}
 
     normalized = validate_system_config(conf, config_path=SYNTHETIC_CONFIG_PATH)
 
-    assert normalized["loop"]["IMFile"] == str((SYNTHETIC_CONFIG_PATH.parent / "synthetic_identity_im.npy").resolve())
-    assert normalized["manager"]["componentFiles"]["loop"] == str((SYNTHETIC_CONFIG_PATH.parent / "../../pyRTC/Loop.py").resolve())
+    assert normalized["loop"]["im_file"] == str(
+        (SYNTHETIC_CONFIG_PATH.parent / "synthetic_identity_im.npy").resolve()
+    )
+    assert normalized["manager"]["component_files"]["loop"] == str(
+        (SYNTHETIC_CONFIG_PATH.parent / "../../pyrtc/loop.py").resolve()
+    )
 
 
 def test_validate_system_config_rejects_missing_required_section():
@@ -131,25 +135,25 @@ def test_validate_system_config_rejects_invalid_function_name():
 
 def test_validate_system_config_rejects_descriptor_type_mismatch():
     conf = read_system_config(SYNTHETIC_CONFIG_PATH, validate=False)
-    conf["psf"]["darkCount"] = "16"
+    conf["psf"]["dark_count"] = "16"
 
-    with pytest.raises(ConfigValidationError, match="darkCount"):
+    with pytest.raises(ConfigValidationError, match="dark_count"):
         validate_system_config(conf)
 
 
 def test_validate_system_config_rejects_too_many_dropped_modes():
     conf = read_system_config(SYNTHETIC_CONFIG_PATH, validate=False)
-    conf["loop"]["numDroppedModes"] = conf["wfc"]["numModes"]
+    conf["loop"]["num_dropped_modes"] = conf["wfc"]["num_modes"]
 
-    with pytest.raises(ConfigValidationError, match="numDroppedModes"):
+    with pytest.raises(ConfigValidationError, match="num_dropped_modes"):
         validate_system_config(conf)
 
 
 def test_validate_system_config_rejects_manager_restart_policy():
     conf = read_system_config(SYNTHETIC_CONFIG_PATH, validate=False)
-    conf["manager"] = {"mode": "soft-rtc", "restartPolicy": "sometimes"}
+    conf["manager"] = {"mode": "soft-rtc", "restart_policy": "sometimes"}
 
-    with pytest.raises(ConfigValidationError, match="restartPolicy"):
+    with pytest.raises(ConfigValidationError, match="restart_policy"):
         validate_system_config(conf)
 
 
@@ -157,27 +161,27 @@ def test_validate_system_config_accepts_manager_supervision_fields(tmp_path):
     conf = read_system_config(SYNTHETIC_CONFIG_PATH, validate=False)
     conf["manager"] = {
         "mode": "hard-rtc",
-        "restartPolicy": "on-failure",
-        "componentRestartPolicies": {"loop": "always"},
-        "healthCheckInterval": 0.5,
-        "heartbeatTimeout": 3.0,
-        "rpcTimeout": 0.2,
-        "logDir": str(tmp_path),
-        "logFile": str(tmp_path / "manager.log"),
-        "componentFiles": {"loop": "../../pyRTC/Loop.py"},
+        "restart_policy": "on-failure",
+        "component_restart_policies": {"loop": "always"},
+        "health_check_interval": 0.5,
+        "heartbeat_timeout": 3.0,
+        "rpc_timeout": 0.2,
+        "log_dir": str(tmp_path),
+        "log_file": str(tmp_path / "manager.log"),
+        "component_files": {"loop": "../../pyrtc/loop.py"},
     }
 
     normalized = validate_system_config(conf, config_path=SYNTHETIC_CONFIG_PATH)
 
-    assert normalized["manager"]["restartPolicy"] == "on-failure"
-    assert normalized["manager"]["componentRestartPolicies"]["loop"] == "always"
+    assert normalized["manager"]["restart_policy"] == "on-failure"
+    assert normalized["manager"]["component_restart_policies"]["loop"] == "always"
 
 
 def test_validate_system_config_rejects_hard_rtc_for_resource_backed_component():
     conf = read_system_config(SYNTHETIC_CONFIG_PATH, validate=False)
     conf["resources"] = {
         "shared": {
-            "className": "pyRTC.pyRTCComponent.pyRTCComponent",
+            "class_name": "pyrtc.component.Component",
         }
     }
     conf["wfs"]["resource"] = "shared"
@@ -192,13 +196,13 @@ def test_validate_system_config_rejects_hard_rtc_for_resource_backed_component()
 def test_validate_system_config_accepts_component_section_as_resource_provider():
     conf = read_system_config(SYNTHETIC_CONFIG_PATH, validate=False)
     conf["shared"] = {
-        "className": "pyRTC.pyRTCComponent.pyRTCComponent",
+        "class_name": "pyrtc.component.Component",
     }
     conf["wfs"]["resource"] = "shared"
     conf["manager"] = {
         "mode": "soft-rtc",
-        "componentClasses": {"shared": "pyRTC.pyRTCComponent.pyRTCComponent"},
-        "componentFiles": {"shared": "pyRTC/pyRTCComponent.py"},
+        "component_classes": {"shared": "pyrtc.component.Component"},
+        "component_files": {"shared": "pyrtc/component.py"},
     }
 
     normalized = validate_system_config(conf)
@@ -210,17 +214,22 @@ def test_validate_system_config_rejects_component_restart_policy_for_unknown_sec
     conf = read_system_config(SYNTHETIC_CONFIG_PATH, validate=False)
     conf["manager"] = {
         "mode": "soft-rtc",
-        "componentRestartPolicies": {"notAComponent": "on-failure"},
+        "component_restart_policies": {"notAComponent": "on-failure"},
     }
 
-    with pytest.raises(ConfigValidationError, match="componentRestartPolicies"):
+    with pytest.raises(ConfigValidationError, match="component_restart_policies"):
         validate_system_config(conf)
 
 
 def test_validate_system_config_rejects_signal_stream_shape_mismatch():
     conf = read_system_config(SYNTHETIC_CONFIG_PATH, validate=False)
     conf["streams"] = {
-        "signal": {"shape": [31], "dtype": "float32", "outputComponent": "slopes", "inputComponents": ["loop"]}
+        "signal": {
+            "shape": [31],
+            "dtype": "float32",
+            "output_component": "slopes",
+            "input_components": ["loop"],
+        }
     }
 
     with pytest.raises(ConfigValidationError, match="streams.signal"):
@@ -233,16 +242,16 @@ def test_validate_system_config_accepts_stream_lineage_overrides():
         "signal": {
             "shape": [98],
             "dtype": "float32",
-            "outputComponent": "slopes",
-            "inputComponents": ["loop"],
+            "output_component": "slopes",
+            "input_components": ["loop"],
             "sourceStreams": ["wfs"],
             "lineageSource": "wfs",
         },
         "wfc": {
             "shape": [97],
             "dtype": "float32",
-            "outputComponent": "loop",
-            "inputComponents": ["wfc"],
+            "output_component": "loop",
+            "input_components": ["wfc"],
             "sourceStreams": ["signal"],
             "lineageSource": "signal",
         },
@@ -262,14 +271,14 @@ def test_validate_system_config_accepts_manager_declared_custom_section():
     }
     conf["manager"] = {
         "mode": "hard-rtc",
-        "componentClasses": {"modulator": "pyRTC.pyRTCComponent.pyRTCComponent"},
-        "componentFiles": {"modulator": "pyRTC/pyRTCComponent.py"},
+        "component_classes": {"modulator": "pyrtc.component.Component"},
+        "component_files": {"modulator": "pyrtc/component.py"},
         "ports": {"modulator": 6001},
     }
 
     normalized = validate_system_config(conf)
 
-    assert normalized["manager"]["componentClasses"]["modulator"] == "pyRTC.pyRTCComponent.pyRTCComponent"
+    assert normalized["manager"]["component_classes"]["modulator"] == "pyrtc.component.Component"
 
 
 def test_validate_config_cli_text_success(capsys):
@@ -292,13 +301,13 @@ def test_validate_config_cli_json_failure(capsys, tmp_path):
                 "  name: SyntheticSHWFS",
                 "  width: 32",
                 "  height: 32",
-                "  darkCount: 16",
+                "  dark_count: 16",
                 "slopes:",
                 "  type: SHWFS",
-                "  signalType: slopes",
-                "  subApSpacing: 8",
-                "  subApOffsetX: 0",
-                "  subApOffsetY: 0",
+                "  signal_type: slopes",
+                "  sub_ap_spacing: 8",
+                "  sub_ap_offset_x: 0",
+                "  sub_ap_offset_y: 0",
                 "loop:",
                 "  gain: 0.1",
             ]

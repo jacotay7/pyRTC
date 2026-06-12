@@ -1,6 +1,6 @@
 .. loop:
 
-.. currentmodule:: pyRTC.Loop
+.. currentmodule:: pyrtc.loop
 
 
 Loop
@@ -26,16 +26,16 @@ In this mode the control object lives in the same Python process as the rest of 
 .. code-block:: python
 
   import numpy as np
-  from pyRTC.Loop import Loop
-  from pyRTC.utils import read_yaml_file
+  from pyrtc.loop import Loop
+  from pyrtc.utils import read_yaml_file
 
   conf = read_yaml_file("path/to/config.yaml")
   loop = Loop(conf["loop"])
 
   # A calibrated system usually loads or computes IM first, then derives CM.
-  loop.IM = np.eye(loop.signalSize, loop.numModes, dtype=np.float32)
-  loop.computeCM()
-  loop.setGain(0.1)
+  loop.IM = np.eye(loop.signal_size, loop.num_modes, dtype=np.float32)
+  loop.compute_cm()
+  loop.set_gain(0.1)
   loop.start()
 
 Hard-RTC Example
@@ -45,26 +45,26 @@ The hard-RTC path is appropriate when the loop needs to interact with hardware-f
 
 .. code-block:: python
   
-  from pyRTC.Pipeline import hardwareLauncher
+  from pyrtc.pipeline import HardwareLauncher
 
   config = 'path/to/config.yaml'
   port = 3004
 
-  loop = hardwareLauncher('path/to/pyRTC/Loop.py', config, port)
+  loop = HardwareLauncher('path/to/pyrtc/loop.py', config, port)
   loop.launch()
 
   # Once launched, controller methods and properties can be accessed remotely.
-  loop.run("computeCM")
-  loop.setProperty("gain", 0.1)
-  print(loop.getProperty("gain"))
+  loop.run("compute_cm")
+  loop.set_property("gain", 0.1)
+  print(loop.get_property("gain"))
 
 Control Notes
 -------------
 
 The loop class supports several control-related concepts that matter operationally:
 
-- `gain` and `leakyGain` for integrator behavior
-- `numDroppedModes` for excluding poorly behaved modes
+- `gain` and `leaky_gain` for integrator behavior
+- `num_dropped_modes` for excluding poorly behaved modes
 - interaction-matrix and control-matrix workflows
 - optional GPU-assisted paths when PyTorch is available
 - delay and limit settings for controller tuning
