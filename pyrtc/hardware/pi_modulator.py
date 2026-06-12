@@ -14,6 +14,7 @@ from pyrtc.modulator import Modulator
 from pyrtc.manager import launch_component
 from pyrtc.utils import set_from_config
 
+
 class PIModulator(Modulator):
     """Hardware modulator for a two-axis PI motion stage.
 
@@ -54,7 +55,9 @@ class PIModulator(Modulator):
             self.servos_on = conf["servos_on"]
             for axis in self.mod.axes:
                 self.mod.SVO(axis, int(conf["servos_on"]))
-            self.logger.info("Servo state set to %s for axes %s", self.servos_on, tuple(self.mod.axes))
+            self.logger.info(
+                "Servo state set to %s for axes %s", self.servos_on, tuple(self.mod.axes)
+            )
 
             if conf["auto_zero"]:
                 self.logger.info("Auto-zeroing PI modulator")
@@ -63,7 +66,9 @@ class PIModulator(Modulator):
             try:
                 self.define_circle()
             except Exception:
-                self.logger.exception("Failed to define modulation circle on first attempt; retrying after stop")
+                self.logger.exception(
+                    "Failed to define modulation circle on first attempt; retrying after stop"
+                )
                 self.stop()
                 self.define_circle()
         except Exception:
@@ -93,7 +98,7 @@ class PIModulator(Modulator):
                 table=self.wavetables[0],
                 firstpoint=0,
                 numpoints=num_points,
-                append='X',
+                append="X",
                 center=num_points // 2,
                 amplitude=self.amplitude_x,
                 offset=self.offset_x - self.amplitude_x // 2,
@@ -103,7 +108,7 @@ class PIModulator(Modulator):
                 table=self.wavetables[1],
                 firstpoint=num_points // 4 + self.phase_offset,
                 numpoints=num_points,
-                append='X',
+                append="X",
                 center=num_points // 2,
                 amplitude=self.amplitude_y,
                 offset=self.offset_y - self.amplitude_y // 2,
@@ -183,6 +188,6 @@ class PIModulator(Modulator):
             self.logger.exception("Failed to restart PI modulator")
             raise
 
-if __name__ == "__main__":
 
-    launch_component(PIModulator, "modulator", start = True)
+if __name__ == "__main__":
+    launch_component(PIModulator, "modulator", start=True)

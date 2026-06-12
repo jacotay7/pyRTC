@@ -54,14 +54,18 @@ def _listener(hardware=None) -> Listener:
 
 def test_get_returns_property():
     listener = _listener()
-    reply = listener.handle_request({"type": "get", "property": "gain", "protocol": PROTOCOL_VERSION})
+    reply = listener.handle_request(
+        {"type": "get", "property": "gain", "protocol": PROTOCOL_VERSION}
+    )
     assert reply["status"] == "OK"
     assert reply["property"] == 0.1
 
 
 def test_set_coerces_onto_current_type():
     listener = _listener()
-    reply = listener.handle_request({"type": "set", "property": "num_modes", "value": 12.0, "protocol": PROTOCOL_VERSION})
+    reply = listener.handle_request(
+        {"type": "set", "property": "num_modes", "value": 12.0, "protocol": PROTOCOL_VERSION}
+    )
     assert reply["status"] == "OK"
     assert listener.hardware.num_modes == 12
     assert isinstance(listener.hardware.num_modes, int)
@@ -69,25 +73,33 @@ def test_set_coerces_onto_current_type():
 
 def test_set_bool_string_false_is_false():
     listener = _listener()
-    reply = listener.handle_request({"type": "set", "property": "enabled", "value": "False", "protocol": PROTOCOL_VERSION})
+    reply = listener.handle_request(
+        {"type": "set", "property": "enabled", "value": "False", "protocol": PROTOCOL_VERSION}
+    )
     assert reply["status"] == "OK"
     assert listener.hardware.enabled is False
 
-    reply = listener.handle_request({"type": "set", "property": "enabled", "value": True, "protocol": PROTOCOL_VERSION})
+    reply = listener.handle_request(
+        {"type": "set", "property": "enabled", "value": True, "protocol": PROTOCOL_VERSION}
+    )
     assert reply["status"] == "OK"
     assert listener.hardware.enabled is True
 
 
 def test_set_unknown_property_reports_error():
     listener = _listener()
-    reply = listener.handle_request({"type": "set", "property": "missing", "value": 1, "protocol": PROTOCOL_VERSION})
+    reply = listener.handle_request(
+        {"type": "set", "property": "missing", "value": 1, "protocol": PROTOCOL_VERSION}
+    )
     assert reply["status"] == "BAD"
     assert "missing" in reply["error"]
 
 
 def test_run_invokes_function_with_args_and_returns_value():
     listener = _listener()
-    reply = listener.handle_request({"type": "run", "function": "echo", "args": [42], "protocol": PROTOCOL_VERSION})
+    reply = listener.handle_request(
+        {"type": "run", "function": "echo", "args": [42], "protocol": PROTOCOL_VERSION}
+    )
     assert reply["status"] == "OK"
     assert reply["property"] == 42
     assert listener.hardware.calls == [("echo", 42)]
@@ -95,37 +107,49 @@ def test_run_invokes_function_with_args_and_returns_value():
 
 def test_run_converts_numpy_results():
     listener = _listener()
-    scalar_reply = listener.handle_request({"type": "run", "function": "measure", "protocol": PROTOCOL_VERSION})
+    scalar_reply = listener.handle_request(
+        {"type": "run", "function": "measure", "protocol": PROTOCOL_VERSION}
+    )
     assert scalar_reply["property"] == 2.5
 
-    matrix_reply = listener.handle_request({"type": "run", "function": "matrix", "protocol": PROTOCOL_VERSION})
+    matrix_reply = listener.handle_request(
+        {"type": "run", "function": "matrix", "protocol": PROTOCOL_VERSION}
+    )
     assert matrix_reply["property"] == [[1.0, 0.0], [0.0, 1.0]]
 
 
 def test_run_drops_unserializable_results_but_succeeds():
     listener = _listener()
-    reply = listener.handle_request({"type": "run", "function": "opaque", "protocol": PROTOCOL_VERSION})
+    reply = listener.handle_request(
+        {"type": "run", "function": "opaque", "protocol": PROTOCOL_VERSION}
+    )
     assert reply["status"] == "OK"
     assert "property" not in reply
 
 
 def test_run_failure_carries_error_message():
     listener = _listener()
-    reply = listener.handle_request({"type": "run", "function": "boom", "protocol": PROTOCOL_VERSION})
+    reply = listener.handle_request(
+        {"type": "run", "function": "boom", "protocol": PROTOCOL_VERSION}
+    )
     assert reply["status"] == "BAD"
     assert "hardware fault" in reply["error"]
 
 
 def test_protocol_mismatch_is_rejected():
     listener = _listener()
-    reply = listener.handle_request({"type": "get", "property": "gain", "protocol": PROTOCOL_VERSION + 1})
+    reply = listener.handle_request(
+        {"type": "get", "property": "gain", "protocol": PROTOCOL_VERSION + 1}
+    )
     assert reply["status"] == "BAD"
     assert "protocol" in reply["error"]
 
 
 def test_unknown_type_and_missing_type_are_rejected():
     listener = _listener()
-    assert listener.handle_request({"type": "noop", "protocol": PROTOCOL_VERSION})["status"] == "BAD"
+    assert (
+        listener.handle_request({"type": "noop", "protocol": PROTOCOL_VERSION})["status"] == "BAD"
+    )
     assert listener.handle_request({"protocol": PROTOCOL_VERSION})["status"] == "BAD"
     assert listener.handle_request("not a dict")["status"] == "BAD"
 
@@ -200,7 +224,11 @@ def test_launcher_surfaces_child_error_message():
     launcher = HardwareLauncher("dummy.py", "c.yaml", 9999)
     launcher.running = True
     launcher.write = lambda message: None
-    launcher.read = lambda: {"status": "BAD", "error": "run 'boom' failed: hardware fault", "protocol": PROTOCOL_VERSION}
+    launcher.read = lambda: {
+        "status": "BAD",
+        "error": "run 'boom' failed: hardware fault",
+        "protocol": PROTOCOL_VERSION,
+    }
 
     assert launcher.run("boom") == -1
     assert "hardware fault" in launcher.last_error
@@ -350,7 +378,9 @@ def test_listener_listen_round_trip_over_socket():
     hardware = _Hardware()
     listener, rtc_side = _connected_listener(hardware)
     try:
-        rpc._socket_send_json(rtc_side, {"type": "get", "property": "gain", "protocol": PROTOCOL_VERSION})
+        rpc._socket_send_json(
+            rtc_side, {"type": "get", "property": "gain", "protocol": PROTOCOL_VERSION}
+        )
         listener.listen()
         reply, _ = rpc._socket_read_json(rtc_side, "")
         assert reply["status"] == "OK"

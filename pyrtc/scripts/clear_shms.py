@@ -35,7 +35,9 @@ def main(argv=None) -> int:
 
     parser = _build_arg_parser()
     args = parser.parse_args(argv)
-    logger = configure_logging_from_args(args, app_name="pyrtc-clear-shms", component_name="clear_shms")
+    logger = configure_logging_from_args(
+        args, app_name="pyrtc-clear-shms", component_name="clear_shms"
+    )
     logger.info("Clearing SHMs: %s", args.shms)
     streams.clear_shms(args.shms)
     return 0

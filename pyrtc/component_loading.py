@@ -85,9 +85,7 @@ def import_symbol_from_file(file_path: str, attr_name: str):
             module = importlib.import_module(canonical_name)
             return getattr(module, attr_name)
         except Exception:
-            logger.debug(
-                "Falling back to file-based import for %s", module_path, exc_info=True
-            )
+            logger.debug("Falling back to file-based import for %s", module_path, exc_info=True)
 
     module_name = f"pyrtc_custom_{module_path.stem}_{abs(hash(str(module_path))) & 0xFFFFFFFF:x}"
     spec = importlib.util.spec_from_file_location(module_name, module_path)

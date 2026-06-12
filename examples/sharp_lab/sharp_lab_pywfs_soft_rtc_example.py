@@ -26,15 +26,32 @@ from pyrtc.logging_utils import add_logging_cli_args, configure_logging_from_arg
 
 logger = get_logger("examples.sharp_lab.pywfs.soft")
 CONFIG_PATH = REPO_ROOT / "examples" / "sharp_lab" / "config_pywfs.yaml"
-DEFAULT_STREAMS = ["wfs", "wfs_raw", "wfc", "wfc_2d", "signal", "signal_2d", "psf_short", "psf_long", "strehl", "tiptilt"]
+DEFAULT_STREAMS = [
+    "wfs",
+    "wfs_raw",
+    "wfc",
+    "wfc_2d",
+    "signal",
+    "signal_2d",
+    "psf_short",
+    "psf_long",
+    "strehl",
+    "tiptilt",
+]
 
 
 # %% CLI
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run the SHARP lab PyWFS stack in soft-RTC mode.")
-    parser.add_argument("--duration", type=float, default=10.0, help="Seconds to run before stopping.")
-    parser.add_argument("--status-interval", type=float, default=1.0, help="Seconds between status lines.")
-    parser.add_argument("--no-clear-shms", action="store_true", help="Reuse any existing SHM blocks.")
+    parser.add_argument(
+        "--duration", type=float, default=10.0, help="Seconds to run before stopping."
+    )
+    parser.add_argument(
+        "--status-interval", type=float, default=1.0, help="Seconds between status lines."
+    )
+    parser.add_argument(
+        "--no-clear-shms", action="store_true", help="Reuse any existing SHM blocks."
+    )
     add_logging_cli_args(parser)
     return parser
 
@@ -60,7 +77,9 @@ def format_status_line(start_time: float) -> str:
 # %% Main walkthrough
 def main(argv=None) -> int:
     args = build_arg_parser().parse_args(argv)
-    configure_logging_from_args(args, app_name="pyrtc-sharp-lab", component_name="sharp_lab_pywfs_soft")
+    configure_logging_from_args(
+        args, app_name="pyrtc-sharp-lab", component_name="sharp_lab_pywfs_soft"
+    )
 
     manager = RTCManager.from_config_file(CONFIG_PATH, mode="soft")
 

@@ -9,7 +9,9 @@ def test_add_logging_cli_args_supports_runtime_overrides():
     parser = argparse.ArgumentParser()
     add_logging_cli_args(parser)
 
-    args = parser.parse_args(["--log-level", "DEBUG", "--log-dir", "logs", "--log-file", "custom.log"])
+    args = parser.parse_args(
+        ["--log-level", "DEBUG", "--log-dir", "logs", "--log-file", "custom.log"]
+    )
 
     assert args.log_level == "DEBUG"
     assert args.log_dir == "logs"

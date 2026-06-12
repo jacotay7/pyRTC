@@ -48,6 +48,7 @@ class _ColorFormatter(logging.Formatter):
     This formatter only changes the log-level field when color is enabled, which
     keeps terminal output easier to scan without affecting file logs.
     """
+
     def __init__(self, use_color: bool):
         super().__init__(
             fmt="%(asctime)s | %(levelname)-8s | %(processName)s | %(name)s | %(message)s",
@@ -180,7 +181,9 @@ def configure_logging(
     if export_env:
         os.environ[PYRTC_LOG_LEVEL_ENV] = logging.getLevelName(logger.level)
         resolved_log_dir = log_dir if log_dir is not None else os.environ.get(PYRTC_LOG_DIR_ENV)
-        resolved_log_file_env = log_file if log_file is not None else os.environ.get(PYRTC_LOG_FILE_ENV)
+        resolved_log_file_env = (
+            log_file if log_file is not None else os.environ.get(PYRTC_LOG_FILE_ENV)
+        )
         if resolved_log_dir:
             os.environ[PYRTC_LOG_DIR_ENV] = str(Path(resolved_log_dir).expanduser())
         elif PYRTC_LOG_DIR_ENV in os.environ and resolved_log_file_env:
@@ -204,7 +207,9 @@ def configure_logging(
 
 def ensure_logging_configured(*, app_name: str = "pyrtc", component_name=None) -> logging.Logger:
     logger = get_logger()
-    active_handlers = [handler for handler in logger.handlers if not isinstance(handler, logging.NullHandler)]
+    active_handlers = [
+        handler for handler in logger.handlers if not isinstance(handler, logging.NullHandler)
+    ]
     if active_handlers:
         return logger
     return configure_logging(app_name=app_name, component_name=component_name, export_env=False)
@@ -229,7 +234,9 @@ def add_logging_cli_args(parser: argparse.ArgumentParser) -> argparse.ArgumentPa
     return parser
 
 
-def configure_logging_from_args(args, *, app_name: str = "pyrtc", component_name=None) -> logging.Logger:
+def configure_logging_from_args(
+    args, *, app_name: str = "pyrtc", component_name=None
+) -> logging.Logger:
     return configure_logging(
         app_name=app_name,
         component_name=component_name,

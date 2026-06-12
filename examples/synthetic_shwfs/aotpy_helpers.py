@@ -35,7 +35,9 @@ def import_aotpy_or_raise(repo_root: Path):
             ) from exc
 
 
-def export_synthetic_session_to_aotpy(*, repo_root: Path, config: dict, config_path: Path, mode_label: str) -> tuple[str, Path, object]:
+def export_synthetic_session_to_aotpy(
+    *, repo_root: Path, config: dict, config_path: Path, mode_label: str
+) -> tuple[str, Path, object]:
     aotpy = import_aotpy_or_raise(repo_root)
 
     telemetry_dir = repo_root / "examples" / "synthetic_shwfs" / "telemetry"

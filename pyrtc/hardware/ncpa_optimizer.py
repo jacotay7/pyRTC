@@ -17,7 +17,13 @@ from pyrtc.logging_utils import get_logger
 from pyrtc.optimizer import Optimizer
 from pyrtc.rpc import Listener
 from pyrtc.streams import open_stream
-from pyrtc.utils import decrease_nice, get_tmp_filepath, read_yaml_file, set_from_config, set_affinity
+from pyrtc.utils import (
+    decrease_nice,
+    get_tmp_filepath,
+    read_yaml_file,
+    set_from_config,
+    set_affinity,
+)
 
 
 logger = get_logger(__name__)
@@ -29,6 +35,7 @@ def _input_stream_name(conf, stream_name: str) -> str:
     if isinstance(value, dict):
         value = value.get("shm", value.get("name", stream_name))
     return str(value)
+
 
 class NCPAOptimizer(Optimizer):
     """Optimizer that searches modal NCPA corrections.
@@ -87,7 +94,9 @@ class NCPAOptimizer(Optimizer):
         try:
             modal_coefs = np.zeros(self.wfc_dims, dtype=self.wfc_dtype)
             for i in range(self.start_mode, self.end_mode):
-                modal_coefs[i] = np.float32(trial.suggest_float(f'{i}', -self.correction_mag, self.correction_mag))
+                modal_coefs[i] = np.float32(
+                    trial.suggest_float(f"{i}", -self.correction_mag, self.correction_mag)
+                )
             if self.is_cl:
                 ref_slopes_adjust = np.zeros_like(self.orig_ref_slopes)
                 ref_slopes_adjust[self.valid_sub_aps] = self.im @ modal_coefs
@@ -125,7 +134,9 @@ class NCPAOptimizer(Optimizer):
 
                 self.slopes.run("load_ref_slopes")
                 self.slopes.set_property("ref_slopes_file", self.ref_slopes_file)
-                self.logger.info("Applied optimum NCPA correction in closed-loop mode overwrite=%s", overwrite)
+                self.logger.info(
+                    "Applied optimum NCPA correction in closed-loop mode overwrite=%s", overwrite
+                )
             else:
                 self.wfc_shm.write(modal_coefs)
                 self.logger.info("Applied optimum NCPA correction in open-loop mode")
@@ -155,11 +166,11 @@ class NCPAOptimizer(Optimizer):
             raise
         return
 
-if __name__ == "__main__":
 
-    #Prevents camera output from messing with communication
+if __name__ == "__main__":
+    # Prevents camera output from messing with communication
     original_stdout = sys.stdout
-    sys.stdout = open(os.devnull, 'w')
+    sys.stdout = open(os.devnull, "w")
 
     # Create argument parser
     parser = argparse.ArgumentParser(description="Read a config file from the command line.")
@@ -174,7 +185,7 @@ if __name__ == "__main__":
     conf = read_yaml_file(args.config)["optimizer"]
 
     pid = os.getpid()
-    set_affinity((conf["affinity"])%os.cpu_count())
+    set_affinity((conf["affinity"]) % os.cpu_count())
     decrease_nice(pid)
 
     component = NCPAOptimizer(conf=conf)
@@ -183,7 +194,7 @@ if __name__ == "__main__":
     # Go back to communicating with the main program through stdout
     sys.stdout = original_stdout
 
-    listener = Listener(component, port = int(args.port))
+    listener = Listener(component, port=int(args.port))
     while listener.running:
         listener.listen()
         time.sleep(1e-3)

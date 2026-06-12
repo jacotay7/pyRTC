@@ -109,8 +109,12 @@ def test_validate_system_config_resolves_relative_file_paths_against_config_file
 
     normalized = validate_system_config(conf, config_path=SYNTHETIC_CONFIG_PATH)
 
-    assert normalized["loop"]["im_file"] == str((SYNTHETIC_CONFIG_PATH.parent / "synthetic_identity_im.npy").resolve())
-    assert normalized["manager"]["component_files"]["loop"] == str((SYNTHETIC_CONFIG_PATH.parent / "../../pyrtc/loop.py").resolve())
+    assert normalized["loop"]["im_file"] == str(
+        (SYNTHETIC_CONFIG_PATH.parent / "synthetic_identity_im.npy").resolve()
+    )
+    assert normalized["manager"]["component_files"]["loop"] == str(
+        (SYNTHETIC_CONFIG_PATH.parent / "../../pyrtc/loop.py").resolve()
+    )
 
 
 def test_validate_system_config_rejects_missing_required_section():
@@ -220,7 +224,12 @@ def test_validate_system_config_rejects_component_restart_policy_for_unknown_sec
 def test_validate_system_config_rejects_signal_stream_shape_mismatch():
     conf = read_system_config(SYNTHETIC_CONFIG_PATH, validate=False)
     conf["streams"] = {
-        "signal": {"shape": [31], "dtype": "float32", "output_component": "slopes", "input_components": ["loop"]}
+        "signal": {
+            "shape": [31],
+            "dtype": "float32",
+            "output_component": "slopes",
+            "input_components": ["loop"],
+        }
     }
 
     with pytest.raises(ConfigValidationError, match="streams.signal"):

@@ -35,6 +35,7 @@ try:
         QVBoxLayout,
         QWidget,
     )
+
     _VIEWER_BACKEND_IMPORT_ERROR = None
 except ImportError as exc:
     _VIEWER_BACKEND_IMPORT_ERROR = exc
@@ -55,7 +56,9 @@ except ImportError as exc:
 
     FigureCanvas = _QtUnavailableBase
     Figure = _QtUnavailableBase
-    QAction = QApplication = QFrame = QGridLayout = QHBoxLayout = QInputDialog = QLabel = QMainWindow = QMenu = (  # type: ignore[assignment]
+    QAction = QApplication = QFrame = QGridLayout = QHBoxLayout = QInputDialog = QLabel = (
+        QMainWindow
+    ) = QMenu = (  # type: ignore[assignment]
         QPushButton
     ) = QScrollArea = QToolButton = QVBoxLayout = QWidget = QTimer = _QtUnavailableBase
     QSizePolicy = _UnavailableQSizePolicy()
@@ -71,7 +74,12 @@ except ImportError as exc:
         WidgetWithChildrenShortcut=0,
     )
 
-from .viewer_helpers import StreamConnection, compute_window_size, normalize_geometry_value, resolve_grid
+from .viewer_helpers import (
+    StreamConnection,
+    compute_window_size,
+    normalize_geometry_value,
+    resolve_grid,
+)
 
 
 @dataclass(frozen=True)
@@ -424,7 +432,9 @@ class Stream2DWidget(QFrame):
         self.colorbar.ax.yaxis.set_ticks_position("left")
         self.colorbar.ax.yaxis.set_label_position("left")
         self.colorbar.ax.yaxis.label.set_color(self.theme.text)
-        self.colorbar.ax.tick_params(colors=self.theme.subtext, labelleft=True, labelright=False, pad=2)
+        self.colorbar.ax.tick_params(
+            colors=self.theme.subtext, labelleft=True, labelright=False, pad=2
+        )
         for tick_label in self.colorbar.ax.get_yticklabels():
             tick_label.set_color(self.theme.subtext)
         self.colorbar.outline.set_edgecolor(self.theme.panel_border)
@@ -731,7 +741,9 @@ class MosaicViewerWindow(QMainWindow):
 
         self.increase_font_action = QAction("Increase Font Size", self)
         self.increase_font_action.setShortcut(QKeySequence.ZoomIn)
-        self.increase_font_action.triggered.connect(lambda: self.set_font_size(min(22, self.font_size + 1)))
+        self.increase_font_action.triggered.connect(
+            lambda: self.set_font_size(min(22, self.font_size + 1))
+        )
         self.increase_font_action.setShortcutContext(Qt.WidgetWithChildrenShortcut)
         self.addAction(self.increase_font_action)
         self._registered_actions.append(self.increase_font_action)
@@ -739,7 +751,9 @@ class MosaicViewerWindow(QMainWindow):
 
         self.decrease_font_action = QAction("Decrease Font Size", self)
         self.decrease_font_action.setShortcut(QKeySequence.ZoomOut)
-        self.decrease_font_action.triggered.connect(lambda: self.set_font_size(max(10, self.font_size - 1)))
+        self.decrease_font_action.triggered.connect(
+            lambda: self.set_font_size(max(10, self.font_size - 1))
+        )
         self.decrease_font_action.setShortcutContext(Qt.WidgetWithChildrenShortcut)
         self.addAction(self.decrease_font_action)
         self._registered_actions.append(self.decrease_font_action)
@@ -809,9 +823,7 @@ class MosaicViewerWindow(QMainWindow):
     def _set_summary(self, changed_panels=0):
         active = sum(cell is not None for cell in self.cells)
         geometry = normalize_geometry_value(self.rows * self.cols, f"{self.rows}x{self.cols}")
-        summary = (
-            f"Composite stream viewer  |  layout={geometry}  |  active={active}/{self.rows * self.cols}  |  updated={changed_panels}"
-        )
+        summary = f"Composite stream viewer  |  layout={geometry}  |  active={active}/{self.rows * self.cols}  |  updated={changed_panels}"
         if self._last_panel_errors:
             summary += f"  |  panel_errors={self._last_panel_errors}"
         self.summary_label.setText(summary)
@@ -823,7 +835,12 @@ class MosaicViewerWindow(QMainWindow):
                 panel_callback(panel)
             except Exception:
                 error_count += 1
-                logging.exception("Viewer panel action '%s' failed for cell %s (%s)", action_name, index, panel.connection.name)
+                logging.exception(
+                    "Viewer panel action '%s' failed for cell %s (%s)",
+                    action_name,
+                    index,
+                    panel.connection.name,
+                )
         self._last_panel_errors = error_count
         return error_count
 
@@ -839,7 +856,9 @@ class MosaicViewerWindow(QMainWindow):
             row_index = index // self.cols
             col_index = index % self.cols
             if name is None:
-                placeholder = AddPlotPlaceholder(lambda checked=False, idx=index: self.add_plot_at(idx))
+                placeholder = AddPlotPlaceholder(
+                    lambda checked=False, idx=index: self.add_plot_at(idx)
+                )
                 self.placeholders[index] = placeholder
                 self.grid_layout.addWidget(placeholder, row_index, col_index)
             else:
@@ -941,13 +960,17 @@ class MosaicViewerWindow(QMainWindow):
                     changed_panels += 1
             except Exception:
                 error_count += 1
-                logging.exception("Viewer panel refresh failed for cell %s (%s)", index, panel.connection.name)
+                logging.exception(
+                    "Viewer panel refresh failed for cell %s (%s)", index, panel.connection.name
+                )
         self._last_panel_errors = error_count
         self._set_summary(changed_panels)
 
     def toggle_all_colorbars(self):
         self._show_colorbars = not self._show_colorbars
-        self._apply_to_panels("toggle_colorbar", lambda panel: panel._toggle_colorbar(self._show_colorbars))
+        self._apply_to_panels(
+            "toggle_colorbar", lambda panel: panel._toggle_colorbar(self._show_colorbars)
+        )
         self._set_summary(0)
 
     def toggle_all_stats(self):
@@ -968,7 +991,9 @@ class MosaicViewerWindow(QMainWindow):
         event.accept()
 
 
-def launch_mosaic_viewer(argv, shm_names, fps, geometry, pixel_scale, static_vmin, static_vmax, theme_name):
+def launch_mosaic_viewer(
+    argv, shm_names, fps, geometry, pixel_scale, static_vmin, static_vmax, theme_name
+):
     """Create the Qt application, size the window, and start the event loop."""
 
     _require_viewer_backend()

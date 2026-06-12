@@ -50,7 +50,9 @@ DEFAULT_STREAMS = [
 # %% Command-line interface
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run the OOPAO-backed PyWFS soft-RTC tutorial.")
-    parser.add_argument("--duration", type=float, default=10.0, help="Seconds to run before stopping.")
+    parser.add_argument(
+        "--duration", type=float, default=10.0, help="Seconds to run before stopping."
+    )
     parser.add_argument(
         "--status-interval",
         type=float,
@@ -63,7 +65,9 @@ def build_arg_parser() -> argparse.ArgumentParser:
         default=1e-7,
         help="Poke amplitude used when computing the interaction matrix.",
     )
-    parser.add_argument("--gain", type=float, default=0.1, help="Loop gain used after IM calibration.")
+    parser.add_argument(
+        "--gain", type=float, default=0.1, help="Loop gain used after IM calibration."
+    )
     parser.add_argument(
         "--skip-im",
         action="store_true",
@@ -172,7 +176,9 @@ def prepare_loop(system: dict, *, gain: float, poke_amp: float, compute_im: bool
 
 def format_status_line(system: dict, elapsed: float) -> str:
     slopes = system["slopes"].read(block=False)
-    correction = np.asarray(getattr(system["dm"], "current_shape", system["dm"].read()), dtype=np.float64)
+    correction = np.asarray(
+        getattr(system["dm"], "current_shape", system["dm"].read()), dtype=np.float64
+    )
     residual_rms = float(np.sqrt(np.mean(slopes**2))) if slopes.size else 0.0
     correction_rms = float(np.sqrt(np.mean(correction**2))) if correction.size else 0.0
     strehl = float(system["psf"].strehl_ratio)
@@ -189,7 +195,9 @@ def format_status_line(system: dict, elapsed: float) -> str:
 # %% Main walkthrough
 def main(argv=None) -> int:
     args = build_arg_parser().parse_args(argv)
-    configure_logging_from_args(args, app_name="pyrtc-oopao-pywfs", component_name="pywfs_oopao_soft_example")
+    configure_logging_from_args(
+        args, app_name="pyrtc-oopao-pywfs", component_name="pywfs_oopao_soft_example"
+    )
 
     # Step 1: load the same YAML config used by the notebook walkthrough.
     config = read_yaml_file(str(CONFIG_PATH))

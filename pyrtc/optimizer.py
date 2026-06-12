@@ -5,6 +5,7 @@ hardware-assisted aberration optimization. These workflows are intentionally
 outside the steady-state real-time pipeline, which makes them a good fit for an
 Optuna-based trial/study abstraction.
 """
+
 import argparse
 import os
 import sys
@@ -19,6 +20,7 @@ from pyrtc.utils import decrease_nice, read_yaml_file, set_affinity, set_from_co
 
 
 logger = get_logger(__name__)
+
 
 class Optimizer(Component):
     """
@@ -55,7 +57,6 @@ class Optimizer(Component):
         Requests and applies the next trial from the study.
     """
 
-
     def __init__(self, conf) -> None:
         """
         Initialize the optimizer study and runtime configuration.
@@ -68,8 +69,9 @@ class Optimizer(Component):
         """
         try:
             self.name = "Optimizer"
-            self.study = optuna.create_study(direction='maximize',
-                                             sampler=optuna.samplers.CmaEsSampler())
+            self.study = optuna.create_study(
+                direction="maximize", sampler=optuna.samplers.CmaEsSampler()
+            )
             self.num_steps = set_from_config(conf, "num_steps", 100)
 
             super().__init__(conf)
@@ -146,8 +148,9 @@ class Optimizer(Component):
     def reset_study(self):
         component_logger = getattr(self, "logger", logger)
         try:
-            self.study = optuna.create_study(direction='maximize',
-                                             sampler=optuna.samplers.CmaEsSampler())
+            self.study = optuna.create_study(
+                direction="maximize", sampler=optuna.samplers.CmaEsSampler()
+            )
             component_logger.info("Reset optimizer study")
         except Exception:
             component_logger.exception("Failed to reset optimizer study")
@@ -157,10 +160,9 @@ class Optimizer(Component):
 
 
 if __name__ == "__main__":
-
-    #Prevents camera output from messing with communication
+    # Prevents camera output from messing with communication
     original_stdout = sys.stdout
-    sys.stdout = open(os.devnull, 'w')
+    sys.stdout = open(os.devnull, "w")
 
     # Create argument parser
     parser = argparse.ArgumentParser(description="Read a config file from the command line.")
@@ -175,7 +177,7 @@ if __name__ == "__main__":
     conf = read_yaml_file(args.config)
 
     pid = os.getpid()
-    set_affinity((conf["loop"]["affinity"])%os.cpu_count())
+    set_affinity((conf["loop"]["affinity"]) % os.cpu_count())
     decrease_nice(pid)
 
     component = Optimizer(conf=conf)
@@ -184,7 +186,7 @@ if __name__ == "__main__":
     # Go back to communicating with the main program through stdout
     sys.stdout = original_stdout
 
-    listener = Listener(component, port = int(args.port))
+    listener = Listener(component, port=int(args.port))
     while listener.running:
         listener.listen()
         time.sleep(1e-3)

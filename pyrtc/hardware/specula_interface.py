@@ -40,7 +40,9 @@ def _mapping_or_none(value: Any) -> dict[str, Any] | None:
     return dict(value)
 
 
-def _looks_like_specula_provider(provider_conf: Mapping[str, Any] | None, system_conf: Mapping[str, Any] | None = None) -> bool:
+def _looks_like_specula_provider(
+    provider_conf: Mapping[str, Any] | None, system_conf: Mapping[str, Any] | None = None
+) -> bool:
     provider_conf = _mapping_or_none(provider_conf)
     if provider_conf is not None:
         class_name = str(provider_conf.get("class_name", ""))
@@ -123,7 +125,9 @@ def derive_specula_pywfs_geometry(param: Mapping[str, Any]) -> dict[str, Any] | 
         }
 
     pup_margin = float(pyramid_conf.get("pup_margin", 2) or 2)
-    pup_dist = float(pyramid_conf.get("pup_dist", pup_diam + 2.0 * pup_margin) or (pup_diam + 2.0 * pup_margin))
+    pup_dist = float(
+        pyramid_conf.get("pup_dist", pup_diam + 2.0 * pup_margin) or (pup_diam + 2.0 * pup_margin)
+    )
 
     scale_x = float(width) / float(output_resolution)
     scale_y = float(height) / float(output_resolution)
@@ -264,7 +268,11 @@ def sync_specula_pywfs_config(
         return None
 
     slopes_type = _specula_slopes_type(mutable_system_conf)
-    geometry = derive_specula_shwfs_geometry(param_mapping) if slopes_type == "shwfs" else derive_specula_pywfs_geometry(param_mapping)
+    geometry = (
+        derive_specula_shwfs_geometry(param_mapping)
+        if slopes_type == "shwfs"
+        else derive_specula_pywfs_geometry(param_mapping)
+    )
     applied: dict[str, Any] = {}
 
     wfs_conf = mutable_system_conf.get("wfs")
@@ -353,11 +361,17 @@ def _load_specula_bindings(*, device_idx: int, precision: int) -> SimpleNamespac
         Pupilstop = importlib.import_module("specula.data_objects.pupilstop").Pupilstop
         SimulParams = importlib.import_module("specula.data_objects.simul_params").SimulParams
         Source = importlib.import_module("specula.data_objects.source").Source
-        AtmoEvolution = importlib.import_module("specula.processing_objects.atmo_evolution").AtmoEvolution
-        AtmoPropagation = importlib.import_module("specula.processing_objects.atmo_propagation").AtmoPropagation
+        AtmoEvolution = importlib.import_module(
+            "specula.processing_objects.atmo_evolution"
+        ).AtmoEvolution
+        AtmoPropagation = importlib.import_module(
+            "specula.processing_objects.atmo_propagation"
+        ).AtmoPropagation
         CCD = importlib.import_module("specula.processing_objects.ccd").CCD
         DM = importlib.import_module("specula.processing_objects.dm").DM
-        ModulatedPyramid = importlib.import_module("specula.processing_objects.modulated_pyramid").ModulatedPyramid
+        ModulatedPyramid = importlib.import_module(
+            "specula.processing_objects.modulated_pyramid"
+        ).ModulatedPyramid
         SH = importlib.import_module("specula.processing_objects.sh").SH
         PSF = importlib.import_module("specula.processing_objects.psf").PSF
     except Exception as exc:
@@ -444,7 +458,9 @@ def _circular_ring_counts(n_act: int) -> np.ndarray:
     return counts
 
 
-def _circular_zonal_display_mapping(n_act: int, angle_offset: float = 0.0) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+def _circular_zonal_display_mapping(
+    n_act: int, angle_offset: float = 0.0
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     ring_counts = _circular_ring_counts(n_act)
     display_size = int(n_act + len(ring_counts) - 1)
     center = 0.5 * (display_size - 1)
@@ -475,7 +491,9 @@ def _circular_zonal_display_mapping(n_act: int, angle_offset: float = 0.0) -> tu
             layout[row, col] = True
 
     if int(np.count_nonzero(layout)) != int(np.sum(ring_counts)):
-        raise ValueError("SPECULA circular actuator display mapping produced duplicate grid positions")
+        raise ValueError(
+            "SPECULA circular actuator display mapping produced duplicate grid positions"
+        )
 
     return layout, np.asarray(rows, dtype=np.intp), np.asarray(cols, dtype=np.intp)
 
@@ -539,7 +557,11 @@ class SPECULASystemContext:
     ) -> None:
         self.resource_conf = dict(resource_conf)
         self.system_conf = {} if system_conf is None else dict(system_conf)
-        self.param_file_path = self.resource_conf.get("param_file") if isinstance(self.resource_conf.get("param_file"), str) else None
+        self.param_file_path = (
+            self.resource_conf.get("param_file")
+            if isinstance(self.resource_conf.get("param_file"), str)
+            else None
+        )
         self.param = self._load_param_mapping(self.resource_conf.get("param"), self.param_file_path)
         self.components: dict[str, Any] = {}
         self._lock = threading.RLock()
@@ -547,14 +569,22 @@ class SPECULASystemContext:
         init_conf = _as_mapping(self.param.get("speculaInit"), name="speculaInit")
         self.device_idx = int(init_conf.get("device_idx", -1))
         self.precision = int(init_conf.get("precision", 1))
-        self._bindings = _load_specula_bindings(device_idx=self.device_idx, precision=self.precision)
+        self._bindings = _load_specula_bindings(
+            device_idx=self.device_idx, precision=self.precision
+        )
 
         self.simul_params = simul_params or self._build_simul_params()
         self.source = source or self._build_source()
         self.pupilstop = pupilstop or self._build_pupilstop()
-        self.seeing = seeing or self._build_signal_value("seeing", self._signal_conf().get("seeing", 0.8))
-        self.wind_speed = wind_speed or self._build_signal_value("wind_speed", self._signal_conf().get("wind_speed", [0.0]))
-        self.wind_direction = wind_direction or self._build_signal_value("wind_direction", self._signal_conf().get("wind_direction", [0.0]))
+        self.seeing = seeing or self._build_signal_value(
+            "seeing", self._signal_conf().get("seeing", 0.8)
+        )
+        self.wind_speed = wind_speed or self._build_signal_value(
+            "wind_speed", self._signal_conf().get("wind_speed", [0.0])
+        )
+        self.wind_direction = wind_direction or self._build_signal_value(
+            "wind_direction", self._signal_conf().get("wind_direction", [0.0])
+        )
         self.command = command or self._build_initial_command()
         self.atmo = atmo or self._build_atmo()
         self.dm = dm or self._build_dm()
@@ -632,7 +662,9 @@ class SPECULASystemContext:
         self.atmo.inputs["wind_speed"].set(self.wind_speed)
         self.atmo.inputs["wind_direction"].set(self.wind_direction)
         self.atmo.setup()
-        self.prop.inputs["atmo_layer_list"].set(self.atmo.outputs["layer_list"] if was_enabled else [])
+        self.prop.inputs["atmo_layer_list"].set(
+            self.atmo.outputs["layer_list"] if was_enabled else []
+        )
         self._refresh_propagation_setup()
         self.atmosphere_enabled = was_enabled
 
@@ -686,7 +718,12 @@ class SPECULASystemContext:
 
             return (
                 np.array(self._cached_psf_frame, copy=True),
-                np.array(self._cached_psf_model if self._cached_psf_model is not None else self._cached_psf_frame, copy=True),
+                np.array(
+                    self._cached_psf_model
+                    if self._cached_psf_model is not None
+                    else self._cached_psf_frame,
+                    copy=True,
+                ),
                 float(self._cached_psf_strehl),
                 float(self._cached_psf_tiptilt),
             )
@@ -762,8 +799,12 @@ class SPECULASystemContext:
 
         scaled_current = np.clip(current_psf / ref_peak, 0.0, None)
         scaled_reference = np.clip(reference / ref_peak, 0.0, None)
-        scaled_current = np.clip(scaled_current * np.iinfo(np.uint16).max, 0, np.iinfo(np.uint16).max).astype(np.uint16)
-        scaled_reference = np.clip(scaled_reference * np.iinfo(np.uint16).max, 0, np.iinfo(np.uint16).max).astype(np.uint16)
+        scaled_current = np.clip(
+            scaled_current * np.iinfo(np.uint16).max, 0, np.iinfo(np.uint16).max
+        ).astype(np.uint16)
+        scaled_reference = np.clip(
+            scaled_reference * np.iinfo(np.uint16).max, 0, np.iinfo(np.uint16).max
+        ).astype(np.uint16)
 
         self._cached_psf_frame = scaled_current
         self._cached_psf_model = scaled_reference
@@ -910,9 +951,7 @@ class SPECULASystemContext:
                 raise ValueError("SPECULA zonal DM configuration requires n_act >= 1")
 
             ifunc_kwargs = {
-                key: value
-                for key, value in ifunc_kwargs.items()
-                if key in ifunc_supported
+                key: value for key, value in ifunc_kwargs.items() if key in ifunc_supported
             }
 
             ifunc_obj = self._bindings.IFunc(**ifunc_kwargs)
@@ -959,7 +998,9 @@ class SPECULASystemContext:
                     f"but the SPECULA DM built {num_actuators}."
                 )
         else:
-            layout, display_rows, display_cols = _circular_zonal_display_mapping(n_act, dm_conf.get("angle_offset", 0.0))
+            layout, display_rows, display_cols = _circular_zonal_display_mapping(
+                n_act, dm_conf.get("angle_offset", 0.0)
+            )
             if int(np.count_nonzero(layout)) != num_actuators:
                 raise ValueError(
                     f"SPECULA circular geometry n_act={n_act} implies {int(np.count_nonzero(layout))} display sites, "
@@ -988,7 +1029,9 @@ class SPECULASystemContext:
         modal_to_command = np.linalg.pinv(zonal_ifunc.T) @ modal_ifunc.T
 
         if geom == "square" and not circ_geom:
-            actuator_support = _square_actuator_support_mask(n_act, dm_conf.get("obsratio", 0.0)).reshape(-1)
+            actuator_support = _square_actuator_support_mask(
+                n_act, dm_conf.get("obsratio", 0.0)
+            ).reshape(-1)
             if actuator_support.size != modal_to_command.shape[0]:
                 raise ValueError(
                     "SPECULA square actuator support mask size does not match the modal-to-command row count"
@@ -1133,7 +1176,12 @@ class SPECULAWFCorrector(WavefrontCorrector):
         # Resolve create_stream through the WavefrontCorrector module so test
         # doubles patched there are honoured for the 2D display stream too.
         wfc_module = importlib.import_module("pyrtc.wavefront_corrector")
-        self.correction_vector_2d = wfc_module.create_stream(self.output_stream_name("wfc_2d"), self.layout.shape, np.float32, gpu_device=self.gpu_device)
+        self.correction_vector_2d = wfc_module.create_stream(
+            self.output_stream_name("wfc_2d"),
+            self.layout.shape,
+            np.float32,
+            gpu_device=self.gpu_device,
+        )
         self.register_output_stream("wfc_2d", self.correction_vector_2d)
         self.correction_vector_2d_template = np.zeros(self.layout.shape, dtype=np.float32)
         self.write_stream("wfc_2d", self.correction_vector_2d_template)
@@ -1145,7 +1193,9 @@ class SPECULAWFCorrector(WavefrontCorrector):
         super().send_to_hardware()
         if self.correction_vector_2d is not None:
             self.correction_vector_2d_template.fill(0)
-            self.correction_vector_2d_template[self.display_rows, self.display_cols] = self.current_shape - self.flat
+            self.correction_vector_2d_template[self.display_rows, self.display_cols] = (
+                self.current_shape - self.flat
+            )
             self.write_stream("wfc_2d", self.correction_vector_2d_template)
         self.context.set_dm_command(self.current_shape.astype(np.float32, copy=False))
 
@@ -1267,7 +1317,9 @@ class SPECULAInterface(Component):
     ) -> None:
         self.conf = conf
         self.logger = get_logger(f"{self.__class__.__module__}.{self.__class__.__name__}")
-        self._standalone_mode = isinstance(conf, Mapping) and all(key in conf for key in ("wfs", "wfc"))
+        self._standalone_mode = isinstance(conf, Mapping) and all(
+            key in conf for key in ("wfs", "wfc")
+        )
 
         if self._standalone_mode:
             self.system_conf = dict(conf)
@@ -1294,7 +1346,11 @@ class SPECULAInterface(Component):
             self.wfc_section = "wfc"
             self.wfs_interface = SPECULAWFSensor(self.system_conf["wfs"], self.context)
             self.dm_interface = SPECULAWFCorrector(self.system_conf["wfc"], self.context)
-            self.psf_interface = SPECULAScienceCamera(self.system_conf["psf"], self.context) if "psf" in self.system_conf else None
+            self.psf_interface = (
+                SPECULAScienceCamera(self.system_conf["psf"], self.context)
+                if "psf" in self.system_conf
+                else None
+            )
             return
 
         self.system_conf = conf.get("_systemConfig", conf)
@@ -1361,7 +1417,12 @@ class SPECULAInterface(Component):
 
     @property
     def wind_speed(self) -> list[float]:
-        return np.asarray(self.context.wind_speed.value, dtype=np.float32).reshape(-1).astype(float).tolist()
+        return (
+            np.asarray(self.context.wind_speed.value, dtype=np.float32)
+            .reshape(-1)
+            .astype(float)
+            .tolist()
+        )
 
     @wind_speed.setter
     def wind_speed(self, value: Any) -> None:
@@ -1369,7 +1430,12 @@ class SPECULAInterface(Component):
 
     @property
     def wind_direction(self) -> list[float]:
-        return np.asarray(self.context.wind_direction.value, dtype=np.float32).reshape(-1).astype(float).tolist()
+        return (
+            np.asarray(self.context.wind_direction.value, dtype=np.float32)
+            .reshape(-1)
+            .astype(float)
+            .tolist()
+        )
 
     @wind_direction.setter
     def wind_direction(self, value: Any) -> None:
@@ -1377,7 +1443,10 @@ class SPECULAInterface(Component):
 
     @property
     def atmo_L0(self) -> list[float]:
-        return [float(item) for item in _as_mapping(self.context.param.get("atmo"), name="atmo").get("L0", [])]
+        return [
+            float(item)
+            for item in _as_mapping(self.context.param.get("atmo"), name="atmo").get("L0", [])
+        ]
 
     @atmo_L0.setter
     def atmo_L0(self, value: Any) -> None:
@@ -1385,7 +1454,10 @@ class SPECULAInterface(Component):
 
     @property
     def atmo_heights(self) -> list[float]:
-        return [float(item) for item in _as_mapping(self.context.param.get("atmo"), name="atmo").get("heights", [])]
+        return [
+            float(item)
+            for item in _as_mapping(self.context.param.get("atmo"), name="atmo").get("heights", [])
+        ]
 
     @atmo_heights.setter
     def atmo_heights(self, value: Any) -> None:
@@ -1393,7 +1465,10 @@ class SPECULAInterface(Component):
 
     @property
     def atmo_Cn2(self) -> list[float]:
-        return [float(item) for item in _as_mapping(self.context.param.get("atmo"), name="atmo").get("Cn2", [])]
+        return [
+            float(item)
+            for item in _as_mapping(self.context.param.get("atmo"), name="atmo").get("Cn2", [])
+        ]
 
     @atmo_Cn2.setter
     def atmo_Cn2(self, value: Any) -> None:
@@ -1401,7 +1476,9 @@ class SPECULAInterface(Component):
 
     @property
     def atmo_pixel_phasescreens(self) -> int:
-        return int(_as_mapping(self.context.param.get("atmo"), name="atmo").get("pixel_phasescreens", 0))
+        return int(
+            _as_mapping(self.context.param.get("atmo"), name="atmo").get("pixel_phasescreens", 0)
+        )
 
     @atmo_pixel_phasescreens.setter
     def atmo_pixel_phasescreens(self, value: Any) -> None:
@@ -1410,7 +1487,11 @@ class SPECULAInterface(Component):
     def get_hardware(self):
         if self._standalone_mode:
             return self.wfs_interface, self.dm_interface, self.psf_interface
-        return self.context.get_component("wfs"), self.context.get_component(self.wfc_section), self.context.get_component("psf")
+        return (
+            self.context.get_component("wfs"),
+            self.context.get_component(self.wfc_section),
+            self.context.get_component("psf"),
+        )
 
 
 if __name__ == "__main__":

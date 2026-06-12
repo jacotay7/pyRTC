@@ -34,7 +34,9 @@ def test_synthetic_wfc_default_layout_matches_expected_shape():
     from pyrtc.pipeline import clear_shms
     from pyrtc.hardware.synthetic_systems import SyntheticWFC
 
-    config = _load_example_module().read_yaml_file(str(REPO_ROOT / "examples" / "synthetic_shwfs" / "config.yaml"))
+    config = _load_example_module().read_yaml_file(
+        str(REPO_ROOT / "examples" / "synthetic_shwfs" / "config.yaml")
+    )
     clear_shms(["wfc", "wfc_2d"])
     wfc = SyntheticWFC(config["wfc"])
 

@@ -162,14 +162,16 @@ def test_main_config_json_output(monkeypatch):
 
     monkeypatch.setattr(measure_latency, "_emit_report", _capture_emit)
 
-    code = measure_latency.main([
-        "--config",
-        "examples/synthetic_shwfs/config.yaml",
-        "--format",
-        "json",
-        "--samples",
-        "16",
-    ])
+    code = measure_latency.main(
+        [
+            "--config",
+            "examples/synthetic_shwfs/config.yaml",
+            "--format",
+            "json",
+            "--samples",
+            "16",
+        ]
+    )
 
     assert code == 0
     assert emitted["format"] == "json"
@@ -178,55 +180,57 @@ def test_main_config_json_output(monkeypatch):
 
 
 def test_format_latency_report_includes_max_speed_in_khz():
-    report_text = latency.format_latency_report({
-        "source_shm": "wfs",
-        "target_shm": "wfc",
-        "stream_path": ["wfs", "signal", "wfc"],
-        "inferred_path": True,
-        "sample_count": 16,
-        "total": {
+    report_text = latency.format_latency_report(
+        {
             "source_shm": "wfs",
             "target_shm": "wfc",
-            "frame_shift": 0,
-            "count_offset": 0,
-            "count_delta_min": 0.0,
-            "count_delta_max": 0.0,
-            "statistics": {
-                "sample_count": 16,
-                "mean_seconds": 1e-3,
-                "std_seconds": 1e-4,
-                "jitter_seconds": 1e-4,
-                "min_seconds": 9e-4,
-                "max_seconds": 1.2e-3,
-                "p50_seconds": 1e-3,
-                "p95_seconds": 1.1e-3,
-                "p99_seconds": 1.15e-3,
-                "p999_seconds": 1.19e-3,
-            },
-        },
-        "segments": [
-            {
+            "stream_path": ["wfs", "signal", "wfc"],
+            "inferred_path": True,
+            "sample_count": 16,
+            "total": {
                 "source_shm": "wfs",
-                "target_shm": "signal",
+                "target_shm": "wfc",
                 "frame_shift": 0,
                 "count_offset": 0,
                 "count_delta_min": 0.0,
                 "count_delta_max": 0.0,
                 "statistics": {
                     "sample_count": 16,
-                    "mean_seconds": 5e-4,
-                    "std_seconds": 2e-5,
-                    "jitter_seconds": 2e-5,
-                    "min_seconds": 4.5e-4,
-                    "max_seconds": 5.2e-4,
-                    "p50_seconds": 5e-4,
-                    "p95_seconds": 5.1e-4,
-                    "p99_seconds": 5.15e-4,
-                    "p999_seconds": 5.19e-4,
+                    "mean_seconds": 1e-3,
+                    "std_seconds": 1e-4,
+                    "jitter_seconds": 1e-4,
+                    "min_seconds": 9e-4,
+                    "max_seconds": 1.2e-3,
+                    "p50_seconds": 1e-3,
+                    "p95_seconds": 1.1e-3,
+                    "p99_seconds": 1.15e-3,
+                    "p999_seconds": 1.19e-3,
                 },
             },
-        ],
-    })
+            "segments": [
+                {
+                    "source_shm": "wfs",
+                    "target_shm": "signal",
+                    "frame_shift": 0,
+                    "count_offset": 0,
+                    "count_delta_min": 0.0,
+                    "count_delta_max": 0.0,
+                    "statistics": {
+                        "sample_count": 16,
+                        "mean_seconds": 5e-4,
+                        "std_seconds": 2e-5,
+                        "jitter_seconds": 2e-5,
+                        "min_seconds": 4.5e-4,
+                        "max_seconds": 5.2e-4,
+                        "p50_seconds": 5e-4,
+                        "p95_seconds": 5.1e-4,
+                        "p99_seconds": 5.15e-4,
+                        "p999_seconds": 5.19e-4,
+                    },
+                },
+            ],
+        }
+    )
 
     assert "Mean: 1.000 ms" in report_text
     assert "Max speed (from full-loop P99): 1.150 ms (max speed 0.870 kHz)" in report_text

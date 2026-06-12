@@ -22,6 +22,7 @@ torch = None
 
 try:
     import torch  # noqa: F401  (availability probe for normalize_gpu_device)
+
     TORCH_AVAILABLE = True
 except Exception:
     TORCH_AVAILABLE = False
@@ -42,7 +43,6 @@ def normalize_gpu_device(gpu_device, context: str = ""):
         )
         return None
     return gpu_device
-
 
 
 def create_stream(name, shape, dtype, gpu_device=None):
@@ -175,7 +175,10 @@ def expected_output_shm_specs_for_config(system_conf: dict) -> dict[str, dict[st
         image_shape = (width, height)
         if downsample > 0:
             image_shape = (max(1, width // downsample), max(1, height // downsample))
-        specs[output_aliases.get("wfs_raw", "wfs_raw")] = {"shape": (width, height), "dtype": np.uint16}
+        specs[output_aliases.get("wfs_raw", "wfs_raw")] = {
+            "shape": (width, height),
+            "dtype": np.uint16,
+        }
         specs[output_aliases.get("wfs", "wfs")] = {"shape": image_shape, "dtype": np.int32}
 
     slopes_conf = system_conf.get("slopes")
@@ -191,8 +194,14 @@ def expected_output_shm_specs_for_config(system_conf: dict) -> dict[str, dict[st
             num_regions = max(1, width // max(1, spacing))
             signal2d_shape = (2 * num_regions, num_regions)
             signal_size = int(np.prod(signal2d_shape))
-            specs[output_aliases.get("signal", "signal")] = {"shape": (signal_size,), "dtype": np.float32}
-            specs[output_aliases.get("signal_2d", "signal_2d")] = {"shape": signal2d_shape, "dtype": np.float32}
+            specs[output_aliases.get("signal", "signal")] = {
+                "shape": (signal_size,),
+                "dtype": np.float32,
+            }
+            specs[output_aliases.get("signal_2d", "signal_2d")] = {
+                "shape": signal2d_shape,
+                "dtype": np.float32,
+            }
         elif wfs_type == "pywfs":
             from pyrtc.utils import generate_circular_aperture_mask
 
@@ -208,8 +217,14 @@ def expected_output_shm_specs_for_config(system_conf: dict) -> dict[str, dict[st
             pupil_pixel_count = int(np.count_nonzero(pupil_template))
             signal_size = int(2 * pupil_pixel_count)
             signal2d_shape = (int(2 * pupil_radius), int(4 * pupil_radius))
-            specs[output_aliases.get("signal", "signal")] = {"shape": (signal_size,), "dtype": np.float32}
-            specs[output_aliases.get("signal_2d", "signal_2d")] = {"shape": signal2d_shape, "dtype": np.float32}
+            specs[output_aliases.get("signal", "signal")] = {
+                "shape": (signal_size,),
+                "dtype": np.float32,
+            }
+            specs[output_aliases.get("signal_2d", "signal_2d")] = {
+                "shape": signal2d_shape,
+                "dtype": np.float32,
+            }
 
     wfc_conf = system_conf.get("wfc")
     if isinstance(wfc_conf, dict):
@@ -218,14 +233,23 @@ def expected_output_shm_specs_for_config(system_conf: dict) -> dict[str, dict[st
         specs[output_aliases.get("wfc", "wfc")] = {"shape": (num_modes,), "dtype": np.float32}
         display_grid_size = int(wfc_conf.get("display_grid_size", 33))
         if display_grid_size > 0:
-            specs[output_aliases.get("wfc_2d", "wfc_2d")] = {"shape": (display_grid_size, display_grid_size), "dtype": np.float32}
+            specs[output_aliases.get("wfc_2d", "wfc_2d")] = {
+                "shape": (display_grid_size, display_grid_size),
+                "dtype": np.float32,
+            }
 
     psf_conf = system_conf.get("psf")
     if isinstance(psf_conf, dict):
         output_aliases = _stream_aliases(psf_conf, "output_streams")
         psf_shape = (int(psf_conf.get("width", 1)), int(psf_conf.get("height", 1)))
-        specs[output_aliases.get("psf_short", "psf_short")] = {"shape": psf_shape, "dtype": np.int32}
-        specs[output_aliases.get("psf_long", "psf_long")] = {"shape": psf_shape, "dtype": np.float64}
+        specs[output_aliases.get("psf_short", "psf_short")] = {
+            "shape": psf_shape,
+            "dtype": np.int32,
+        }
+        specs[output_aliases.get("psf_long", "psf_long")] = {
+            "shape": psf_shape,
+            "dtype": np.float64,
+        }
         specs[output_aliases.get("strehl", "strehl")] = {"shape": (1,), "dtype": np.float64}
         specs[output_aliases.get("tiptilt", "tiptilt")] = {"shape": (1,), "dtype": np.float64}
 
@@ -238,7 +262,9 @@ def expected_output_shms_for_config(system_conf: dict) -> list[str]:
     return list(expected_output_shm_specs_for_config(system_conf))
 
 
-def reconcile_expected_output_shms(system_conf: dict, *, force_rebuild: bool = False) -> tuple[list[str], list[str]]:
+def reconcile_expected_output_shms(
+    system_conf: dict, *, force_rebuild: bool = False
+) -> tuple[list[str], list[str]]:
     specs = expected_output_shm_specs_for_config(system_conf)
     rebuilt: list[str] = []
     reused: list[str] = []
@@ -259,7 +285,6 @@ def reconcile_expected_output_shms(system_conf: dict, *, force_rebuild: bool = F
     if reused:
         logger.debug("Reused matching SHMs: %s", ", ".join(reused))
     return rebuilt, reused
-
 
 
 def _stream_aliases(section_conf: dict, mapping_name: str) -> dict[str, str]:

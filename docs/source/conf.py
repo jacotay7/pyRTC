@@ -10,12 +10,10 @@
 # add these directories to sys.path here. If the directory is relative to the
 # documentation root, use os.path.abspath to make it absolute, like shown here.
 #
-import datetime
 import os
 import sys
 from typing import Dict
 
-import sphinx_rtd_theme
 
 # We CANNOT enable 'sphinxcontrib.spelling' because ReadTheDocs.org does not support
 # PyEnchant.
@@ -42,10 +40,10 @@ sys.path.insert(0, os.path.abspath(".."))
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
-project = 'pyrtc'
-copyright = '2024, Jacob Taylor'
-author = 'Jacob Taylor'
-release = '1.0.0'
+project = "pyrtc"
+copyright = "2024, Jacob Taylor"
+author = "Jacob Taylor"
+release = "1.0.0"
 
 # -- General configuration ---------------------------------------------------
 
@@ -62,7 +60,7 @@ extensions = [
     "sphinx.ext.mathjax",
     "sphinx.ext.ifconfig",
     "sphinx.ext.viewcode",
-    'sphinx_rtd_theme',
+    "sphinx_rtd_theme",
     # 'sphinx.ext.intersphinx',
     # 'sphinx.ext.doctest'
 ]
@@ -116,6 +114,7 @@ html_logo = "_static/img/logo.png"
 
 def setup(app):
     app.add_css_file("_static/css/pyrtc_theme.css")
+
 
 # Theme options are theme-specific and customize the look and feel of a theme
 # further.  For a list of options available for each theme, see the

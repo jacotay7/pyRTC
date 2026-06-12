@@ -17,6 +17,7 @@ from rotpy.system import SpinSystem
 
 logger = get_logger(__name__)
 
+
 class SpinnakerScienceCamera(ScienceCamera):
     """Science-camera wrapper for cameras exposed through ``rotpy``.
 
@@ -31,7 +32,9 @@ class SpinnakerScienceCamera(ScienceCamera):
             super().__init__(conf)
 
             system = SpinSystem()
-            cameras = CameraList.create_from_system(system, update_cams=True, update_interfaces=True)
+            cameras = CameraList.create_from_system(
+                system, update_cams=True, update_interfaces=True
+            )
 
             self.index = conf["index"]
             self.camera = cameras.create_camera_by_index(self.index)
@@ -40,8 +43,8 @@ class SpinnakerScienceCamera(ScienceCamera):
 
             if "bit_depth" in conf:
                 self.set_bit_depth(conf["bit_depth"])
-            self.camera.camera_nodes.ExposureAuto.set_node_value_from_str('Off', verify=True)
-            self.camera.camera_nodes.GainAuto.set_node_value_from_str('Off', verify=True)
+            self.camera.camera_nodes.ExposureAuto.set_node_value_from_str("Off", verify=True)
+            self.camera.camera_nodes.GainAuto.set_node_value_from_str("Off", verify=True)
             if "binning" in conf:
                 self.set_binning(conf["binning"])
             if "exposure" in conf:
@@ -121,9 +124,9 @@ class SpinnakerScienceCamera(ScienceCamera):
         try:
             super().set_bit_depth(bit_depth)
             if self.bit_depth == 8:
-                self.camera.camera_nodes.PixelFormat.set_node_value_from_str('Mono8', verify=True)
+                self.camera.camera_nodes.PixelFormat.set_node_value_from_str("Mono8", verify=True)
             elif self.bit_depth == 16:
-                self.camera.camera_nodes.PixelFormat.set_node_value_from_str('Mono16', verify=True)
+                self.camera.camera_nodes.PixelFormat.set_node_value_from_str("Mono16", verify=True)
             self.logger.info("Applied Spinnaker bit_depth=%s", self.bit_depth)
         except Exception:
             self.logger.exception("Failed to apply Spinnaker bit_depth=%s", bit_depth)
@@ -134,9 +137,7 @@ class SpinnakerScienceCamera(ScienceCamera):
     def expose(self):
 
         self.img = self.camera.get_next_image(timeout=5)
-        self.data = np.ndarray(self.image_shape,
-                               buffer= self.img.get_image_data(),
-                               dtype=np.uint16)
+        self.data = np.ndarray(self.image_shape, buffer=self.img.get_image_data(), dtype=np.uint16)
         super().expose()
 
         return
@@ -158,6 +159,6 @@ class SpinnakerScienceCamera(ScienceCamera):
 
         return
 
-if __name__ == "__main__":
 
-    launch_component(SpinnakerScienceCamera, "psf", start = True)
+if __name__ == "__main__":
+    launch_component(SpinnakerScienceCamera, "psf", start=True)

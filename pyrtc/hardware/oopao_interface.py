@@ -55,6 +55,7 @@ def _oopao_slopes_type(system_conf: Mapping[str, Any] | None) -> str:
     slopes_type = slopes_type.strip().lower()
     return slopes_type or "pywfs"
 
+
 class OOPAOWFSensor(WavefrontSensor):
     """Wavefront-sensor wrapper around an OOPAO wavefront sensor.
 
@@ -85,13 +86,13 @@ class OOPAOWFSensor(WavefrontSensor):
         # Without atmosphere, OOPAO does not reset the source state for us.
         # Rebuilding the source/telescope path each frame prevents the DM OPD
         # from accumulating across repeated exposures of a static command.
-        self.ngs ** self.tel
+        self.ngs**self.tel
         self.ngs * self.dm * self.wfs
 
     def expose(self):
         self._propagate_source()
 
-        #Generate a new exposure
+        # Generate a new exposure
         self.data = self.wfs.cam.frame.astype(np.uint16)
         super().expose()
 
@@ -102,6 +103,7 @@ class OOPAOWFSensor(WavefrontSensor):
 
     def remove_atmosphere(self):
         self.context.remove_atmosphere()
+
 
 class OOPAOWFCorrector(WavefrontCorrector):
     """Wavefront-corrector wrapper for an OOPAO deformable mirror.
@@ -120,7 +122,7 @@ class OOPAOWFCorrector(WavefrontCorrector):
         if self.section_name:
             self.context.register_component(self.section_name, self)
 
-        #Set-up additional pyrtc parameters from simulation.
+        # Set-up additional pyrtc parameters from simulation.
         # The OOPAO ``validAct`` mask is a flat boolean array with one entry
         # per pupil-grid position (e.g. 441 entries for a 21x21 grid), where
         # only a subset (e.g. 357) are valid actuators. The configured
@@ -159,7 +161,7 @@ class OOPAOWFCorrector(WavefrontCorrector):
         layout = np.asarray(self.dm.validAct).reshape(grid_size, grid_size).astype(bool)
         self.set_layout(layout)
 
-    def read_m2c(self, filename=''):
+    def read_m2c(self, filename=""):
         self.set_m2c(None)
 
     def send_to_hardware(self):
@@ -192,13 +194,17 @@ class OOPAOScienceCamera(ScienceCamera):
         if self.section_name:
             self.context.register_component(self.section_name, self)
         self._reference_psf = self._render_reference_psf()
-        self._reference_peak = float(np.max(self._reference_psf)) if self._reference_psf.size else 1.0
+        self._reference_peak = (
+            float(np.max(self._reference_psf)) if self._reference_psf.size else 1.0
+        )
         if self._reference_peak <= 0:
             self._reference_peak = 1.0
-        self.set_model_psf(self._scale_psf_to_detector(self._reference_psf).astype(self.psf_long_dtype))
+        self.set_model_psf(
+            self._scale_psf_to_detector(self._reference_psf).astype(self.psf_long_dtype)
+        )
 
     def _compute_psf(self, opd_no_pupil):
-        self.src ** self.tel
+        self.src**self.tel
         self.src.OPD_no_pupil = opd_no_pupil
         # OOPAO 4.x renamed ``compute_psf`` to ``computePSF`` and the
         # ``zero_padding_factor`` argument to ``zeroPaddingFactor``. The new
@@ -298,6 +304,7 @@ class OOPAOScienceCamera(ScienceCamera):
     def remove_atmosphere(self):
         self.context.remove_atmosphere()
 
+
 class OOPAOSystemContext:
     """Builds and owns the shared OOPAO simulation objects for soft-rtc components.
 
@@ -308,10 +315,23 @@ class OOPAOSystemContext:
 
     OBJECT_NAMES = ("tel", "tel_psf", "ngs", "src", "atm", "dm", "wfs")
 
-    def __init__(self, resource_conf, system_conf=None, tel=None, tel_psf=None, ngs=None, src=None, atm=None, dm=None, wfs=None) -> None:
+    def __init__(
+        self,
+        resource_conf,
+        system_conf=None,
+        tel=None,
+        tel_psf=None,
+        ngs=None,
+        src=None,
+        atm=None,
+        dm=None,
+        wfs=None,
+    ) -> None:
         self.resource_conf = dict(resource_conf)
         self.system_conf = {} if system_conf is None else dict(system_conf)
-        self.param = self._load_param_mapping(self.resource_conf.get("param"), self.resource_conf.get("param_file"))
+        self.param = self._load_param_mapping(
+            self.resource_conf.get("param"), self.resource_conf.get("param_file")
+        )
         self.atmosphere_enabled = False
         self.components: dict[str, Any] = {}
         self.tel_input = tel
@@ -357,7 +377,9 @@ class OOPAOSystemContext:
             slopes_type = _oopao_slopes_type(self.system_conf)
             if slopes_type == "shwfs":
                 if ShackHartmann is None:
-                    raise ImportError("OOPAO ShackHartmann support is unavailable in the current environment")
+                    raise ImportError(
+                        "OOPAO ShackHartmann support is unavailable in the current environment"
+                    )
                 wfs_factory = ShackHartmann
             else:
                 wfs_factory = Pyramid
@@ -445,14 +467,22 @@ class OOPAOSystemContext:
             for parameter_name, parameter in signature.parameters.items():
                 if parameter_name == "self":
                     continue
-                if parameter.kind in (inspect.Parameter.POSITIONAL_ONLY, inspect.Parameter.VAR_POSITIONAL, inspect.Parameter.VAR_KEYWORD):
+                if parameter.kind in (
+                    inspect.Parameter.POSITIONAL_ONLY,
+                    inspect.Parameter.VAR_POSITIONAL,
+                    inspect.Parameter.VAR_KEYWORD,
+                ):
                     continue
                 if parameter_name in extra_kwargs:
                     kwargs[parameter_name] = extra_kwargs[parameter_name]
                     continue
                 if parameter_name in self.param:
                     value = self.param[parameter_name]
-                    if object_name == "dm" and parameter_name == "altitude" and not np.isscalar(value):
+                    if (
+                        object_name == "dm"
+                        and parameter_name == "altitude"
+                        and not np.isscalar(value)
+                    ):
                         logger.info(
                             "Skipping non-scalar 'altitude' when building OOPAO object 'dm'; treating it as atmosphere layer heights"
                         )
@@ -479,10 +509,23 @@ class OOPAOInterface(Component):
     reuse this provider instance inside the same soft-rtc manager process.
     """
 
-    def __init__(self, conf, param=None, tel=None, tel_psf=None, ngs=None, src=None, atm=None, dm=None, wfs=None) -> None:
+    def __init__(
+        self,
+        conf,
+        param=None,
+        tel=None,
+        tel_psf=None,
+        ngs=None,
+        src=None,
+        atm=None,
+        dm=None,
+        wfs=None,
+    ) -> None:
         self.conf = conf
         self.logger = get_logger(f"{self.__class__.__module__}.{self.__class__.__name__}")
-        self._standalone_mode = isinstance(conf, Mapping) and all(key in conf for key in ("wfs", "wfc", "psf"))
+        self._standalone_mode = isinstance(conf, Mapping) and all(
+            key in conf for key in ("wfs", "wfc", "psf")
+        )
         if self._standalone_mode:
             self.system_conf = dict(conf)
             resource_conf = {"param": param} if param is not None else {}
@@ -546,8 +589,12 @@ class OOPAOInterface(Component):
         wfc_section = self.wfc_section
         wfc_component = self.context.get_component(wfc_section)
         if wfc_component is None:
-            raise RuntimeError(f"OOPAOInterface: wavefront-corrector component '{wfc_section}' is not active")
-        num_modes = int(self.context.system_conf.get(wfc_section, {}).get("num_modes", self.kl_basis.shape[1]))
+            raise RuntimeError(
+                f"OOPAOInterface: wavefront-corrector component '{wfc_section}' is not active"
+            )
+        num_modes = int(
+            self.context.system_conf.get(wfc_section, {}).get("num_modes", self.kl_basis.shape[1])
+        )
         wfc_component.set_m2c(self.kl_basis[:, :num_modes])
         self.logger.info("Loaded KL basis into %s with num_modes=%s", wfc_section, num_modes)
         return num_modes
@@ -577,18 +624,21 @@ class OOPAOInterface(Component):
             self.context.get_component("psf"),
         )
 
+
 _OOPAOWFSensor = OOPAOWFSensor
 _OOPAOWFCorrector = OOPAOWFCorrector
 _OOPAOScienceCamera = OOPAOScienceCamera
 
 if __name__ == "__main__":
-
     # Create argument parser
     parser = argparse.ArgumentParser(description="Read a config file from the command line.")
 
     # Add command-line argument for the config file
     parser.add_argument("-c", "--config", required=True, help="Path to the pyrtc config file")
-    parser.add_argument("--param-file", help="Path to an OOPAO parameter YAML file used to build the simulator objects")
+    parser.add_argument(
+        "--param-file",
+        help="Path to an OOPAO parameter YAML file used to build the simulator objects",
+    )
     parser.add_argument("-p", "--port", required=True, help="Port for communication")
 
     # Parse command-line arguments
@@ -597,14 +647,14 @@ if __name__ == "__main__":
     conf = read_yaml_file(args.config)
 
     pid = os.getpid()
-    set_affinity((conf["wfs"]["affinity"])%os.cpu_count())
+    set_affinity((conf["wfs"]["affinity"]) % os.cpu_count())
     decrease_nice(pid)
 
     param = read_yaml_file(args.param_file) if args.param_file else None
 
     sim = OOPAOInterface(conf=conf, param=param)
 
-    listener = Listener(sim, port= int(args.port))
+    listener = Listener(sim, port=int(args.port))
     while listener.running:
         listener.listen()
         time.sleep(1e-3)

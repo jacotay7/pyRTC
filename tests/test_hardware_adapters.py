@@ -237,7 +237,9 @@ def test_alpao_dm_init_and_layout(monkeypatch, tmp_path):
         ("PIModulator", ".pi_modulator", "pipython"),
     ],
 )
-def test_hardware_lazy_import_reports_missing_dependency(monkeypatch, symbol_name, module_name, missing_dependency):
+def test_hardware_lazy_import_reports_missing_dependency(
+    monkeypatch, symbol_name, module_name, missing_dependency
+):
     hardware = importlib.import_module("pyrtc.hardware")
     hardware.__dict__.pop(symbol_name, None)
 
@@ -262,7 +264,14 @@ def _oopao_conf():
     return {
         "wfs": {"name": "wfs", "width": 2, "height": 2, "dark_count": 1, "functions": []},
         "wfc": {"name": "wfc", "num_actuators": 4, "num_modes": 4, "functions": []},
-        "psf": {"name": "psf", "width": 2, "height": 2, "dark_count": 1, "integration": 1, "functions": []},
+        "psf": {
+            "name": "psf",
+            "width": 2,
+            "height": 2,
+            "dark_count": 1,
+            "integration": 1,
+            "functions": [],
+        },
     }
 
 
@@ -282,7 +291,13 @@ def _specula_param():
         "pupilstop": {},
         "atmo": {"L0": [25.0], "heights": [0.0], "Cn2": [1.0], "pixel_phasescreens": 32},
         "propagation": {"wavelengthInNm": 750},
-        "pyramid": {"wavelengthInNm": 750, "fov": 2.0, "pup_diam": 4, "output_resolution": 8, "mod_amp": 0.0},
+        "pyramid": {
+            "wavelengthInNm": 750,
+            "fov": 2.0,
+            "pup_diam": 4,
+            "output_resolution": 8,
+            "mod_amp": 0.0,
+        },
         "detector": {"size": [8, 8], "dt": 0.001, "bandw": 300},
         "dm": {"height": 0.0, "type_str": "zonal", "geom": "square", "n_act": 2, "obsratio": 0.0},
         "basis": {"type_str": "zernike", "obsratio": 0.0},
@@ -320,7 +335,9 @@ def _install_fake_specula(monkeypatch):
             self.value = np.asarray(value, dtype=np.float32)
 
     class _SimulParams:
-        def __init__(self, pixel_pupil, pixel_pitch, root_dir=".", total_time=0.01, time_step=0.001):
+        def __init__(
+            self, pixel_pupil, pixel_pitch, root_dir=".", total_time=0.01, time_step=0.001
+        ):
             self.pixel_pupil = pixel_pupil
             self.pixel_pitch = pixel_pitch
             self.root_dir = root_dir
@@ -328,7 +345,14 @@ def _install_fake_specula(monkeypatch):
             self.time_step = time_step
 
     class _Source:
-        def __init__(self, polar_coordinates, magnitude, wavelengthInNm, target_device_idx=None, precision=None):
+        def __init__(
+            self,
+            polar_coordinates,
+            magnitude,
+            wavelengthInNm,
+            target_device_idx=None,
+            precision=None,
+        ):
             self.polar_coordinates = polar_coordinates
             self.magnitude = magnitude
             self.wavelengthInNm = wavelengthInNm
@@ -367,7 +391,15 @@ def _install_fake_specula(monkeypatch):
             return None
 
     class _DM:
-        def __init__(self, simul_params, n_act=2, type_str="zonal", target_device_idx=None, precision=None, **kwargs):
+        def __init__(
+            self,
+            simul_params,
+            n_act=2,
+            type_str="zonal",
+            target_device_idx=None,
+            precision=None,
+            **kwargs,
+        ):
             ifunc = kwargs.get("ifunc")
             if ifunc is not None and hasattr(ifunc, "influence_function"):
                 influence_function = np.asarray(ifunc.influence_function, dtype=np.float32)
@@ -396,7 +428,9 @@ def _install_fake_specula(monkeypatch):
         def trigger(self):
             command = self.inputs["in_command"].get().value
             self.outputs["out_layer"].command = np.asarray(command, dtype=np.float32)
-            self.outputs["out_layer"].generation_time = self.inputs["in_command"].get().generation_time
+            self.outputs["out_layer"].generation_time = (
+                self.inputs["in_command"].get().generation_time
+            )
 
         def post_trigger(self):
             return None
@@ -407,7 +441,9 @@ def _install_fake_specula(monkeypatch):
             self.command_sum = 0.0
 
     class _AtmoPropagation:
-        def __init__(self, simul_params, source_dict, target_device_idx=None, precision=None, **kwargs):
+        def __init__(
+            self, simul_params, source_dict, target_device_idx=None, precision=None, **kwargs
+        ):
             self.inputs = {"atmo_layer_list": _Input(), "common_layer_list": _Input()}
             self.outputs = {"out_on_axis_source_ef": _ElectricField()}
             self.inputs_changed = False
@@ -448,7 +484,14 @@ def _install_fake_specula(monkeypatch):
             self.generation_time = 0
 
     class _ModulatedPyramid:
-        def __init__(self, simul_params, output_resolution=8, target_device_idx=None, precision=None, **kwargs):
+        def __init__(
+            self,
+            simul_params,
+            output_resolution=8,
+            target_device_idx=None,
+            precision=None,
+            **kwargs,
+        ):
             self.inputs = {"in_ef": _Input()}
             self.outputs = {"out_i": _Intensity((output_resolution, output_resolution))}
             self.inputs_changed = False
@@ -469,7 +512,17 @@ def _install_fake_specula(monkeypatch):
             return None
 
     class _SH:
-        def __init__(self, wavelengthInNm, subap_wanted_fov, sensor_pxscale, subap_on_diameter, subap_npx, target_device_idx=None, precision=None, **kwargs):
+        def __init__(
+            self,
+            wavelengthInNm,
+            subap_wanted_fov,
+            sensor_pxscale,
+            subap_on_diameter,
+            subap_npx,
+            target_device_idx=None,
+            precision=None,
+            **kwargs,
+        ):
             self.inputs = {"in_ef": _Input()}
             side = int(subap_on_diameter) * int(subap_npx)
             self.outputs = {"out_i": _Intensity((side, side))}
@@ -504,7 +557,9 @@ def _install_fake_specula(monkeypatch):
             self.generation_time = 0
 
     class _CCD:
-        def __init__(self, simul_params, size, dt, bandw, target_device_idx=None, precision=None, **kwargs):
+        def __init__(
+            self, simul_params, size, dt, bandw, target_device_idx=None, precision=None, **kwargs
+        ):
             self.inputs = {"in_i": _Input()}
             self.outputs = {"out_pixels": _Pixels(tuple(size))}
             self.inputs_changed = False
@@ -549,11 +604,25 @@ def _install_fake_specula(monkeypatch):
             return None
 
     fake_specula = types.ModuleType("specula")
-    fake_specula.init = lambda device_idx=-1, precision=1: init_calls.append((device_idx, precision))
+    fake_specula.init = lambda device_idx=-1, precision=1: init_calls.append(
+        (device_idx, precision)
+    )
     fake_specula.cpuArray = lambda arr: np.asarray(arr)
 
     class _IFunc:
-        def __init__(self, type_str, mask, npixels, nmodes=None, n_act=None, obsratio=0.0, diaratio=1.0, target_device_idx=None, precision=None, **kwargs):
+        def __init__(
+            self,
+            type_str,
+            mask,
+            npixels,
+            nmodes=None,
+            n_act=None,
+            obsratio=0.0,
+            diaratio=1.0,
+            target_device_idx=None,
+            precision=None,
+            **kwargs,
+        ):
             self.type_str = type_str
             self.mask_inf_func = np.asarray(mask, dtype=np.float32)
             pixel_count = int(np.count_nonzero(self.mask_inf_func))
@@ -566,18 +635,46 @@ def _install_fake_specula(monkeypatch):
                 self.influence_function[index, index % pixel_count] = 1.0
 
     monkeypatch.setitem(sys.modules, "specula", fake_specula)
-    monkeypatch.setitem(sys.modules, "specula.base_value", types.SimpleNamespace(BaseValue=_BaseValue))
-    monkeypatch.setitem(sys.modules, "specula.data_objects.ifunc", types.SimpleNamespace(IFunc=_IFunc))
-    monkeypatch.setitem(sys.modules, "specula.data_objects.simul_params", types.SimpleNamespace(SimulParams=_SimulParams))
-    monkeypatch.setitem(sys.modules, "specula.data_objects.source", types.SimpleNamespace(Source=_Source))
-    monkeypatch.setitem(sys.modules, "specula.data_objects.pupilstop", types.SimpleNamespace(Pupilstop=_Pupilstop))
-    monkeypatch.setitem(sys.modules, "specula.processing_objects.atmo_evolution", types.SimpleNamespace(AtmoEvolution=_AtmoEvolution))
-    monkeypatch.setitem(sys.modules, "specula.processing_objects.atmo_propagation", types.SimpleNamespace(AtmoPropagation=_AtmoPropagation))
-    monkeypatch.setitem(sys.modules, "specula.processing_objects.modulated_pyramid", types.SimpleNamespace(ModulatedPyramid=_ModulatedPyramid))
+    monkeypatch.setitem(
+        sys.modules, "specula.base_value", types.SimpleNamespace(BaseValue=_BaseValue)
+    )
+    monkeypatch.setitem(
+        sys.modules, "specula.data_objects.ifunc", types.SimpleNamespace(IFunc=_IFunc)
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "specula.data_objects.simul_params",
+        types.SimpleNamespace(SimulParams=_SimulParams),
+    )
+    monkeypatch.setitem(
+        sys.modules, "specula.data_objects.source", types.SimpleNamespace(Source=_Source)
+    )
+    monkeypatch.setitem(
+        sys.modules, "specula.data_objects.pupilstop", types.SimpleNamespace(Pupilstop=_Pupilstop)
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "specula.processing_objects.atmo_evolution",
+        types.SimpleNamespace(AtmoEvolution=_AtmoEvolution),
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "specula.processing_objects.atmo_propagation",
+        types.SimpleNamespace(AtmoPropagation=_AtmoPropagation),
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "specula.processing_objects.modulated_pyramid",
+        types.SimpleNamespace(ModulatedPyramid=_ModulatedPyramid),
+    )
     monkeypatch.setitem(sys.modules, "specula.processing_objects.sh", types.SimpleNamespace(SH=_SH))
-    monkeypatch.setitem(sys.modules, "specula.processing_objects.ccd", types.SimpleNamespace(CCD=_CCD))
+    monkeypatch.setitem(
+        sys.modules, "specula.processing_objects.ccd", types.SimpleNamespace(CCD=_CCD)
+    )
     monkeypatch.setitem(sys.modules, "specula.processing_objects.dm", types.SimpleNamespace(DM=_DM))
-    monkeypatch.setitem(sys.modules, "specula.processing_objects.psf", types.SimpleNamespace(PSF=_PSF))
+    monkeypatch.setitem(
+        sys.modules, "specula.processing_objects.psf", types.SimpleNamespace(PSF=_PSF)
+    )
 
     return init_calls
 
@@ -658,7 +755,12 @@ def _install_fake_oopao(monkeypatch):
     class _FakeDM:
         def __init__(self, telescope, nSubap, mechCoupling, altitude=None, **kwargs):
             self.telescope = telescope
-            self.kwargs = {"nSubap": nSubap, "mechCoupling": mechCoupling, "altitude": altitude, **kwargs}
+            self.kwargs = {
+                "nSubap": nSubap,
+                "mechCoupling": mechCoupling,
+                "altitude": altitude,
+                **kwargs,
+            }
             self.tag = "dm"
             self.validAct = np.ones((4,), dtype=bool)
             self.OPD = np.zeros((2, 2), dtype=np.float64)
@@ -670,7 +772,9 @@ def _install_fake_oopao(monkeypatch):
             src.OPD = src.OPD_no_pupil * src.mask
 
     class _FakeAtmosphere:
-        def __init__(self, telescope, r0, L0, windSpeed, fractionalR0, windDirection, altitude, **kwargs):
+        def __init__(
+            self, telescope, r0, L0, windSpeed, fractionalR0, windDirection, altitude, **kwargs
+        ):
             self.telescope = telescope
             self.kwargs = {
                 "r0": r0,
@@ -692,7 +796,17 @@ def _install_fake_oopao(monkeypatch):
             return None
 
     class _FakePyramid:
-        def __init__(self, nSubap, telescope, modulation, lightRatio, n_pix_separation, psfCentering, postProcessing, **kwargs):
+        def __init__(
+            self,
+            nSubap,
+            telescope,
+            modulation,
+            lightRatio,
+            n_pix_separation,
+            psfCentering,
+            postProcessing,
+            **kwargs,
+        ):
             self.telescope = telescope
             self.kwargs = {
                 "nSubap": nSubap,
@@ -711,7 +825,9 @@ def _install_fake_oopao(monkeypatch):
             self.cam.frame = np.full((2, 2), level, dtype=np.float32)
 
     class _FakeShackHartmann:
-        def __init__(self, nSubap, telescope, lightRatio, threshold_cog=0.01, is_geometric=False, **kwargs):
+        def __init__(
+            self, nSubap, telescope, lightRatio, threshold_cog=0.01, is_geometric=False, **kwargs
+        ):
             self.telescope = telescope
             self.kwargs = {
                 "nSubap": nSubap,
@@ -729,12 +845,20 @@ def _install_fake_oopao(monkeypatch):
 
     fake_oopao_pkg = types.ModuleType("OOPAO")
     monkeypatch.setitem(sys.modules, "OOPAO", fake_oopao_pkg)
-    monkeypatch.setitem(sys.modules, "OOPAO.Atmosphere", types.SimpleNamespace(Atmosphere=_FakeAtmosphere))
-    monkeypatch.setitem(sys.modules, "OOPAO.DeformableMirror", types.SimpleNamespace(DeformableMirror=_FakeDM))
+    monkeypatch.setitem(
+        sys.modules, "OOPAO.Atmosphere", types.SimpleNamespace(Atmosphere=_FakeAtmosphere)
+    )
+    monkeypatch.setitem(
+        sys.modules, "OOPAO.DeformableMirror", types.SimpleNamespace(DeformableMirror=_FakeDM)
+    )
     monkeypatch.setitem(sys.modules, "OOPAO.Pyramid", types.SimpleNamespace(Pyramid=_FakePyramid))
-    monkeypatch.setitem(sys.modules, "OOPAO.ShackHartmann", types.SimpleNamespace(ShackHartmann=_FakeShackHartmann))
+    monkeypatch.setitem(
+        sys.modules, "OOPAO.ShackHartmann", types.SimpleNamespace(ShackHartmann=_FakeShackHartmann)
+    )
     monkeypatch.setitem(sys.modules, "OOPAO.Source", types.SimpleNamespace(Source=_FakeSource))
-    monkeypatch.setitem(sys.modules, "OOPAO.Telescope", types.SimpleNamespace(Telescope=_FakeTelescope))
+    monkeypatch.setitem(
+        sys.modules, "OOPAO.Telescope", types.SimpleNamespace(Telescope=_FakeTelescope)
+    )
 
     sys.modules.pop("pyrtc.hardware.oopao_interface", None)
     module = importlib.import_module("pyrtc.hardware.oopao_interface")
@@ -778,7 +902,9 @@ def test_specula_interface_requires_optional_dependency(monkeypatch):
     sys.modules.pop("pyrtc.hardware.specula_interface", None)
     module = importlib.import_module("pyrtc.hardware.specula_interface")
 
-    with pytest.raises(ImportError, match="SPECULA support requires the optional 'specula' package"):
+    with pytest.raises(
+        ImportError, match="SPECULA support requires the optional 'specula' package"
+    ):
         module.SPECULAInterface(_specula_conf(), param=_specula_param())
 
 
@@ -817,7 +943,14 @@ def test_expected_output_specs_sync_specula_pywfs_geometry():
             "signal_type": "slopes",
         },
         "wfc": {"name": "wfc", "num_actuators": 4, "num_modes": 4, "functions": []},
-        "psf": {"name": "psf", "width": 1, "height": 1, "dark_count": 1, "integration": 1, "functions": []},
+        "psf": {
+            "name": "psf",
+            "width": 1,
+            "height": 1,
+            "dark_count": 1,
+            "integration": 1,
+            "functions": [],
+        },
     }
 
     specs = pipeline.expected_output_shm_specs_for_config(system_conf)
@@ -870,7 +1003,11 @@ def test_expected_output_specs_sync_specula_shwfs_geometry():
             "sub_ap_offset_x": 99,
             "sub_ap_offset_y": 99,
         },
-        "wfc": {"class_name": "pyrtc.hardware.specula_interface.SPECULAWFCorrector", "resource": "specula", "num_modes": 10},
+        "wfc": {
+            "class_name": "pyrtc.hardware.specula_interface.SPECULAWFCorrector",
+            "resource": "specula",
+            "num_modes": 10,
+        },
     }
 
     specs = pipeline.expected_output_shm_specs_for_config(system_conf)
@@ -891,7 +1028,13 @@ def test_specula_interface_selects_sh_sensor_for_shwfs(monkeypatch):
 
     conf = _specula_conf()
     conf["wfs"] = {"name": "wfs", "width": 40, "height": 40, "dark_count": 1, "functions": []}
-    conf["slopes"] = {"type": "SHWFS", "signal_type": "slopes", "sub_ap_spacing": 4, "sub_ap_offset_x": 0, "sub_ap_offset_y": 0}
+    conf["slopes"] = {
+        "type": "SHWFS",
+        "signal_type": "slopes",
+        "sub_ap_spacing": 4,
+        "sub_ap_offset_x": 0,
+        "sub_ap_offset_y": 0,
+    }
     param = _specula_param()
     param.pop("pyramid", None)
     param["sh"] = {
@@ -922,7 +1065,14 @@ def test_specula_standalone_bridge_syncs_pywfs_geometry(monkeypatch):
         "wfs": {"name": "wfs", "width": 1, "height": 1, "dark_count": 1, "functions": []},
         "slopes": {"type": "PYWFS", "signal_type": "slopes"},
         "wfc": {"name": "wfc", "num_actuators": 4, "num_modes": 4, "functions": []},
-        "psf": {"name": "psf", "width": 1, "height": 1, "dark_count": 1, "integration": 1, "functions": []},
+        "psf": {
+            "name": "psf",
+            "width": 1,
+            "height": 1,
+            "dark_count": 1,
+            "integration": 1,
+            "functions": [],
+        },
     }
     param = _specula_param()
     param["pyramid"].update({"pup_diam": 6, "pup_dist": 8, "output_resolution": 12})
@@ -978,7 +1128,13 @@ def test_specula_circular_dm_uses_circular_display_diameter(monkeypatch):
     module = importlib.import_module("pyrtc.hardware.specula_interface")
 
     param = _specula_param()
-    param["dm"] = {"height": 0.0, "type_str": "zonal", "n_act": 2, "circ_geom": True, "obsratio": 0.0}
+    param["dm"] = {
+        "height": 0.0,
+        "type_str": "zonal",
+        "n_act": 2,
+        "circ_geom": True,
+        "obsratio": 0.0,
+    }
 
     assert module.derive_specula_wfc_display_geometry(param)["display_grid_size"] == 3
     layout, rows, cols = module._circular_zonal_display_mapping(2, 0.0)
@@ -1117,7 +1273,9 @@ def test_oopao_interface_only_passes_optional_object_kwargs_when_present(monkeyp
 
 
 def test_oopao_interface_accepts_prebuilt_objects(monkeypatch):
-    module, FakeTelescope, FakeSource, FakeAtmosphere, FakeDM, FakePyramid = _install_fake_oopao(monkeypatch)
+    module, FakeTelescope, FakeSource, FakeAtmosphere, FakeDM, FakePyramid = _install_fake_oopao(
+        monkeypatch
+    )
 
     tel = FakeTelescope(resolution=40, diameter=8, samplingTime=0.001, centralObstruction=0.112)
     tel_psf = FakeTelescope(resolution=40, diameter=8, samplingTime=0.001, centralObstruction=0.112)
@@ -1166,7 +1324,9 @@ def test_oopao_interface_accepts_prebuilt_objects(monkeypatch):
 def test_oopao_interface_requires_param_or_objects(monkeypatch):
     module, _, _, _, _, _ = _install_fake_oopao(monkeypatch)
 
-    with pytest.raises(ValueError, match="requires either param=<mapping> or param_file=<YAML path>"):
+    with pytest.raises(
+        ValueError, match="requires either param=<mapping> or param_file=<YAML path>"
+    ):
         module.OOPAOInterface(_oopao_conf())
 
 
@@ -1247,11 +1407,17 @@ def test_oopao_wfs_static_dm_does_not_accumulate_without_atmosphere(monkeypatch)
 
     fake_oopao_pkg = types.ModuleType("OOPAO")
     monkeypatch.setitem(sys.modules, "OOPAO", fake_oopao_pkg)
-    monkeypatch.setitem(sys.modules, "OOPAO.Atmosphere", types.SimpleNamespace(Atmosphere=_FakeAtmosphere))
-    monkeypatch.setitem(sys.modules, "OOPAO.DeformableMirror", types.SimpleNamespace(DeformableMirror=_FakeDM))
+    monkeypatch.setitem(
+        sys.modules, "OOPAO.Atmosphere", types.SimpleNamespace(Atmosphere=_FakeAtmosphere)
+    )
+    monkeypatch.setitem(
+        sys.modules, "OOPAO.DeformableMirror", types.SimpleNamespace(DeformableMirror=_FakeDM)
+    )
     monkeypatch.setitem(sys.modules, "OOPAO.Pyramid", types.SimpleNamespace(Pyramid=_FakePyramid))
     monkeypatch.setitem(sys.modules, "OOPAO.Source", types.SimpleNamespace(Source=_FakeSource))
-    monkeypatch.setitem(sys.modules, "OOPAO.Telescope", types.SimpleNamespace(Telescope=_FakeTelescope))
+    monkeypatch.setitem(
+        sys.modules, "OOPAO.Telescope", types.SimpleNamespace(Telescope=_FakeTelescope)
+    )
 
     sys.modules.pop("pyrtc.hardware.oopao_interface", None)
     module = importlib.import_module("pyrtc.hardware.oopao_interface")

@@ -59,7 +59,9 @@ def test_telemetry_save_session_supports_multi_stream_grouped_capture(monkeypatc
     }
     monkeypatch.setattr(tele_mod, "open_stream", lambda name: streams[name])
 
-    telemetry = tele_mod.Telemetry({"data_dir": str(tmp_path), "functions": [], "streams": ["signal", "wfc"]})
+    telemetry = tele_mod.Telemetry(
+        {"data_dir": str(tmp_path), "functions": [], "streams": ["signal", "wfc"]}
+    )
     session_path = telemetry.save(
         ["signal", "wfc"],
         {"signal": 2, "wfc": 1},
@@ -96,7 +98,9 @@ def test_telemetry_save_configured_streams_uses_component_config(monkeypatch, tm
             return self._data
 
     monkeypatch.setattr(tele_mod, "open_stream", lambda name: _SHM())
-    telemetry = tele_mod.Telemetry({"data_dir": str(tmp_path), "functions": [], "streams": ["signal"]})
+    telemetry = tele_mod.Telemetry(
+        {"data_dir": str(tmp_path), "functions": [], "streams": ["signal"]}
+    )
 
     session_path = telemetry.save_configured_streams(2, unique_str="cfg")
     loaded = telemetry.read_last_save()
@@ -118,7 +122,11 @@ def test_telemetry_error_paths(monkeypatch, tmp_path):
 
     t = telemetry_module.Telemetry({"data_dir": str(tmp_path), "functions": []})
 
-    monkeypatch.setattr(telemetry_module, "open_stream", lambda name: (_ for _ in ()).throw(RuntimeError("missing shm")))
+    monkeypatch.setattr(
+        telemetry_module,
+        "open_stream",
+        lambda name: (_ for _ in ()).throw(RuntimeError("missing shm")),
+    )
     with pytest.raises(RuntimeError, match="missing shm"):
         t.save("signal", 1)
 
@@ -150,7 +158,9 @@ def test_telemetry_error_paths(monkeypatch, tmp_path):
     with pytest.raises(FileNotFoundError, match="Telemetry capture file not found"):
         telemetry_module.load_telemetry_session(session_path)
 
-    empty_telemetry = telemetry_module.Telemetry({"data_dir": str(tmp_path / "empty"), "functions": []})
+    empty_telemetry = telemetry_module.Telemetry(
+        {"data_dir": str(tmp_path / "empty"), "functions": []}
+    )
     with pytest.raises(ValueError, match="no configured streams"):
         empty_telemetry.save_configured_streams(1)
 

@@ -128,7 +128,9 @@ def _normalize_stream_specs(streams, num_frames, semantic_tags=None, sampling=No
             tags = semantic_tags
 
         if tags and not isinstance(tags, (list, tuple)):
-            raise TypeError("semantic_tags must be a list of strings or a mapping of stream name to string lists")
+            raise TypeError(
+                "semantic_tags must be a list of strings or a mapping of stream name to string lists"
+            )
 
         if sampling_mapping is not None:
             stream_sampling = sampling_mapping.get(stream_name)
@@ -201,7 +203,9 @@ def load_telemetry_session(session_path: str | Path, *, mmap_mode=None) -> dict:
     loaded = {"_session": manifest}
     for stream_record in manifest["streams"]:
         if not isinstance(stream_record, dict):
-            raise ValueError(f"Telemetry manifest {session_file} contains a non-mapping stream record")
+            raise ValueError(
+                f"Telemetry manifest {session_file} contains a non-mapping stream record"
+            )
         for required_key in ("name", "frames_file", "timestamps_file", "metadata_file"):
             if required_key not in stream_record:
                 raise ValueError(
@@ -286,7 +290,11 @@ class Telemetry(Component):
             self.all_files = []
             self.dtypes = []
             self.dims = []
-            self.logger.info("Initialized telemetry data_dir=%s configured_streams=%s", self.data_dir, self.configured_streams)
+            self.logger.info(
+                "Initialized telemetry data_dir=%s configured_streams=%s",
+                self.data_dir,
+                self.configured_streams,
+            )
         except Exception:
             logger.exception("Failed to initialize telemetry")
             raise
@@ -306,7 +314,9 @@ class Telemetry(Component):
             "created_at": _utc_now_iso(),
             "pyrtc_version": _resolve_pyrtc_version(),
             "host": _host_metadata(),
-            "config_path": str(_ensure_path(config_path).resolve()) if config_path is not None else None,
+            "config_path": str(_ensure_path(config_path).resolve())
+            if config_path is not None
+            else None,
             "config": config,
             "metadata": metadata or {},
             "streams": stream_records,
@@ -356,7 +366,9 @@ class Telemetry(Component):
         """
 
         component_logger = getattr(self, "logger", logger)
-        specs = _normalize_stream_specs(streams, num_frames, semantic_tags=semantic_tags, sampling=sampling)
+        specs = _normalize_stream_specs(
+            streams, num_frames, semantic_tags=semantic_tags, sampling=sampling
+        )
         session_id = session_id or uuid.uuid4().hex
         session_dir = _build_session_directory(self.data_dir, session_id)
         session_dir.mkdir(parents=True, exist_ok=False)
@@ -456,7 +468,9 @@ class Telemetry(Component):
             )
             return self.most_recent_save
         except Exception:
-            component_logger.exception("Failed to save telemetry streams %s", [spec["name"] for spec in specs])
+            component_logger.exception(
+                "Failed to save telemetry streams %s", [spec["name"] for spec in specs]
+            )
             raise
 
     def save_session(self, streams, num_frames, **kwargs) -> str:
@@ -519,7 +533,10 @@ class Telemetry(Component):
                 return arr
             raise ValueError("File not part of current capture, please provide a dtype")
         except Exception:
-            component_logger.exception("Failed to read telemetry file %s", filename or getattr(self, "most_recent_file", ""))
+            component_logger.exception(
+                "Failed to read telemetry file %s",
+                filename or getattr(self, "most_recent_file", ""),
+            )
             raise
 
     def read_last_save(self, *, mmap_mode=None) -> dict:

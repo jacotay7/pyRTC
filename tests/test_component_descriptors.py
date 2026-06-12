@@ -124,7 +124,9 @@ def test_component_descriptor_get_returns_default_for_unknown_field():
 
 def test_descriptor_validation_rejects_wrong_field_type():
     with pytest.raises(TypeError, match="dark_count"):
-        validate_config_with_descriptor("psf", {"name": "cam", "width": 32, "height": 32, "dark_count": "16", "integration": 4})
+        validate_config_with_descriptor(
+            "psf", {"name": "cam", "width": 32, "height": 32, "dark_count": "16", "integration": 4}
+        )
 
 
 def test_descriptor_validation_rejects_missing_required_field():

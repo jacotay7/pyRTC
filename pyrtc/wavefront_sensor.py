@@ -19,6 +19,7 @@ from pyrtc.utils import set_from_config
 
 logger = get_logger(__name__)
 
+
 @jit(nopython=True, nogil=True, cache=False, fastmath=True)
 def downsample_int32_image_jit(image, N):
     """
@@ -60,13 +61,14 @@ def downsample_int32_image_jit(image, N):
             sum_block = 0
             for di in range(N):
                 for dj in range(N):
-                    sum_block += image_padded[i*N + di, j*N + dj]
+                    sum_block += image_padded[i * N + di, j * N + dj]
             # Compute the mean
             mean_value = sum_block / (N * N)
             # Round and cast to int32
             downsampled_image[i, j] = np.int32(round(mean_value))
 
     return downsampled_image
+
 
 @jit(nopython=True, nogil=True, cache=False, fastmath=True, parallel=True)
 def rotate_image_jit(image, angle_rad):
@@ -101,7 +103,7 @@ def rotate_image_jit(image, angle_rad):
             y_orig = -x_centered * sin_angle + y_centered * cos_angle + cy
 
             # Check if the source coordinates are within bounds
-            if 0 <= x_orig < w-1 and 0 <= y_orig < h-1:
+            if 0 <= x_orig < w - 1 and 0 <= y_orig < h - 1:
                 # Bilinear interpolation
                 x0, x1 = int(np.floor(x_orig)), int(np.ceil(x_orig))
                 y0, y1 = int(np.floor(y_orig)), int(np.ceil(y_orig))
@@ -117,14 +119,17 @@ def rotate_image_jit(image, angle_rad):
                 wy = y_orig - y0
 
                 # Bilinear interpolation
-                val = (image[y0, x0] * (1 - wx) * (1 - wy) +
-                       image[y0, x1] * wx * (1 - wy) +
-                       image[y1, x0] * (1 - wx) * wy +
-                       image[y1, x1] * wx * wy)
+                val = (
+                    image[y0, x0] * (1 - wx) * (1 - wy)
+                    + image[y0, x1] * wx * (1 - wy)
+                    + image[y1, x0] * (1 - wx) * wy
+                    + image[y1, x1] * wx * wy
+                )
 
                 rotated[y, x] = val
 
     return rotated
+
 
 class WavefrontSensor(Component):
     """
@@ -242,8 +247,18 @@ class WavefrontSensor(Component):
             if self.downsample_factor > 0:
                 self.image_shape[0] = self.image_shape[0] // self.downsample_factor
                 self.image_shape[1] = self.image_shape[1] // self.downsample_factor
-            self.image_raw = create_stream(self.output_stream_name("wfs_raw"), self.image_raw_shape, self.image_raw_dtype, gpu_device=self.gpu_device)
-            self.image = create_stream(self.output_stream_name("wfs"), self.image_shape, self.image_dtype, gpu_device=self.gpu_device)
+            self.image_raw = create_stream(
+                self.output_stream_name("wfs_raw"),
+                self.image_raw_shape,
+                self.image_raw_dtype,
+                gpu_device=self.gpu_device,
+            )
+            self.image = create_stream(
+                self.output_stream_name("wfs"),
+                self.image_shape,
+                self.image_dtype,
+                gpu_device=self.gpu_device,
+            )
             self.register_output_stream("wfs_raw", self.image_raw)
             self.register_output_stream("wfs", self.image)
 
@@ -383,7 +398,7 @@ class WavefrontSensor(Component):
         self.write_stream("wfs", processed_image)
         return
 
-    def read(self, block = True) -> None:
+    def read(self, block=True) -> None:
         """
         Reads the dark subtracted image data from shared memory.
 
@@ -434,7 +449,7 @@ class WavefrontSensor(Component):
             raise
         return
 
-    def save_dark(self,filename=''):
+    def save_dark(self, filename=""):
         """
         Saves the dark frame to a file.
 
@@ -444,9 +459,9 @@ class WavefrontSensor(Component):
             Filename to save the dark frame to. If not specified, uses the dark file path from the configuration.
         """
         try:
-            if filename == '':
+            if filename == "":
                 filename = self.dark_file
-            if filename == '':
+            if filename == "":
                 raise ValueError("No dark frame filename provided")
             np.save(filename, self.dark)
             self.logger.info("Saved dark frame to %s", filename)
@@ -455,7 +470,7 @@ class WavefrontSensor(Component):
             raise
         return
 
-    def load_dark(self,filename=''):
+    def load_dark(self, filename=""):
         """
         Loads the dark frame from a file.
 
@@ -464,11 +479,11 @@ class WavefrontSensor(Component):
         filename : str, optional
             Filename to load the dark frame from. If not specified, uses the dark file path from the configuration.
         """
-        #If no file given, first try dark file
+        # If no file given, first try dark file
         try:
-            if filename == '':
+            if filename == "":
                 filename = self.dark_file
-            if filename == '':
+            if filename == "":
                 self.dark = np.zeros_like(self.dark)
                 self.logger.info("No dark frame file configured; using zeros")
             else:
@@ -485,8 +500,8 @@ class WavefrontSensor(Component):
         """
         try:
             arr = self.read(block=False)
-            plt.figure(figsize=(8,8))
-            plt.imshow(arr, cmap = 'inferno', origin='lower')
+            plt.figure(figsize=(8, 8))
+            plt.imshow(arr, cmap="inferno", origin="lower")
             plt.colorbar()
             plt.show()
             self.logger.info("Plotted wavefront sensor image")
@@ -530,6 +545,6 @@ class WavefrontSensor(Component):
             self.logger.exception("Failed to rotate image by %s degrees", angle_deg)
             raise
 
-if __name__ == "__main__":
 
-    launch_component(WavefrontSensor, "wfs", start = True)
+if __name__ == "__main__":
+    launch_component(WavefrontSensor, "wfs", start=True)

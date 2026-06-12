@@ -32,7 +32,19 @@ def test_pywfs_notebook_surrogate_smoke():
     param = read_yaml_file(str(param_path))
     for key in ("loop", "wfs", "wfc", "psf", "slopes"):
         assert key in conf
-    for key in ("resolution", "diameter", "samplingTime", "ngs_band", "ngs_magnitude", "science_band", "science_magnitude", "r0", "L0", "nSubap", "modulation"):
+    for key in (
+        "resolution",
+        "diameter",
+        "samplingTime",
+        "ngs_band",
+        "ngs_magnitude",
+        "science_band",
+        "science_magnitude",
+        "r0",
+        "L0",
+        "nSubap",
+        "modulation",
+    ):
         assert key in param
 
     assert Loop is not None

@@ -6,9 +6,21 @@ import numpy as np
 import pytest
 import yaml
 
-from pyrtc.pipeline import HardComponentRuntime, RTCManager, _socket_read_json, _socket_send_json, clear_shms, create_stream, expected_output_shm_specs_for_config, reconcile_expected_output_shms
+from pyrtc.pipeline import (
+    HardComponentRuntime,
+    RTCManager,
+    _socket_read_json,
+    _socket_send_json,
+    clear_shms,
+    create_stream,
+    expected_output_shm_specs_for_config,
+    reconcile_expected_output_shms,
+)
 from pyrtc.config_schema import read_system_config
-from pyrtc.hardware.synthetic_systems import _default_wfc_layout, build_synthetic_shwfs_response_matrix
+from pyrtc.hardware.synthetic_systems import (
+    _default_wfc_layout,
+    build_synthetic_shwfs_response_matrix,
+)
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -40,7 +52,9 @@ def _write_runtime_synthetic_config(tmp_path: Path) -> Path:
     return config_path
 
 
-def _configure_hard_manager(manager: RTCManager, launcher_cls, *, log_dir=None, manager_overrides=None) -> RTCManager:
+def _configure_hard_manager(
+    manager: RTCManager, launcher_cls, *, log_dir=None, manager_overrides=None
+) -> RTCManager:
     manager.config = copy.deepcopy(manager.config)
     manager.config["manager"] = {
         "mode": "hard-rtc",
@@ -137,7 +151,12 @@ def test_reconcile_expected_output_shms_reuses_matching_streams(monkeypatch):
     specs = expected_output_shm_specs_for_config(config)
     cleared = []
 
-    monkeypatch.setattr("pyrtc.streams._existing_shm_spec", lambda name: (tuple(specs[name]["shape"]), np.dtype(specs[name]["dtype"])) if name in specs else None)
+    monkeypatch.setattr(
+        "pyrtc.streams._existing_shm_spec",
+        lambda name: (
+            (tuple(specs[name]["shape"]), np.dtype(specs[name]["dtype"])) if name in specs else None
+        ),
+    )
     monkeypatch.setattr("pyrtc.streams.clear_shms", lambda names: cleared.extend(names))
 
     rebuilt, reused = reconcile_expected_output_shms(config)
@@ -171,7 +190,9 @@ def test_reconcile_expected_output_shms_clears_only_mismatched_streams(monkeypat
 
 
 def test_expected_output_shm_specs_include_pywfs_signal2d():
-    config = read_system_config(REPO_ROOT / "examples" / "pywfs" / "pywfs_OOPAO_config.yaml", validate=False)
+    config = read_system_config(
+        REPO_ROOT / "examples" / "pywfs" / "pywfs_OOPAO_config.yaml", validate=False
+    )
 
     specs = expected_output_shm_specs_for_config(config)
 
@@ -181,7 +202,9 @@ def test_expected_output_shm_specs_include_pywfs_signal2d():
 
 
 def test_expected_output_shm_specs_include_oopao_shwfs_signal2d():
-    config = read_system_config(REPO_ROOT / "examples" / "shwfs" / "shwfs_OOPAO_config.yaml", validate=False)
+    config = read_system_config(
+        REPO_ROOT / "examples" / "shwfs" / "shwfs_OOPAO_config.yaml", validate=False
+    )
 
     specs = expected_output_shm_specs_for_config(config)
 
@@ -191,7 +214,9 @@ def test_expected_output_shm_specs_include_oopao_shwfs_signal2d():
 
 
 def test_expected_output_shm_specs_include_specula_shwfs_signal2d():
-    config = read_system_config(REPO_ROOT / "examples" / "shwfs" / "shwfs_SPECULA_config.yaml", validate=False)
+    config = read_system_config(
+        REPO_ROOT / "examples" / "shwfs" / "shwfs_SPECULA_config.yaml", validate=False
+    )
 
     specs = expected_output_shm_specs_for_config(config)
 
@@ -329,7 +354,9 @@ def test_manager_mode_override_uses_hard_runtime_with_short_alias(monkeypatch):
             calls.append(("shutdown", self.hardware_file, self.port))
             return 1
 
-    manager = RTCManager.from_config_file(SYNTHETIC_CONFIG_PATH, mode="hard", launcher_cls=FakeLauncher)
+    manager = RTCManager.from_config_file(
+        SYNTHETIC_CONFIG_PATH, mode="hard", launcher_cls=FakeLauncher
+    )
 
     manager.start()
     status = manager.status()
@@ -441,9 +468,27 @@ def test_manager_uses_hard_runtime_with_launcher_integration(monkeypatch):
 def test_manager_requires_config_path_for_hard_mode_from_dict():
     manager = RTCManager.from_config(
         {
-            "wfs": {"name": "wavefrontSensor", "width": 16, "height": 16, "dark_count": 1, "functions": ["expose"]},
-            "slopes": {"type": "SHWFS", "signal_type": "slopes", "sub_ap_spacing": 8, "sub_ap_offset_x": 0, "sub_ap_offset_y": 0, "functions": ["compute_signal"]},
-            "wfc": {"name": "dm", "num_actuators": 8, "num_modes": 8, "functions": ["send_to_hardware"]},
+            "wfs": {
+                "name": "wavefrontSensor",
+                "width": 16,
+                "height": 16,
+                "dark_count": 1,
+                "functions": ["expose"],
+            },
+            "slopes": {
+                "type": "SHWFS",
+                "signal_type": "slopes",
+                "sub_ap_spacing": 8,
+                "sub_ap_offset_x": 0,
+                "sub_ap_offset_y": 0,
+                "functions": ["compute_signal"],
+            },
+            "wfc": {
+                "name": "dm",
+                "num_actuators": 8,
+                "num_modes": 8,
+                "functions": ["send_to_hardware"],
+            },
             "loop": {"gain": 0.1, "num_dropped_modes": 0, "functions": ["standard_integrator"]},
             "manager": {
                 "mode": "hard-rtc",
@@ -516,7 +561,9 @@ def test_manager_supports_explicit_manager_declared_sections():
     manager.start()
     manager.stop()
 
-    assert any(entry[:2] == ("launch", str(REPO_ROOT / "pyrtc" / "Component.py")) for entry in calls)
+    assert any(
+        entry[:2] == ("launch", str(REPO_ROOT / "pyrtc" / "Component.py")) for entry in calls
+    )
 
 
 def test_manager_injects_shared_resources_into_soft_runtimes(tmp_path):
@@ -625,7 +672,9 @@ def test_manager_injects_component_provider_resources_into_soft_runtimes(tmp_pat
     )
     manager.validated = True
     manager.state = "validated"
-    manager._resolve_component_class = lambda section_name: FakeProvider if section_name == "provider" else FakeConsumer
+    manager._resolve_component_class = lambda section_name: (
+        FakeProvider if section_name == "provider" else FakeConsumer
+    )
 
     manager.start()
     try:
@@ -850,6 +899,7 @@ def test_manager_repeated_failures_increment_restart_count_and_preserve_last_err
     assert loop_status["last_error"] == "child process exited with code 2"
     assert loop_status["state"] == "running"
 
+
 def _installed_pyrtc_loop_path() -> Path:
     """Return the path to the installed pyrtc.loop module on disk.
 
@@ -860,7 +910,9 @@ def _installed_pyrtc_loop_path() -> Path:
     runs in CI, so referencing REPO_ROOT directly causes duplicate
     class objects to be exec'd.
     """
-    import importlib.util, os
+    import importlib.util
+    import os
+
     spec = importlib.util.find_spec("pyrtc.loop")
     if spec is None or spec.origin is None:
         raise RuntimeError("pyrtc.loop is not importable")

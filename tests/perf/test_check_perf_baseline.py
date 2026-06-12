@@ -159,7 +159,9 @@ def test_main_fails_on_ratio_regression(tmp_path):
     import pytest
 
     with pytest.raises(SystemExit, match="Performance regression"):
-        main(["--current", str(current_path), "--baseline", str(baseline_path), "--max-ratio", "1.5"])
+        main(
+            ["--current", str(current_path), "--baseline", str(baseline_path), "--max-ratio", "1.5"]
+        )
 
     # presence-only mode still passes
     assert main(["--current", str(current_path), "--baseline", str(baseline_path)]) == 0

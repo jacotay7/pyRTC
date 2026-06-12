@@ -92,7 +92,6 @@ def test_pywfs_slope_algorithms_return_zero_on_dark_frame():
     assert np.all(numba_out == 0.0)
 
 
-
 def test_torch_path_disabled(monkeypatch):
     monkeypatch.setattr(slopes_mod, "gpu_torch_available", lambda: False)
     try:
@@ -100,7 +99,6 @@ def test_torch_path_disabled(monkeypatch):
         assert False
     except ImportError:
         assert True
-
 
 
 def test_slopes_process_methods(tmp_path):
@@ -136,7 +134,6 @@ def test_slopes_process_methods(tmp_path):
     sig = np.arange(np.count_nonzero(sp.valid_sub_aps), dtype=np.float32)
     out2d = sp.compute_signal_2d(sig)
     assert out2d.shape == (4, 8)
-
 
 
 def test_compute_signal2d_shwfs():
@@ -176,7 +173,11 @@ def test_set_pupils_registers_pywfs_output_streams(monkeypatch):
         ),
     )
     monkeypatch.setattr(slopes_mod, "clear_shms", lambda names: None)
-    monkeypatch.setattr(slopes_mod, "open_stream", lambda name, gpu_device=None: (_ for _ in ()).throw(FileNotFoundError(name)))
+    monkeypatch.setattr(
+        slopes_mod,
+        "open_stream",
+        lambda name, gpu_device=None: (_ for _ in ()).throw(FileNotFoundError(name)),
+    )
 
     class _FakeShm:
         def __init__(self, name, shape, dtype, gpu_device=None, consumer=False):

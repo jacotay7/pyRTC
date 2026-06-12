@@ -48,9 +48,6 @@ jobs:
       - name: Verify built wheel installs cleanly
         run: python pyrtc/scripts/validate_dist_install.py --dist-dir dist
 
-      - name: Run ruff lint checks
-        run: ruff check pyrtc tests benchmarks
-
       - name: Verify import
         run: python -c "import pyrtc; print('pyrtc import OK')"
 

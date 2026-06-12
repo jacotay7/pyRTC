@@ -48,6 +48,7 @@ try:
         QVBoxLayout,
         QWidget,
     )
+
     _GUI_IMPORT_ERROR = None
 except ImportError as exc:
     _GUI_IMPORT_ERROR = exc
@@ -58,11 +59,23 @@ except ImportError as exc:
                 "pyrtc-manager-gui requires GUI dependencies. Install with: pip install pyrtc[gui]"
             ) from _GUI_IMPORT_ERROR
 
-    QAction = QApplication = QComboBox = QDialog = QDialogButtonBox = QDockWidget = QFileDialog = QFormLayout = QFrame = QGraphicsPathItem = (  # type: ignore[assignment]
+    QAction = QApplication = QComboBox = QDialog = QDialogButtonBox = QDockWidget = QFileDialog = (
+        QFormLayout
+    ) = QFrame = QGraphicsPathItem = (  # type: ignore[assignment]
         QGraphicsRectItem
-    ) = QGraphicsScene = QGraphicsSimpleTextItem = QGraphicsView = QHBoxLayout = QLabel = QLineEdit = QListWidget = QListWidgetItem = QMainWindow = QMessageBox = QPushButton = QPlainTextEdit = QScrollArea = QSizePolicy = QSplitter = QStatusBar = QTabWidget = QToolBar = QToolButton = QTextEdit = QVBoxLayout = QWidget = QTimer = QInputDialog = _QtUnavailableBase
-    QPointF = QRectF = QBrush = QColor = QFont = QKeySequence = QPainter = QPainterPath = QPen = _QtUnavailableBase
-    Qt = SimpleNamespace(Horizontal=0, Vertical=0, AlignTop=0, LeftDockWidgetArea=0, BottomDockWidgetArea=0)
+    ) = QGraphicsScene = QGraphicsSimpleTextItem = QGraphicsView = QHBoxLayout = QLabel = (
+        QLineEdit
+    ) = QListWidget = QListWidgetItem = QMainWindow = QMessageBox = QPushButton = QPlainTextEdit = (
+        QScrollArea
+    ) = QSizePolicy = QSplitter = QStatusBar = QTabWidget = QToolBar = QToolButton = QTextEdit = (
+        QVBoxLayout
+    ) = QWidget = QTimer = QInputDialog = _QtUnavailableBase
+    QPointF = QRectF = QBrush = QColor = QFont = QKeySequence = QPainter = QPainterPath = QPen = (
+        _QtUnavailableBase
+    )
+    Qt = SimpleNamespace(
+        Horizontal=0, Vertical=0, AlignTop=0, LeftDockWidgetArea=0, BottomDockWidgetArea=0
+    )
 
 from pyrtc.logging_utils import get_logger
 from pyrtc.component_descriptors import list_component_descriptors
@@ -137,7 +150,10 @@ class _GuiLogHandler(logging.Handler):
             pass
 
     def render_html(self, theme) -> str:
-        return "".join(_format_log_line_html(entry["text"], theme, level=entry["level"]) for entry in self._messages)
+        return "".join(
+            _format_log_line_html(entry["text"], theme, level=entry["level"])
+            for entry in self._messages
+        )
 
 
 def _build_log_html(lines: list[str], theme, *, title: str | None = None) -> str:
@@ -187,12 +203,19 @@ class GraphEdgeItem:
         target_point = self.target_item.connection_anchor(target_side)
         source_rect = self.source_item.sceneBoundingRect()
         target_rect = self.target_item.sceneBoundingRect()
-        lane_seed = abs(hash((self.edge.source_section, self.edge.target_section, self.edge.source_stream))) % 3
+        lane_seed = (
+            abs(hash((self.edge.source_section, self.edge.target_section, self.edge.source_stream)))
+            % 3
+        )
         lane_offset = 16.0 + lane_seed * 10.0
         stub = 16.0
         path = QPainterPath(source_point)
 
-        horizontal_gap = target_rect.left() - source_rect.right() if flow_left_to_right else source_rect.left() - target_rect.right()
+        horizontal_gap = (
+            target_rect.left() - source_rect.right()
+            if flow_left_to_right
+            else source_rect.left() - target_rect.right()
+        )
         if horizontal_gap >= 48.0:
             if flow_left_to_right:
                 lane_start_x = source_rect.right() + stub
@@ -230,7 +253,17 @@ class GraphEdgeItem:
 
 
 class GraphNodeButtonItem(QGraphicsRectItem):
-    def __init__(self, label: str, x: float, y: float, width: float, callback, *, enabled: bool = True, parent=None):
+    def __init__(
+        self,
+        label: str,
+        x: float,
+        y: float,
+        width: float,
+        callback,
+        *,
+        enabled: bool = True,
+        parent=None,
+    ):
         super().__init__(QRectF(x, y, width, 22.0), parent)
         self._callback = callback
         self._enabled = enabled
@@ -262,7 +295,14 @@ class GraphNodeButtonItem(QGraphicsRectItem):
 
 
 class GraphNodeItem(QGraphicsRectItem):
-    def __init__(self, node: GraphNodeModel, theme, selection_callback, action_callback, position_callback=None):
+    def __init__(
+        self,
+        node: GraphNodeModel,
+        theme,
+        selection_callback,
+        action_callback,
+        position_callback=None,
+    ):
         super().__init__(QRectF(0.0, 0.0, 220.0, 152.0))
         self.node = node
         self.theme = theme
@@ -387,7 +427,9 @@ class GraphNodeItem(QGraphicsRectItem):
             for edge_item in self._edge_items:
                 edge_item.update_positions()
             if self._position_callback is not None:
-                self._position_callback(self.node.section_name, float(self.pos().x()), float(self.pos().y()))
+                self._position_callback(
+                    self.node.section_name, float(self.pos().x()), float(self.pos().y())
+                )
         if change == QGraphicsRectItem.ItemSelectedHasChanged:
             self.apply_theme(self.theme)
             if bool(value) and (self._selection_guard is None or self._selection_guard()):
@@ -417,7 +459,9 @@ class GraphNodeItem(QGraphicsRectItem):
 
 
 class GraphCanvas(QGraphicsView):
-    def __init__(self, selection_callback, deselection_callback, action_callback, position_callback=None):
+    def __init__(
+        self, selection_callback, deselection_callback, action_callback, position_callback=None
+    ):
         super().__init__()
         self.selection_callback = selection_callback
         self.deselection_callback = deselection_callback
@@ -536,7 +580,15 @@ class GraphCanvas(QGraphicsView):
 
 
 class ComponentSettingsDialog(QDialog):
-    def __init__(self, *, section_name: str, descriptor, class_name: str, class_file: str | None = None, parent=None):
+    def __init__(
+        self,
+        *,
+        section_name: str,
+        descriptor,
+        class_name: str,
+        class_file: str | None = None,
+        parent=None,
+    ):
         super().__init__(parent)
         self.setWindowTitle("Component Settings")
         self._descriptor = descriptor
@@ -558,7 +610,9 @@ class ComponentSettingsDialog(QDialog):
         form.addRow("class_file", self.class_file_input)
 
         for field_descriptor in descriptor.all_fields:
-            editor = QLineEdit("" if field_descriptor.default is None else str(field_descriptor.default))
+            editor = QLineEdit(
+                "" if field_descriptor.default is None else str(field_descriptor.default)
+            )
             editor.setToolTip(field_descriptor.description)
             if field_descriptor.required and field_descriptor.default is None:
                 editor.setPlaceholderText("required")
@@ -599,13 +653,26 @@ class ComponentSettingsDialog(QDialog):
             "class_name": self.class_name_input.text().strip(),
             "class_file": self.class_file_input.text().strip() or None,
             "fields": field_values,
-            "input_streams": {name: editor.text().strip() or name for name, editor in self._input_stream_inputs.items()},
-            "output_streams": {name: editor.text().strip() or name for name, editor in self._output_stream_inputs.items()},
+            "input_streams": {
+                name: editor.text().strip() or name
+                for name, editor in self._input_stream_inputs.items()
+            },
+            "output_streams": {
+                name: editor.text().strip() or name
+                for name, editor in self._output_stream_inputs.items()
+            },
         }
 
 
 class ManagerMainWindow(QMainWindow):
-    def __init__(self, *, config_path: str | None = None, mode: str | None = None, theme_name: str = "dark", refresh_ms: int = 1000):
+    def __init__(
+        self,
+        *,
+        config_path: str | None = None,
+        mode: str | None = None,
+        theme_name: str = "dark",
+        refresh_ms: int = 1000,
+    ):
         _require_gui_backend()
         super().__init__()
         self.adapter = ManagerAdapter()
@@ -689,7 +756,9 @@ class ManagerMainWindow(QMainWindow):
         self.inspector_status = QLabel("Select a component")
         self.inspector_status.setObjectName("SubtleText")
         inspector_layout.addWidget(self.inspector_status)
-        self.inspector_empty_state = QLabel("Select a component to inspect its settings and actions.")
+        self.inspector_empty_state = QLabel(
+            "Select a component to inspect its settings and actions."
+        )
         self.inspector_empty_state.setObjectName("SubtleText")
         self.inspector_empty_state.setAlignment(Qt.AlignTop)
         self.inspector_empty_state.setWordWrap(True)
@@ -840,7 +909,9 @@ class ManagerMainWindow(QMainWindow):
         self._register_window_shortcut(self.import_component_action, QKeySequence("Ctrl+I"))
         self.import_component_file_action = QAction("Import Component From File", self)
         self.import_component_file_action.triggered.connect(self.import_component_file)
-        self._register_window_shortcut(self.import_component_file_action, QKeySequence("Ctrl+Shift+I"))
+        self._register_window_shortcut(
+            self.import_component_file_action, QKeySequence("Ctrl+Shift+I")
+        )
         self.remove_component_action = QAction("Remove Selected Component", self)
         self.remove_component_action.triggered.connect(self.remove_selected_component)
         self.remove_component_action.setShortcut(QKeySequence.Delete)
@@ -849,7 +920,9 @@ class ManagerMainWindow(QMainWindow):
         self._register_window_shortcut(self.add_connection_action, QKeySequence("Ctrl+Shift+C"))
         self.remove_connection_action = QAction("Remove Connection", self)
         self.remove_connection_action.triggered.connect(self.remove_connection)
-        self._register_window_shortcut(self.remove_connection_action, QKeySequence("Ctrl+Alt+Backspace"))
+        self._register_window_shortcut(
+            self.remove_connection_action, QKeySequence("Ctrl+Alt+Backspace")
+        )
         self.soft_mode_action = QAction("Soft RTC Mode", self, checkable=True)
         self.soft_mode_action.triggered.connect(lambda: self._set_manager_mode("soft-rtc"))
         self.hard_mode_action = QAction("Hard RTC Mode", self, checkable=True)
@@ -966,7 +1039,9 @@ class ManagerMainWindow(QMainWindow):
         if enabled and not self.adapter.is_loaded():
             self.adapter.initialize_empty_config(mode=self.manager_mode)
         self.build_mode = enabled
-        self.statusBar().showMessage("Build mode enabled" if enabled else "Build mode disabled", 3000)
+        self.statusBar().showMessage(
+            "Build mode enabled" if enabled else "Build mode disabled", 3000
+        )
         self.refresh_view()
         if self.selected_section:
             self._populate_inspector(self.selected_section)
@@ -976,7 +1051,9 @@ class ManagerMainWindow(QMainWindow):
         self.refresh_view()
 
     def open_config_dialog(self) -> None:
-        path, _ = QFileDialog.getOpenFileName(self, "Load pyrtc Config", "", "YAML Files (*.yaml *.yml)")
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Load pyrtc Config", "", "YAML Files (*.yaml *.yml)"
+        )
         if path:
             self.load_config(path, mode=self.manager_mode)
 
@@ -1003,7 +1080,9 @@ class ManagerMainWindow(QMainWindow):
         self.statusBar().showMessage(f"Saved {path}", 3000)
 
     def save_config_as(self) -> None:
-        path, _ = QFileDialog.getSaveFileName(self, "Save pyrtc Config", self.adapter.config_path or "", "YAML Files (*.yaml *.yml)")
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Save pyrtc Config", self.adapter.config_path or "", "YAML Files (*.yaml *.yml)"
+        )
         if not path:
             return
         try:
@@ -1123,7 +1202,9 @@ class ManagerMainWindow(QMainWindow):
             )
             self._refresh_logs()
             return
-        snapshot = self.adapter.build_graph_snapshot(status, runtime_controls_enabled=not self.build_mode)
+        snapshot = self.adapter.build_graph_snapshot(
+            status, runtime_controls_enabled=not self.build_mode
+        )
         self.summary_label.setText(
             f"state={snapshot.state}  mode={snapshot.mode}  config={snapshot.config_path or '-'}"
         )
@@ -1141,12 +1222,19 @@ class ManagerMainWindow(QMainWindow):
         runtime_sections = set() if status is None else set(status.get("components", {}))
 
         self.validate_action.setEnabled(is_loaded and not is_running and not is_built)
-        self.build_action.setEnabled(is_loaded and not is_running and not is_built and not self.build_mode)
+        self.build_action.setEnabled(
+            is_loaded and not is_running and not is_built and not self.build_mode
+        )
         self.start_action.setEnabled(is_loaded and is_built and not self.build_mode)
         self.stop_action.setEnabled(is_running and not self.build_mode)
         self.reset_action.setEnabled(is_running and not self.build_mode)
         self.refresh_action.setEnabled(is_running)
-        self.restart_action.setEnabled(is_running and not self.build_mode and bool(self.selected_section) and self.selected_section in runtime_sections)
+        self.restart_action.setEnabled(
+            is_running
+            and not self.build_mode
+            and bool(self.selected_section)
+            and self.selected_section in runtime_sections
+        )
         self.viewer_action.setEnabled(True)
         self.save_action.setEnabled(is_loaded)
         self.save_as_action.setEnabled(is_loaded)
@@ -1156,7 +1244,9 @@ class ManagerMainWindow(QMainWindow):
         self.import_component_file_action.setEnabled(build_enabled)
         self.remove_component_action.setEnabled(build_enabled and bool(self.selected_section))
         self.add_connection_action.setEnabled(build_enabled)
-        self.remove_connection_action.setEnabled(build_enabled and bool(self.adapter.connection_names()))
+        self.remove_connection_action.setEnabled(
+            build_enabled and bool(self.adapter.connection_names())
+        )
         mode_enabled = not self.build_mode and not is_running and not is_built
         self.soft_mode_action.setEnabled(mode_enabled)
         self.hard_mode_action.setEnabled(mode_enabled)
@@ -1264,7 +1354,9 @@ class ManagerMainWindow(QMainWindow):
                 button.setToolTip(function["description"])
                 button.setEnabled(bool(function["enabled"]) and not self.build_mode)
                 button.clicked.connect(
-                    lambda _checked=False, name=function["name"], section=section_name: self._run_component_function(section, name)
+                    lambda _checked=False, name=function["name"], section=section_name: (
+                        self._run_component_function(section, name)
+                    )
                 )
                 self.functions_layout.addWidget(button)
                 self._function_buttons.append(button)
@@ -1308,7 +1400,14 @@ class ManagerMainWindow(QMainWindow):
         self.refresh_view()
         self._populate_inspector(section_name)
 
-    def _create_component_with_dialog(self, *, descriptor, class_name: str, class_file: str | None = None, suggested_section: str | None = None) -> None:
+    def _create_component_with_dialog(
+        self,
+        *,
+        descriptor,
+        class_name: str,
+        class_file: str | None = None,
+        suggested_section: str | None = None,
+    ) -> None:
         dialog = ComponentSettingsDialog(
             section_name=suggested_section or descriptor.section_name,
             descriptor=descriptor,
@@ -1341,11 +1440,17 @@ class ManagerMainWindow(QMainWindow):
     def add_standard_component(self) -> None:
         templates = self.adapter.available_component_templates()
         labels = [template["label"] for template in templates]
-        choice, ok = QInputDialog.getItem(self, "Add Standard Component", "Component type:", labels, 0, False)
+        choice, ok = QInputDialog.getItem(
+            self, "Add Standard Component", "Component type:", labels, 0, False
+        )
         if not ok or not choice:
             return
         selected = templates[labels.index(choice)]
-        descriptor = next(descriptor for descriptor in list_component_descriptors() if descriptor.section_name == selected["section_name"])
+        descriptor = next(
+            descriptor
+            for descriptor in list_component_descriptors()
+            if descriptor.section_name == selected["section_name"]
+        )
         self._create_component_with_dialog(
             descriptor=descriptor,
             class_name=selected["class_path"],
@@ -1353,7 +1458,9 @@ class ManagerMainWindow(QMainWindow):
         )
 
     def import_component_class(self) -> None:
-        class_path, ok = QInputDialog.getText(self, "Import Component Class", "Class path (module.Class):")
+        class_path, ok = QInputDialog.getText(
+            self, "Import Component Class", "Class path (module.Class):"
+        )
         if not ok or not class_path.strip():
             return
         try:
@@ -1375,7 +1482,9 @@ class ManagerMainWindow(QMainWindow):
         )
 
     def import_component_file(self) -> None:
-        file_path, _ = QFileDialog.getOpenFileName(self, "Import Component From File", "", "Python Files (*.py)")
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, "Import Component From File", "", "Python Files (*.py)"
+        )
         if not file_path:
             return
         class_name, ok = QInputDialog.getText(self, "Import Component From File", "Class name:")
@@ -1415,18 +1524,26 @@ class ManagerMainWindow(QMainWindow):
         self.refresh_view()
 
     def add_connection(self) -> None:
-        sections = [section for section in self.adapter.runtime_sections() if section in (self.adapter.config or {})]
+        sections = [
+            section
+            for section in self.adapter.runtime_sections()
+            if section in (self.adapter.config or {})
+        ]
         if not sections:
             self.statusBar().showMessage("No components are available", 2500)
             return
-        output_component, ok = QInputDialog.getItem(self, "Add Connection", "Output component:", sections, 0, False)
+        output_component, ok = QInputDialog.getItem(
+            self, "Add Connection", "Output component:", sections, 0, False
+        )
         if not ok or not output_component:
             return
         input_choices = [section for section in sections if section != output_component]
         if not input_choices:
             self.statusBar().showMessage("No target components are available", 2500)
             return
-        input_component, ok = QInputDialog.getItem(self, "Add Connection", "Input component:", input_choices, 0, False)
+        input_component, ok = QInputDialog.getItem(
+            self, "Add Connection", "Input component:", input_choices, 0, False
+        )
         if not ok or not input_component:
             return
         stream_name, ok = QInputDialog.getText(self, "Add Connection", "Shared-memory stream name:")
@@ -1435,7 +1552,9 @@ class ManagerMainWindow(QMainWindow):
         output_role, ok = QInputDialog.getText(self, "Add Connection", "Output stream role:")
         if not ok:
             return
-        input_role, ok = QInputDialog.getText(self, "Add Connection", "Input stream role:", text=output_role.strip())
+        input_role, ok = QInputDialog.getText(
+            self, "Add Connection", "Input stream role:", text=output_role.strip()
+        )
         if not ok:
             return
         try:
@@ -1457,7 +1576,9 @@ class ManagerMainWindow(QMainWindow):
         if not names:
             self.statusBar().showMessage("No connections are defined", 2500)
             return
-        stream_name, ok = QInputDialog.getItem(self, "Remove Connection", "Connection:", names, 0, False)
+        stream_name, ok = QInputDialog.getItem(
+            self, "Remove Connection", "Connection:", names, 0, False
+        )
         if not ok or not stream_name:
             return
         try:
@@ -1470,7 +1591,7 @@ class ManagerMainWindow(QMainWindow):
 
     def _refresh_logs(self) -> None:
         theme = get_theme(self.theme_name)
-        chunks = ["<div style=\"font-family: Menlo, Consolas, monospace; white-space: pre-wrap;\">"]
+        chunks = ['<div style="font-family: Menlo, Consolas, monospace; white-space: pre-wrap;">']
         in_process_logs = self._gui_log_handler.render_html(theme)
         if in_process_logs:
             chunks.append(in_process_logs)
@@ -1486,7 +1607,9 @@ class ManagerMainWindow(QMainWindow):
             if tail:
                 chunks.append(_build_log_html(tail, theme, title=path.name))
         if len(chunks) == 1:
-            chunks.append(f'<div><span style="color:{theme.subtext};">No component log files available yet.</span></div>')
+            chunks.append(
+                f'<div><span style="color:{theme.subtext};">No component log files available yet.</span></div>'
+            )
         chunks.append("</div>")
         html = "".join(chunks)
         if self._last_log_html != html:
@@ -1508,9 +1631,17 @@ class ManagerMainWindow(QMainWindow):
         self.statusBar().showMessage(f"{title}: {exc}", 5000)
 
 
-def launch_manager_gui(*, config_path: str | None = None, mode: str | None = None, theme_name: str = "dark", refresh_ms: int = 1000) -> int:
+def launch_manager_gui(
+    *,
+    config_path: str | None = None,
+    mode: str | None = None,
+    theme_name: str = "dark",
+    refresh_ms: int = 1000,
+) -> int:
     _require_gui_backend()
     app = QApplication.instance() or QApplication([])
-    window = ManagerMainWindow(config_path=config_path, mode=mode, theme_name=theme_name, refresh_ms=refresh_ms)
+    window = ManagerMainWindow(
+        config_path=config_path, mode=mode, theme_name=theme_name, refresh_ms=refresh_ms
+    )
     window.show()
     return app.exec_()

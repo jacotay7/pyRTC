@@ -42,19 +42,37 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Measure latency between pyrtc shared-memory streams."
     )
-    parser.add_argument("source_shm", nargs="?", type=str, help="Name of source SHM (earlier in pipeline)")
-    parser.add_argument("target_shm", nargs="?", type=str, help="Name of target SHM (later in pipeline)")
-    parser.add_argument("--config", type=str, default=None, help="System config used to infer a default latency path")
-    parser.add_argument("--path", nargs="+", default=None, help="Explicit stream path to measure, e.g. --path wfs signal wfc")
-    parser.add_argument("--samples", type=int, default=4096, help="Number of timestamp samples to collect")
+    parser.add_argument(
+        "source_shm", nargs="?", type=str, help="Name of source SHM (earlier in pipeline)"
+    )
+    parser.add_argument(
+        "target_shm", nargs="?", type=str, help="Name of target SHM (later in pipeline)"
+    )
+    parser.add_argument(
+        "--config",
+        type=str,
+        default=None,
+        help="System config used to infer a default latency path",
+    )
+    parser.add_argument(
+        "--path",
+        nargs="+",
+        default=None,
+        help="Explicit stream path to measure, e.g. --path wfs signal wfc",
+    )
+    parser.add_argument(
+        "--samples", type=int, default=4096, help="Number of timestamp samples to collect"
+    )
     parser.add_argument("--tag", type=str, default="latency", help="Output tag used in plot title")
-    parser.add_argument("--format", choices=("text", "json"), default="text", help="Report output format")
+    parser.add_argument(
+        "--format", choices=("text", "json"), default="text", help="Report output format"
+    )
     parser.add_argument("--bins", type=int, default=200, help="Number of histogram bins")
     parser.add_argument(
         "--xrange",
         type=float,
         nargs=2,
-        default=(1e-4, 10 ** -2.5),
+        default=(1e-4, 10**-2.5),
         metavar=("LOW", "HIGH"),
         help="Latency histogram range in seconds",
     )
@@ -120,7 +138,9 @@ def main(argv=None) -> int:
 
     parser = _build_arg_parser()
     args = parser.parse_args(argv)
-    logger = configure_logging_from_args(args, app_name="pyrtc-measure-latency", component_name=args.tag)
+    logger = configure_logging_from_args(
+        args, app_name="pyrtc-measure-latency", component_name=args.tag
+    )
 
     if args.samples < 2:
         logger.error("--samples must be at least 2")

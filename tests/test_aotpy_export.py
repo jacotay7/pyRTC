@@ -128,7 +128,11 @@ def test_aotpy_export_surfaces_missing_optional_dependency(monkeypatch, tmp_path
             return self._data
 
     monkeypatch.setattr(telemetry_module, "open_stream", lambda name: _SHM())
-    monkeypatch.setattr(aotpy_export.importlib, "import_module", lambda name: (_ for _ in ()).throw(ImportError("missing aotpy")))
+    monkeypatch.setattr(
+        aotpy_export.importlib,
+        "import_module",
+        lambda name: (_ for _ in ()).throw(ImportError("missing aotpy")),
+    )
 
     telemetry = Telemetry({"data_dir": str(tmp_path), "functions": []})
     session_path = telemetry.save("signal", 1)

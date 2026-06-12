@@ -125,7 +125,12 @@ def test_expected_output_specs_follow_component_output_aliases():
             "height": 8,
             "dark_count": 1,
             "integration": 1,
-            "output_streams": {"psf_short": "short_custom", "psf_long": "long_custom", "strehl": "strehl_custom", "tiptilt": "tiptilt_custom"},
+            "output_streams": {
+                "psf_short": "short_custom",
+                "psf_long": "long_custom",
+                "strehl": "strehl_custom",
+                "tiptilt": "tiptilt_custom",
+            },
         },
     }
 

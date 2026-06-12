@@ -15,6 +15,7 @@ from pyrtc.utils import set_from_config
 
 logger = get_logger(__name__)
 
+
 class Modulator(Component, ABC):
     """
     Common lifecycle and positioning interface for modulator devices.
@@ -26,6 +27,7 @@ class Modulator(Component, ABC):
     New code should use :meth:`set_position`; :meth:`go_to` is retained as a
     compatibility alias for older call sites.
     """
+
     def __init__(self, conf) -> None:
         try:
             super().__init__(conf)

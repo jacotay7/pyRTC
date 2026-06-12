@@ -26,18 +26,56 @@ from pyrtc.utils import read_yaml_file
 logger = get_logger("examples.shwfs.shwfs_specula_soft")
 CONFIG_PATH = REPO_ROOT / "examples" / "shwfs" / "shwfs_SPECULA_config.yaml"
 PARAM_PATH = REPO_ROOT / "examples" / "shwfs" / "shwfs_SPECULA_params.yaml"
-DEFAULT_STREAMS = ["wfs", "wfs_raw", "wfc", "wfc_2d", "signal", "signal_2d", "psf_short", "psf_long", "strehl", "tiptilt"]
+DEFAULT_STREAMS = [
+    "wfs",
+    "wfs_raw",
+    "wfc",
+    "wfc_2d",
+    "signal",
+    "signal_2d",
+    "psf_short",
+    "psf_long",
+    "strehl",
+    "tiptilt",
+]
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run the SPECULA-backed SHWFS soft-RTC tutorial.")
-    parser.add_argument("--duration", type=float, default=10.0, help="Seconds to run before stopping.")
-    parser.add_argument("--status-interval", type=float, default=1.0, help="Seconds between operator-friendly status lines.")
-    parser.add_argument("--poke-amp", type=float, default=100.0, help="Poke amplitude used when computing the interaction matrix.")
-    parser.add_argument("--gain", type=float, default=0.1, help="Loop gain used after IM calibration.")
-    parser.add_argument("--skip-im", action="store_true", help="Skip calibration and use an identity-style fallback control matrix.")
-    parser.add_argument("--no-clear-shms", action="store_true", help="Leave existing pyrtc shared-memory streams untouched.")
-    parser.add_argument("--specula-param-file", type=Path, default=PARAM_PATH, help="YAML file describing the SPECULA object graph used by the bridge.")
+    parser.add_argument(
+        "--duration", type=float, default=10.0, help="Seconds to run before stopping."
+    )
+    parser.add_argument(
+        "--status-interval",
+        type=float,
+        default=1.0,
+        help="Seconds between operator-friendly status lines.",
+    )
+    parser.add_argument(
+        "--poke-amp",
+        type=float,
+        default=100.0,
+        help="Poke amplitude used when computing the interaction matrix.",
+    )
+    parser.add_argument(
+        "--gain", type=float, default=0.1, help="Loop gain used after IM calibration."
+    )
+    parser.add_argument(
+        "--skip-im",
+        action="store_true",
+        help="Skip calibration and use an identity-style fallback control matrix.",
+    )
+    parser.add_argument(
+        "--no-clear-shms",
+        action="store_true",
+        help="Leave existing pyrtc shared-memory streams untouched.",
+    )
+    parser.add_argument(
+        "--specula-param-file",
+        type=Path,
+        default=PARAM_PATH,
+        help="YAML file describing the SPECULA object graph used by the bridge.",
+    )
     add_logging_cli_args(parser)
     return parser
 
@@ -106,7 +144,9 @@ def prepare_loop(system: dict, *, gain: float, poke_amp: float, compute_im: bool
 
 def format_status_line(system: dict, elapsed: float) -> str:
     slopes = system["slopes"].read(block=False)
-    correction = np.asarray(getattr(system["dm"], "current_shape", system["dm"].read()), dtype=np.float64)
+    correction = np.asarray(
+        getattr(system["dm"], "current_shape", system["dm"].read()), dtype=np.float64
+    )
     residual_rms = float(np.sqrt(np.mean(slopes**2))) if slopes.size else 0.0
     correction_rms = float(np.sqrt(np.mean(correction**2))) if correction.size else 0.0
     return f"t={elapsed:5.1f}s residual_rms={residual_rms:0.4f} dm_rms={correction_rms:0.4f}"
@@ -114,7 +154,9 @@ def format_status_line(system: dict, elapsed: float) -> str:
 
 def main(argv=None) -> int:
     args = build_arg_parser().parse_args(argv)
-    configure_logging_from_args(args, app_name="pyrtc-specula-shwfs", component_name="shwfs_specula_soft_example")
+    configure_logging_from_args(
+        args, app_name="pyrtc-specula-shwfs", component_name="shwfs_specula_soft_example"
+    )
     config = read_yaml_file(str(CONFIG_PATH))
     if not args.no_clear_shms:
         clear_shms(DEFAULT_STREAMS)

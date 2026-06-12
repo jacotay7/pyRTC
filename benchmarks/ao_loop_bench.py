@@ -19,7 +19,11 @@ from benchmarks.core_compute_bench import collect_system_info
 from pyrtc.logging_utils import add_logging_cli_args, configure_logging_from_args, get_logger
 from pyrtc.loop import leaky_integrator_numba
 from pyrtc.pipeline import gpu_torch_available
-from pyrtc.slopes_process import compute_slopes_pywfs_optim_numba, compute_slopes_pywfs_torch, compute_slopes_shwfs_optim_numba
+from pyrtc.slopes_process import (
+    compute_slopes_pywfs_optim_numba,
+    compute_slopes_pywfs_torch,
+    compute_slopes_shwfs_optim_numba,
+)
 
 
 logger = get_logger(__name__)
@@ -62,13 +66,17 @@ def _build_summary_table(results: dict[str, Any]) -> str:
         for profile_name, variants in profiles.items():
             cpu_summary = _format_stats(variants.get("cpu"))
             gpu_stats = variants.get("gpu")
-            gpu_summary = _format_stats(gpu_stats if isinstance(gpu_stats, dict) and "status" not in gpu_stats else None)
-            rows.append([
-                AO_SENSOR_LABELS.get(sensor_name, sensor_name),
-                profile_name,
-                cpu_summary,
-                gpu_summary,
-            ])
+            gpu_summary = _format_stats(
+                gpu_stats if isinstance(gpu_stats, dict) and "status" not in gpu_stats else None
+            )
+            rows.append(
+                [
+                    AO_SENSOR_LABELS.get(sensor_name, sensor_name),
+                    profile_name,
+                    cpu_summary,
+                    gpu_summary,
+                ]
+            )
     return _render_table(["Sensor", "Size", "CPU p99", "GPU p99"], rows)
 
 
@@ -146,7 +154,9 @@ def _build_modal_drive(num_modes: int, seed: int) -> tuple[np.ndarray, np.ndarra
     return amplitudes, phases, phase_rates
 
 
-def _build_pywfs_masks(num_pixels_in_pupils: int) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+def _build_pywfs_masks(
+    num_pixels_in_pupils: int,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     total_length = 4 * num_pixels_in_pupils
     p1 = np.zeros(total_length, dtype=np.bool_)
     p2 = np.zeros(total_length, dtype=np.bool_)
@@ -213,7 +223,9 @@ def _build_pywfs_cpu_step(grid_size: int) -> Callable[[], None]:
             slopes,
             ref_slopes,
         )
-        leaky_integrator_numba(measured_slopes, reconstruction, correction, correction_buffer, leak, num_modes - 1)
+        leaky_integrator_numba(
+            measured_slopes, reconstruction, correction, correction_buffer, leak, num_modes - 1
+        )
         np.clip(correction_buffer, -1.0, 1.0, out=correction)
 
     return step
@@ -261,13 +273,17 @@ def _build_shwfs_cpu_step(grid_size: int) -> Callable[[], None]:
             0,
             2,
         ).reshape(signal_size)
-        leaky_integrator_numba(measured, reconstruction, correction, correction_buffer, leak, num_modes - 1)
+        leaky_integrator_numba(
+            measured, reconstruction, correction, correction_buffer, leak, num_modes - 1
+        )
         np.clip(correction_buffer, -1.0, 1.0, out=correction)
 
     return step
 
 
-def _compute_slopes_shwfs_torch(image: Any, num_regions: int, threshold: float, ref_slopes: Any) -> Any:
+def _compute_slopes_shwfs_torch(
+    image: Any, num_regions: int, threshold: float, ref_slopes: Any
+) -> Any:
     import torch
 
     patches = image.reshape(num_regions, 2, num_regions, 2).permute(0, 2, 1, 3)
@@ -306,7 +322,9 @@ def _build_pywfs_gpu_step(grid_size: int) -> tuple[Callable[[], None], Callable[
     num_modes = grid_size * grid_size
     num_pixels = num_modes
     signal_size = 2 * num_pixels
-    response = torch.tensor(_build_dense_response(signal_size, num_modes, seed=10 + grid_size), device=device)
+    response = torch.tensor(
+        _build_dense_response(signal_size, num_modes, seed=10 + grid_size), device=device
+    )
     reconstruction = response.transpose(0, 1).contiguous()
     amplitudes_np, phase_np, phase_rates_np = _build_modal_drive(num_modes, seed=20 + grid_size)
     amplitudes = torch.tensor(amplitudes_np, device=device)
@@ -369,7 +387,9 @@ def _build_shwfs_gpu_step(grid_size: int) -> tuple[Callable[[], None], Callable[
     device = torch.device("cuda")
     num_modes = grid_size * grid_size
     signal_size = 2 * num_modes
-    response = torch.tensor(_build_dense_response(signal_size, num_modes, seed=30 + grid_size), device=device)
+    response = torch.tensor(
+        _build_dense_response(signal_size, num_modes, seed=30 + grid_size), device=device
+    )
     reconstruction = response.transpose(0, 1).contiguous()
     amplitudes_np, phase_np, phase_rates_np = _build_modal_drive(num_modes, seed=40 + grid_size)
     amplitudes = torch.tensor(amplitudes_np, device=device)
@@ -397,7 +417,9 @@ def _build_shwfs_gpu_step(grid_size: int) -> tuple[Callable[[], None], Callable[
         image[1::2, 0::2] = flux * (1.0 - sx + sy)
         image[1::2, 1::2] = flux * (1.0 + sx + sy)
 
-        measured = _compute_slopes_shwfs_torch(image, grid_size, threshold=1.0, ref_slopes=ref_slopes)
+        measured = _compute_slopes_shwfs_torch(
+            image, grid_size, threshold=1.0, ref_slopes=ref_slopes
+        )
         correction = (1.0 - leak) * correction - torch.matmul(reconstruction, measured)
         correction[num_modes:] = 0
         correction = torch.clamp(correction, -1.0, 1.0)
@@ -405,7 +427,9 @@ def _build_shwfs_gpu_step(grid_size: int) -> tuple[Callable[[], None], Callable[
     return step, _build_gpu_sync(device)
 
 
-def _benchmark_sensor(sensor_type: str, grid_size: int, iterations: int, warmup: int, include_gpu: bool) -> dict[str, Any]:
+def _benchmark_sensor(
+    sensor_type: str, grid_size: int, iterations: int, warmup: int, include_gpu: bool
+) -> dict[str, Any]:
     if sensor_type == "pywfs":
         cpu_step = _build_pywfs_cpu_step(grid_size)
         gpu_builder = _build_pywfs_gpu_step
@@ -473,8 +497,12 @@ def run_ao_loop_benchmarks(
 
 
 def _build_arg_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Benchmark synthetic closed-loop AO iterations for SHWFS and PYWFS.")
-    parser.add_argument("--iterations", type=int, default=2000, help="Timed iterations per benchmark")
+    parser = argparse.ArgumentParser(
+        description="Benchmark synthetic closed-loop AO iterations for SHWFS and PYWFS."
+    )
+    parser.add_argument(
+        "--iterations", type=int, default=2000, help="Timed iterations per benchmark"
+    )
     parser.add_argument("--warmup", type=int, default=200, help="Warmup iterations per benchmark")
     parser.add_argument("--cpu-only", action="store_true", help="Skip GPU variants")
     parser.add_argument(
@@ -497,7 +525,9 @@ def _build_arg_parser() -> argparse.ArgumentParser:
 def main(argv=None) -> int:
     parser = _build_arg_parser()
     args = parser.parse_args(argv)
-    configure_logging_from_args(args, app_name="pyrtc-ao-loop-bench", component_name="benchmarks.ao_loop_bench")
+    configure_logging_from_args(
+        args, app_name="pyrtc-ao-loop-bench", component_name="benchmarks.ao_loop_bench"
+    )
 
     results = run_ao_loop_benchmarks(
         iterations=args.iterations,

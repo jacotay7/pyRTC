@@ -33,7 +33,9 @@ def main(argv=None) -> int:
 
     parser = _build_arg_parser()
     args = parser.parse_args(argv)
-    logger = configure_logging_from_args(args, app_name="pyrtc-view-launch-all", component_name="viewer")
+    logger = configure_logging_from_args(
+        args, app_name="pyrtc-view-launch-all", component_name="viewer"
+    )
     logger.info("Launching default viewer commands")
     launch_all()
     return 0

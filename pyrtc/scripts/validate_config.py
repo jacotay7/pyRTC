@@ -23,7 +23,11 @@ def _build_arg_parser() -> argparse.ArgumentParser:
 
 
 def _success_payload(config_path: str, normalized_conf: dict) -> dict:
-    components = [section for section in ("wfs", "slopes", "loop", "wfc", "psf", "telemetry") if section in normalized_conf]
+    components = [
+        section
+        for section in ("wfs", "slopes", "loop", "wfc", "psf", "telemetry")
+        if section in normalized_conf
+    ]
     return {
         "valid": True,
         "config": config_path,

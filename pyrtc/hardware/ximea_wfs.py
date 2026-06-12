@@ -16,6 +16,7 @@ from ximea import xiapi
 
 logger = get_logger(__name__)
 
+
 class XIMEAWFS(WavefrontSensor):
     """Wavefront-sensor adapter for a XIMEA camera.
 
@@ -56,10 +57,10 @@ class XIMEAWFS(WavefrontSensor):
     def set_roi(self, roi):
         try:
             super().set_roi(roi)
-            self.cam.set_param('width', self.roi_width)
-            self.cam.set_param('height', self.roi_height)
-            self.cam.set_param('offset_x', self.roi_left)
-            self.cam.set_param('offset_y', self.roi_top)
+            self.cam.set_param("width", self.roi_width)
+            self.cam.set_param("height", self.roi_height)
+            self.cam.set_param("offset_x", self.roi_left)
+            self.cam.set_param("offset_y", self.roi_top)
             self.logger.info("Applied XIMEA ROI %s", roi)
         except Exception:
             self.logger.exception("Failed to apply XIMEA ROI %s", roi)
@@ -69,7 +70,7 @@ class XIMEAWFS(WavefrontSensor):
     def set_exposure(self, exposure):
         try:
             super().set_exposure(exposure)
-            self.cam.set_param('exposure', self.exposure)
+            self.cam.set_param("exposure", self.exposure)
             self.logger.info("Applied XIMEA exposure=%s", self.exposure)
         except Exception:
             self.logger.exception("Failed to apply XIMEA exposure=%s", exposure)
@@ -80,7 +81,7 @@ class XIMEAWFS(WavefrontSensor):
         try:
             super().set_binning(binning)
             if self.binning == 2:
-                self.cam.set_param('downsampling', "XI_DWN_2x2")
+                self.cam.set_param("downsampling", "XI_DWN_2x2")
             self.logger.info("Applied XIMEA binning=%s", self.binning)
         except Exception:
             self.logger.exception("Failed to apply XIMEA binning=%s", binning)
@@ -90,7 +91,7 @@ class XIMEAWFS(WavefrontSensor):
     def set_gain(self, gain):
         try:
             super().set_gain(gain)
-            self.cam.set_param('gain', self.gain)
+            self.cam.set_param("gain", self.gain)
             self.logger.info("Applied XIMEA gain=%s", self.gain)
         except Exception:
             self.logger.exception("Failed to apply XIMEA gain=%s", gain)
@@ -101,7 +102,7 @@ class XIMEAWFS(WavefrontSensor):
         try:
             super().set_bit_depth(bit_depth)
             if self.bit_depth > 8:
-                self.cam.set_param('imgdataformat', "XI_MONO16")
+                self.cam.set_param("imgdataformat", "XI_MONO16")
             self.logger.info("Applied XIMEA bit_depth=%s", self.bit_depth)
         except Exception:
             self.logger.exception("Failed to apply XIMEA bit_depth=%s", bit_depth)
@@ -141,6 +142,6 @@ class XIMEAWFS(WavefrontSensor):
 
         return
 
-if __name__ == "__main__":
 
-    launch_component(XIMEAWFS, "wfs", start = True)
+if __name__ == "__main__":
+    launch_component(XIMEAWFS, "wfs", start=True)

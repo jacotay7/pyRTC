@@ -29,6 +29,7 @@ from pyrtc.utils import set_from_config, set_affinity_and_priority
 
 logger = get_logger(__name__)
 
+
 def work(obj, function_name, affinity):
     """Run one component worker function in a loop while the component lives."""
     set_affinity_and_priority(function_name, [affinity])
@@ -56,7 +57,7 @@ def build_component_runtime_config(system_conf: dict, section_name: str) -> dict
     return conf
 
 
-def launch_component(component, conf_key, start = True):
+def launch_component(component, conf_key, start=True):
     from pyrtc.config_schema import read_system_config
 
     # Create argument parser
@@ -81,7 +82,7 @@ def launch_component(component, conf_key, start = True):
         if start:
             obj.start()
 
-        listener = Listener(obj, port= int(args.port))
+        listener = Listener(obj, port=int(args.port))
         while listener.running:
             listener.listen()
             time.sleep(1e-3)
@@ -138,7 +139,9 @@ class ComponentRuntimeStatus:
 
 
 class BaseComponentRuntime:
-    def __init__(self, section_name, mode, component_class, *, restart_policy="never", heartbeat_timeout=5.0) -> None:
+    def __init__(
+        self, section_name, mode, component_class, *, restart_policy="never", heartbeat_timeout=5.0
+    ) -> None:
         self.section_name = section_name
         self.mode = mode
         self.component_class = component_class
@@ -234,7 +237,16 @@ class BaseComponentRuntime:
 
 
 class SoftComponentRuntime(BaseComponentRuntime):
-    def __init__(self, section_name, component_class, conf: dict, *, shared_resource=None, restart_policy="never", heartbeat_timeout=5.0) -> None:
+    def __init__(
+        self,
+        section_name,
+        component_class,
+        conf: dict,
+        *,
+        shared_resource=None,
+        restart_policy="never",
+        heartbeat_timeout=5.0,
+    ) -> None:
         super().__init__(
             section_name=section_name,
             mode="soft-rtc",
@@ -340,8 +352,12 @@ class HardComponentRuntime(BaseComponentRuntime):
         try:
             self.build()
             if self.launcher is None or not _launcher_process_alive(self.launcher):
-                self.launcher = self.launcher_cls(self.script_path, self.config_path, self.port, timeout=self.rpc_timeout)
-                _apply_runtime_logging_environment(log_dir=self.log_dir, log_file=self.configured_log_file)
+                self.launcher = self.launcher_cls(
+                    self.script_path, self.config_path, self.port, timeout=self.rpc_timeout
+                )
+                _apply_runtime_logging_environment(
+                    log_dir=self.log_dir, log_file=self.configured_log_file
+                )
                 self.launcher.launch()
             self.launcher.run("start")
             self.pid = _launcher_pid(self.launcher)
@@ -431,7 +447,9 @@ class HardComponentRuntime(BaseComponentRuntime):
             try:
                 launcher.close(force=True)
             except Exception:
-                logger.debug("Failed to close dead launcher for %s", self.section_name, exc_info=True)
+                logger.debug(
+                    "Failed to close dead launcher for %s", self.section_name, exc_info=True
+                )
         self.start()
 
 
@@ -442,10 +460,16 @@ def _resolve_soft_runtime_log_file(component_class) -> str | None:
     log_dir = os.environ.get(PYRTC_LOG_DIR_ENV)
     if not log_dir:
         return None
-    return str((Path(log_dir).expanduser() / f"pyrtc_{component_class.__name__}_{os.getpid()}.log").resolve())
+    return str(
+        (
+            Path(log_dir).expanduser() / f"pyrtc_{component_class.__name__}_{os.getpid()}.log"
+        ).resolve()
+    )
 
 
-def _resolve_hard_runtime_log_file(section_name: str, *, pid: int | None, log_dir: str | None, log_file: str | None) -> str | None:
+def _resolve_hard_runtime_log_file(
+    section_name: str, *, pid: int | None, log_dir: str | None, log_file: str | None
+) -> str | None:
     if log_file:
         return str(Path(log_file).expanduser().resolve())
     if pid is None or not log_dir:
@@ -536,11 +560,15 @@ class RTCManager:
         self._supervisor_stop_event = threading.Event()
 
     @classmethod
-    def from_config_file(cls, config_path: str | Path, *, mode: str | None = None, launcher_cls=HardwareLauncher):
+    def from_config_file(
+        cls, config_path: str | Path, *, mode: str | None = None, launcher_cls=HardwareLauncher
+    ):
         from pyrtc.config_schema import read_system_config
 
         normalized = read_system_config(config_path)
-        manager = cls(normalized, config_path=str(config_path), mode=mode, launcher_cls=launcher_cls)
+        manager = cls(
+            normalized, config_path=str(config_path), mode=mode, launcher_cls=launcher_cls
+        )
         manager.validated = True
         manager.state = "validated"
         return manager
@@ -734,7 +762,9 @@ class RTCManager:
     def _resolve_restart_policy(self, section_name: str) -> str:
         manager_conf = self.config.get("manager", {})
         component_policies = manager_conf.get("component_restart_policies", {})
-        return str(component_policies.get(section_name, manager_conf.get("restart_policy", "never")))
+        return str(
+            component_policies.get(section_name, manager_conf.get("restart_policy", "never"))
+        )
 
     def _resolve_health_check_interval(self) -> float:
         manager_conf = self.config.get("manager", {})
@@ -769,7 +799,9 @@ class RTCManager:
             mode = self._resolve_component_mode(section_name)
             restart_policy = self._resolve_restart_policy(section_name)
             resource_name = self._component_resource_name(section_name)
-            shared_resource = self.resources.get(resource_name) if isinstance(resource_name, str) else None
+            shared_resource = (
+                self.resources.get(resource_name) if isinstance(resource_name, str) else None
+            )
             if mode == "soft-rtc":
                 runtime = SoftComponentRuntime(
                     section_name,
@@ -779,7 +811,9 @@ class RTCManager:
                     restart_policy=restart_policy,
                     heartbeat_timeout=heartbeat_timeout,
                 )
-                runtime.resource_section = resource_name if resource_name in self._component_sections() else None
+                runtime.resource_section = (
+                    resource_name if resource_name in self._component_sections() else None
+                )
             else:
                 if shared_resource is not None:
                     raise ValueError(
@@ -819,8 +853,13 @@ class RTCManager:
         self._supervisor_stop_event.set()
         if self._supervisor_thread is None:
             return
-        if self._supervisor_thread.is_alive() and threading.current_thread() is not self._supervisor_thread:
-            self._supervisor_thread.join(timeout=max(1.0, self._resolve_health_check_interval() * 2.0))
+        if (
+            self._supervisor_thread.is_alive()
+            and threading.current_thread() is not self._supervisor_thread
+        ):
+            self._supervisor_thread.join(
+                timeout=max(1.0, self._resolve_health_check_interval() * 2.0)
+            )
         self._supervisor_thread = None
 
     def _supervisor_loop(self) -> None:
@@ -861,7 +900,11 @@ class RTCManager:
                 previous_state = runtime.state
                 self._maybe_restart_runtime(runtime)
                 if previous_state != runtime.state and runtime.state == "running":
-                    logger.warning("Restarted component %s under policy %s", section_name, runtime.restart_policy)
+                    logger.warning(
+                        "Restarted component %s under policy %s",
+                        section_name,
+                        runtime.restart_policy,
+                    )
             if runtime.state == "failed":
                 any_failed = True
             elif runtime.state == "degraded":
@@ -871,18 +914,24 @@ class RTCManager:
 
         if any_failed:
             self.state = "failed"
-            self.error = "; ".join(
-                f"{section_name}: {runtime.error}"
-                for section_name, runtime in self.runtimes.items()
-                if runtime.state == "failed" and runtime.error
-            ) or self.error
+            self.error = (
+                "; ".join(
+                    f"{section_name}: {runtime.error}"
+                    for section_name, runtime in self.runtimes.items()
+                    if runtime.state == "failed" and runtime.error
+                )
+                or self.error
+            )
         elif any_degraded:
             self.state = "degraded"
-            self.error = "; ".join(
-                f"{section_name}: {runtime.error}"
-                for section_name, runtime in self.runtimes.items()
-                if runtime.state == "degraded" and runtime.error
-            ) or None
+            self.error = (
+                "; ".join(
+                    f"{section_name}: {runtime.error}"
+                    for section_name, runtime in self.runtimes.items()
+                    if runtime.state == "degraded" and runtime.error
+                )
+                or None
+            )
         elif any_running:
             self.state = "running"
             self.error = None
@@ -978,7 +1027,9 @@ class RTCManager:
             runtime = self.runtimes[section_name]
             runtime.stop()
             self._refresh_health_locked(supervise=False)
-            if not any(component_runtime.desired_running for component_runtime in self.runtimes.values()):
+            if not any(
+                component_runtime.desired_running for component_runtime in self.runtimes.values()
+            ):
                 self._stop_supervisor()
 
     def restart_component(self, section_name: str) -> None:
@@ -995,8 +1046,7 @@ class RTCManager:
             "config_path": self.config_path,
             "error": self.error,
             "components": {
-                section_name: runtime.status()
-                for section_name, runtime in self.runtimes.items()
+                section_name: runtime.status() for section_name, runtime in self.runtimes.items()
             },
         }
 
@@ -1030,13 +1080,19 @@ class RTCManager:
 
             def _descriptor_resolver(section_name: str):
                 try:
-                    descriptor = describe_component_class(self._resolve_component_class(section_name))
+                    descriptor = describe_component_class(
+                        self._resolve_component_class(section_name)
+                    )
                 except Exception:
                     return get_component_descriptor(section_name)
                 # A class without a registered descriptor yields a synthesized
                 # descriptor with no stream wiring; the section-name descriptor
                 # still knows the canonical inputs/outputs in that case.
-                if descriptor is not None and not descriptor.input_streams and not descriptor.output_streams:
+                if (
+                    descriptor is not None
+                    and not descriptor.input_streams
+                    and not descriptor.output_streams
+                ):
                     return get_component_descriptor(section_name) or descriptor
                 return descriptor
 

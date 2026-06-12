@@ -52,7 +52,9 @@ def sync_runtime_config(system_conf: Mapping[str, Any]) -> None:
         try:
             symbol = _resolve_class_symbol(class_name, class_file)
         except Exception:
-            logger.debug("Runtime config sync skipped for unresolved class %s", class_name, exc_info=True)
+            logger.debug(
+                "Runtime config sync skipped for unresolved class %s", class_name, exc_info=True
+            )
             continue
 
         sync_hook = getattr(symbol, "sync_system_config", None)

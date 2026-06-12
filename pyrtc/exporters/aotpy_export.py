@@ -180,19 +180,28 @@ def _classify_streams(manifest: dict) -> dict[str, Any]:
 
         if {"signal", "slopes", "measurement", "measurements"} & tags or name.startswith("signal"):
             current = roles["signal"]
-            if current is None or _rank("signal", record) < _rank("signal", _stream_record_by_name(manifest, current)):
+            if current is None or _rank("signal", record) < _rank(
+                "signal", _stream_record_by_name(manifest, current)
+            ):
                 roles["signal"] = record["name"]
             continue
 
         if {"wfc", "control", "command", "commands"} & tags or name.startswith("wfc"):
             current = roles["wfc"]
-            if current is None or _rank("wfc", record) < _rank("wfc", _stream_record_by_name(manifest, current)):
+            if current is None or _rank("wfc", record) < _rank(
+                "wfc", _stream_record_by_name(manifest, current)
+            ):
                 roles["wfc"] = record["name"]
             continue
 
-        if {"wfs", "wavefront_sensor", "pixels", "image", "detector"} & tags or name in {"wfs", "wfsraw"}:
+        if {"wfs", "wavefront_sensor", "pixels", "image", "detector"} & tags or name in {
+            "wfs",
+            "wfsraw",
+        }:
             current = roles["wfs"]
-            if current is None or _rank("wfs", record) < _rank("wfs", _stream_record_by_name(manifest, current)):
+            if current is None or _rank("wfs", record) < _rank(
+                "wfs", _stream_record_by_name(manifest, current)
+            ):
                 roles["wfs"] = record["name"]
             continue
 
@@ -221,7 +230,9 @@ def _image_metadata(aotpy, stream_name: str, entry: dict, record: dict) -> list:
     return metadata
 
 
-def _build_image(aotpy, *, stream_name: str, entry: dict, record: dict, image_name: str, unit: str | None = None):
+def _build_image(
+    aotpy, *, stream_name: str, entry: dict, record: dict, image_name: str, unit: str | None = None
+):
     timestamps = np.asarray(entry["timestamps"], dtype=np.float64)
     time = _build_time(aotpy, f"{_slug(stream_name).upper()}_TIME", timestamps)
     return aotpy.Image(
@@ -242,12 +253,29 @@ def _control_gain_image(aotpy, loop_conf: dict | None):
     return aotpy.Image("PYRTC_LOOP_GAIN", np.asarray([[float(gain)]], dtype=np.float64))
 
 
-def _build_wfs(aotpy, *, uid_prefix: str, telescope, resolved_config: dict | None, wfs_entry: dict | None, signal_entry: dict | None, manifest: dict):
+def _build_wfs(
+    aotpy,
+    *,
+    uid_prefix: str,
+    telescope,
+    resolved_config: dict | None,
+    wfs_entry: dict | None,
+    signal_entry: dict | None,
+    manifest: dict,
+):
     if wfs_entry is None and signal_entry is None:
         return None, None
 
-    wfs_record = _stream_record_by_name(manifest, wfs_entry["metadata"]["name"]) if wfs_entry is not None else None
-    signal_record = _stream_record_by_name(manifest, signal_entry["metadata"]["name"]) if signal_entry is not None else None
+    wfs_record = (
+        _stream_record_by_name(manifest, wfs_entry["metadata"]["name"])
+        if wfs_entry is not None
+        else None
+    )
+    signal_record = (
+        _stream_record_by_name(manifest, signal_entry["metadata"]["name"])
+        if signal_entry is not None
+        else None
+    )
     slopes_conf = (resolved_config or {}).get("slopes", {})
     slopes_type = str(slopes_conf.get("type", "SHWFS")).strip().lower()
 
@@ -286,8 +314,12 @@ def _build_wfs(aotpy, *, uid_prefix: str, telescope, resolved_config: dict | Non
             measurements = aotpy.Image(
                 "PYRTC_SIGNAL_MEASUREMENTS",
                 measurements_data,
-                time=_build_time(aotpy, f"{uid_prefix}_MEASUREMENTS_TIME", signal_entry["timestamps"]),
-                metadata=_image_metadata(aotpy, signal_entry["metadata"]["name"], signal_entry, signal_record),
+                time=_build_time(
+                    aotpy, f"{uid_prefix}_MEASUREMENTS_TIME", signal_entry["timestamps"]
+                ),
+                metadata=_image_metadata(
+                    aotpy, signal_entry["metadata"]["name"], signal_entry, signal_record
+                ),
             )
             ref_measurements = aotpy.Image(
                 "PYRTC_REFERENCE_MEASUREMENTS",
@@ -300,8 +332,12 @@ def _build_wfs(aotpy, *, uid_prefix: str, telescope, resolved_config: dict | Non
             measurements = aotpy.Image(
                 "PYRTC_SIGNAL_MEASUREMENTS",
                 flattened[:, np.newaxis, :],
-                time=_build_time(aotpy, f"{uid_prefix}_MEASUREMENTS_TIME", signal_entry["timestamps"]),
-                metadata=_image_metadata(aotpy, signal_entry["metadata"]["name"], signal_entry, signal_record),
+                time=_build_time(
+                    aotpy, f"{uid_prefix}_MEASUREMENTS_TIME", signal_entry["timestamps"]
+                ),
+                metadata=_image_metadata(
+                    aotpy, signal_entry["metadata"]["name"], signal_entry, signal_record
+                ),
             )
 
     if slopes_type == "pywfs":
@@ -327,7 +363,15 @@ def _build_wfs(aotpy, *, uid_prefix: str, telescope, resolved_config: dict | Non
     return source, wfs
 
 
-def _build_wfc(aotpy, *, uid_prefix: str, telescope, resolved_config: dict | None, wfc_entry: dict | None, manifest: dict):
+def _build_wfc(
+    aotpy,
+    *,
+    uid_prefix: str,
+    telescope,
+    resolved_config: dict | None,
+    wfc_entry: dict | None,
+    manifest: dict,
+):
     if wfc_entry is None:
         return None, None
 
@@ -344,7 +388,9 @@ def _build_wfc(aotpy, *, uid_prefix: str, telescope, resolved_config: dict | Non
         uid=f"{uid_prefix}_DM",
         telescope=telescope,
         n_valid_actuators=actuator_count,
-        actuator_coordinates=[aotpy.Coordinates(float(index), 0.0) for index in range(actuator_count)],
+        actuator_coordinates=[
+            aotpy.Coordinates(float(index), 0.0) for index in range(actuator_count)
+        ],
     )
     commands = aotpy.Image(
         "PYRTC_WFC_COMMANDS",
@@ -356,7 +402,9 @@ def _build_wfc(aotpy, *, uid_prefix: str, telescope, resolved_config: dict | Non
     return dm, commands
 
 
-def _build_scoring_cameras(aotpy, *, uid_prefix: str, science_names: list[str], loaded_session: dict, manifest: dict):
+def _build_scoring_cameras(
+    aotpy, *, uid_prefix: str, science_names: list[str], loaded_session: dict, manifest: dict
+):
     cameras = []
     for index, stream_name in enumerate(science_names, start=1):
         entry = loaded_session[stream_name]
@@ -439,7 +487,9 @@ def telemetry_session_to_aotpy(
             _metadatum(aotpy, "PRTCREAT", manifest.get("created_at")),
             _metadatum(aotpy, "PRTCVER", manifest.get("pyrtc_version")),
             _metadatum(aotpy, "PRTCPATH", manifest.get("config_path")),
-            _metadatum(aotpy, "PRTCSTRS", [record["name"] for record in manifest.get("streams", [])]),
+            _metadatum(
+                aotpy, "PRTCSTRS", [record["name"] for record in manifest.get("streams", [])]
+            ),
             _metadatum(aotpy, "PRTCUNMP", roles["unmapped"]),
             _metadatum(aotpy, "PRTCXPRT", "pyrtc.exporters.aotpy_export"),
         ]
@@ -478,7 +528,9 @@ def telemetry_session_to_aotpy(
         system.wavefront_correctors.append(corrector)
 
     if wfs is not None and corrector is not None:
-        timestamps = wfc_entry["timestamps"] if wfc_entry is not None else signal_entry["timestamps"]
+        timestamps = (
+            wfc_entry["timestamps"] if wfc_entry is not None else signal_entry["timestamps"]
+        )
         system.loops.append(
             aotpy.ControlLoop(
                 uid=f"{uid_prefix}_CONTROL_LOOP",

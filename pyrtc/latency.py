@@ -205,13 +205,9 @@ def collect_timestamps(streams, samples: int, show_progress: bool = False):
     if not stream_items:
         raise ValueError("At least one stream is required for latency sampling")
 
-    counts = {
-        stream_name: np.empty(samples, dtype=np.float64)
-        for stream_name, _ in stream_items
-    }
+    counts = {stream_name: np.empty(samples, dtype=np.float64) for stream_name, _ in stream_items}
     write_times = {
-        stream_name: np.empty(samples, dtype=np.float64)
-        for stream_name, _ in stream_items
+        stream_name: np.empty(samples, dtype=np.float64) for stream_name, _ in stream_items
     }
 
     if show_progress:
@@ -255,19 +251,12 @@ def collect_stream_event_history(
     if samples < 1:
         raise ValueError("samples must be at least 1")
 
-    counts = {
-        stream_name: np.empty(samples, dtype=np.float64)
-        for stream_name, _ in stream_items
-    }
+    counts = {stream_name: np.empty(samples, dtype=np.float64) for stream_name, _ in stream_items}
     write_times = {
-        stream_name: np.empty(samples, dtype=np.float64)
-        for stream_name, _ in stream_items
+        stream_name: np.empty(samples, dtype=np.float64) for stream_name, _ in stream_items
     }
     collected = {stream_name: 0 for stream_name, _ in stream_items}
-    last_seen_count = {
-        stream_name: int(stream.count)
-        for stream_name, stream in stream_items
-    }
+    last_seen_count = {stream_name: int(stream.count) for stream_name, stream in stream_items}
 
     progress_bar = None
     total_needed = samples * len(stream_items)
@@ -300,7 +289,10 @@ def collect_stream_event_history(
 
             if all(collected[stream_name] >= samples for stream_name, _ in stream_items):
                 break
-            if timeout_seconds is not None and (time.perf_counter() - start_time) >= timeout_seconds:
+            if (
+                timeout_seconds is not None
+                and (time.perf_counter() - start_time) >= timeout_seconds
+            ):
                 raise TimeoutError("Timed out while collecting latency samples")
             if not progressed:
                 time.sleep(max(0.0, poll_interval_seconds))
@@ -346,12 +338,19 @@ def compute_count_aligned_latency_seconds(
     live pipeline delay rather than wall-clock age differences.
     """
 
-    source_count_arr = np.rint(np.asarray(source_counts, dtype=np.float64).reshape(-1)).astype(np.int64)
-    target_count_arr = np.rint(np.asarray(target_counts, dtype=np.float64).reshape(-1)).astype(np.int64)
+    source_count_arr = np.rint(np.asarray(source_counts, dtype=np.float64).reshape(-1)).astype(
+        np.int64
+    )
+    target_count_arr = np.rint(np.asarray(target_counts, dtype=np.float64).reshape(-1)).astype(
+        np.int64
+    )
     source_time_arr = np.asarray(source_write_times, dtype=np.float64).reshape(-1)
     target_time_arr = np.asarray(target_write_times, dtype=np.float64).reshape(-1)
     if not (
-        source_count_arr.size == target_count_arr.size == source_time_arr.size == target_time_arr.size
+        source_count_arr.size
+        == target_count_arr.size
+        == source_time_arr.size
+        == target_time_arr.size
     ):
         raise ValueError("count and timestamp arrays must all have the same length")
     if source_count_arr.size == 0:
@@ -359,8 +358,7 @@ def compute_count_aligned_latency_seconds(
 
     count_offset = int(np.rint(np.median(target_count_arr - source_count_arr)))
     source_by_count = {
-        int(count): float(timestamp)
-        for count, timestamp in zip(source_count_arr, source_time_arr)
+        int(count): float(timestamp) for count, timestamp in zip(source_count_arr, source_time_arr)
     }
 
     matched_latencies = []
@@ -427,7 +425,9 @@ def _build_latency_segment(
     return segment, np.asarray(latency_seconds, dtype=np.float64)
 
 
-def plot_latency_histogram(latency_seconds: np.ndarray, *, title: str, bins: int, xrange: Sequence[float]) -> plt.Figure:
+def plot_latency_histogram(
+    latency_seconds: np.ndarray, *, title: str, bins: int, xrange: Sequence[float]
+) -> plt.Figure:
     """Render a log-scaled histogram that highlights high-percentile latency."""
 
     low, high = (float(xrange[0]), float(xrange[1]))
@@ -465,7 +465,11 @@ def _descriptor_transition(descriptor) -> tuple[str, str] | None:
     if not input_names:
         return None
 
-    preferred_outputs = [stream.name for stream in descriptor.output_streams if not stream.optional and stream.name != "*"]
+    preferred_outputs = [
+        stream.name
+        for stream in descriptor.output_streams
+        if not stream.optional and stream.name != "*"
+    ]
     fallback_outputs = [stream.name for stream in descriptor.output_streams if stream.name != "*"]
     output_names = preferred_outputs or fallback_outputs
     if not output_names:
@@ -496,7 +500,9 @@ def build_stream_transitions(
     return transitions
 
 
-def _shortest_path(adjacency: Mapping[str, list[str]], source_shm: str, target_shm: str) -> list[str] | None:
+def _shortest_path(
+    adjacency: Mapping[str, list[str]], source_shm: str, target_shm: str
+) -> list[str] | None:
     queue = deque([(source_shm, [source_shm])])
     visited = {source_shm}
     while queue:
@@ -511,7 +517,9 @@ def _shortest_path(adjacency: Mapping[str, list[str]], source_shm: str, target_s
     return None
 
 
-def _longest_path_from(adjacency: Mapping[str, list[str]], node: str, visited: set[str]) -> list[str]:
+def _longest_path_from(
+    adjacency: Mapping[str, list[str]], node: str, visited: set[str]
+) -> list[str]:
     best_path = [node]
     for neighbor in adjacency.get(node, []):
         if neighbor in visited:
@@ -674,8 +682,7 @@ def format_latency_report(report: LatencyReport | Mapping[str, Any]) -> str:
             processing_stats = segment.get("processing_statistics")
             if processing_stats is not None:
                 lines.append(
-                    "    "
-                    + f"processing={_format_seconds(processing_stats['mean_seconds'])}"
+                    "    " + f"processing={_format_seconds(processing_stats['mean_seconds'])}"
                 )
 
     return "\n".join(lines)

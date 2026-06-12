@@ -2,8 +2,16 @@ from pathlib import Path
 
 from pyrtc import RTCManager
 from pyrtc.config_schema import read_system_config
-from pyrtc.gui.manager_adapter import ManagerAdapter, _coerce_runtime_value, _is_live_runtime_field, _ordered_sections
-from pyrtc.hardware.synthetic_systems import _default_wfc_layout, build_synthetic_shwfs_response_matrix
+from pyrtc.gui.manager_adapter import (
+    ManagerAdapter,
+    _coerce_runtime_value,
+    _is_live_runtime_field,
+    _ordered_sections,
+)
+from pyrtc.hardware.synthetic_systems import (
+    _default_wfc_layout,
+    build_synthetic_shwfs_response_matrix,
+)
 from pyrtc.scripts import manager_gui
 
 
@@ -13,7 +21,9 @@ SYNTHETIC_CONFIG_PATH = REPO_ROOT / "examples" / "synthetic_shwfs" / "config.yam
 
 def test_manager_gui_parser_supports_mode_theme_and_refresh():
     parser = manager_gui._build_arg_parser()
-    args = parser.parse_args([str(SYNTHETIC_CONFIG_PATH), "--mode", "hard", "--theme", "light", "--refresh-ms", "1500"])
+    args = parser.parse_args(
+        [str(SYNTHETIC_CONFIG_PATH), "--mode", "hard", "--theme", "light", "--refresh-ms", "1500"]
+    )
 
     assert args.config == str(SYNTHETIC_CONFIG_PATH)
     assert args.mode == "hard"
@@ -28,7 +38,9 @@ def test_manager_adapter_builds_graph_snapshot_from_synthetic_config():
     snapshot = adapter.build_graph_snapshot()
 
     section_names = [node.section_name for node in snapshot.nodes]
-    edges = {(edge.source_section, edge.target_section, edge.source_stream) for edge in snapshot.edges}
+    edges = {
+        (edge.source_section, edge.target_section, edge.source_stream) for edge in snapshot.edges
+    }
 
     assert snapshot.config_path == str(SYNTHETIC_CONFIG_PATH.resolve())
     assert {"wfs", "slopes", "loop", "wfc", "psf"}.issubset(section_names)
@@ -103,7 +115,10 @@ def test_manager_adapter_surfaces_runtime_parameter_hooks_and_applies_live_value
             return self._component
 
         def status(self):
-            return {"components": {"specula": {"state": "running", "mode": "soft-rtc"}}, "state": "running"}
+            return {
+                "components": {"specula": {"state": "running", "mode": "soft-rtc"}},
+                "state": "running",
+            }
 
     adapter = ManagerAdapter()
     adapter.config = {"specula": {"class_name": "fake.Specula"}}
@@ -318,7 +333,10 @@ def test_manager_adapter_adds_custom_component_and_connection():
     )
 
     assert "science_copy" in adapter.config
-    assert adapter.config["manager"]["component_classes"]["science_copy"] == "pyrtc.science_camera.ScienceCamera"
+    assert (
+        adapter.config["manager"]["component_classes"]["science_copy"]
+        == "pyrtc.science_camera.ScienceCamera"
+    )
     assert adapter.config["streams"]["science_copy_psf"]["output_component"] == "science_copy"
     assert adapter.config["streams"]["science_copy_psf"]["component_stream"] == "psf_short"
 
@@ -337,7 +355,9 @@ def test_manager_adapter_snapshot_includes_custom_stream_connections():
     snapshot = adapter.build_graph_snapshot(runtime_controls_enabled=False)
 
     sections = {node.section_name for node in snapshot.nodes}
-    edges = {(edge.source_section, edge.target_section, edge.source_stream) for edge in snapshot.edges}
+    edges = {
+        (edge.source_section, edge.target_section, edge.source_stream) for edge in snapshot.edges
+    }
 
     assert "science_copy" in sections
     assert ("science_copy", "loop", "science_copy_psf") in edges

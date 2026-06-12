@@ -78,15 +78,23 @@ def run_command(command: list[str]) -> None:
             logger.error("Command stdout:\n%s", completed.stdout)
         if completed.stderr:
             logger.error("Command stderr:\n%s", completed.stderr)
-        raise subprocess.CalledProcessError(completed.returncode, command, completed.stdout, completed.stderr)
+        raise subprocess.CalledProcessError(
+            completed.returncode, command, completed.stdout, completed.stderr
+        )
     if completed.stdout:
         logger.info("Command output:\n%s", completed.stdout.strip())
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Validate that the built pyrtcao wheel installs and imports in a clean venv.")
-    parser.add_argument("--dist-dir", default="dist", help="Directory containing built distribution artifacts")
-    parser.add_argument("--venv-dir", default=None, help="Optional explicit virtualenv path to create and keep")
+    parser = argparse.ArgumentParser(
+        description="Validate that the built pyrtcao wheel installs and imports in a clean venv."
+    )
+    parser.add_argument(
+        "--dist-dir", default="dist", help="Directory containing built distribution artifacts"
+    )
+    parser.add_argument(
+        "--venv-dir", default=None, help="Optional explicit virtualenv path to create and keep"
+    )
     add_logging_cli_args(parser)
     return parser
 

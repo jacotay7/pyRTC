@@ -34,7 +34,10 @@ except ImportError:
     import aotpy
 
 
-from pyrtc.exporters.aotpy_export import export_telemetry_session_to_aotpy, telemetry_session_to_aotpy
+from pyrtc.exporters.aotpy_export import (
+    export_telemetry_session_to_aotpy,
+    telemetry_session_to_aotpy,
+)
 
 
 EXAMPLE_DIR = Path(__file__).resolve().parent
@@ -43,7 +46,13 @@ SESSION_DIR = OUTPUT_DIR / "minimal_session"
 EXPORT_PATH = OUTPUT_DIR / "minimal_session.fits"
 
 
-def write_stream(session_dir: Path, name: str, frames: np.ndarray, timestamps: np.ndarray, semantic_tags: list[str]) -> dict:
+def write_stream(
+    session_dir: Path,
+    name: str,
+    frames: np.ndarray,
+    timestamps: np.ndarray,
+    semantic_tags: list[str],
+) -> dict:
     stream_dir = session_dir / name
     stream_dir.mkdir(parents=True, exist_ok=False)
 
@@ -143,7 +152,9 @@ def create_fake_telemetry_stream(session_dir: Path) -> Path:
         "metadata": {"operator": "example-script"},
         "streams": stream_records,
     }
-    (session_dir / "session.json").write_text(json.dumps(session_manifest, indent=2, sort_keys=True), encoding="utf-8")
+    (session_dir / "session.json").write_text(
+        json.dumps(session_manifest, indent=2, sort_keys=True), encoding="utf-8"
+    )
     return session_dir
 
 

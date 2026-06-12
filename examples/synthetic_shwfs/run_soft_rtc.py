@@ -158,7 +158,9 @@ def _signal_2d_shape(config: dict) -> tuple[int, int]:
 
 
 def _load_soft_example_module():
-    spec = importlib.util.spec_from_file_location("synthetic_shwfs_soft_rtc_example", _SOFT_EXAMPLE_PATH)
+    spec = importlib.util.spec_from_file_location(
+        "synthetic_shwfs_soft_rtc_example", _SOFT_EXAMPLE_PATH
+    )
     if spec is None or spec.loader is None:
         raise ImportError(f"Unable to load soft example from {_SOFT_EXAMPLE_PATH}")
     module = importlib.util.module_from_spec(spec)

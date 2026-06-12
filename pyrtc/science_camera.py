@@ -18,6 +18,7 @@ from pyrtc.utils import centroid, clean_image_for_strehl, set_from_config
 
 logger = get_logger(__name__)
 
+
 class ScienceCamera(Component):
     """
     Base class for cameras that produce science images and image-quality metrics.
@@ -100,9 +101,14 @@ class ScienceCamera(Component):
     bit_depth : int
         Bit depth setting.
     """
+
     def __init__(self, conf) -> None:
         try:
-            output_streams = conf.get("output_streams", {}) if isinstance(conf.get("output_streams"), dict) else {}
+            output_streams = (
+                conf.get("output_streams", {})
+                if isinstance(conf.get("output_streams"), dict)
+                else {}
+            )
 
             def _output_name(stream_name: str) -> str:
                 value = output_streams.get(stream_name, stream_name)
@@ -118,8 +124,12 @@ class ScienceCamera(Component):
             self.image_dtype = np.int32
             self.psf_long_dtype = np.float64
 
-            self.psf_short = create_stream(_output_name("psf_short"), self.image_shape, self.image_dtype)
-            self.psf_long = create_stream(_output_name("psf_long"), self.image_shape, self.psf_long_dtype)
+            self.psf_short = create_stream(
+                _output_name("psf_short"), self.image_shape, self.image_dtype
+            )
+            self.psf_long = create_stream(
+                _output_name("psf_long"), self.image_shape, self.psf_long_dtype
+            )
             self.strehl_shm = create_stream(_output_name("strehl"), (1,), float)
             self.tip_tilt_shm = create_stream(_output_name("tiptilt"), (1,), float)
 
@@ -287,10 +297,10 @@ class ScienceCamera(Component):
         x = np.zeros(self.data.shape)
         for i in range(self.integration_length):
             x += self.read().astype(x.dtype)
-        self.write_stream("psf_long", x/self.integration_length)
+        self.write_stream("psf_long", x / self.integration_length)
         return
 
-    def read(self, block = True):
+    def read(self, block=True):
         """
         Read the current short exposure PSF.
 
@@ -352,7 +362,7 @@ class ScienceCamera(Component):
             raise
         return
 
-    def save_dark(self,filename=''):
+    def save_dark(self, filename=""):
         """
         Save the dark frame to a file.
 
@@ -362,18 +372,20 @@ class ScienceCamera(Component):
             File to save the dark frame to. If not specified, uses the configured dark_file.
         """
         try:
-            if filename == '':
+            if filename == "":
                 filename = self.dark_file
-            if filename == '':
+            if filename == "":
                 raise ValueError("No dark frame filename provided")
             np.save(filename, self.dark)
             self.logger.info("Saved science camera dark frame to %s", filename)
         except Exception:
-            logger.exception("Failed to save science camera dark frame to %s", filename or self.dark_file)
+            logger.exception(
+                "Failed to save science camera dark frame to %s", filename or self.dark_file
+            )
             raise
         return
 
-    def load_dark(self,filename=''):
+    def load_dark(self, filename=""):
         """
         Load the dark frame from a file.
 
@@ -382,18 +394,20 @@ class ScienceCamera(Component):
         filename : str, optional
             File to load the dark frame from. If not specified, uses the configured dark_file.
         """
-        #If no file given, first try dark file
+        # If no file given, first try dark file
         try:
-            if filename == '':
+            if filename == "":
                 filename = self.dark_file
-            if filename == '':
+            if filename == "":
                 self.dark = np.zeros_like(self.dark)
                 logger.info("No science camera dark frame file configured; using zeros")
             else:
                 self.dark = np.load(filename)
                 self.logger.info("Loaded science camera dark frame from %s", filename)
         except Exception:
-            logger.exception("Failed to load science camera dark frame from %s", filename or self.dark_file)
+            logger.exception(
+                "Failed to load science camera dark frame from %s", filename or self.dark_file
+            )
             raise
         return
 
@@ -426,7 +440,7 @@ class ScienceCamera(Component):
             raise
         return
 
-    def save_model_psf(self,filename=''):
+    def save_model_psf(self, filename=""):
         """
         Save the model PSF to a file.
 
@@ -436,9 +450,9 @@ class ScienceCamera(Component):
             File to save the model PSF to. If not specified, uses the configured model_file.
         """
         try:
-            if filename == '':
+            if filename == "":
                 filename = self.model_file
-            if filename == '':
+            if filename == "":
                 raise ValueError("No model PSF filename provided")
             np.save(filename, self.model)
             self.logger.info("Saved model PSF to %s", filename)
@@ -447,7 +461,7 @@ class ScienceCamera(Component):
             raise
         return
 
-    def load_model_psf(self,filename=''):
+    def load_model_psf(self, filename=""):
         """
         Load the model PSF from a file.
 
@@ -456,11 +470,11 @@ class ScienceCamera(Component):
         filename : str, optional
             File to load the model PSF from. If not specified, uses the configured model_file.
         """
-        #If no file given, first try dark file
+        # If no file given, first try dark file
         try:
-            if filename == '':
+            if filename == "":
                 filename = self.model_file
-            if filename == '':
+            if filename == "":
                 self.model = np.zeros_like(self.model)
                 logger.info("No model PSF file configured; using zeros")
             else:
@@ -471,7 +485,7 @@ class ScienceCamera(Component):
             raise
         return
 
-    def compute_strehl(self, median_filter_size = 1, gaussian_sigma = 0):
+    def compute_strehl(self, median_filter_size=1, gaussian_sigma=0):
         """
         Compute the rough Strehl ratio and tip tilt offset. These values are reference to the model_psf.
         If your model PSF is taken empirically, then the Strehl ratio is not absolute, and should only be
@@ -490,13 +504,13 @@ class ScienceCamera(Component):
             Strehl ratio.
         """
 
-        model = clean_image_for_strehl(self.model,
-                                       median_filter_size = median_filter_size,
-                                       gaussian_sigma = gaussian_sigma)
+        model = clean_image_for_strehl(
+            self.model, median_filter_size=median_filter_size, gaussian_sigma=gaussian_sigma
+        )
 
-        current = clean_image_for_strehl(self.read_long(),
-                                         median_filter_size = median_filter_size,
-                                         gaussian_sigma = gaussian_sigma)
+        current = clean_image_for_strehl(
+            self.read_long(), median_filter_size=median_filter_size, gaussian_sigma=gaussian_sigma
+        )
 
         self.strehl_ratio = np.max(current) / np.max(model)
         self.peak_dist = np.linalg.norm(centroid(current) - centroid(self.model))
@@ -512,7 +526,7 @@ class ScienceCamera(Component):
         """
         try:
             arr = self.read()
-            plt.imshow(arr, cmap = 'inferno', origin='lower')
+            plt.imshow(arr, cmap="inferno", origin="lower")
             plt.colorbar()
             plt.show()
             self.logger.info("Plotted science camera image")
@@ -521,6 +535,6 @@ class ScienceCamera(Component):
             raise
         return
 
-if __name__ == "__main__":
 
-    launch_component(ScienceCamera, "psf", start = True)
+if __name__ == "__main__":
+    launch_component(ScienceCamera, "psf", start=True)

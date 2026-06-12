@@ -12,9 +12,21 @@ logger = get_logger(__name__)
 
 
 def _build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Compare perf smoke report against committed baseline.")
-    parser.add_argument("--current", type=str, default="benchmarks/perf_smoke_report.json", help="Current report path")
-    parser.add_argument("--baseline", type=str, default="benchmarks/perf_smoke_baseline.json", help="Baseline report path")
+    parser = argparse.ArgumentParser(
+        description="Compare perf smoke report against committed baseline."
+    )
+    parser.add_argument(
+        "--current",
+        type=str,
+        default="benchmarks/perf_smoke_report.json",
+        help="Current report path",
+    )
+    parser.add_argument(
+        "--baseline",
+        type=str,
+        default="benchmarks/perf_smoke_baseline.json",
+        help="Baseline report path",
+    )
     parser.add_argument(
         "--max-ratio",
         type=float,
@@ -202,9 +214,7 @@ def main(argv=None) -> int:
     logger.info("Baseline comparison details:\n%s", json.dumps(comparison, indent=2))
 
     if missing:
-        raise SystemExit(
-            "Missing baseline metrics for comparison:\n" + "\n".join(sorted(missing))
-        )
+        raise SystemExit("Missing baseline metrics for comparison:\n" + "\n".join(sorted(missing)))
 
     if args.max_ratio is not None:
         regressions = find_ratio_regressions(comparison, args.max_ratio)

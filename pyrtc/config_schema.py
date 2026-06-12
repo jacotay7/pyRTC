@@ -43,25 +43,37 @@ def _resolve_class_symbol(class_name: str, class_file: str | None = None):
     return resolve_class_symbol(class_name, class_file)
 
 
-def _default_stream_aliases_for_section(section_name: str, section_conf: Mapping[str, Any]) -> tuple[dict[str, str], dict[str, str]]:
+def _default_stream_aliases_for_section(
+    section_name: str, section_conf: Mapping[str, Any]
+) -> tuple[dict[str, str], dict[str, str]]:
     descriptor = get_component_descriptor(section_name)
     if descriptor is None:
         class_name = section_conf.get("class_name")
         class_file = section_conf.get("class_file")
         if isinstance(class_name, str) and class_name.strip():
             try:
-                descriptor = describe_component_class(_resolve_class_symbol(class_name, class_file if isinstance(class_file, str) else None))
+                descriptor = describe_component_class(
+                    _resolve_class_symbol(
+                        class_name, class_file if isinstance(class_file, str) else None
+                    )
+                )
             except Exception:
                 descriptor = None
     input_aliases = {}
     output_aliases = {}
     if descriptor is not None:
-        input_aliases = {stream.name: stream.name for stream in descriptor.input_streams if stream.name != "*"}
-        output_aliases = {stream.name: stream.name for stream in descriptor.output_streams if stream.name != "*"}
+        input_aliases = {
+            stream.name: stream.name for stream in descriptor.input_streams if stream.name != "*"
+        }
+        output_aliases = {
+            stream.name: stream.name for stream in descriptor.output_streams if stream.name != "*"
+        }
     return input_aliases, output_aliases
 
 
-def _normalize_stream_alias_mapping(raw_mapping: Any, *, defaults: Mapping[str, str]) -> dict[str, str]:
+def _normalize_stream_alias_mapping(
+    raw_mapping: Any, *, defaults: Mapping[str, str]
+) -> dict[str, str]:
     normalized = dict(defaults)
     if not isinstance(raw_mapping, Mapping):
         return normalized
@@ -87,7 +99,9 @@ def _is_relative_path_string(value: Any) -> bool:
     return not Path(value).is_absolute()
 
 
-def _resolve_relative_path_fields(value: Any, *, base_dir: Path, parent_key: str | None = None) -> Any:
+def _resolve_relative_path_fields(
+    value: Any, *, base_dir: Path, parent_key: str | None = None
+) -> Any:
     if isinstance(value, Mapping):
         resolved = {}
         for key, item in value.items():
@@ -96,10 +110,15 @@ def _resolve_relative_path_fields(value: Any, *, base_dir: Path, parent_key: str
             if (is_path_field or is_component_file_entry) and _is_relative_path_string(item):
                 resolved[key] = str((base_dir / item).resolve())
             else:
-                resolved[key] = _resolve_relative_path_fields(item, base_dir=base_dir, parent_key=str(key))
+                resolved[key] = _resolve_relative_path_fields(
+                    item, base_dir=base_dir, parent_key=str(key)
+                )
         return resolved
     if isinstance(value, list):
-        return [_resolve_relative_path_fields(item, base_dir=base_dir, parent_key=parent_key) for item in value]
+        return [
+            _resolve_relative_path_fields(item, base_dir=base_dir, parent_key=parent_key)
+            for item in value
+        ]
     return value
 
 
@@ -128,7 +147,9 @@ def _validate_optional_numeric(
         return
     value = conf[key]
     if not isinstance(value, (int, float)) or isinstance(value, bool):
-        raise ConfigValidationError(f"{component}: '{key}' must be numeric, got {type(value).__name__}")
+        raise ConfigValidationError(
+            f"{component}: '{key}' must be numeric, got {type(value).__name__}"
+        )
     if minimum is not None and value < minimum:
         raise ConfigValidationError(f"{component}: '{key}' must be >= {minimum}, got {value}")
 
@@ -151,7 +172,9 @@ def _validate_required_section_mappings(conf: Mapping[str, Any]) -> None:
             f"system: missing required top-level section(s): {', '.join(missing)}"
         )
 
-    for section_name in REQUIRED_COMPONENT_SECTIONS + OPTIONAL_COMPONENT_SECTIONS + OPTIONAL_TOP_LEVEL_SECTIONS:
+    for section_name in (
+        REQUIRED_COMPONENT_SECTIONS + OPTIONAL_COMPONENT_SECTIONS + OPTIONAL_TOP_LEVEL_SECTIONS
+    ):
         if section_name in conf:
             _require_mapping(conf[section_name], section_name)
 
@@ -189,20 +212,31 @@ def _validate_functions_section(section_name: str, section_conf: Mapping[str, An
             )
 
 
-def _validate_component_class_and_streams(section_name: str, section_conf: Mapping[str, Any]) -> None:
+def _validate_component_class_and_streams(
+    section_name: str, section_conf: Mapping[str, Any]
+) -> None:
     class_name = section_conf.get("class_name")
     class_file = section_conf.get("class_file")
     if not isinstance(class_name, str) or not class_name.strip():
         raise ConfigValidationError(f"{section_name}: 'class_name' must be a non-empty string")
     if class_file is not None and (not isinstance(class_file, str) or not class_file.strip()):
-        raise ConfigValidationError(f"{section_name}: 'class_file' must be a non-empty string when provided")
+        raise ConfigValidationError(
+            f"{section_name}: 'class_file' must be a non-empty string when provided"
+        )
     try:
-        component_class = _resolve_class_symbol(class_name, class_file if isinstance(class_file, str) else None)
+        component_class = _resolve_class_symbol(
+            class_name, class_file if isinstance(class_file, str) else None
+        )
     except Exception as exc:
-        raise ConfigValidationError(f"{section_name}: unable to resolve class_name '{class_name}'") from exc
+        raise ConfigValidationError(
+            f"{section_name}: unable to resolve class_name '{class_name}'"
+        ) from exc
 
     descriptor = describe_component_class(component_class)
-    for mapping_name, streams in (("input_streams", descriptor.input_streams), ("output_streams", descriptor.output_streams)):
+    for mapping_name, streams in (
+        ("input_streams", descriptor.input_streams),
+        ("output_streams", descriptor.output_streams),
+    ):
         raw_mapping = section_conf.get(mapping_name, {})
         if raw_mapping is None:
             continue
@@ -211,15 +245,21 @@ def _validate_component_class_and_streams(section_name: str, section_conf: Mappi
         allowed = {stream.name for stream in streams if stream.name != "*"}
         for semantic_name, value in raw_mapping.items():
             if not isinstance(semantic_name, str) or not semantic_name.strip():
-                raise ConfigValidationError(f"{section_name}: '{mapping_name}' keys must be non-empty strings")
+                raise ConfigValidationError(
+                    f"{section_name}: '{mapping_name}' keys must be non-empty strings"
+                )
             if allowed and semantic_name not in allowed:
-                raise ConfigValidationError(f"{section_name}: '{mapping_name}' key '{semantic_name}' is not a known stream role")
+                raise ConfigValidationError(
+                    f"{section_name}: '{mapping_name}' key '{semantic_name}' is not a known stream role"
+                )
             if isinstance(value, Mapping):
                 shm_name = value.get("shm", value.get("name"))
             else:
                 shm_name = value
             if not isinstance(shm_name, str) or not shm_name.strip():
-                raise ConfigValidationError(f"{section_name}: '{mapping_name}.{semantic_name}' must resolve to a non-empty SHM name")
+                raise ConfigValidationError(
+                    f"{section_name}: '{mapping_name}.{semantic_name}' must resolve to a non-empty SHM name"
+                )
 
 
 def _validate_slopes_config(conf: Any) -> None:
@@ -229,7 +269,9 @@ def _validate_slopes_config(conf: Any) -> None:
     required = ["type", "signal_type"]
     missing = [key for key in required if key not in conf]
     if missing:
-        raise ConfigValidationError(f"{component}: missing required config key(s): {', '.join(missing)}")
+        raise ConfigValidationError(
+            f"{component}: missing required config key(s): {', '.join(missing)}"
+        )
 
     slopes_type = conf["type"]
     if not isinstance(slopes_type, str) or not slopes_type.strip():
@@ -264,7 +306,9 @@ def _validate_slopes_config(conf: Any) -> None:
                     "slopes: pupil entries must be strings in the form 'x,y'"
                 )
         if "pupils_radius" not in conf:
-            raise ConfigValidationError("slopes: 'pupils_radius' is required when 'pupils' is provided")
+            raise ConfigValidationError(
+                "slopes: 'pupils_radius' is required when 'pupils' is provided"
+            )
         _coerce_int(conf["pupils_radius"], component, "pupils_radius", minimum=1)
 
 
@@ -275,7 +319,9 @@ def _validate_psf_config(conf: Any) -> None:
     required = ["name", "width", "height", "dark_count", "integration"]
     missing = [key for key in required if key not in conf]
     if missing:
-        raise ConfigValidationError(f"{component}: missing required config key(s): {', '.join(missing)}")
+        raise ConfigValidationError(
+            f"{component}: missing required config key(s): {', '.join(missing)}"
+        )
 
     if not isinstance(conf["name"], str) or not conf["name"].strip():
         raise ConfigValidationError(f"{component}: 'name' must be a non-empty string")
@@ -288,12 +334,20 @@ def _validate_telemetry_config(conf: Any) -> None:
     component = "telemetry"
     conf = _require_mapping(conf, component)
 
-    if "data_dir" in conf and (not isinstance(conf["data_dir"], str) or not conf["data_dir"].strip()):
-        raise ConfigValidationError("telemetry: 'data_dir' must be a non-empty string when provided")
+    if "data_dir" in conf and (
+        not isinstance(conf["data_dir"], str) or not conf["data_dir"].strip()
+    ):
+        raise ConfigValidationError(
+            "telemetry: 'data_dir' must be a non-empty string when provided"
+        )
     if "streams" in conf:
         streams = conf["streams"]
-        if not isinstance(streams, list) or not all(isinstance(item, str) and item.strip() for item in streams):
-            raise ConfigValidationError("telemetry: 'streams' must be a list of non-empty stream names")
+        if not isinstance(streams, list) or not all(
+            isinstance(item, str) and item.strip() for item in streams
+        ):
+            raise ConfigValidationError(
+                "telemetry: 'streams' must be a list of non-empty stream names"
+            )
 
 
 def _validate_manager_config(conf: Any, *, system_conf: Mapping[str, Any]) -> None:
@@ -314,7 +368,9 @@ def _validate_manager_config(conf: Any, *, system_conf: Mapping[str, Any]) -> No
             )
 
     if "component_restart_policies" in conf:
-        restart_policies = _require_mapping(conf["component_restart_policies"], "manager.component_restart_policies")
+        restart_policies = _require_mapping(
+            conf["component_restart_policies"], "manager.component_restart_policies"
+        )
         for section_name, policy in restart_policies.items():
             if not _is_valid_manager_section(section_name, system_conf):
                 raise ConfigValidationError(
@@ -344,7 +400,9 @@ def _validate_manager_config(conf: Any, *, system_conf: Mapping[str, Any]) -> No
         ports = _require_mapping(conf["ports"], "manager.ports")
         for section_name, port in ports.items():
             if not _is_valid_manager_section(section_name, system_conf):
-                raise ConfigValidationError(f"manager.ports: unknown component section '{section_name}'")
+                raise ConfigValidationError(
+                    f"manager.ports: unknown component section '{section_name}'"
+                )
             _coerce_int(port, "manager.ports", section_name, minimum=1)
 
     for mapping_name in ("component_classes", "component_files"):
@@ -352,7 +410,9 @@ def _validate_manager_config(conf: Any, *, system_conf: Mapping[str, Any]) -> No
             mapping_value = _require_mapping(conf[mapping_name], f"manager.{mapping_name}")
             for section_name, target in mapping_value.items():
                 if not _is_valid_manager_section(section_name, system_conf):
-                    raise ConfigValidationError(f"manager.{mapping_name}: unknown component section '{section_name}'")
+                    raise ConfigValidationError(
+                        f"manager.{mapping_name}: unknown component section '{section_name}'"
+                    )
                 if not isinstance(target, str) or not target.strip():
                     raise ConfigValidationError(
                         f"manager.{mapping_name}: target for '{section_name}' must be a non-empty string"
@@ -368,17 +428,23 @@ def _validate_manager_config(conf: Any, *, system_conf: Mapping[str, Any]) -> No
                     raise ConfigValidationError(
                         f"manager.graph_layout.positions: unknown component section '{section_name}'"
                     )
-                position_conf = _require_mapping(value, f"manager.graph_layout.positions.{section_name}")
+                position_conf = _require_mapping(
+                    value, f"manager.graph_layout.positions.{section_name}"
+                )
                 for axis in ("x", "y"):
                     if axis not in position_conf:
                         raise ConfigValidationError(
                             f"manager.graph_layout.positions.{section_name}: missing '{axis}'"
                         )
-                    _validate_optional_numeric(position_conf, axis, f"manager.graph_layout.positions.{section_name}")
+                    _validate_optional_numeric(
+                        position_conf, axis, f"manager.graph_layout.positions.{section_name}"
+                    )
 
     if "log_dir" in conf and (not isinstance(conf["log_dir"], str) or not conf["log_dir"].strip()):
         raise ConfigValidationError("manager: 'log_dir' must be a non-empty string when provided")
-    if "log_file" in conf and (not isinstance(conf["log_file"], str) or not conf["log_file"].strip()):
+    if "log_file" in conf and (
+        not isinstance(conf["log_file"], str) or not conf["log_file"].strip()
+    ):
         raise ConfigValidationError("manager: 'log_file' must be a non-empty string when provided")
 
 
@@ -392,9 +458,13 @@ def _validate_resources_config(conf: Any) -> None:
         class_name = resource_conf.get("class_name")
         class_file = resource_conf.get("class_file")
         if not isinstance(class_name, str) or not class_name.strip():
-            raise ConfigValidationError(f"resources.{resource_name}: 'class_name' must be a non-empty string")
+            raise ConfigValidationError(
+                f"resources.{resource_name}: 'class_name' must be a non-empty string"
+            )
         if class_file is not None and (not isinstance(class_file, str) or not class_file.strip()):
-            raise ConfigValidationError(f"resources.{resource_name}: 'class_file' must be a non-empty string when provided")
+            raise ConfigValidationError(
+                f"resources.{resource_name}: 'class_file' must be a non-empty string when provided"
+            )
         try:
             _resolve_class_symbol(class_name, class_file if isinstance(class_file, str) else None)
         except Exception as exc:
@@ -406,7 +476,11 @@ def _validate_resources_config(conf: Any) -> None:
 def _validate_component_resource_bindings(conf: Mapping[str, Any]) -> None:
     resources_conf = conf.get("resources", {}) if isinstance(conf.get("resources"), Mapping) else {}
     manager_conf = conf.get("manager", {}) if isinstance(conf.get("manager"), Mapping) else {}
-    component_modes = manager_conf.get("component_modes", {}) if isinstance(manager_conf.get("component_modes"), Mapping) else {}
+    component_modes = (
+        manager_conf.get("component_modes", {})
+        if isinstance(manager_conf.get("component_modes"), Mapping)
+        else {}
+    )
     default_mode = str(manager_conf.get("mode", "soft-rtc"))
     component_sections = {
         section_name
@@ -421,7 +495,9 @@ def _validate_component_resource_bindings(conf: Mapping[str, Any]) -> None:
         if resource_name is None:
             continue
         if not isinstance(resource_name, str) or not resource_name.strip():
-            raise ConfigValidationError(f"{section_name}: 'resource' must be a non-empty string when provided")
+            raise ConfigValidationError(
+                f"{section_name}: 'resource' must be a non-empty string when provided"
+            )
         if resource_name not in resources_conf and resource_name not in component_sections:
             raise ConfigValidationError(
                 f"{section_name}: resource '{resource_name}' is not defined under top-level resources or as a component section"
@@ -457,20 +533,30 @@ def _validate_streams_config(conf: Any, *, system_conf: Mapping[str, Any]) -> No
         if "shape" in stream_conf:
             shape = stream_conf["shape"]
             if not isinstance(shape, (list, tuple)) or len(shape) == 0:
-                raise ConfigValidationError(f"streams.{stream_name}: 'shape' must be a non-empty list/tuple")
+                raise ConfigValidationError(
+                    f"streams.{stream_name}: 'shape' must be a non-empty list/tuple"
+                )
             for axis in shape:
                 _coerce_int(axis, f"streams.{stream_name}", "shape axis", minimum=1)
-        if "dtype" in stream_conf and (not isinstance(stream_conf["dtype"], str) or not stream_conf["dtype"].strip()):
-            raise ConfigValidationError(f"streams.{stream_name}: 'dtype' must be a non-empty string")
+        if "dtype" in stream_conf and (
+            not isinstance(stream_conf["dtype"], str) or not stream_conf["dtype"].strip()
+        ):
+            raise ConfigValidationError(
+                f"streams.{stream_name}: 'dtype' must be a non-empty string"
+            )
         output_component = stream_conf.get("output_component", stream_conf.get("producer"))
-        if output_component is not None and not _is_valid_manager_section(str(output_component), system_conf):
+        if output_component is not None and not _is_valid_manager_section(
+            str(output_component), system_conf
+        ):
             raise ConfigValidationError(
                 f"streams.{stream_name}: 'output_component' must reference a known component section"
             )
         input_components = stream_conf.get("input_components", stream_conf.get("consumers"))
         if input_components is not None:
             if not isinstance(input_components, list):
-                raise ConfigValidationError(f"streams.{stream_name}: 'input_components' must be a list")
+                raise ConfigValidationError(
+                    f"streams.{stream_name}: 'input_components' must be a list"
+                )
             for input_component in input_components:
                 if not _is_valid_manager_section(str(input_component), system_conf):
                     raise ConfigValidationError(
@@ -479,7 +565,9 @@ def _validate_streams_config(conf: Any, *, system_conf: Mapping[str, Any]) -> No
         if "component_stream" in stream_conf:
             component_stream = stream_conf["component_stream"]
             if not isinstance(component_stream, str) or not component_stream.strip():
-                raise ConfigValidationError(f"streams.{stream_name}: 'component_stream' must be a non-empty semantic stream name")
+                raise ConfigValidationError(
+                    f"streams.{stream_name}: 'component_stream' must be a non-empty semantic stream name"
+                )
 
 
 def _validate_metadata_config(conf: Any) -> None:
@@ -497,7 +585,9 @@ def _validate_metadata_config(conf: Any) -> None:
 def _processed_wfs_shape(wfs_conf: Mapping[str, Any]) -> tuple[int, int]:
     width = _coerce_int(wfs_conf["width"], "wfs", "width", minimum=1)
     height = _coerce_int(wfs_conf["height"], "wfs", "height", minimum=1)
-    downsample = _coerce_int(wfs_conf.get("downsample_factor", 0), "wfs", "downsample_factor", minimum=0)
+    downsample = _coerce_int(
+        wfs_conf.get("downsample_factor", 0), "wfs", "downsample_factor", minimum=0
+    )
     if downsample > 0:
         width //= downsample
         height //= downsample
@@ -513,7 +603,9 @@ def _validate_cross_component_consistency(conf: Mapping[str, Any]) -> None:
     wfc_conf = conf["wfc"]
 
     num_modes = _coerce_int(wfc_conf["num_modes"], "wfc", "num_modes", minimum=1)
-    dropped_modes = _coerce_int(loop_conf.get("num_dropped_modes", 0), "loop", "num_dropped_modes", minimum=0)
+    dropped_modes = _coerce_int(
+        loop_conf.get("num_dropped_modes", 0), "loop", "num_dropped_modes", minimum=0
+    )
     if dropped_modes >= num_modes:
         raise ConfigValidationError(
             f"loop: 'num_dropped_modes' ({dropped_modes}) must be less than wfc.num_modes ({num_modes})"
@@ -573,8 +665,16 @@ def normalize_system_config(conf: Any) -> dict[str, Any]:
     conf.setdefault("streams", {})
     conf.setdefault("resources", {})
 
-    component_classes = manager_conf.get("component_classes", {}) if isinstance(manager_conf.get("component_classes"), Mapping) else {}
-    component_files = manager_conf.get("component_files", {}) if isinstance(manager_conf.get("component_files"), Mapping) else {}
+    component_classes = (
+        manager_conf.get("component_classes", {})
+        if isinstance(manager_conf.get("component_classes"), Mapping)
+        else {}
+    )
+    component_files = (
+        manager_conf.get("component_files", {})
+        if isinstance(manager_conf.get("component_files"), Mapping)
+        else {}
+    )
     for section_name, section_conf in list(conf.items()):
         if section_name in OPTIONAL_TOP_LEVEL_SECTIONS or not isinstance(section_conf, Mapping):
             continue
@@ -590,9 +690,15 @@ def normalize_system_config(conf: Any) -> dict[str, Any]:
                     section_conf["class_name"] = descriptor.class_path
         if "class_file" not in section_conf and isinstance(component_files.get(section_name), str):
             section_conf["class_file"] = component_files.get(section_name)
-        default_inputs, default_outputs = _default_stream_aliases_for_section(section_name, section_conf)
-        section_conf["input_streams"] = _normalize_stream_alias_mapping(section_conf.get("input_streams", {}), defaults=default_inputs)
-        section_conf["output_streams"] = _normalize_stream_alias_mapping(section_conf.get("output_streams", {}), defaults=default_outputs)
+        default_inputs, default_outputs = _default_stream_aliases_for_section(
+            section_name, section_conf
+        )
+        section_conf["input_streams"] = _normalize_stream_alias_mapping(
+            section_conf.get("input_streams", {}), defaults=default_inputs
+        )
+        section_conf["output_streams"] = _normalize_stream_alias_mapping(
+            section_conf.get("output_streams", {}), defaults=default_outputs
+        )
         conf[section_name] = section_conf
     return conf
 

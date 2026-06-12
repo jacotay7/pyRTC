@@ -104,25 +104,27 @@ def test_view_parser_supports_theme_flag():
 
 
 def test_view_compute_window_size_starts_smaller_than_previous_large_defaults():
-    width, height = view._compute_window_size([
-        view._normalize_frame(__import__("numpy").zeros((64, 64))),
-        view._normalize_frame(__import__("numpy").zeros((64, 64))),
-        view._normalize_frame(__import__("numpy").zeros((64, 64))),
-        view._normalize_frame(__import__("numpy").zeros((64, 64))),
-    ], 2, 2, 12.0)
+    width, height = view._compute_window_size(
+        [
+            view._normalize_frame(__import__("numpy").zeros((64, 64))),
+            view._normalize_frame(__import__("numpy").zeros((64, 64))),
+            view._normalize_frame(__import__("numpy").zeros((64, 64))),
+            view._normalize_frame(__import__("numpy").zeros((64, 64))),
+        ],
+        2,
+        2,
+        12.0,
+    )
 
     assert width <= 1320
     assert height <= 900
-
 
 
 class _FakeStream:
     """Viewer-facing stream double mimicking pyshmem.SharedMemory."""
 
     def __init__(self, frame=None, count=1, write_time=10.0):
-        self._frame = np.asarray(
-            frame if frame is not None else [[1.0, 2.0], [3.0, 4.0]]
-        )
+        self._frame = np.asarray(frame if frame is not None else [[1.0, 2.0], [3.0, 4.0]])
         self.count = count
         self.write_time = write_time
         self.read_calls = 0
@@ -134,6 +136,7 @@ class _FakeStream:
 
     def close(self):
         self.close_calls += 1
+
 
 def test_stream_connection_keeps_last_fps_during_pause_grace_period():
     connection = StreamConnection.__new__(StreamConnection)
@@ -212,7 +215,9 @@ def test_apply_to_panels_collects_errors_without_raising():
     window.panels = {0: ok_panel, 1: bad_panel}
     window._last_panel_errors = 0
 
-    error_count = MosaicViewerWindow._apply_to_panels(window, "toggle", lambda panel: panel.toggle())
+    error_count = MosaicViewerWindow._apply_to_panels(
+        window, "toggle", lambda panel: panel.toggle()
+    )
 
     assert error_count == 1
     assert window._last_panel_errors == 1
@@ -294,7 +299,17 @@ def test_rebuild_grid_preserves_failed_stream_cells_as_unavailable(monkeypatch):
             return 0
 
     class _Panel:
-        def __init__(self, connection, remove_callback, static_vmin, static_vmax, show_colorbar, show_stats, show_range, font_size):
+        def __init__(
+            self,
+            connection,
+            remove_callback,
+            static_vmin,
+            static_vmax,
+            show_colorbar,
+            show_stats,
+            show_range,
+            font_size,
+        ):
             self.connection = connection
 
         def apply_theme(self, theme):

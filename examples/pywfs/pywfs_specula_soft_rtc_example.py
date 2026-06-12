@@ -44,7 +44,9 @@ DEFAULT_STREAMS = [
 
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run the SPECULA-backed PyWFS soft-RTC tutorial.")
-    parser.add_argument("--duration", type=float, default=10.0, help="Seconds to run before stopping.")
+    parser.add_argument(
+        "--duration", type=float, default=10.0, help="Seconds to run before stopping."
+    )
     parser.add_argument(
         "--status-interval",
         type=float,
@@ -57,7 +59,9 @@ def build_arg_parser() -> argparse.ArgumentParser:
         default=1e-3,
         help="Poke amplitude used when computing the interaction matrix.",
     )
-    parser.add_argument("--gain", type=float, default=0.1, help="Loop gain used after IM calibration.")
+    parser.add_argument(
+        "--gain", type=float, default=0.1, help="Loop gain used after IM calibration."
+    )
     parser.add_argument(
         "--skip-im",
         action="store_true",
@@ -147,19 +151,19 @@ def prepare_loop(system: dict, *, gain: float, poke_amp: float, compute_im: bool
 
 def format_status_line(system: dict, elapsed: float) -> str:
     slopes = system["slopes"].read(block=False)
-    correction = np.asarray(getattr(system["dm"], "current_shape", system["dm"].read()), dtype=np.float64)
+    correction = np.asarray(
+        getattr(system["dm"], "current_shape", system["dm"].read()), dtype=np.float64
+    )
     residual_rms = float(np.sqrt(np.mean(slopes**2))) if slopes.size else 0.0
     correction_rms = float(np.sqrt(np.mean(correction**2))) if correction.size else 0.0
-    return (
-        f"t={elapsed:5.1f}s "
-        f"residual_rms={residual_rms:0.4f} "
-        f"dm_rms={correction_rms:0.4f}"
-    )
+    return f"t={elapsed:5.1f}s residual_rms={residual_rms:0.4f} dm_rms={correction_rms:0.4f}"
 
 
 def main(argv=None) -> int:
     args = build_arg_parser().parse_args(argv)
-    configure_logging_from_args(args, app_name="pyrtc-specula-pywfs", component_name="pywfs_specula_soft_example")
+    configure_logging_from_args(
+        args, app_name="pyrtc-specula-pywfs", component_name="pywfs_specula_soft_example"
+    )
 
     config = read_yaml_file(str(CONFIG_PATH))
 

@@ -74,7 +74,9 @@ def main(argv=None) -> int:
         raise SystemExit(str(exc)) from exc
 
     utils.set_affinity(args.affinity)
-    logger.info("Launching viewer for streams=%s geometry=%s fps=%s", shm_names, args.geometry, args.fps)
+    logger.info(
+        "Launching viewer for streams=%s geometry=%s fps=%s", shm_names, args.geometry, args.fps
+    )
 
     try:
         return launch_mosaic_viewer(

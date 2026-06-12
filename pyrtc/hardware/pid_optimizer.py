@@ -30,6 +30,7 @@ def _input_stream_name(conf, stream_name: str) -> str:
         value = value.get("shm", value.get("name", stream_name))
     return str(value)
 
+
 class PIDOptimizer(Optimizer):
     """Optuna-based tuner for PID-style loop gains.
 
@@ -44,7 +45,7 @@ class PIDOptimizer(Optimizer):
         try:
             self.loop = loop
 
-            self.mode = 'strehl'
+            self.mode = "strehl"
             self.strehl_shm = open_stream(_input_stream_name(conf, "strehl"))
             self.tip_tilt_shm = open_stream(_input_stream_name(conf, "tiptilt"))
             self.max_p_gain = set_from_config(conf, "max_p_gain", 0.5)
@@ -54,7 +55,9 @@ class PIDOptimizer(Optimizer):
             self.is_pol = False
 
             super().__init__(conf)
-            self.logger.info("Initialized PID optimizer mode=%s num_reads=%s", self.mode, self.num_reads)
+            self.logger.info(
+                "Initialized PID optimizer mode=%s num_reads=%s", self.mode, self.num_reads
+            )
         except Exception:
             logger.exception("Failed to initialize PID optimizer")
             raise
@@ -69,9 +72,9 @@ class PIDOptimizer(Optimizer):
 
             result = np.empty(self.num_reads)
             for i in range(self.num_reads):
-                if self.mode == 'strehl':
+                if self.mode == "strehl":
                     result[i] = self.strehl_shm.read_new()
-                elif self.mode == 'tiptilt':
+                elif self.mode == "tiptilt":
                     result[i] = self.strehl_shm.read_new() - 1 * self.tip_tilt_shm.read()
             score = np.mean(result)
             self.logger.info("Evaluated PID trial mode=%s score=%s", self.mode, score)
@@ -82,12 +85,12 @@ class PIDOptimizer(Optimizer):
 
     def apply_trial(self, trial):
         try:
-            self.loop.set_property("p_gain", trial.suggest_float('p_gain', 0, self.max_p_gain))
-            self.loop.set_property("i_gain", trial.suggest_float('i_gain', 0, self.max_i_gain))
-            self.loop.set_property("d_gain", trial.suggest_float('d_gain', 0, self.max_d_gain))
+            self.loop.set_property("p_gain", trial.suggest_float("p_gain", 0, self.max_p_gain))
+            self.loop.set_property("i_gain", trial.suggest_float("i_gain", 0, self.max_i_gain))
+            self.loop.set_property("d_gain", trial.suggest_float("d_gain", 0, self.max_d_gain))
 
             if self.is_pol:
-                self.loop.set_property("leaky_gain", self.loop.get_property('p_gain'))
+                self.loop.set_property("leaky_gain", self.loop.get_property("p_gain"))
             self.logger.info("Applied PID optimizer trial is_pol=%s", self.is_pol)
         except Exception:
             self.logger.exception("Failed to apply PID optimizer trial")
@@ -103,21 +106,19 @@ class PIDOptimizer(Optimizer):
             self.loop.set_property("d_gain", self.study.best_params["d_gain"])
 
             if self.is_pol:
-                self.loop.set_property("leaky_gain", self.loop.get_property('p_gain'))
+                self.loop.set_property("leaky_gain", self.loop.get_property("p_gain"))
             self.logger.info("Applied optimum PID gains is_pol=%s", self.is_pol)
         except Exception:
             self.logger.exception("Failed to apply optimum PID gains")
             raise
 
-
         return
 
 
 if __name__ == "__main__":
-
-    #Prevents camera output from messing with communication
+    # Prevents camera output from messing with communication
     original_stdout = sys.stdout
-    sys.stdout = open(os.devnull, 'w')
+    sys.stdout = open(os.devnull, "w")
 
     # Create argument parser
     parser = argparse.ArgumentParser(description="Read a config file from the command line.")
@@ -132,7 +133,7 @@ if __name__ == "__main__":
     conf = read_yaml_file(args.config)["optimizer"]
 
     pid = os.getpid()
-    set_affinity((conf["affinity"])%os.cpu_count())
+    set_affinity((conf["affinity"]) % os.cpu_count())
     decrease_nice(pid)
 
     component = PIDOptimizer(conf=conf)
@@ -141,7 +142,7 @@ if __name__ == "__main__":
     # Go back to communicating with the main program through stdout
     sys.stdout = original_stdout
 
-    listener = Listener(component, port = int(args.port))
+    listener = Listener(component, port=int(args.port))
     while listener.running:
         listener.listen()
         time.sleep(1e-3)

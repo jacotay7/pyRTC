@@ -21,7 +21,12 @@ from .component_descriptors import (
     validate_config_with_descriptor,
 )
 from .config_schema import normalize_system_config, read_system_config, validate_system_config
-from .logging_utils import add_logging_cli_args, configure_logging, configure_logging_from_args, get_logger
+from .logging_utils import (
+    add_logging_cli_args,
+    configure_logging,
+    configure_logging_from_args,
+    get_logger,
+)
 from .latency import LatencyReport, LatencySegment, LatencyStatistics, format_latency_report
 from .modulator import Modulator
 from .optimizer import Optimizer

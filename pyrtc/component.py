@@ -64,6 +64,7 @@ class Component:
     The class intentionally does not define component-specific data flow. It is
     only responsible for the shared runtime lifecycle.
     """
+
     def __init__(self, conf) -> None:
         """
         Constructs all the necessary attributes for the real-time control component object.
@@ -93,8 +94,12 @@ class Component:
             self._stream_inputs = {}
             self._stream_outputs = {}
             self._last_stream_metadata = {}
-            self._input_stream_names = self._normalize_stream_name_map(conf.get("input_streams", {}), direction="input")
-            self._output_stream_names = self._normalize_stream_name_map(conf.get("output_streams", {}), direction="output")
+            self._input_stream_names = self._normalize_stream_name_map(
+                conf.get("input_streams", {}), direction="input"
+            )
+            self._output_stream_names = self._normalize_stream_name_map(
+                conf.get("output_streams", {}), direction="output"
+            )
 
             functions_to_run = set_from_config(conf, "functions", [])
             self.work_threads = []
@@ -223,7 +228,9 @@ class Component:
         self._ensure_stream_state()
         self._stream_outputs[str(stream_name)] = shm
 
-    def read_stream(self, stream_name: str, *, block: bool = True, timeout: float | None = None, out=None):
+    def read_stream(
+        self, stream_name: str, *, block: bool = True, timeout: float | None = None, out=None
+    ):
         """Read one registered input or output stream.
 
         Parameters
@@ -246,11 +253,7 @@ class Component:
         name = str(stream_name)
         stream = self._stream_object(name)
         last_seen = self._last_stream_metadata.get(name)
-        if (
-            block
-            and last_seen is not None
-            and int(stream.count) == int(last_seen["count"])
-        ):
+        if block and last_seen is not None and int(stream.count) == int(last_seen["count"]):
             payload = stream.read_new(timeout=timeout, out=out)
         else:
             payload = stream.read(out=out)
@@ -319,6 +322,6 @@ class Component:
             raise
         return
 
-if __name__ == "__main__":
 
-    launch_component(Component, "component", start = True)
+if __name__ == "__main__":
+    launch_component(Component, "component", start=True)

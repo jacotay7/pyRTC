@@ -30,6 +30,7 @@ def _input_stream_name(conf, stream_name: str) -> str:
         value = value.get("shm", value.get("name", stream_name))
     return str(value)
 
+
 class LoopOptimizer(Optimizer):
     """Optimizer for high-level AO loop hyperparameters.
 
@@ -83,9 +84,16 @@ class LoopOptimizer(Optimizer):
 
     def apply_trial(self, trial):
         try:
-            self.loop.set_property("num_dropped_modes", trial.suggest_int('num_dropped_modes', 0, self.max_dropped_modes))
-            self.loop.set_property("gain", trial.suggest_float('gain', self.min_gain, self.max_gain))
-            self.loop.set_property("leaky_gain", trial.suggest_float('leaky_gain', 0, self.max_leak))
+            self.loop.set_property(
+                "num_dropped_modes",
+                trial.suggest_int("num_dropped_modes", 0, self.max_dropped_modes),
+            )
+            self.loop.set_property(
+                "gain", trial.suggest_float("gain", self.min_gain, self.max_gain)
+            )
+            self.loop.set_property(
+                "leaky_gain", trial.suggest_float("leaky_gain", 0, self.max_leak)
+            )
             self.loop.run("load_im")
             self.logger.info("Applied loop optimizer trial")
         except Exception:
@@ -111,10 +119,9 @@ class LoopOptimizer(Optimizer):
 
 
 if __name__ == "__main__":
-
-    #Prevents camera output from messing with communication
+    # Prevents camera output from messing with communication
     original_stdout = sys.stdout
-    sys.stdout = open(os.devnull, 'w')
+    sys.stdout = open(os.devnull, "w")
 
     # Create argument parser
     parser = argparse.ArgumentParser(description="Read a config file from the command line.")
@@ -129,7 +136,7 @@ if __name__ == "__main__":
     conf = read_yaml_file(args.config)["optimizer"]
 
     pid = os.getpid()
-    set_affinity((conf["affinity"])%os.cpu_count())
+    set_affinity((conf["affinity"]) % os.cpu_count())
     decrease_nice(pid)
 
     component = LoopOptimizer(conf=conf)
@@ -138,7 +145,7 @@ if __name__ == "__main__":
     # Go back to communicating with the main program through stdout
     sys.stdout = original_stdout
 
-    listener = Listener(component, port = int(args.port))
+    listener = Listener(component, port=int(args.port))
     while listener.running:
         listener.listen()
         time.sleep(1e-3)

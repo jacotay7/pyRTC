@@ -16,13 +16,39 @@ def _default_output_path(session_path: str) -> str:
 
 
 def _build_arg_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Export a pyrtc telemetry session into an AOTPy file.")
-    parser.add_argument("session", type=str, help="Path to a telemetry session directory or session.json file")
-    parser.add_argument("output", nargs="?", type=str, help="Output AOTPy file path. Defaults to <session>.fits")
-    parser.add_argument("--name", dest="system_name", type=str, default=None, help="Override the exported AO-system name")
-    parser.add_argument("--ao-mode", dest="ao_mode", type=str, default=None, help="Override the exported AOTPy AO mode")
-    parser.add_argument("--file-type", dest="file_type", type=str, default=None, help="Explicit output writer type, for example fits")
-    parser.add_argument("--overwrite", action="store_true", help="Overwrite the output file when it already exists")
+    parser = argparse.ArgumentParser(
+        description="Export a pyrtc telemetry session into an AOTPy file."
+    )
+    parser.add_argument(
+        "session", type=str, help="Path to a telemetry session directory or session.json file"
+    )
+    parser.add_argument(
+        "output", nargs="?", type=str, help="Output AOTPy file path. Defaults to <session>.fits"
+    )
+    parser.add_argument(
+        "--name",
+        dest="system_name",
+        type=str,
+        default=None,
+        help="Override the exported AO-system name",
+    )
+    parser.add_argument(
+        "--ao-mode",
+        dest="ao_mode",
+        type=str,
+        default=None,
+        help="Override the exported AOTPy AO mode",
+    )
+    parser.add_argument(
+        "--file-type",
+        dest="file_type",
+        type=str,
+        default=None,
+        help="Explicit output writer type, for example fits",
+    )
+    parser.add_argument(
+        "--overwrite", action="store_true", help="Overwrite the output file when it already exists"
+    )
     return parser
 
 

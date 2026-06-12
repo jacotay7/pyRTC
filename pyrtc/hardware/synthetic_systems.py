@@ -41,7 +41,9 @@ def _layout_sample_positions(layout: np.ndarray) -> np.ndarray:
     return np.column_stack((x, y)).astype(np.float32)
 
 
-def build_synthetic_shwfs_response_matrix(num_regions: int, num_modes: int, layout: np.ndarray) -> np.ndarray:
+def build_synthetic_shwfs_response_matrix(
+    num_regions: int, num_modes: int, layout: np.ndarray
+) -> np.ndarray:
     """Build a deterministic DM-to-slope response matrix for the synthetic AO example."""
 
     if num_regions < 1:
@@ -58,7 +60,9 @@ def build_synthetic_shwfs_response_matrix(num_regions: int, num_modes: int, layo
 
     subap_axis = np.linspace(-1.0, 1.0, num_regions, dtype=np.float32)
     subap_grid_x, subap_grid_y = np.meshgrid(subap_axis, subap_axis)
-    subap_positions = np.column_stack((subap_grid_x.ravel(), subap_grid_y.ravel())).astype(np.float32)
+    subap_positions = np.column_stack((subap_grid_x.ravel(), subap_grid_y.ravel())).astype(
+        np.float32
+    )
     signal_size = 2 * subap_positions.shape[0]
     response = np.zeros((signal_size, num_modes), dtype=np.float32)
     influence_sigma = np.float32(0.38)
@@ -95,8 +99,12 @@ class SyntheticSHWFS(WavefrontSensor):
         self.spot_flux = float(_numeric_from_config(conf, "spot_flux", 3500.0))
         self.spot_sigma_px = float(_numeric_from_config(conf, "spot_sigma_px", 1.1))
         self.read_noise = float(_numeric_from_config(conf, "read_noise", 4.0))
-        self.disturbance_amplitude = float(_numeric_from_config(conf, "disturbance_amplitude", 0.35))
-        self.disturbance_frequency_hz = float(_numeric_from_config(conf, "disturbance_frequency_hz", 1.0))
+        self.disturbance_amplitude = float(
+            _numeric_from_config(conf, "disturbance_amplitude", 0.35)
+        )
+        self.disturbance_frequency_hz = float(
+            _numeric_from_config(conf, "disturbance_frequency_hz", 1.0)
+        )
         self.disturbance_drift_hz = float(_numeric_from_config(conf, "disturbance_drift_hz", 0.35))
         self.max_spot_motion_px = float(_numeric_from_config(conf, "max_spot_motion_px", 1.25))
         self.slope_to_pixel_gain = float(_numeric_from_config(conf, "slope_to_pixel_gain", 1.6))
@@ -131,7 +139,9 @@ class SyntheticSHWFS(WavefrontSensor):
             self.num_modes,
             dtype=np.float32,
         )
-        self.local_coords = (np.arange(self.sub_ap_spacing, dtype=np.float32) + 0.5) - (0.5 * self.sub_ap_spacing)
+        self.local_coords = (np.arange(self.sub_ap_spacing, dtype=np.float32) + 0.5) - (
+            0.5 * self.sub_ap_spacing
+        )
         self.local_grid_x, self.local_grid_y = np.meshgrid(self.local_coords, self.local_coords)
         self.start_time = time.perf_counter()
         self.last_expose_time = self.start_time
@@ -144,7 +154,9 @@ class SyntheticSHWFS(WavefrontSensor):
         return
 
     def _build_response_matrix(self):
-        return build_synthetic_shwfs_response_matrix(self.num_regions, self.num_modes, self.wfc_layout)
+        return build_synthetic_shwfs_response_matrix(
+            self.num_regions, self.num_modes, self.wfc_layout
+        )
 
     def _sleep_for_frame_rate(self):
         if self.frame_period <= 0.0:
@@ -158,7 +170,9 @@ class SyntheticSHWFS(WavefrontSensor):
         if self.correction_shm is not None:
             return
         try:
-            self.correction_shm = open_stream(self.input_stream_name("wfc"), gpu_device=self.gpu_device)
+            self.correction_shm = open_stream(
+                self.input_stream_name("wfc"), gpu_device=self.gpu_device
+            )
         except Exception:
             self.correction_shm = None
 
@@ -203,9 +217,7 @@ class SyntheticSHWFS(WavefrontSensor):
                     self.max_spot_motion_px,
                 )
                 patch = self.spot_flux * np.exp(
-                    -(
-                        (self.local_grid_x - x_shift) ** 2 + (self.local_grid_y - y_shift) ** 2
-                    )
+                    -((self.local_grid_x - x_shift) ** 2 + (self.local_grid_y - y_shift) ** 2)
                     / (2.0 * self.spot_sigma_px**2)
                 )
                 image[start_row:end_row, start_col:end_col] += patch.astype(np.float32)
@@ -311,7 +323,9 @@ class SyntheticScienceCamera(ScienceCamera):
         self.peak_dist = float(np.hypot(tip, tilt))
         self.strehl_shm.write(np.array([self.strehl_ratio], dtype=float))
         self.tip_tilt_shm.write(np.array([self.peak_dist], dtype=float))
-        self.data = np.clip(image, 0.0, np.iinfo(self.image_raw_dtype).max).astype(self.image_raw_dtype)
+        self.data = np.clip(image, 0.0, np.iinfo(self.image_raw_dtype).max).astype(
+            self.image_raw_dtype
+        )
         self.frame_counter += 1
         self.last_expose_time = time.perf_counter()
         super().expose()
@@ -327,6 +341,7 @@ class SyntheticWFC(WavefrontCorrector):
     This subclass exists so configs can refer to a concrete synthetic adapter by
     name without implying vendor hardware.
     """
+
     def __init__(self, conf):
         super().__init__(conf)
         if self.layout is None:

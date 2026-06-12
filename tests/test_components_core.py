@@ -168,7 +168,10 @@ def test_pyrtc_component_main_invokes_launch_component(monkeypatch):
 
     monkeypatch.setattr(manager_module, "launch_component", fake_launch_component)
     source = Path(component_module.__file__).read_text(encoding="utf-8")
-    exec(compile(source, component_module.__file__, "exec"), {"__name__": "__main__", "__file__": component_module.__file__})
+    exec(
+        compile(source, component_module.__file__, "exec"),
+        {"__name__": "__main__", "__file__": component_module.__file__},
+    )
 
     assert called["component_class"].__name__ == "Component"
     assert called["component_name"] == "component"
@@ -255,7 +258,11 @@ def test_optimizer_base_methods_and_error_paths(monkeypatch):
     with pytest.raises(RuntimeError, match="ask failed"):
         optimizer.apply_next()
 
-    monkeypatch.setattr(opt_mod.optuna, "create_study", lambda direction, sampler: (_ for _ in ()).throw(RuntimeError("reset failed")))
+    monkeypatch.setattr(
+        opt_mod.optuna,
+        "create_study",
+        lambda direction, sampler: (_ for _ in ()).throw(RuntimeError("reset failed")),
+    )
     with pytest.raises(RuntimeError, match="reset failed"):
         optimizer.reset_study()
 

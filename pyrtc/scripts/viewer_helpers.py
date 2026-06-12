@@ -93,13 +93,9 @@ def resolve_grid(num_plots: int, geometry: str):
         if rows < 1 or cols < 1:
             raise ValueError(f"Invalid geometry string: {geometry}")
         if rows * cols < num_plots:
-            raise ValueError(
-                f"Geometry {geometry} does not have enough cells for {num_plots} SHMs"
-            )
+            raise ValueError(f"Geometry {geometry} does not have enough cells for {num_plots} SHMs")
         return rows, cols
-    raise ValueError(
-        "Geometry must be one of: square, row, column, or an explicit grid like 2x3"
-    )
+    raise ValueError("Geometry must be one of: square, row, column, or an explicit grid like 2x3")
 
 
 def compute_window_size(frames, rows, cols, pixel_scale):

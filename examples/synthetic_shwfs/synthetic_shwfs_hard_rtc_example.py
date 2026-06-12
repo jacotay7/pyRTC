@@ -46,8 +46,12 @@ DEFAULT_STREAMS = [
 
 # %% Command-line interface
 def build_arg_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Run the synthetic SHWFS tutorial in hard-RTC mode.")
-    parser.add_argument("--duration", type=float, default=15.0, help="Seconds to run before stopping.")
+    parser = argparse.ArgumentParser(
+        description="Run the synthetic SHWFS tutorial in hard-RTC mode."
+    )
+    parser.add_argument(
+        "--duration", type=float, default=15.0, help="Seconds to run before stopping."
+    )
     parser.add_argument(
         "--status-interval",
         type=float,
@@ -108,6 +112,7 @@ def ensure_synthetic_interaction_matrix(config: dict) -> Path:
     np.save(output_path, interaction_matrix.astype(np.float32))
     return output_path
 
+
 def read_scalar_stream(name: str) -> float:
     stream = open_stream(name)
     return float(np.asarray(stream.read()).ravel()[0])
@@ -135,7 +140,9 @@ def format_status_line(start_time: float) -> str:
 # %% Main walkthrough
 def main(argv=None) -> int:
     args = build_arg_parser().parse_args(argv)
-    configure_logging_from_args(args, app_name="pyrtc-synthetic-shwfs", component_name="synthetic_hard_example")
+    configure_logging_from_args(
+        args, app_name="pyrtc-synthetic-shwfs", component_name="synthetic_hard_example"
+    )
 
     # Step 1: use the same config file as soft mode and switch behavior here.
     manager = RTCManager.from_config_file(CONFIG_PATH, mode="hard")
@@ -193,7 +200,9 @@ def main(argv=None) -> int:
 
         # Telemetry works the same way in hard mode because it only reads the
         # published streams and saves them for offline use.
-        telem = Telemetry({"data_dir": str(REPO_ROOT / "examples" / "synthetic_shwfs" / "telemetry")})
+        telem = Telemetry(
+            {"data_dir": str(REPO_ROOT / "examples" / "synthetic_shwfs" / "telemetry")}
+        )
         telem.save(["wfs", "wfc"], 10)
         telemetry_data = telem.read_last_save()
         logger.info(

@@ -5,13 +5,15 @@ signal vectors consumed by the AO loop. It includes optimized CPU and GPU
 helpers for pyramid and Shack-Hartmann processing plus the ``SlopesProcess``
 component that manages calibration data and SHM publication.
 """
+
 import os
+
 os.environ["OMP_NUM_THREADS"] = "1"
 os.environ["OPENBLAS_NUM_THREADS"] = "1"
 os.environ["MKL_NUM_THREADS"] = "1"
 os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
 os.environ["NUMEXPR_NUM_THREADS"] = "1"
-os.environ['NUMBA_NUM_THREADS'] = '1'
+os.environ["NUMBA_NUM_THREADS"] = "1"
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -33,14 +35,17 @@ logger = get_logger(__name__)
 
 PYWFS_NORMALIZATION_EPS = np.float32(1e-12)
 
-def compute_slopes_pywfs_torch(image: Any,
-                            p1_mask: Any,
-                            p2_mask: Any,
-                            p3_mask: Any,
-                            p4_mask: Any,
-                            num_pixels_in_pupils: int,
-                            slopes: Any,
-                            ref_slopes: Any):
+
+def compute_slopes_pywfs_torch(
+    image: Any,
+    p1_mask: Any,
+    p2_mask: Any,
+    p3_mask: Any,
+    p4_mask: Any,
+    num_pixels_in_pupils: int,
+    slopes: Any,
+    ref_slopes: Any,
+):
     """Compute normalized pyramid-WFS slopes on a torch device.
 
     The function extracts the four pupil images selected by the provided masks,
@@ -49,7 +54,9 @@ def compute_slopes_pywfs_torch(image: Any,
     """
 
     if not gpu_torch_available():
-        raise ImportError("compute_slopes_pywfs_torch requires PyTorch. Install with 'pip install pyrtc[gpu]' or 'pip install torch'.")
+        raise ImportError(
+            "compute_slopes_pywfs_torch requires PyTorch. Install with 'pip install pyrtc[gpu]' or 'pip install torch'."
+        )
 
     import torch
 
@@ -81,37 +88,41 @@ def compute_slopes_pywfs_torch(image: Any,
     # Subtract reference slopes
     return slopes - ref_slopes
 
+
 """
 Optimized for best performance with numpy only
 All memory is preallocated.
 """
-def compute_slopes_pywfs_optim_numpy(image:np.ndarray,
-                            p1_mask:np.ndarray,
-                            p2_mask:np.ndarray,
-                            p3_mask:np.ndarray,
-                            p4_mask:np.ndarray,
-                            p1:np.ndarray,
-                            p2:np.ndarray,
-                            p3:np.ndarray,
-                            p4:np.ndarray,
-                            tmp1:np.ndarray,
-                            tmp2:np.ndarray,
-                            num_pixels_in_pupils:int,
-                            slopes:np.ndarray,
-                            ref_slopes:np.ndarray,
-                        ):
+
+
+def compute_slopes_pywfs_optim_numpy(
+    image: np.ndarray,
+    p1_mask: np.ndarray,
+    p2_mask: np.ndarray,
+    p3_mask: np.ndarray,
+    p4_mask: np.ndarray,
+    p1: np.ndarray,
+    p2: np.ndarray,
+    p3: np.ndarray,
+    p4: np.ndarray,
+    tmp1: np.ndarray,
+    tmp2: np.ndarray,
+    num_pixels_in_pupils: int,
+    slopes: np.ndarray,
+    ref_slopes: np.ndarray,
+):
     # Mask Pupils out of image and convert to floats
     p1 = image[p1_mask].astype(np.float32)
     p2 = image[p2_mask].astype(np.float32)
     p3 = image[p3_mask].astype(np.float32)
     p4 = image[p4_mask].astype(np.float32)
     # Sum Pupils, Saving partial sums to avoid recomputing later
-    tmp1 = np.add(p1,p2)
-    tmp2 = np.add(p3,p4)
+    tmp1 = np.add(p1, p2)
+    tmp2 = np.add(p3, p4)
     # Compute X slopes
-    slopes[:num_pixels_in_pupils] = np.subtract(tmp1,tmp2)
+    slopes[:num_pixels_in_pupils] = np.subtract(tmp1, tmp2)
     # Compute Y slopes
-    slopes[num_pixels_in_pupils:] = np.subtract(np.add(p1,p3),np.add(p2,p4))
+    slopes[num_pixels_in_pupils:] = np.subtract(np.add(p1, p3), np.add(p2, p4))
     # Normalize slopes only when there is measurable pupil flux.
     mean_value = np.mean(np.add(tmp1, tmp2))
     if np.abs(mean_value) <= PYWFS_NORMALIZATION_EPS:
@@ -127,22 +138,25 @@ Optimized for best performance.
 Works very well with numba JIT compilation.
 Performed better compared to a numpy only implementation
 """
+
+
 @jit(nopython=True, nogil=True, cache=False, fastmath=True)
-def compute_slopes_pywfs_optim_numba(image:np.ndarray,
-                            p1_mask:np.ndarray,
-                            p2_mask:np.ndarray,
-                            p3_mask:np.ndarray,
-                            p4_mask:np.ndarray,
-                            p1:np.ndarray,
-                            p2:np.ndarray,
-                            p3:np.ndarray,
-                            p4:np.ndarray,
-                            tmp1:np.ndarray,
-                            tmp2:np.ndarray,
-                            num_pixels_in_pupils:int,
-                            slopes:np.ndarray,
-                            ref_slopes:np.ndarray,
-                        ):
+def compute_slopes_pywfs_optim_numba(
+    image: np.ndarray,
+    p1_mask: np.ndarray,
+    p2_mask: np.ndarray,
+    p3_mask: np.ndarray,
+    p4_mask: np.ndarray,
+    p1: np.ndarray,
+    p2: np.ndarray,
+    p3: np.ndarray,
+    p4: np.ndarray,
+    tmp1: np.ndarray,
+    tmp2: np.ndarray,
+    num_pixels_in_pupils: int,
+    slopes: np.ndarray,
+    ref_slopes: np.ndarray,
+):
     """Compute pyramid-WFS slopes using a Numba-optimized CPU kernel."""
 
     # Mask Pupils out of image and convert to floats
@@ -180,12 +194,14 @@ def compute_slopes_pywfs_optim_numba(image:np.ndarray,
 
     for i in range(num_pixels_in_pupils):
         # Compute Y slopes
-        slopes[i] = (tmp1[i] - tmp2[i])/mean_value - ref_slopes[i]
+        slopes[i] = (tmp1[i] - tmp2[i]) / mean_value - ref_slopes[i]
         # Compute X slopes
-        slopes[num_pixels_in_pupils + i] = ((p1[i] + p3[i]) - (p2[i] + p4[i]))/mean_value \
-            - ref_slopes[num_pixels_in_pupils + i]
+        slopes[num_pixels_in_pupils + i] = (
+            (p1[i] + p3[i]) - (p2[i] + p4[i])
+        ) / mean_value - ref_slopes[num_pixels_in_pupils + i]
 
     return slopes
+
 
 """
 Optimized for best performance.
@@ -193,23 +209,25 @@ Works very well with numba JIT compilation.
 Performed better compared to a numpy only implementation, while also
 allowing for non-integer spacing.
 """
+
+
 @jit(nopython=True, nogil=True, cache=False)
-def compute_slopes_shwfs_optim_numba(image:np.ndarray,
-                                 slopes:np.ndarray,
-                                 unaberrated_slopes:np.ndarray,
-                                 threshold:np.float32,
-                                 spacing:np.float32,
-                                 xvals:np.ndarray,
-                                 offset_x:int,
-                                 offset_y:int,
-                                 int_n:int,
-                                 ):
+def compute_slopes_shwfs_optim_numba(
+    image: np.ndarray,
+    slopes: np.ndarray,
+    unaberrated_slopes: np.ndarray,
+    threshold: np.float32,
+    spacing: np.float32,
+    xvals: np.ndarray,
+    offset_x: int,
+    offset_y: int,
+    int_n: int,
+):
     """Compute Shack-Hartmann centroid slopes with a Numba kernel.
 
     The image is traversed lenslet by lenslet, thresholded locally, and reduced
     into x/y centroid offsets relative to the unaberrated reference slopes.
     """
-
 
     # Convert image to the same dtype as unaberrated_slopes
     image = image.astype(np.float32)
@@ -226,69 +244,83 @@ def compute_slopes_shwfs_optim_numba(image:np.ndarray,
 
             # Ensure we stay within the bounds of the image
             if start_j + int_n <= image.shape[1] and start_i + int_n <= image.shape[0]:
-                #Create a local subimage around the lenslet spot
-                sub_im = image[start_i:start_i + int_n, start_j:start_j + int_n]
+                # Create a local subimage around the lenslet spot
+                sub_im = image[start_i : start_i + int_n, start_j : start_j + int_n]
 
-                #loop through the sub image
+                # loop through the sub image
                 norm = np.float32(0)
                 weight_x = np.float32(0)
                 weight_y = np.float32(0)
                 for m in range(int_n):
                     for n in range(int_n):
-                        #If we are counting the pixel
-                        if sub_im[m,n] > threshold:
-                            #Add it to the normalization
-                            norm += sub_im[m,n]
-                            #Compute the X and Y centroids (before normalization)
-                            weight_x += xvals[m,n] * sub_im[m,n]
-                            weight_y += xvals[n,m] * sub_im[m,n]
+                        # If we are counting the pixel
+                        if sub_im[m, n] > threshold:
+                            # Add it to the normalization
+                            norm += sub_im[m, n]
+                            # Compute the X and Y centroids (before normalization)
+                            weight_x += xvals[m, n] * sub_im[m, n]
+                            weight_y += xvals[n, m] * sub_im[m, n]
 
-                #If we have flux in the sub aperture
+                # If we have flux in the sub aperture
                 if norm > 0:
-                    #Normalize the centroids and remove the reference slope
-                    slopes[i, j] = weight_x/norm - unaberrated_slopes[i, j]
-                    slopes[i + num_regions, j] = weight_y/norm - unaberrated_slopes[i + num_regions, j]
-                #If we have no flux slopes should be zero
+                    # Normalize the centroids and remove the reference slope
+                    slopes[i, j] = weight_x / norm - unaberrated_slopes[i, j]
+                    slopes[i + num_regions, j] = (
+                        weight_y / norm - unaberrated_slopes[i + num_regions, j]
+                    )
+                # If we have no flux slopes should be zero
 
     return slopes
+
 
 """
 Optimized for best performance with numpy only.
 Does not allow for non-integer spacing.
 """
-def compute_slopes_shwfs_optim_numpy(image:np.ndarray,
-                                 slopes:np.ndarray,
-                                 unaberrated_slopes:np.ndarray,
-                                 threshold:float,
-                                 spacing:int,
-                                 xvals:np.array):
 
-    #Only works for integer spacings
+
+def compute_slopes_shwfs_optim_numpy(
+    image: np.ndarray,
+    slopes: np.ndarray,
+    unaberrated_slopes: np.ndarray,
+    threshold: float,
+    spacing: int,
+    xvals: np.array,
+):
+
+    # Only works for integer spacings
     spacing = int(spacing)
 
     # Convert the image to floats and threshold in one operation
     image = np.where(image > threshold, image.astype(np.float32), 0.0)
 
     # Reshape the image into blocks of size spacing X spacing
-    reshaped_image = image.reshape(image.shape[0] // spacing, spacing, image.shape[1] // spacing, spacing)
+    reshaped_image = image.reshape(
+        image.shape[0] // spacing, spacing, image.shape[1] // spacing, spacing
+    )
 
     # Compute the sum of pixel values in each MxM region
     region_sums = np.sum(reshaped_image, axis=(1, 3))
 
     # Precompute the dot products instead of tensordot (which is more general but slower)
-    weighted_sum_x = np.einsum('ijkl,jl->ik', reshaped_image, xvals)
-    weighted_sum_y = np.einsum('ijkl,jl->ik', reshaped_image, xvals.T)
+    weighted_sum_x = np.einsum("ijkl,jl->ik", reshaped_image, xvals)
+    weighted_sum_y = np.einsum("ijkl,jl->ik", reshaped_image, xvals.T)
 
     # Get mask for non-zero value sums
     mask = region_sums > 0.0
 
     # Compute the centroids directly on the valid regions
     valid_region_sums = region_sums[mask]
-    slopes[:slopes.shape[1]][mask] = weighted_sum_x[mask] / valid_region_sums - unaberrated_slopes[:slopes.shape[1]][mask]
-    slopes[slopes.shape[1]:][mask] = weighted_sum_y[mask] / valid_region_sums - unaberrated_slopes[slopes.shape[1]:][mask]
+    slopes[: slopes.shape[1]][mask] = (
+        weighted_sum_x[mask] / valid_region_sums - unaberrated_slopes[: slopes.shape[1]][mask]
+    )
+    slopes[slopes.shape[1] :][mask] = (
+        weighted_sum_y[mask] / valid_region_sums - unaberrated_slopes[slopes.shape[1] :][mask]
+    )
 
     # Return the difference with reference slopes
     return slopes
+
 
 class SlopesProcess(Component):
     """
@@ -402,6 +434,7 @@ class SlopesProcess(Component):
     p4mask : numpy.ndarray
         Mask for pupil 4.
     """
+
     def __init__(self, conf) -> None:
         try:
             super().__init__(conf)
@@ -417,7 +450,9 @@ class SlopesProcess(Component):
 
             self.signal_dtype = np.float32
             self.image_noise = set_from_config(self.conf, "image_noise", 0.0)
-            self.central_obscuration_ratio = set_from_config(self.conf, "central_obscuration_ratio", 0.0)
+            self.central_obscuration_ratio = set_from_config(
+                self.conf, "central_obscuration_ratio", 0.0
+            )
 
             self.wfs_type = self.conf["type"].lower()
             self.signal_type = self.conf["signal_type"]
@@ -429,14 +464,16 @@ class SlopesProcess(Component):
 
             if self.wfs_type == "pywfs":
                 if "pupils" in self.conf.keys():
-                    pupil_locs = [(int(x.split(',')[1]), int(x.split(',')[0])) for x in self.conf["pupils"]]
+                    pupil_locs = [
+                        (int(x.split(",")[1]), int(x.split(",")[0])) for x in self.conf["pupils"]
+                    ]
                     self.set_pupils(pupil_locs, self.conf["pupils_radius"])
                 else:
                     a, b = int(0.25 * self.image_shape[0]), int(0.75 * self.image_shape[0])
                     c, d = int(0.25 * self.image_shape[1]), int(0.75 * self.image_shape[1])
                     r = min(self.image_shape[0] - b, self.image_shape[1] - d)
                     self.set_pupils([(a, c), (a, d), (b, c), (b, d)], r)
-                if self.signal_type == 'slopes':
+                if self.signal_type == "slopes":
                     self.flat_norm = set_from_config(self.conf, "flat_norm", True)
 
                 self.ref_slopes = np.zeros(self.signal_2d_shape, dtype=self.signal_dtype)
@@ -484,7 +521,12 @@ class SlopesProcess(Component):
                 self.ref_slopes = np.zeros(self.signal_2d_shape, dtype=self.signal_dtype)
 
             self.load_ref_slopes()
-            self.logger.info("Initialized slopes process wfs_type=%s signal_type=%s image_shape=%s", self.wfs_type, self.signal_type, self.image_shape)
+            self.logger.info(
+                "Initialized slopes process wfs_type=%s signal_type=%s image_shape=%s",
+                self.wfs_type,
+                self.signal_type,
+                self.image_shape,
+            )
         except Exception:
             logger.exception("Failed to initialize slopes process")
             raise
@@ -499,9 +541,13 @@ class SlopesProcess(Component):
             try:
                 stream.close()
             except Exception:
-                logger.debug("Failed closing %s stream during rebuild", attribute_name, exc_info=True)
+                logger.debug(
+                    "Failed closing %s stream during rebuild", attribute_name, exc_info=True
+                )
 
-    def _existing_output_stream_matches(self, stream_name: str, expected_shape: tuple[int, ...]) -> bool:
+    def _existing_output_stream_matches(
+        self, stream_name: str, expected_shape: tuple[int, ...]
+    ) -> bool:
         """Return ``True`` when an existing SHM matches the expected output shape."""
 
         try:
@@ -510,12 +556,16 @@ class SlopesProcess(Component):
             return False
 
         try:
-            return tuple(stream.shape) == tuple(expected_shape) and np.dtype(stream.dtype) == np.dtype(self.signal_dtype)
+            return tuple(stream.shape) == tuple(expected_shape) and np.dtype(
+                stream.dtype
+            ) == np.dtype(self.signal_dtype)
         finally:
             try:
                 stream.close()
             except Exception:
-                logger.debug("Failed closing temporary stream probe for %s", stream_name, exc_info=True)
+                logger.debug(
+                    "Failed closing temporary stream probe for %s", stream_name, exc_info=True
+                )
 
     def _configure_signal_streams(
         self,
@@ -544,19 +594,30 @@ class SlopesProcess(Component):
         if not needs_rebuild:
             needs_rebuild = not self._existing_output_stream_matches("signal", self.signal_shape)
         if not needs_rebuild:
-            needs_rebuild = not self._existing_output_stream_matches("signal_2d", self.signal_2d_shape)
+            needs_rebuild = not self._existing_output_stream_matches(
+                "signal_2d", self.signal_2d_shape
+            )
 
         if needs_rebuild:
             self._close_signal_streams()
             clear_shms([self.output_stream_name("signal"), self.output_stream_name("signal_2d")])
 
-        self.signal = create_stream(self.output_stream_name("signal"), self.signal_shape, self.signal_dtype, gpu_device=self.gpu_device)
-        self.signal_2d = create_stream(self.output_stream_name("signal_2d"), self.signal_2d_shape, self.signal_dtype, gpu_device=self.gpu_device)
+        self.signal = create_stream(
+            self.output_stream_name("signal"),
+            self.signal_shape,
+            self.signal_dtype,
+            gpu_device=self.gpu_device,
+        )
+        self.signal_2d = create_stream(
+            self.output_stream_name("signal_2d"),
+            self.signal_2d_shape,
+            self.signal_dtype,
+            gpu_device=self.gpu_device,
+        )
         self.register_output_stream("signal", self.signal)
         self.register_output_stream("signal_2d", self.signal_2d)
 
-
-    def read(self, block = True):
+    def read(self, block=True):
         """
         Read the current signal.
 
@@ -601,7 +662,7 @@ class SlopesProcess(Component):
             raise
         return
 
-    def save_valid_sub_aps(self,filename=''):
+    def save_valid_sub_aps(self, filename=""):
         """
         Save the valid sub-aperture mask to a file.
 
@@ -612,18 +673,21 @@ class SlopesProcess(Component):
         """
         component_logger = getattr(self, "logger", logger)
         try:
-            if filename == '':
+            if filename == "":
                 filename = self.valid_sub_aps_file
-            if filename == '':
+            if filename == "":
                 raise ValueError("No valid_sub_aps filename provided")
             np.save(filename, self.valid_sub_aps)
             component_logger.info("Saved valid sub-aperture mask to %s", filename)
         except Exception:
-            component_logger.exception("Failed to save valid sub-aperture mask to %s", filename or getattr(self, "valid_sub_aps_file", ""))
+            component_logger.exception(
+                "Failed to save valid sub-aperture mask to %s",
+                filename or getattr(self, "valid_sub_aps_file", ""),
+            )
             raise
         return
 
-    def load_valid_sub_aps(self,filename=''):
+    def load_valid_sub_aps(self, filename=""):
         """
         Load the valid sub-aperture mask from a file.
 
@@ -632,12 +696,12 @@ class SlopesProcess(Component):
         filename : str, optional
             File to load the valid sub-aperture mask from. If not specified, uses the configured valid_sub_aps_file.
         """
-        #If no file given, first try reference slopes file
+        # If no file given, first try reference slopes file
         component_logger = getattr(self, "logger", logger)
         try:
-            if filename == '':
+            if filename == "":
                 filename = self.valid_sub_aps_file
-            if filename == '':
+            if filename == "":
                 valid_sub_aps = np.ones_like(self.valid_sub_aps)
                 component_logger.info("No valid_sub_aps file configured; using all-true mask")
             else:
@@ -646,11 +710,13 @@ class SlopesProcess(Component):
 
             self.set_valid_sub_aps(valid_sub_aps)
         except Exception:
-            component_logger.exception("Failed to load valid sub-aperture mask from %s", filename or getattr(self, "valid_sub_aps_file", ""))
+            component_logger.exception(
+                "Failed to load valid sub-aperture mask from %s",
+                filename or getattr(self, "valid_sub_aps_file", ""),
+            )
             raise
 
         return
-
 
     def take_ref_slopes(self):
         """
@@ -687,11 +753,15 @@ class SlopesProcess(Component):
         component_logger = getattr(self, "logger", logger)
         try:
             self.ref_slopes = ref_slopes.astype(self.signal_dtype)
-            if self.wfs_type == 'pywfs':
-                slopemask = self.valid_sub_aps[:, :self.valid_sub_aps.shape[1] // 2]
+            if self.wfs_type == "pywfs":
+                slopemask = self.valid_sub_aps[:, : self.valid_sub_aps.shape[1] // 2]
                 self.ref_slopes_1d = np.zeros_like(self.signal.read())
-                self.ref_slopes_1d[:self.ref_slopes_1d.size // 2] = self.ref_slopes[:, :self.ref_slopes.shape[1] // 2][slopemask]
-                self.ref_slopes_1d[self.ref_slopes_1d.size // 2:] = self.ref_slopes[:, self.ref_slopes.shape[1] // 2:][slopemask]
+                self.ref_slopes_1d[: self.ref_slopes_1d.size // 2] = self.ref_slopes[
+                    :, : self.ref_slopes.shape[1] // 2
+                ][slopemask]
+                self.ref_slopes_1d[self.ref_slopes_1d.size // 2 :] = self.ref_slopes[
+                    :, self.ref_slopes.shape[1] // 2 :
+                ][slopemask]
             component_logger.info("Updated reference slopes")
         except Exception:
             component_logger.exception("Failed to update reference slopes")
@@ -699,7 +769,7 @@ class SlopesProcess(Component):
 
         return
 
-    def save_ref_slopes(self,filename=''):
+    def save_ref_slopes(self, filename=""):
         """
         Save the reference slopes to a file.
 
@@ -710,18 +780,21 @@ class SlopesProcess(Component):
         """
         component_logger = getattr(self, "logger", logger)
         try:
-            if filename == '':
+            if filename == "":
                 filename = self.ref_slopes_file
-            if filename == '':
+            if filename == "":
                 raise ValueError("No reference slopes filename provided")
             np.save(filename, self.ref_slopes)
             component_logger.info("Saved reference slopes to %s", filename)
         except Exception:
-            component_logger.exception("Failed to save reference slopes to %s", filename or getattr(self, "ref_slopes_file", ""))
+            component_logger.exception(
+                "Failed to save reference slopes to %s",
+                filename or getattr(self, "ref_slopes_file", ""),
+            )
             raise
         return
 
-    def load_ref_slopes(self,filename=''):
+    def load_ref_slopes(self, filename=""):
         """
         Load the reference slopes from a file.
 
@@ -730,12 +803,12 @@ class SlopesProcess(Component):
         filename : str, optional
             File to load the reference slopes from. If not specified, uses the configured ref_slopes_file.
         """
-        #If no file given, first try reference slopes file
+        # If no file given, first try reference slopes file
         component_logger = getattr(self, "logger", logger)
         try:
-            if filename == '':
+            if filename == "":
                 filename = self.ref_slopes_file
-            if filename == '':
+            if filename == "":
                 ref_slopes = np.zeros_like(self.ref_slopes)
                 component_logger.info("No reference slopes file configured; using zeros")
             else:
@@ -744,7 +817,10 @@ class SlopesProcess(Component):
 
             self.set_ref_slopes(ref_slopes)
         except Exception:
-            component_logger.exception("Failed to load reference slopes from %s", filename or getattr(self, "ref_slopes_file", ""))
+            component_logger.exception(
+                "Failed to load reference slopes from %s",
+                filename or getattr(self, "ref_slopes_file", ""),
+            )
             raise
         return
 
@@ -758,42 +834,50 @@ class SlopesProcess(Component):
                 if self.gpu_device is not None and gpu_torch_available():
                     import torch
 
-                    slope_signal = compute_slopes_pywfs_torch(image.ravel(),
-                                p1_mask=torch.from_numpy(self.p1mask.ravel()).to(self.gpu_device),
-                                p2_mask=torch.from_numpy(self.p2mask.ravel()).to(self.gpu_device),
-                                p3_mask=torch.from_numpy(self.p3mask.ravel()).to(self.gpu_device),
-                                p4_mask=torch.from_numpy(self.p4mask.ravel()).to(self.gpu_device),
-                                num_pixels_in_pupils = self.num_pixels_in_pupils,
-                                slopes = torch.from_numpy(self.slopes_arr_1d).to(self.gpu_device),
-                                ref_slopes=torch.from_numpy(self.ref_slopes_1d).to(self.gpu_device)).cpu().numpy()
+                    slope_signal = (
+                        compute_slopes_pywfs_torch(
+                            image.ravel(),
+                            p1_mask=torch.from_numpy(self.p1mask.ravel()).to(self.gpu_device),
+                            p2_mask=torch.from_numpy(self.p2mask.ravel()).to(self.gpu_device),
+                            p3_mask=torch.from_numpy(self.p3mask.ravel()).to(self.gpu_device),
+                            p4_mask=torch.from_numpy(self.p4mask.ravel()).to(self.gpu_device),
+                            num_pixels_in_pupils=self.num_pixels_in_pupils,
+                            slopes=torch.from_numpy(self.slopes_arr_1d).to(self.gpu_device),
+                            ref_slopes=torch.from_numpy(self.ref_slopes_1d).to(self.gpu_device),
+                        )
+                        .cpu()
+                        .numpy()
+                    )
                 else:
-                    slope_signal = compute_slopes_pywfs_optim_numba(image=image.ravel(),
-                                p1_mask=self.p1mask.ravel(),
-                                p2_mask=self.p2mask.ravel(),
-                                p3_mask=self.p3mask.ravel(),
-                                p4_mask=self.p4mask.ravel(),
-                                p1=self.p1,
-                                p2=self.p2,
-                                p3=self.p3,
-                                p4=self.p4,
-                                tmp1=self.tmp1,
-                                tmp2=self.tmp2,
-                                num_pixels_in_pupils = self.num_pixels_in_pupils,
-                                slopes = self.slopes_arr_1d,
-                                ref_slopes=self.ref_slopes_1d)
-
+                    slope_signal = compute_slopes_pywfs_optim_numba(
+                        image=image.ravel(),
+                        p1_mask=self.p1mask.ravel(),
+                        p2_mask=self.p2mask.ravel(),
+                        p3_mask=self.p3mask.ravel(),
+                        p4_mask=self.p4mask.ravel(),
+                        p1=self.p1,
+                        p2=self.p2,
+                        p3=self.p3,
+                        p4=self.p4,
+                        tmp1=self.tmp1,
+                        tmp2=self.tmp2,
+                        num_pixels_in_pupils=self.num_pixels_in_pupils,
+                        slopes=self.slopes_arr_1d,
+                        ref_slopes=self.ref_slopes_1d,
+                    )
 
             elif self.wfs_type == "shwfs":
-
-                slopes = compute_slopes_shwfs_optim_numba(image = image,
-                                            slopes = np.zeros_like(self.ref_slopes),
-                                            unaberrated_slopes = self.ref_slopes,
-                                            threshold = self.image_noise*self.shwfs_contrast,
-                                            spacing = self.sub_ap_spacing,
-                                            xvals = self.xvals,
-                                            offset_x = self.offset_x,
-                                            offset_y = self.offset_y,
-                                            int_n = self.region_size)
+                slopes = compute_slopes_shwfs_optim_numba(
+                    image=image,
+                    slopes=np.zeros_like(self.ref_slopes),
+                    unaberrated_slopes=self.ref_slopes,
+                    threshold=self.image_noise * self.shwfs_contrast,
+                    spacing=self.sub_ap_spacing,
+                    xvals=self.xvals,
+                    offset_x=self.offset_x,
+                    offset_y=self.offset_y,
+                    int_n=self.region_size,
+                )
                 slope_signal = slopes[self.valid_sub_aps]
                 # self.signal.write(slopes[self.valid_sub_aps])
                 # self.signal_2d.write(slopes*self.valid_sub_aps)
@@ -840,10 +924,15 @@ class SlopesProcess(Component):
             self.compute_pupils_mask()
             if self.signal_type == "slopes":
                 self.signal_size = np.count_nonzero(self.pupil_mask) // 2
-                slopemask = self.pupil_mask[
-                    self.pupil_locs[0][1]-self.pupil_radius:self.pupil_locs[0][1]+self.pupil_radius,
-                    self.pupil_locs[0][0]-self.pupil_radius:self.pupil_locs[0][0]+self.pupil_radius,
-                ] > 0
+                slopemask = (
+                    self.pupil_mask[
+                        self.pupil_locs[0][1] - self.pupil_radius : self.pupil_locs[0][1]
+                        + self.pupil_radius,
+                        self.pupil_locs[0][0] - self.pupil_radius : self.pupil_locs[0][0]
+                        + self.pupil_radius,
+                    ]
+                    > 0
+                )
                 self.set_valid_sub_aps(np.concatenate([slopemask, slopemask], axis=1))
                 if self.valid_sub_aps_file != "":
                     self.save_valid_sub_aps()
@@ -854,7 +943,9 @@ class SlopesProcess(Component):
                 )
             component_logger.info("Configured pupils locs=%s radius=%s", pupil_locs, pupil_radius)
         except Exception:
-            component_logger.exception("Failed to set pupils locs=%s radius=%s", pupil_locs, pupil_radius)
+            component_logger.exception(
+                "Failed to set pupils locs=%s radius=%s", pupil_locs, pupil_radius
+            )
             raise
 
         return
@@ -868,9 +959,11 @@ class SlopesProcess(Component):
         try:
             self.pupil_mask = np.zeros(self.image_shape)
 
-            pupil_template = generate_circular_aperture_mask(int(np.ceil(2*self.pupil_radius)),
-                                                            self.pupil_radius,
-                                                            self.central_obscuration_ratio)
+            pupil_template = generate_circular_aperture_mask(
+                int(np.ceil(2 * self.pupil_radius)),
+                self.pupil_radius,
+                self.central_obscuration_ratio,
+            )
             N = self.pupil_mask.shape[0]
             n = pupil_template.shape[0]
             half_n = n // 2
@@ -886,7 +979,7 @@ class SlopesProcess(Component):
                 if x_start < 0 or y_start < 0 or x_end > N or y_end > N:
                     raise ValueError("The subimage exceeds the bounds of the larger array.")
 
-                self.pupil_mask[y_start:y_end, x_start:x_end] += pupil_template*(i+1)
+                self.pupil_mask[y_start:y_end, x_start:x_end] += pupil_template * (i + 1)
 
             self.p1mask = self.pupil_mask == 1
             self.p2mask = self.pupil_mask == 2
@@ -903,17 +996,19 @@ class SlopesProcess(Component):
         Plot the pupil mask to see if its right.
         """
         # plt.figure(figsize=(10,8))
-        plt.imshow(self.pupil_mask, cmap = 'inferno',origin='lower',aspect ='auto')
+        plt.imshow(self.pupil_mask, cmap="inferno", origin="lower", aspect="auto")
         plt.colorbar()
         plt.title("Pupil Mask (Value is Pupil Number)")
         plt.show()
 
-        plt.imshow(self.pupil_mask*self.read_image(), cmap = 'inferno',origin='lower',aspect ='auto')
-        colors = ['g','b','orange', 'r']
+        plt.imshow(
+            self.pupil_mask * self.read_image(), cmap="inferno", origin="lower", aspect="auto"
+        )
+        colors = ["g", "b", "orange", "r"]
         for i in range(len(self.pupil_locs)):
             px, py = self.pupil_locs[i]
-            plt.axvline(x = px, color = colors[i], alpha = 0.6)
-            plt.axhline(y = py, color = colors[i], alpha = 0.6)
+            plt.axvline(x=px, color=colors[i], alpha=0.6)
+            plt.axhline(y=py, color=colors[i], alpha=0.6)
         plt.colorbar()
         plt.title("Pupil Mask * Image ")
         plt.show()
@@ -941,13 +1036,17 @@ class SlopesProcess(Component):
             return -1
 
         if self.wfs_type == "pywfs":
-            slopemask = valid_sub_aps[:,:valid_sub_aps.shape[1]//2]
-            self.cur_signal_2d[:,:valid_sub_aps.shape[1]//2][slopemask] = signal[:signal.size//2]
-            self.cur_signal_2d[:,valid_sub_aps.shape[1]//2:][slopemask] = signal[signal.size//2:]
+            slopemask = valid_sub_aps[:, : valid_sub_aps.shape[1] // 2]
+            self.cur_signal_2d[:, : valid_sub_aps.shape[1] // 2][slopemask] = signal[
+                : signal.size // 2
+            ]
+            self.cur_signal_2d[:, valid_sub_aps.shape[1] // 2 :][slopemask] = signal[
+                signal.size // 2 :
+            ]
         else:
             self.cur_signal_2d[self.valid_sub_aps] = signal
         return self.cur_signal_2d
 
-if __name__ == "__main__":
 
-    launch_component(SlopesProcess, "slopes", start = True)
+if __name__ == "__main__":
+    launch_component(SlopesProcess, "slopes", start=True)

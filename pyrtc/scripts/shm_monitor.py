@@ -43,11 +43,19 @@ def main(argv=None) -> int:
 
     parser = _build_arg_parser()
     args = parser.parse_args(argv)
-    logger = configure_logging_from_args(args, app_name="pyrtc-shm-monitor", component_name=args.shm)
+    logger = configure_logging_from_args(
+        args, app_name="pyrtc-shm-monitor", component_name=args.shm
+    )
 
     shm_name = args.shm
     shm = open_stream(shm_name)
-    logger.info("Monitoring SHM %s interval=%s window_size=%s max_size=%s", shm_name, args.interval, args.window_size, args.max_size)
+    logger.info(
+        "Monitoring SHM %s interval=%s window_size=%s max_size=%s",
+        shm_name,
+        args.interval,
+        args.window_size,
+        args.max_size,
+    )
 
     update_interval = args.interval
     window_size = args.window_size

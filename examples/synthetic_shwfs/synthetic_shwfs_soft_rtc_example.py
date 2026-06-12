@@ -45,8 +45,12 @@ DEFAULT_STREAMS = [
 
 # %% Command-line interface
 def build_arg_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Run the synthetic SHWFS tutorial in soft-RTC mode.")
-    parser.add_argument("--duration", type=float, default=15.0, help="Seconds to run before stopping.")
+    parser = argparse.ArgumentParser(
+        description="Run the synthetic SHWFS tutorial in soft-RTC mode."
+    )
+    parser.add_argument(
+        "--duration", type=float, default=15.0, help="Seconds to run before stopping."
+    )
     parser.add_argument(
         "--latency-samples",
         type=int,
@@ -113,6 +117,7 @@ def ensure_synthetic_interaction_matrix(config: dict) -> Path:
     np.save(output_path, interaction_matrix.astype(np.float32))
     return output_path
 
+
 def read_scalar_stream(name: str) -> float:
     stream = open_stream(name)
     return float(np.asarray(stream.read()).ravel()[0])
@@ -150,7 +155,9 @@ def log_latency_example(manager: RTCManager, *, samples: int) -> None:
     """
 
     if samples < 2:
-        logger.info("Skipping manager.latency() tutorial example because latency_samples=%s", samples)
+        logger.info(
+            "Skipping manager.latency() tutorial example because latency_samples=%s", samples
+        )
         return
 
     logger.info("Manager latency example: manager.latency(samples=%s)", samples)
@@ -162,7 +169,9 @@ def log_latency_example(manager: RTCManager, *, samples: int) -> None:
 # %% Main walkthrough
 def main(argv=None) -> int:
     args = build_arg_parser().parse_args(argv)
-    configure_logging_from_args(args, app_name="pyrtc-synthetic-shwfs", component_name="synthetic_soft_example")
+    configure_logging_from_args(
+        args, app_name="pyrtc-synthetic-shwfs", component_name="synthetic_soft_example"
+    )
 
     # Step 1: use the single shared config file and choose soft mode right here.
     manager = RTCManager.from_config_file(CONFIG_PATH, mode="soft")
@@ -189,7 +198,11 @@ def main(argv=None) -> int:
         loop = manager.get_component("loop")
         wfc = manager.get_component("wfc")
 
-        logger.info("Soft mode returns live objects: loop=%s wfc=%s", type(loop).__name__, type(wfc).__name__)
+        logger.info(
+            "Soft mode returns live objects: loop=%s wfc=%s",
+            type(loop).__name__,
+            type(wfc).__name__,
+        )
 
         # Methods are also called directly in soft mode.
         wfc.flatten()
@@ -227,7 +240,9 @@ def main(argv=None) -> int:
 
         # Telemetry is an ordinary helper object: capture one or more streams,
         # then reopen the most recent save as NumPy arrays plus timestamps.
-        telem = Telemetry({"data_dir": str(REPO_ROOT / "examples" / "synthetic_shwfs" / "telemetry")})
+        telem = Telemetry(
+            {"data_dir": str(REPO_ROOT / "examples" / "synthetic_shwfs" / "telemetry")}
+        )
         telem.save(["wfs", "wfc"], 10)
         telemetry_data = telem.read_last_save()
         logger.info(

@@ -129,7 +129,7 @@ class HardwareLauncher:
         self.process = None
         self.process_socket = None
         # Client configuration
-        self.host = '127.0.0.1'  # localhost
+        self.host = "127.0.0.1"  # localhost
         self.port = port
         self.timeout = timeout
         self.last_launch_time = None
@@ -158,7 +158,9 @@ class HardwareLauncher:
         return None
 
     def launch(self):
-        ensure_logging_configured(app_name="pyrtc-hardware-launcher", component_name=self.hardware_file)
+        ensure_logging_configured(
+            app_name="pyrtc-hardware-launcher", component_name=self.hardware_file
+        )
         if not self.running:
             logger.info("Launching process %s", self.hardware_file)
             child_env = os.environ.copy()
@@ -169,7 +171,9 @@ class HardwareLauncher:
                     child_env["PYTHONPATH"] = f"{pythonpath_root}{os.pathsep}{existing_pythonpath}"
                 else:
                     child_env["PYTHONPATH"] = pythonpath_root
-            self.process = Popen(self.command,stdin=PIPE,stdout=PIPE, text=True, bufsize=1, env=child_env)
+            self.process = Popen(
+                self.command, stdin=PIPE, stdout=PIPE, text=True, bufsize=1, env=child_env
+            )
             self.running = True
             self.last_launch_time = time.time()
             self.last_error = None
@@ -189,7 +193,7 @@ class HardwareLauncher:
                     logger.warning("Connection failed: %s", e)
                     logger.info("Retrying in %s seconds", rest_time)
 
-            if isinstance(self.timeout,float) or isinstance(self.timeout,int):
+            if isinstance(self.timeout, float) or isinstance(self.timeout, int):
                 self.process_socket.settimeout(self.timeout)
 
             logger.info("Connected to child process socket")
@@ -209,7 +213,12 @@ class HardwareLauncher:
         return self.write_and_read(message)
 
     def set_property(self, property, value, timeout=None):
-        message = {"type": "set", "property": property, "value": value, "protocol": PROTOCOL_VERSION}
+        message = {
+            "type": "set",
+            "property": property,
+            "value": value,
+            "protocol": PROTOCOL_VERSION,
+        }
         return self.write_and_read(message, timeout=timeout)
 
     def run(self, function, *args, timeout=None):
@@ -260,25 +269,25 @@ class HardwareLauncher:
             if override_timeout and self.process_socket is not None:
                 self.process_socket.settimeout(original_timeout)
 
-        #If there are issues with the reply format
+        # If there are issues with the reply format
         if not isinstance(reply, dict) or "status" not in reply.keys():
             self.last_error = "invalid launcher reply"
             return -1
-        #If there was an issue on the process end
-        if reply["status"] == 'BAD':
+        # If there was an issue on the process end
+        if reply["status"] == "BAD":
             self.last_error = str(reply.get("error", "child process returned BAD status"))
             return -1
-        #If our request went through
-        if reply["status"] == 'OK':
+        # If our request went through
+        if reply["status"] == "OK":
             self.last_contact_time = time.time()
             self.last_error = None
-            #If the reply came with a property to return
+            # If the reply came with a property to return
             if "property" in reply.keys():
                 return reply["property"]
-            #Otherwise just return OK
+            # Otherwise just return OK
             else:
                 return 1
-        #default is a fail
+        # default is a fail
         return -1
 
     def write(self, message):
@@ -299,7 +308,9 @@ class HardwareLauncher:
             try:
                 self.process_socket.close()
             except Exception:
-                logger.debug("Failed to close process socket for %s", self.hardware_file, exc_info=True)
+                logger.debug(
+                    "Failed to close process socket for %s", self.hardware_file, exc_info=True
+                )
             self.process_socket = None
 
         if self.process is None:
@@ -327,7 +338,11 @@ class HardwareLauncher:
             }
 
         original_timeout = None
-        if self.process_socket is not None and timeout is not None and hasattr(self.process_socket, "gettimeout"):
+        if (
+            self.process_socket is not None
+            and timeout is not None
+            and hasattr(self.process_socket, "gettimeout")
+        ):
             original_timeout = self.process_socket.gettimeout()
             self.process_socket.settimeout(timeout)
 
@@ -361,7 +376,6 @@ class HardwareLauncher:
         }
 
 
-
 class Listener:
     """Server-side control socket for a launched hardware object.
 
@@ -374,14 +388,14 @@ class Listener:
     def __init__(self, hardware, port) -> None:
         self.hardware = hardware
         self.running = True
-        self.key_character = '$'
-        self.host = '127.0.0.1'  # localhost
+        self.key_character = "$"
+        self.host = "127.0.0.1"  # localhost
         self.port = port
 
         server_socket = bind_socket(self.host, self.port)
         server_socket.listen()
         logger.info("%s: awaiting RTC connection", hardware.name)
-        #Connect to the RTC process that spawned you
+        # Connect to the RTC process that spawned you
         self.RTCsocket, self.RTCaddress = server_socket.accept()
 
         self.OKMessage = {"status": "OK", "protocol": PROTOCOL_VERSION}
@@ -409,7 +423,9 @@ class Listener:
 
         protocol = request.get("protocol", PROTOCOL_VERSION)
         if protocol != PROTOCOL_VERSION:
-            logger.error("Listener protocol mismatch: got %s, expected %s", protocol, PROTOCOL_VERSION)
+            logger.error(
+                "Listener protocol mismatch: got %s, expected %s", protocol, PROTOCOL_VERSION
+            )
             return self._bad(
                 f"protocol version mismatch: got {protocol}, expected {PROTOCOL_VERSION}"
             )

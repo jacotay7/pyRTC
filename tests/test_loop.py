@@ -97,7 +97,9 @@ def test_loop_methods_without_full_init(tmp_path):
     loop.integral = np.zeros(4, dtype=np.float32)
     loop.send_to_wfc = lambda correction, slopes=None: setattr(loop, "_sent", correction)
     loop.num_active_modes = 3
-    loop.pid_integrator(slopes=np.ones(6, dtype=np.float32), correction=np.zeros(4, dtype=np.float32))
+    loop.pid_integrator(
+        slopes=np.ones(6, dtype=np.float32), correction=np.zeros(4, dtype=np.float32)
+    )
     assert hasattr(loop, "_sent")
 
     # send_to_wfc branch with CL DOCRIME
@@ -155,7 +157,9 @@ def test_standard_integrator_uses_nonblocking_wfc_read():
     loop.wfc_shm = _Wfc()
     loop._signal_buffer = np.empty(4, dtype=np.float32)
     loop._wfc_buffer = np.empty(4, dtype=np.float32)
-    loop.send_to_wfc = lambda correction, slopes=None: sent.setdefault("correction", correction.copy())
+    loop.send_to_wfc = lambda correction, slopes=None: sent.setdefault(
+        "correction", correction.copy()
+    )
 
     loop.standard_integrator()
 
