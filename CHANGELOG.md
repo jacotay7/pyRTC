@@ -47,7 +47,7 @@ All notable changes to `pyrtcao` will be documented in this file.
 
 - **Shared-memory transport replaced by `pyshmem`.** All shared memory in
 	pyrtc is now provided by the external `pyshmem` package (new required
-	dependency `pyshmem>=1.0.4`), using its native API directly. The legacy
+	dependency `pyshmem>=1.0.5`), using its native API directly. The legacy
 	`ImageSHM` class, its `_meta` / `_gpu_handle` companion segments, and
 	`initExistingShm` are gone. `pyrtc.pipeline` now exposes two thin policy
 	helpers instead: `create_stream(name, shape, dtype, gpu_device=None)`
