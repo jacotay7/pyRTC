@@ -87,7 +87,7 @@ class OOPAOWFSensor(WavefrontSensor):
         # from accumulating across repeated exposures of a static command.
         self.ngs ** self.tel
         self.ngs * self.dm * self.wfs
-        
+
     def expose(self):
         self._propagate_source()
 
@@ -127,16 +127,16 @@ class OOPAOWFCorrector(WavefrontCorrector):
 
     def read_m2c(self, filename=''):
         self.set_m2c(None)
-    
+
     def send_to_hardware(self):
-        
+
         super().send_to_hardware()
 
         self.dm.coefs = self.current_shape.astype(np.float64)
 
     def set_flat(self, flat):
         super().set_flat(flat)
-        self.dm.flat = flat 
+        self.dm.flat = flat
 
 
 class OOPAOScienceCamera(ScienceCamera):
@@ -207,10 +207,10 @@ class OOPAOScienceCamera(ScienceCamera):
     def _render_psf_frame(self):
         psf = self._compute_psf(self._current_opd_no_pupil())
         return self._scale_psf_to_detector(psf).astype(self.image_raw_dtype)
-        
+
     def expose(self):
         self.data = self._render_psf_frame()
-        
+
         super().expose()
 
         return
@@ -220,7 +220,7 @@ class OOPAOScienceCamera(ScienceCamera):
         if np.max(self.model) > 0:
             self.compute_strehl(median_filter_size=1, gaussian_sigma=0)
         return
-    
+
     def add_atmosphere(self):
         self.context.add_atmosphere()
 
@@ -526,13 +526,13 @@ if __name__ == "__main__":
     conf = read_yaml_file(args.config)
 
     pid = os.getpid()
-    set_affinity((conf["wfs"]["affinity"])%os.cpu_count()) 
+    set_affinity((conf["wfs"]["affinity"])%os.cpu_count())
     decrease_nice(pid)
 
     param = read_yaml_file(args.param_file) if args.param_file else None
 
     sim = OOPAOInterface(conf=conf, param=param)
-    
+
     listener = Listener(sim, port= int(args.port))
     while listener.running:
         listener.listen()

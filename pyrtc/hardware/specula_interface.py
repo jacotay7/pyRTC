@@ -347,7 +347,7 @@ def _load_specula_bindings(*, device_idx: int, precision: int) -> SimpleNamespac
     _initialize_specula_runtime(specula, device_idx=device_idx, precision=precision)
 
     try:
-        cpuArray = importlib.import_module("specula").cpuArray
+        cpu_array = importlib.import_module("specula").cpuArray
         BaseValue = importlib.import_module("specula.base_value").BaseValue
         IFunc = importlib.import_module("specula.data_objects.ifunc").IFunc
         Pupilstop = importlib.import_module("specula.data_objects.pupilstop").Pupilstop
@@ -368,7 +368,7 @@ def _load_specula_bindings(*, device_idx: int, precision: int) -> SimpleNamespac
 
     return SimpleNamespace(
         specula=specula,
-        cpuArray=cpuArray,
+        cpu_array=cpu_array,
         BaseValue=BaseValue,
         IFunc=IFunc,
         Pupilstop=Pupilstop,
@@ -664,7 +664,7 @@ class SPECULASystemContext:
             self.step_index += 1
 
             return np.asarray(
-                self._bindings.cpuArray(self.detector.outputs["out_pixels"].pixels),
+                self._bindings.cpu_array(self.detector.outputs["out_pixels"].pixels),
                 dtype=np.uint16,
             )
 
@@ -739,13 +739,13 @@ class SPECULASystemContext:
             return
 
         current_psf = np.asarray(
-            self._bindings.cpuArray(self.psf.outputs["out_psf"].value),
+            self._bindings.cpu_array(self.psf.outputs["out_psf"].value),
             dtype=np.float64,
         )
         reference = getattr(getattr(self.psf, "ref", None), "i", None)
         if reference is None:
             reference = current_psf
-        reference = np.asarray(self._bindings.cpuArray(reference), dtype=np.float64)
+        reference = np.asarray(self._bindings.cpu_array(reference), dtype=np.float64)
 
         ref_peak = float(np.max(reference)) if reference.size else 1.0
         if ref_peak <= 0.0:
@@ -760,7 +760,7 @@ class SPECULASystemContext:
         self._cached_psf_model = scaled_reference
 
         sr_value = getattr(self.psf.outputs["out_sr"], "value", 0.0)
-        sr_array = np.asarray(self._bindings.cpuArray(sr_value), dtype=np.float64).reshape(-1)
+        sr_array = np.asarray(self._bindings.cpu_array(sr_value), dtype=np.float64).reshape(-1)
         self._cached_psf_strehl = float(sr_array[0]) if sr_array.size else 0.0
         self._cached_psf_tiptilt = 0.0
 
@@ -934,7 +934,7 @@ class SPECULASystemContext:
             )
 
         zonal_ifunc = np.asarray(
-            self._bindings.cpuArray(self.dm.ifunc_obj.influence_function),
+            self._bindings.cpu_array(self.dm.ifunc_obj.influence_function),
             dtype=np.float32,
         )
         num_actuators = int(zonal_ifunc.shape[0])
@@ -973,7 +973,7 @@ class SPECULASystemContext:
         }
         modal_ifunc_obj = self._bindings.IFunc(**basis_kwargs)
         modal_ifunc = np.asarray(
-            self._bindings.cpuArray(modal_ifunc_obj.influence_function),
+            self._bindings.cpu_array(modal_ifunc_obj.influence_function),
             dtype=np.float32,
         )
         modal_to_command = np.linalg.pinv(zonal_ifunc.T) @ modal_ifunc.T

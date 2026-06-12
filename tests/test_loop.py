@@ -153,8 +153,8 @@ def test_standard_integrator_uses_nonblocking_wfc_read():
     sent = {}
     loop.signal_shm = _Signal()
     loop.wfc_shm = _Wfc()
-    loop._signalBuffer = np.empty(4, dtype=np.float32)
-    loop._wfcBuffer = np.empty(4, dtype=np.float32)
+    loop._signal_buffer = np.empty(4, dtype=np.float32)
+    loop._wfc_buffer = np.empty(4, dtype=np.float32)
     loop.send_to_wfc = lambda correction, slopes=None: sent.setdefault("correction", correction.copy())
 
     loop.standard_integrator()

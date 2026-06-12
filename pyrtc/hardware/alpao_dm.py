@@ -7,12 +7,12 @@ device and centralizes mirror-specific initialization such as layout discovery,
 command clipping, and optional floating-actuator masking.
 """
 
-import os 
+import os
 os.environ["OMP_NUM_THREADS"] = "1"
-os.environ["OPENBLAS_NUM_THREADS"] = "1" 
-os.environ["MKL_NUM_THREADS"] = "1" 
-os.environ["VECLIB_MAXIMUM_THREADS"] = "1" 
-os.environ["NUMEXPR_NUM_THREADS"] = "1" 
+os.environ["OPENBLAS_NUM_THREADS"] = "1"
+os.environ["MKL_NUM_THREADS"] = "1"
+os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
+os.environ["NUMEXPR_NUM_THREADS"] = "1"
 os.environ['NUMBA_NUM_THREADS'] = '1'
 
 import struct
@@ -91,7 +91,7 @@ class ALPAODM(WavefrontCorrector):
         except Exception:
             self.logger.exception("Failed to generate ALPAO layout for actuators=%s", getattr(self, "num_actuators", None))
             raise
-    
+
     def send_to_hardware(self):
         #Do all of the normal updating of the super class
         super().send_to_hardware()
@@ -112,7 +112,7 @@ class ALPAODM(WavefrontCorrector):
                 except Exception:
                     component_logger.exception("Failed while resetting ALPAO DM")
         return
-    
+
 
 if __name__ == "__main__":
 

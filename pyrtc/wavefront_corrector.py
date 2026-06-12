@@ -6,12 +6,12 @@ and optional 2D layout views, while leaving hardware transport details to the
 concrete adapter subclasses.
 """
 
-import os 
+import os
 os.environ["OMP_NUM_THREADS"] = "1"
-os.environ["OPENBLAS_NUM_THREADS"] = "1" 
-os.environ["MKL_NUM_THREADS"] = "1" 
-os.environ["VECLIB_MAXIMUM_THREADS"] = "1" 
-os.environ["NUMEXPR_NUM_THREADS"] = "1" 
+os.environ["OPENBLAS_NUM_THREADS"] = "1"
+os.environ["MKL_NUM_THREADS"] = "1"
+os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
+os.environ["NUMEXPR_NUM_THREADS"] = "1"
 os.environ['NUMBA_NUM_THREADS'] = '1'
 os.environ['TBB_NUM_THREADS'] = '1'
 
@@ -28,7 +28,7 @@ from pyrtc.utils import gaussian_2d_grid, set_from_config
 logger = get_logger(__name__)
 
 @jit(nopython=True)
-def ModaltoZonalWithFlat(correction=np.array([],dtype=np.float32), 
+def ModaltoZonalWithFlat(correction=np.array([],dtype=np.float32),
                        M2C=np.array([[]],dtype=np.float32),
                        flat=np.array([],dtype=np.float32)):
     """Project a modal correction into actuator space and add the flat shape."""
@@ -127,7 +127,7 @@ class WavefrontCorrector(Component):
             self.correction_vector = create_stream(self.output_stream_name("wfc"), (self.num_modes,), np.float32, gpu_device=self.gpu_device)
             self.register_output_stream("wfc", self.correction_vector)
             # Pre-allocated hot-path read buffer (ignored for GPU streams).
-            self._wfcBuffer = np.empty((self.num_modes,), dtype=np.float32)
+            self._wfc_buffer = np.empty((self.num_modes,), dtype=np.float32)
             self.correction_vector_2d = None
 
             self.set_layout(None)
@@ -159,7 +159,7 @@ class WavefrontCorrector(Component):
             logger.exception("Failed to initialize wavefront corrector")
             raise
 
-        
+
         return
 
     def set_flat(self, flat):
@@ -236,7 +236,7 @@ class WavefrontCorrector(Component):
             raise
 
         return
-    
+
     def deactivate_actuators(self, actuators):
         """
         Deactivate specified actuators. Actuators are assumed to be floating
@@ -278,7 +278,7 @@ class WavefrontCorrector(Component):
             raise
 
         return
-    
+
     def reactivate_actuators(self, actuators):
         """
         Reactivate specified actuators.
@@ -347,9 +347,9 @@ class WavefrontCorrector(Component):
         except Exception:
             self.logger.exception("Failed to set frame delay to %s", delay)
             raise
-        
+
         return
-    
+
     def read_m2c(self, filename=''):
         """
         Read the mode-to-command matrix from a file.
@@ -371,40 +371,40 @@ class WavefrontCorrector(Component):
                 self.set_m2c(None)
                 self.logger.info("No M2C file configured; using identity basis")
                 return
-        
+
             self.set_m2c(M2C)
             self.logger.info("Loaded M2C matrix from %s", filename)
         except Exception:
             self.logger.exception("Failed to read M2C matrix from %s", filename or self.m2c_file)
             raise
-        return 
-    
+        return
+
     def send_to_hardware(self):
         """
         Send the current correction to the hardware. Nominally, this function is overwritten by the
         child hardware class and registered to the real-time loop from the config.
         """
         #Read a new modal correction in M2C basis
-        self.current_correction = self.read_stream("wfc", out=self._wfcBuffer)
+        self.current_correction = self.read_stream("wfc", out=self._wfc_buffer)
         #If we added a frame delay
         if self.frame_delay > 0:
             #Roll back shape buffer by 1
             self.shape_buffer[:-1] = self.shape_buffer[1:]
             #Compute a new shape in zonal basis
-            self.shape_buffer[-1] = ModaltoZonalWithFlat(self.current_correction, 
+            self.shape_buffer[-1] = ModaltoZonalWithFlat(self.current_correction,
                                                         self.f_M2C,
                                                         self.flat)
             #Set the current shape
             self.current_shape = self.shape_buffer[0]
         else:
-            self.current_shape = ModaltoZonalWithFlat(self.current_correction, 
+            self.current_shape = ModaltoZonalWithFlat(self.current_correction,
                                                      self.f_M2C,
                                                      self.flat)
 
         if self.command_cap is not None:
             self.current_shape = np.clip(self.current_shape, -self.command_cap, self.command_cap)
-        
-        #If we have a 2D SHM instance, update it 
+
+        #If we have a 2D SHM instance, update it
         if self.correction_vector_2d is not None:
             self.correction_vector_2d_template.fill(0)
             self.correction_vector_2d_template[self.layout] = self.current_shape - self.flat
@@ -438,7 +438,7 @@ class WavefrontCorrector(Component):
         #We assume that send_to_hardware is registered to the real-time loop
         #And that the WFC is running (i.e. start has been called)
         self.write_stream("wfc", self.current_correction)
-        return 
+        return
 
     def flatten(self):
         """
@@ -514,7 +514,7 @@ class WavefrontCorrector(Component):
             new_shape[self.layout] = self.M2C@cur_correction
         else:
             new_shape = cur_correction
-            
+
         if len(new_shape.shape) == 1:
             # plt.figure(figsize=(12,5))
             plt.plot(new_shape)

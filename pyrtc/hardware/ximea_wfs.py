@@ -65,7 +65,7 @@ class XIMEA_WFS(WavefrontSensor):
             self.logger.exception("Failed to apply XIMEA ROI %s", roi)
             raise
         return
-    
+
     def set_exposure(self, exposure):
         try:
             super().set_exposure(exposure)
@@ -75,7 +75,7 @@ class XIMEA_WFS(WavefrontSensor):
             self.logger.exception("Failed to apply XIMEA exposure=%s", exposure)
             raise
         return
-    
+
     def set_binning(self, binning):
         try:
             super().set_binning(binning)
@@ -86,7 +86,7 @@ class XIMEA_WFS(WavefrontSensor):
             self.logger.exception("Failed to apply XIMEA binning=%s", binning)
             raise
         return
-    
+
     def set_gain(self, gain):
         try:
             super().set_gain(gain)
@@ -96,7 +96,7 @@ class XIMEA_WFS(WavefrontSensor):
             self.logger.exception("Failed to apply XIMEA gain=%s", gain)
             raise
         return
-    
+
     def set_bit_depth(self, bit_depth):
         try:
             super().set_bit_depth(bit_depth)
@@ -109,11 +109,11 @@ class XIMEA_WFS(WavefrontSensor):
         return
 
     def expose(self):
-        
+
         self.cam.get_image(self.img)
-        
-        # self.data = np.ndarray((self.img.width,self.img.height), 
-        #                        buffer= self.img.get_image_data_raw(), 
+
+        # self.data = np.ndarray((self.img.width,self.img.height),
+        #                        buffer= self.img.get_image_data_raw(),
         #                        dtype=np.uint16)
         # if self.binning > 2:
         #     # /2 is adjusted for on-chip binning
@@ -138,9 +138,9 @@ class XIMEA_WFS(WavefrontSensor):
                     component_logger.info("Closed XIMEA wavefront sensor")
                 except Exception:
                     component_logger.exception("Failed while closing XIMEA wavefront sensor")
-        
+
         return
-    
+
 if __name__ == "__main__":
 
     launch_component(XIMEA_WFS, "wfs", start = True)

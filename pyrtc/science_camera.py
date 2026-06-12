@@ -150,7 +150,7 @@ class ScienceCamera(Component):
         except Exception:
             logger.exception("Failed to initialize science camera")
             raise
-    
+
     def set_roi(self, roi):
         """
         Set the region of interest (ROI).
@@ -187,7 +187,7 @@ class ScienceCamera(Component):
             logger.exception("Failed to set exposure to %s", exposure)
             raise
         return
-    
+
     def set_binning(self, binning):
         """
         Set the binning factor.
@@ -204,7 +204,7 @@ class ScienceCamera(Component):
             logger.exception("Failed to set binning to %s", binning)
             raise
         return
-    
+
     def set_gain(self, gain):
         """
         Set the gain.
@@ -221,7 +221,7 @@ class ScienceCamera(Component):
             logger.exception("Failed to set gain to %s", gain)
             raise
         return
-    
+
     def set_gamma(self, gamma):
         """
         Set the gamma.
@@ -238,7 +238,7 @@ class ScienceCamera(Component):
             logger.exception("Failed to set gamma to %s", gamma)
             raise
         return
-    
+
     def set_bit_depth(self, bit_depth):
         """
         Set the bit depth.
@@ -255,7 +255,7 @@ class ScienceCamera(Component):
             logger.exception("Failed to set bit depth to %s", bit_depth)
             raise
         return
-    
+
     def set_integration_length(self, integration_length):
         """
         Set the integration length.
@@ -272,7 +272,7 @@ class ScienceCamera(Component):
             logger.exception("Failed to set integration length to %s", integration_length)
             raise
         return
-    
+
     def expose(self):
         """
         Perform a single exposure.
@@ -288,7 +288,7 @@ class ScienceCamera(Component):
         for i in range(self.integration_length):
             x += self.read().astype(x.dtype)
         self.write_stream("psf_long", x/self.integration_length)
-        return 
+        return
 
     def read(self, block = True):
         """
@@ -302,7 +302,7 @@ class ScienceCamera(Component):
         if block:
             return self.read_stream("psf_short")
         return self.read_stream("psf_short", block=False)
-    
+
     def read_long(self):
         """
         Read the current long exposure PSF.
@@ -313,10 +313,10 @@ class ScienceCamera(Component):
             Current long exposure PSF.
         """
         return self.read_stream("psf_long")
-    
+
     def take_dark(self):
         """
-        Take dark frames and average them to create a dark frame. 
+        Take dark frames and average them to create a dark frame.
         Number of exposures to average set by dark_count parameter.
         """
         try:
@@ -333,7 +333,7 @@ class ScienceCamera(Component):
         except Exception:
             logger.exception("Failed to acquire science camera dark frame")
             raise
-        return 
+        return
 
     def set_dark(self, dark):
         """
@@ -351,7 +351,7 @@ class ScienceCamera(Component):
             logger.exception("Failed to update science camera dark frame")
             raise
         return
-    
+
     def save_dark(self,filename=''):
         """
         Save the dark frame to a file.
@@ -372,7 +372,7 @@ class ScienceCamera(Component):
             logger.exception("Failed to save science camera dark frame to %s", filename or self.dark_file)
             raise
         return
-    
+
     def load_dark(self,filename=''):
         """
         Load the dark frame from a file.
@@ -396,7 +396,7 @@ class ScienceCamera(Component):
             logger.exception("Failed to load science camera dark frame from %s", filename or self.dark_file)
             raise
         return
-    
+
     def take_model_psf(self):
         """
         Capture the current long exposure PSF as the model PSF.
@@ -425,7 +425,7 @@ class ScienceCamera(Component):
             logger.exception("Failed to update model PSF")
             raise
         return
-    
+
     def save_model_psf(self,filename=''):
         """
         Save the model PSF to a file.
@@ -446,7 +446,7 @@ class ScienceCamera(Component):
             logger.exception("Failed to save model PSF to %s", filename or self.model_file)
             raise
         return
-    
+
     def load_model_psf(self,filename=''):
         """
         Load the model PSF from a file.
@@ -490,12 +490,12 @@ class ScienceCamera(Component):
             Strehl ratio.
         """
 
-        model = clean_image_for_strehl(self.model, 
-                                       median_filter_size = median_filter_size, 
+        model = clean_image_for_strehl(self.model,
+                                       median_filter_size = median_filter_size,
                                        gaussian_sigma = gaussian_sigma)
 
-        current = clean_image_for_strehl(self.read_long(), 
-                                         median_filter_size = median_filter_size, 
+        current = clean_image_for_strehl(self.read_long(),
+                                         median_filter_size = median_filter_size,
                                          gaussian_sigma = gaussian_sigma)
 
         self.strehl_ratio = np.max(current) / np.max(model)

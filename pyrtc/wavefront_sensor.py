@@ -72,58 +72,58 @@ def downsample_int32_image_jit(image, N):
 def rotate_image_jit(image, angle_rad):
     """
     Numba-optimized parallel bilinear interpolation rotation.
-    
+
     Parameters:
     - image: 2D NumPy array (int32 or float) with shape (H, W)
     - angle_rad: float, rotation angle in radians (positive = counter-clockwise)
-    
+
     Returns:
     - rotated_image: 2D NumPy array with same shape and dtype as input
     """
     h, w = image.shape
     cos_angle = np.cos(angle_rad)
     sin_angle = np.sin(angle_rad)
-    
+
     # Center of rotation
     cx, cy = w / 2.0, h / 2.0
-    
+
     # Output image (same size as input)
     rotated = np.zeros_like(image)
-    
+
     for y in prange(h):
         for x in range(w):
             # Translate to center
             x_centered = x - cx
             y_centered = y - cy
-            
+
             # Rotate (inverse transformation)
             x_orig = x_centered * cos_angle + y_centered * sin_angle + cx
             y_orig = -x_centered * sin_angle + y_centered * cos_angle + cy
-            
+
             # Check if the source coordinates are within bounds
             if 0 <= x_orig < w-1 and 0 <= y_orig < h-1:
                 # Bilinear interpolation
                 x0, x1 = int(np.floor(x_orig)), int(np.ceil(x_orig))
                 y0, y1 = int(np.floor(y_orig)), int(np.ceil(y_orig))
-                
+
                 # Ensure indices are within bounds
                 if x1 >= w:
                     x1 = w - 1
                 if y1 >= h:
                     y1 = h - 1
-                
+
                 # Interpolation weights
                 wx = x_orig - x0
                 wy = y_orig - y0
-                
+
                 # Bilinear interpolation
                 val = (image[y0, x0] * (1 - wx) * (1 - wy) +
                        image[y0, x1] * wx * (1 - wy) +
                        image[y1, x0] * (1 - wx) * wy +
                        image[y1, x1] * wx * wy)
-                
+
                 rotated[y, x] = val
-    
+
     return rotated
 
 class WavefrontSensor(Component):
@@ -143,7 +143,7 @@ class WavefrontSensor(Component):
     width : int
         The width of the wavefront sensor image. Required.
     height : int
-        The width of the wavefront sensor image.  Required.      
+        The width of the wavefront sensor image.  Required.
     dark_count : int
         Number of dark frames to average. Default 1000.
     dark_file : str
@@ -264,7 +264,7 @@ class WavefrontSensor(Component):
             raise
 
         return
-    
+
     def set_roi(self, roi):
         """
         Sets the region of interest (ROI) for the sensor.
@@ -303,7 +303,7 @@ class WavefrontSensor(Component):
             raise
 
         return
-    
+
     def set_binning(self, binning: int) -> None:
         """
         Sets the binning factor for the sensor.
@@ -321,7 +321,7 @@ class WavefrontSensor(Component):
             raise
 
         return
-    
+
     def set_gain(self, gain: float) -> None:
         """
         Sets the gain for the sensor.
@@ -338,7 +338,7 @@ class WavefrontSensor(Component):
             self.logger.exception("Failed to set gain to %s", gain)
             raise
         return
-    
+
     def set_bit_depth(self, bit_depth: int) -> None:
         """
         Sets the bit depth for the sensor.
@@ -356,29 +356,29 @@ class WavefrontSensor(Component):
             self.logger.exception("Failed to set bit depth to %s", bit_depth)
             raise
         return
-    
+
     def expose(self) -> None:
         """
         Writes the current image data to shared memory. Both raw, and dark subtracted.
-        
+
         Parameters
         ----------
         """
         self.write_stream("wfs_raw", self.data)
         img = self.data.astype(self.image_dtype)
-        
+
         # Apply dark subtraction
         processed_image = img - self.dark
-        
+
         # Apply downsampling if configured
         if self.downsample_factor > 0:
             processed_image = downsample_int32_image_jit(processed_image, self.downsample_factor)
-        
+
         # Apply rotation if specified
         if self.rotation_angle != 0.0:
             angle_rad = np.radians(self.rotation_angle)
             processed_image = rotate_image_jit(processed_image, angle_rad)
-        
+
         # Write the processed image to shared memory
         self.write_stream("wfs", processed_image)
         return
@@ -396,7 +396,7 @@ class WavefrontSensor(Component):
             return self.read_stream("wfs")
         else:
             return self.read_stream("wfs", block=False)
-    
+
     def take_dark(self) -> None:
         """
         Captures and sets the dark frame.
@@ -415,7 +415,7 @@ class WavefrontSensor(Component):
         except Exception:
             self.logger.exception("Failed to acquire dark frame")
             raise
-        return 
+        return
 
     def set_dark(self, dark) -> None:
         """
@@ -433,7 +433,7 @@ class WavefrontSensor(Component):
             self.logger.exception("Failed to update dark frame")
             raise
         return
-    
+
     def save_dark(self,filename=''):
         """
         Saves the dark frame to a file.
@@ -454,7 +454,7 @@ class WavefrontSensor(Component):
             self.logger.exception("Failed to save dark frame to %s", filename or self.dark_file)
             raise
         return
-    
+
     def load_dark(self,filename=''):
         """
         Loads the dark frame from a file.
@@ -478,7 +478,7 @@ class WavefrontSensor(Component):
             self.logger.exception("Failed to load dark frame from %s", filename or self.dark_file)
             raise
         return
-    
+
     def plot(self) -> None:
         """
         Plots the current image data.
@@ -494,11 +494,11 @@ class WavefrontSensor(Component):
             self.logger.exception("Failed to plot wavefront sensor image")
             raise
         return
-    
+
     def rotate_image(self, angle_deg: float) -> np.ndarray:
         """
         Rotates the current image data by the specified angle.
-        
+
         This method uses a high-performance numba JIT-compiled bilinear interpolation
         rotation algorithm that is significantly faster than scipy or opencv implementations
         while maintaining good image quality.
@@ -512,7 +512,7 @@ class WavefrontSensor(Component):
         -------
         ndarray
             Rotated image data with the same shape and dtype as the original.
-            
+
         Examples
         --------
         >>> wfs = WavefrontSensor(config)
@@ -529,7 +529,7 @@ class WavefrontSensor(Component):
         except Exception:
             self.logger.exception("Failed to rotate image by %s degrees", angle_deg)
             raise
-    
+
 if __name__ == "__main__":
 
     launch_component(WavefrontSensor, "wfs", start = True)

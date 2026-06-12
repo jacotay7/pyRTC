@@ -312,9 +312,9 @@ def test_manager_mode_override_uses_hard_runtime_with_short_alias(monkeypatch):
     calls = []
 
     class FakeLauncher:
-        def __init__(self, hardware_file, configFile, port, timeout=None):
+        def __init__(self, hardware_file, config_file, port, timeout=None):
             self.hardware_file = hardware_file
-            self.configFile = configFile
+            self.config_file = config_file
             self.port = port
             self.timeout = timeout
 
@@ -345,7 +345,7 @@ def test_hard_runtime_stays_stopped_after_manual_stop():
     calls = []
 
     class FakeLauncher:
-        def __init__(self, hardware_file, configFile, port, timeout=None):
+        def __init__(self, hardware_file, config_file, port, timeout=None):
             self.port = port
 
         def launch(self):
@@ -382,9 +382,9 @@ def test_manager_uses_hard_runtime_with_launcher_integration(monkeypatch):
     calls = []
 
     class FakeLauncher:
-        def __init__(self, hardware_file, configFile, port, timeout=None):
+        def __init__(self, hardware_file, config_file, port, timeout=None):
             self.hardware_file = hardware_file
-            self.configFile = configFile
+            self.config_file = config_file
             self.port = port
             self.timeout = timeout
 
@@ -465,9 +465,9 @@ def test_manager_supports_explicit_manager_declared_sections():
     calls = []
 
     class FakeLauncher:
-        def __init__(self, hardware_file, configFile, port, timeout=None):
+        def __init__(self, hardware_file, config_file, port, timeout=None):
             self.hardware_file = hardware_file
-            self.configFile = configFile
+            self.config_file = config_file
             self.port = port
             self.timeout = timeout
 
@@ -638,9 +638,9 @@ def test_manager_injects_component_provider_resources_into_soft_runtimes(tmp_pat
 
 def test_manager_status_includes_health_metadata_for_hard_runtime(tmp_path):
     class HealthLauncher:
-        def __init__(self, hardware_file, configFile, port, timeout=None):
+        def __init__(self, hardware_file, config_file, port, timeout=None):
             self.hardware_file = hardware_file
-            self.configFile = configFile
+            self.config_file = config_file
             self.port = port
             self.timeout = timeout
             self.pid = 7000 + port
@@ -694,7 +694,7 @@ def test_manager_status_includes_health_metadata_for_hard_runtime(tmp_path):
 
 def test_manager_marks_component_degraded_when_health_check_fails():
     class DegradedLauncher:
-        def __init__(self, hardware_file, configFile, port, timeout=None):
+        def __init__(self, hardware_file, config_file, port, timeout=None):
             self.port = port
             self.health_state = "running"
             self.pid = 8000 + port
@@ -748,7 +748,7 @@ def test_manager_restarts_failed_child_when_policy_is_on_failure():
         launches = 0
         loop_failed_once = False
 
-        def __init__(self, hardware_file, configFile, port, timeout=None):
+        def __init__(self, hardware_file, config_file, port, timeout=None):
             type(self).launches += 1
             self.port = port
             self.pid = 9000 + type(self).launches
@@ -807,7 +807,7 @@ def test_manager_repeated_failures_increment_restart_count_and_preserve_last_err
     class FlappingLauncher:
         launches = 0
 
-        def __init__(self, hardware_file, configFile, port, timeout=None):
+        def __init__(self, hardware_file, config_file, port, timeout=None):
             type(self).launches += 1
             self.port = port
             self.pid = 10000 + type(self).launches

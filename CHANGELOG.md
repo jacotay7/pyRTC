@@ -84,6 +84,28 @@ All notable changes to `pyrtcao` will be documented in this file.
 	/ `loop.lastSingularValueFit` / `loop.CMMethod` / `loop.numDroppedModes`
 	/ `loop.tikhonovReg` must move to the snake_case equivalents.
 
+- **Last camelCase identifiers in pyrtc core code converted to snake_case.**
+	`pyrtc/loop.py`: `leaky_integrator_numba`/`leak_integrator_gpu` parameter
+	`resconstructionMatrix` → `reconstruction_matrix` (typo fixed at the same
+	time), the `leak_integrator_gpu` local `slopes_GPU` → `slopes_gpu`, and
+	the pre-allocated hot-path read buffers `self._signalBuffer` /
+	`self._wfcBuffer` → `self._signal_buffer` / `self._wfc_buffer`.
+	`pyrtc/slopes_process.py`: `self._imageBuffer` → `self._image_buffer`.
+	`pyrtc/wavefront_corrector.py`: `self._wfcBuffer` → `self._wfc_buffer`.
+	`pyrtc/hardware/pi_modulator.py`: local `originalDirectory` →
+	`original_directory`. `pyrtc/hardware/specula_interface.py`: the local
+	alias of the external `specula.cpuArray` is now `cpu_array` and the
+	`SimpleNamespace` key it is stored under is `cpu_array`; the external
+	`specula.cpuArray` import name is unchanged (it is specula's API).
+	`tests/test_loop.py` and `tests/test_manager.py` were updated for the
+	new attribute names. PEP 8 hygiene pass: 299 ruff auto-fixes applied
+	(missing trailing newlines, blank-line whitespace, trailing
+	whitespace), 14 manual whitespace fixes, and tab-indentation in
+	multi-line imports converted to spaces in `pyrtc/__init__.py`,
+	`pyrtc/optimizer.py`, `pyrtc/science_camera.py`, `pyrtc/slopes_process.py`,
+	`pyrtc/utils.py`, and `pyrtc/wavefront_sensor.py`. `ruff check
+	--select E,F,W pyrtc tests benchmarks examples` is now clean.
+
 ## 1.0.0 - 2026-03-07
 
 First stable public release of `pyrtcao`.

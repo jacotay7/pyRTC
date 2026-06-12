@@ -39,7 +39,7 @@ class PIModulator(Modulator):
             self.wavegens = (1, 2)
             self.wavetables = (1, 2)
 
-            originalDirectory = os.getcwd()
+            original_directory = os.getcwd()
             try:
                 os.chdir(conf["lib_folder"])
                 self.mod = GCSDevice()
@@ -49,7 +49,7 @@ class PIModulator(Modulator):
                 self.mod.ConnectUSB(devices[0])
                 self.logger.info("Connected to PI modulator device %s", devices[0])
             finally:
-                os.chdir(originalDirectory)
+                os.chdir(original_directory)
 
             self.servos_on = conf["servos_on"]
             for axis in self.mod.axes:
@@ -75,8 +75,8 @@ class PIModulator(Modulator):
     def __del__(self):
         self.logger.info("Destroying PI modulator")
         super().__del__()
-        
-        return    
+
+        return
 
     def define_circle(self):
         try:
@@ -140,7 +140,7 @@ class PIModulator(Modulator):
             self.logger.exception("Failed to stop PI modulator")
             raise
         return
-    
+
     def set_position(self, position):
         try:
             self.logger.info("Setting PI modulator position to %s", position)
@@ -160,7 +160,7 @@ class PIModulator(Modulator):
 
     def go_to(self, x):
         return super().go_to(x)
-    
+
     def adjust_amp(self, amp, restart=True):
         try:
             self.logger.info("Adjusting PI modulator amplitude to %s restart=%s", amp, restart)
@@ -172,7 +172,7 @@ class PIModulator(Modulator):
             self.logger.exception("Failed to adjust PI modulator amplitude to %s", amp)
             raise
         return
-    
+
     def restart(self):
         try:
             self.logger.info("Restarting PI modulator")

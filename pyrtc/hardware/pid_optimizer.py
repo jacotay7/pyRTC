@@ -79,7 +79,7 @@ class PIDOptimizer(Optimizer):
         except Exception:
             self.logger.exception("Failed while evaluating PID trial")
             raise
-    
+
     def apply_trial(self, trial):
         try:
             self.loop.set_property("p_gain", trial.suggest_float('p_gain', 0, self.max_p_gain))
@@ -110,8 +110,8 @@ class PIDOptimizer(Optimizer):
             raise
 
 
-        return 
-    
+        return
+
 
 if __name__ == "__main__":
 
@@ -132,7 +132,7 @@ if __name__ == "__main__":
     conf = read_yaml_file(args.config)["optimizer"]
 
     pid = os.getpid()
-    set_affinity((conf["affinity"])%os.cpu_count()) 
+    set_affinity((conf["affinity"])%os.cpu_count())
     decrease_nice(pid)
 
     component = PIDOptimizer(conf=conf)

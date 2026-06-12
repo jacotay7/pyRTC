@@ -6,12 +6,12 @@ It is the control-plane heart of pyrtc: interaction matrices, control matrices,
 integrators, and command dispatch all come together here.
 """
 
-import os 
+import os
 os.environ["OMP_NUM_THREADS"] = "1"
-os.environ["OPENBLAS_NUM_THREADS"] = "1" 
-os.environ["MKL_NUM_THREADS"] = "1" 
-os.environ["VECLIB_MAXIMUM_THREADS"] = "1" 
-os.environ["NUMEXPR_NUM_THREADS"] = "1" 
+os.environ["OPENBLAS_NUM_THREADS"] = "1"
+os.environ["MKL_NUM_THREADS"] = "1"
+os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
+os.environ["NUMEXPR_NUM_THREADS"] = "1"
 os.environ['NUMBA_NUM_THREADS'] = '1'
 
 import math
@@ -32,28 +32,28 @@ logger = get_logger(__name__)
 COMMON_CONDITIONING_LINES = (10.0, 100.0, 1e3, 1e4, 1e5, 1e6)
 
 @jit(nopython=True, nogil=True, cache=False, fastmath=True)
-def leaky_integrator_numba(slopes: np.ndarray, 
-                         resconstructionMatrix: np.ndarray, 
+def leaky_integrator_numba(slopes: np.ndarray,
+                         reconstruction_matrix: np.ndarray,
                          old_correction: np.ndarray,
                          correction: np.ndarray,
                          leak: np.float32,
                          num_active_modes: int) -> np.ndarray:
-    
+
     # Perform the matrix-vector multiplication using np.dot
-    correction = np.dot(resconstructionMatrix, slopes)
-    
+    correction = np.dot(reconstruction_matrix, slopes)
+
     # Apply the leaky integrator formula with an unrolled loop
     for i in range(num_active_modes + 1):
         correction[i] = (1 - leak) * old_correction[i] - correction[i]
-    
+
     # Zero out the rest of the correction vector
     for i in range(num_active_modes + 1, correction.size):
         correction[i] = 0.0
-    
+
     return correction
 
-def leak_integrator_gpu(slopes:np.ndarray, 
-                                resconstructionMatrix:Any,
+def leak_integrator_gpu(slopes:np.ndarray,
+                                reconstruction_matrix:Any,
                                 old_correction:np.ndarray,
                                 leak:float,
                                 num_active_modes:int
@@ -65,8 +65,8 @@ def leak_integrator_gpu(slopes:np.ndarray,
 
     import torch
 
-    slopes_GPU = torch.tensor(slopes, device='cuda')
-    correction_gpu = torch.matmul(resconstructionMatrix, slopes_GPU) 
+    slopes_gpu = torch.tensor(slopes, device='cuda')
+    correction_gpu = torch.matmul(reconstruction_matrix, slopes_gpu)
     correction_gpu[num_active_modes:] = 0
     return np.subtract((1-leak)*old_correction, correction_gpu.cpu().numpy())
 
@@ -78,8 +78,8 @@ def comp_correction(cm=np.array([[]], dtype=np.float32),
     return np.dot(cm, slopes)
 
 @jit(nopython=True, nogil=True, cache=False, fastmath=True)
-def update_correction(correction=np.array([], dtype=np.float32), 
-                     g_cm=np.array([[]], dtype=np.float32),  
+def update_correction(correction=np.array([], dtype=np.float32),
+                     g_cm=np.array([[]], dtype=np.float32),
                      slopes=np.array([], dtype=np.float32)):
     """Update an existing correction using a pre-scaled control matrix."""
 
@@ -274,7 +274,7 @@ class Loop(Component):
             super().__init__(conf)
             self.name = "Loop"
             self.conf = conf
-        
+
         #Read wfs signal's metadata and open a stream to the shared memory
             self.signal_shm = open_stream(self.input_stream_name("signal"), gpu_device=self.gpu_device)
             self.signal_shape = tuple(self.signal_shm.shape)
@@ -314,7 +314,7 @@ class Loop(Component):
             self.last_retained_singular_mask = np.array([], dtype=bool)
             self.last_suggested_conditioning = None
             self.last_singular_value_fit = None
-        
+
             self.cl_docrime = False
             self.num_iters_dc = 0
             tmp2 = self.flat.copy().reshape(self.flat.size, 1)
@@ -322,7 +322,7 @@ class Loop(Component):
             self.docrime_cross = np.zeros_like(tmp @ tmp2.T)
             self.docrime_auto = np.zeros_like(tmp2 @ tmp2.T)
             self.docrime_buffer = np.zeros((1 + self.delay, *tmp2.shape), dtype=self.wfc_dtype)
-        
+
             self.p_gain = set_from_config(self.conf, "p_gain", 0.1)
             self.i_gain = set_from_config(self.conf, "i_gain", 0.0)
             self.d_gain = set_from_config(self.conf, "d_gain", 0.0)
@@ -337,8 +337,8 @@ class Loop(Component):
             self.control_output = np.zeros_like(self.previous_wf_error)
 
             # Pre-allocated hot-path read buffers (ignored for GPU streams).
-            self._signalBuffer = np.empty(self.signal_shape, dtype=self.signal_dtype)
-            self._wfcBuffer = np.empty(self.wfc_shape, dtype=self.wfc_dtype)
+            self._signal_buffer = np.empty(self.signal_shape, dtype=self.signal_dtype)
+            self._wfc_buffer = np.empty(self.wfc_shape, dtype=self.wfc_dtype)
 
             self.load_im()
             self.logger.info("Initialized loop signal_shape=%s wfc_shape=%s num_modes=%s", self.signal_shape, self.wfc_shape, self.num_modes)
@@ -434,11 +434,11 @@ class Loop(Component):
             self.im[:,i] = (tmp_plus-tmp_minus)/(2*self.poke_amp)
 
         return
-    
+
     def docrime_im(self):
         """
         Compute the interaction matrix using the DOCRIME method.
-        """        
+        """
         #Send the flat command to the WFC
         self.flatten()
 
@@ -459,7 +459,7 @@ class Loop(Component):
         for i in range(self.num_iters_im):
             #Compute new random shape
             correction = np.random.uniform(-self.poke_amp,self.poke_amp,correction.size).astype(correction.dtype).reshape(correction.shape)
-            
+
             #Get current WFS response
             #I put this first to match CL case
             slopes = self.read_stream("signal").reshape(slopes.shape)
@@ -473,7 +473,7 @@ class Loop(Component):
             self.docrime_cross += slopes@self.docrime_buffer[0].T
             self.docrime_auto += self.docrime_buffer[0]@self.docrime_buffer[0].T
 
-        self.docrime_cross /= self.num_iters_im 
+        self.docrime_cross /= self.num_iters_im
         self.docrime_auto /= self.num_iters_im
         self.im = self.docrime_cross @np.linalg.inv(self.docrime_auto)
 
@@ -499,7 +499,7 @@ class Loop(Component):
             component_logger.exception("Failed to compute interaction matrix using method=%s", getattr(self, "im_method", None))
             raise
         return
-    
+
     def save_im(self,filename=''):
         """
         Save the interaction matrix to a file.
@@ -707,7 +707,7 @@ class Loop(Component):
 
         inverse = (Vh.T * inverse_singular_values) @ U.T
         return inverse.astype(self.cm.dtype, copy=False), singular_values, retained
-    
+
     def compute_cm(self, method=None, num_dropped_modes=None, conditioning=None, tikhonov_reg=None):
         """
         Compute the control matrix from the interaction matrix.
@@ -777,8 +777,8 @@ class Loop(Component):
         except Exception:
             component_logger.exception("Failed to compute control matrix")
             raise
-        return 
-        
+        return
+
     # @jit(nopython=True)
     def update_correction_pol(self, correction=np.array([], dtype=np.float32), slopes=np.array([], dtype=np.float32)):
         """
@@ -795,7 +795,7 @@ class Loop(Component):
         -------
         numpy.ndarray
             Updated correction vector.
-        """   
+        """
         # Compute POL Slopes s_{POL} = s_{RES} + im*c_{n-1}
         # print(f'slopes: {slopes.shape}, im: {self.im.shape}, corr: {correction.shape}')
         s_pol = slopes - self.f_im@correction
@@ -807,40 +807,40 @@ class Loop(Component):
         """
         Standard integrator using the pseudo open loop slopes.
         """
-        residual_slopes = self.read_stream("signal", out=self._signalBuffer)
-        current_correction = self.read_stream("wfc", block=False, out=self._wfcBuffer)
+        residual_slopes = self.read_stream("signal", out=self._signal_buffer)
+        current_correction = self.read_stream("wfc", block=False, out=self._wfc_buffer)
         # print(f'slopes: {residual_slopes.shape}, im: {self.im.shape}, corr: {current_correction.shape}')
 
-        new_correction = self.update_correction_pol(correction=current_correction, 
+        new_correction = self.update_correction_pol(correction=current_correction,
                                                  slopes=residual_slopes)
         new_correction[self.num_active_modes:] = 0
         self.send_to_wfc(new_correction)
 
         return
 
-    
+
     def standard_integrator(self):
         """
         Standard integrator.
         """
-        slopes = self.read_stream("signal", out=self._signalBuffer)
-        new_correction = leaky_integrator_numba(slopes, 
-                         self.g_cm, 
-                 self.read_stream("wfc", block=False, out=self._wfcBuffer).squeeze(),
+        slopes = self.read_stream("signal", out=self._signal_buffer)
+        new_correction = leaky_integrator_numba(slopes,
+                         self.g_cm,
+                 self.read_stream("wfc", block=False, out=self._wfc_buffer).squeeze(),
                          self.null_correction,
                          np.float32(0),#No leak
                          self.num_active_modes)
         self.send_to_wfc(new_correction, slopes=slopes)
         return
-    
+
     def leaky_integrator(self):
         """
         Leaky integrator.
         """
-        slopes = self.read_stream("signal", out=self._signalBuffer)
-        new_correction = leaky_integrator_numba(slopes, 
-                         self.g_cm, 
-                 self.read_stream("wfc", block=False, out=self._wfcBuffer).squeeze(),
+        slopes = self.read_stream("signal", out=self._signal_buffer)
+        new_correction = leaky_integrator_numba(slopes,
+                         self.g_cm,
+                 self.read_stream("wfc", block=False, out=self._wfc_buffer).squeeze(),
                          self.null_correction,
                          np.float32(self.leaky_gain),
                          self.num_active_modes)
@@ -851,8 +851,8 @@ class Loop(Component):
         """
         PID integrator using the pseudo-open loop slopes.
         """
-        slopes = self.read_stream("signal", out=self._signalBuffer)
-        correction = self.read_stream("wfc", block=False, out=self._wfcBuffer)
+        slopes = self.read_stream("signal", out=self._signal_buffer)
+        correction = self.read_stream("wfc", block=False, out=self._wfc_buffer)
         pol_slopes = slopes - self.f_im@correction
         return self.pid_integrator(slopes=pol_slopes, correction=correction)
 
@@ -873,20 +873,20 @@ class Loop(Component):
             correction = self.read_stream("wfc", block=False)
 
         #Compute raw error term (numba accelerated)
-        wf_error = comp_correction(cm=self.cm, 
+        wf_error = comp_correction(cm=self.cm,
                                     slopes=slopes)
-        derivative = (wf_error - self.previous_wf_error) 
-        
+        derivative = (wf_error - self.previous_wf_error)
+
         # Apply low-pass filter to the derivative to reduce noise
         derivative = self.derivative_filter * derivative + (1 - self.derivative_filter) * self.previous_derivative
-        
+
         # Update integral (anti-windup: conditional integration)
         # not_output_limiting = self.control_limits[0] is None or self.control_limits[1] is None
         is_clipped = np.any(self.control_output == self.control_limits[0]) or np.any(self.control_output == self.control_limits[1])
         #Check to make sure we aren't actively clipping the correction
         if not is_clipped:
             #Add to integral
-            self.integral += wf_error 
+            self.integral += wf_error
             #Clip integral term
             self.integral = np.clip(self.integral, *self.integral_limits)
 
@@ -900,10 +900,10 @@ class Loop(Component):
 
         #Remove anything in non-corrected modes (might be redundant)
         new_correction[self.num_active_modes:] = 0
-        
+
         # Clip correction (force the loop to not over correct a mode)
         new_correction = np.clip(new_correction, *self.absolute_limits)
-        
+
         #Apply new correction to mirror
         self.send_to_wfc(new_correction, slopes = slopes)
 
@@ -911,7 +911,7 @@ class Loop(Component):
         self.previous_wf_error = wf_error
         self.previous_derivative = derivative
         self.control_output = control_output
-        
+
         return
 
     def send_to_wfc(self, correction, slopes=None):

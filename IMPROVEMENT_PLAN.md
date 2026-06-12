@@ -5,11 +5,16 @@ stated goals: performance as a primary design constraint, the synthetic SHWFS
 workflow as the front door, a conservative Linux-first release posture, and
 ML-assisted control research as a target audience.
 
-**Status as of 2026-06-11 (third pass):** A1, A2, B3, B4, C6, C7, C8, D9,
-D10, D11, E12, F1 are done. Verified: 291 tests + 3 system + 19 perf + 1
-notebook smoke all green, ruff clean, `pyrtc-ao-loop-bench` within 1.5x of the
-committed baseline, live soft and hard tutorials converge. Remaining: the
-second gate extension round (Loop/SlopesProcess/manager) noted in D9.
+**Status as of 2026-06-11 (fourth pass):** A1, A2, B3, B4, C6, C7, C8, D9,
+D10, D11, E12, F1, F2 are done. Verified: 291 tests + 3 system + 19 perf + 1
+notebook smoke all green, ruff clean (E/F/W with `E402,E501` ignored per the
+existing config), `pyrtc-ao-loop-bench` within 1.5x of the committed baseline,
+live soft and hard tutorials converge. Remaining: the second gate extension
+round (Loop/SlopesProcess/manager) noted in D9.
+
+**F2 — Final camelCase sweep + PEP 8 hygiene.** Closed the last camelCase
+identifiers in pyrtc core code and tightened PEP 8 conformance in
+non-GUI/non-viewer files. See the F2 bullet below for the full list.
 
 
 ## A. Front door (user-visible bugs in the advertised quick start)
@@ -176,6 +181,53 @@ second gate extension round (Loop/SlopesProcess/manager) noted in D9.
   examples` → clean. The GUI adapter `input_role` change is purely
   internal to `manager_adapter.py` and the generated `streams` config
   block; no on-disk configs depended on the old key.
+
+- [x] **F2 — Final camelCase sweep + PEP 8 hygiene.** *Done.* F1 left a
+  handful of camelCase identifiers in `pyrtc/loop.py` (the last
+  numba-kernel parameters and the private hot-path read buffers) and a
+  scattering of PEP 8 issues across the rest of the package. This pass
+  closed all of them:
+  - **`pyrtc/loop.py`:** the `leaky integrator_numba` / `leak integrator_gpu`
+    parameter `resconstructionMatrix` → `reconstruction_matrix` (the
+    `resconstruction` typo was also fixed), the `leak integrator_gpu` local
+    `slopes_GPU` → `slopes_gpu`, and the pre-allocated hot-path read
+    buffers `self._signalBuffer` / `self._wfcBuffer` →
+    `self._signal_buffer` / `self._wfc_buffer`. All call sites in the
+    integrators and the test fixture were updated together.
+  - **`pyrtc/slopes_process.py`:** `self._imageBuffer` →
+    `self._image_buffer`.
+  - **`pyrtc/wavefront_corrector.py`:** `self._wfcBuffer` →
+    `self._wfc_buffer`.
+  - **`pyrtc/hardware/pi_modulator.py`:** local `originalDirectory` →
+    `original_directory` (and the `os.chdir` call that restores it).
+  - **`pyrtc/hardware/specula_interface.py`:** the local alias of the
+    external `specula.cpuArray` is now `cpu_array`, the `SimpleNamespace`
+    key it is stored under is `cpu_array`, and every
+    `self._bindings.cpuArray(...)` call site is now
+    `self._bindings.cpu_array(...)`. The external
+    `specula.cpuArray` *import* name is unchanged — that is the
+    specula library's API and we do not own it.
+  - **`tests/test_loop.py` / `tests/test_manager.py`:** updated for the
+    new attribute names (`loop._signal_buffer` / `loop._wfc_buffer`,
+    fake-launcher `configFile` → `config_file`).
+  - **PEP 8 hygiene (whole repo, excluding `pyrtc/gui/` and
+    `pyrtc/scripts/viewer*` which are bound to Qt API):** 299 ruff
+    auto-fixes applied (W292 missing trailing newlines, W293
+    blank-line whitespace, W291 trailing whitespace); 14 manual
+    whitespace fixes; tab indentation in multi-line imports converted
+    to spaces in `pyrtc/__init__.py`, `pyrtc/optimizer.py`,
+    `pyrtc/science_camera.py`, `pyrtc/slopes_process.py`,
+    `pyrtc/utils.py`, and `pyrtc/wavefront_sensor.py`. The repo now
+    passes `ruff check --select E,F,W pyrtc tests benchmarks examples`
+    (W rules are not in the default config but are not violations
+    either after this pass).
+
+  Verified post-sweep: `python -m pytest tests/` → 291 passed, 1
+  skipped; `pytest tests/system tests/perf` → 3 + 19 passed; `pytest
+  tests/notebooks` → 1 passed; `ruff check --select E,F,W pyrtc tests
+  benchmarks examples` → clean. The `resconstructionMatrix` rename also
+  fixed a long-standing typo that the previous search-based audit had
+  not caught.
 
 
 ## Deferred / future pyshmem additions

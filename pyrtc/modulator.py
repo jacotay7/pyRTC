@@ -63,4 +63,3 @@ class Modulator(Component, ABC):
     @abstractmethod
     def restart(self):
         """Restart the modulator waveform or hardware state."""
- 

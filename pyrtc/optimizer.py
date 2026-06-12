@@ -68,7 +68,7 @@ class Optimizer(Component):
         """
         try:
             self.name = "Optimizer"
-            self.study = optuna.create_study(direction='maximize', 
+            self.study = optuna.create_study(direction='maximize',
                                              sampler=optuna.samplers.CmaEsSampler())
             self.num_steps = set_from_config(conf, "num_steps", 100)
 
@@ -79,12 +79,12 @@ class Optimizer(Component):
             raise
 
         return
-    
+
     def objective(self):
         """
         Defines the objective function for the optimization.
 
-        This method should be overridden by subclasses to provide the 
+        This method should be overridden by subclasses to provide the
         specific objective function for the optimization task.
 
         :return: The objective value to be optimized.
@@ -95,7 +95,7 @@ class Optimizer(Component):
         """
         Performs the optimization process.
 
-        This method runs the optimization process using the defined objective 
+        This method runs the optimization process using the defined objective
         function and the number of steps specified in the configuration.
         """
         component_logger = getattr(self, "logger", logger)
@@ -108,16 +108,16 @@ class Optimizer(Component):
             component_logger.exception("Failed during optimization")
             raise
         return
-    
+
     def apply_optimum(self):
         """
         Applies the optimum values obtained from the optimization process.
 
-        This method should be implemented to apply the optimal parameters 
+        This method should be implemented to apply the optimal parameters
         found during the optimization to the system or component.
         """
         return
-    
+
     def apply_trial(self, trial):
         """
         Applies a given trial.
@@ -125,12 +125,12 @@ class Optimizer(Component):
         :param trial: The trial object containing the parameters to be applied.
         """
         return
-    
+
     def apply_next(self):
         """
         Requests and applies the next trial from the study.
 
-        This method obtains the next trial from the study and applies it 
+        This method obtains the next trial from the study and applies it
         using the apply_trial method.
         """
         component_logger = getattr(self, "logger", logger)
@@ -146,7 +146,7 @@ class Optimizer(Component):
     def reset_study(self):
         component_logger = getattr(self, "logger", logger)
         try:
-            self.study = optuna.create_study(direction='maximize', 
+            self.study = optuna.create_study(direction='maximize',
                                              sampler=optuna.samplers.CmaEsSampler())
             component_logger.info("Reset optimizer study")
         except Exception:
@@ -175,7 +175,7 @@ if __name__ == "__main__":
     conf = read_yaml_file(args.config)
 
     pid = os.getpid()
-    set_affinity((conf["loop"]["affinity"])%os.cpu_count()) 
+    set_affinity((conf["loop"]["affinity"])%os.cpu_count())
     decrease_nice(pid)
 
     component = Optimizer(conf=conf)

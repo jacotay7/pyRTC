@@ -80,7 +80,7 @@ class LoopOptimizer(Optimizer):
         except Exception:
             self.logger.exception("Failed while evaluating loop optimizer trial")
             raise
-    
+
     def apply_trial(self, trial):
         try:
             self.loop.set_property("num_dropped_modes", trial.suggest_int('num_dropped_modes', 0, self.max_dropped_modes))
@@ -107,8 +107,8 @@ class LoopOptimizer(Optimizer):
         except Exception:
             self.logger.exception("Failed to apply optimum loop hyperparameters")
             raise
-        return 
-    
+        return
+
 
 if __name__ == "__main__":
 
@@ -129,7 +129,7 @@ if __name__ == "__main__":
     conf = read_yaml_file(args.config)["optimizer"]
 
     pid = os.getpid()
-    set_affinity((conf["affinity"])%os.cpu_count()) 
+    set_affinity((conf["affinity"])%os.cpu_count())
     decrease_nice(pid)
 
     component = LoopOptimizer(conf=conf)

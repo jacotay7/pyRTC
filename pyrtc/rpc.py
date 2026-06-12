@@ -152,7 +152,7 @@ class HardwareLauncher:
             if (parent / "pyproject.toml").exists() and (parent / "pyrtc").is_dir():
                 return str(parent)
         return None
-    
+
     def launch(self):
         ensure_logging_configured(app_name="pyrtc-hardware-launcher", component_name=self.hardware_file)
         if not self.running:
@@ -192,7 +192,7 @@ class HardwareLauncher:
             self.last_contact_time = time.time()
 
         return
-    
+
     def shutdown(self):
         message = {"type": "shutdown", "protocol": PROTOCOL_VERSION}
         try:
@@ -203,7 +203,7 @@ class HardwareLauncher:
     def get_property(self, property):
         message = {"type": "get", "property": property, "protocol": PROTOCOL_VERSION}
         return self.write_and_read(message)
-    
+
     def set_property(self, property, value):
         message = {"type": "set", "property": property, "value": value, "protocol": PROTOCOL_VERSION}
         return self.write_and_read(message)
@@ -273,7 +273,7 @@ class HardwareLauncher:
     def write(self, message):
         _socket_send_json(self.process_socket, message)
         return
-    
+
     def read(self):
         try:
             reply, self._read_buffer = _socket_read_json(self.process_socket, self._read_buffer)
@@ -348,8 +348,8 @@ class HardwareLauncher:
             "last_contact_time": self.last_contact_time,
             "error": None,
         }
-        
-    
+
+
 
 class Listener:
     """Server-side control socket for a launched hardware object.
@@ -378,7 +378,7 @@ class Listener:
         self._read_buffer = ""
 
         return
-    
+
     def _bad(self, error: str) -> dict:
         message = dict(self.BadMessage)
         message["error"] = str(error)
@@ -483,7 +483,7 @@ class Listener:
     def write(self, message):
         _socket_send_json(self.RTCsocket, message)
         return
-    
+
     def read(self):
         reply, self._read_buffer = _socket_read_json(self.RTCsocket, self._read_buffer)
         return reply

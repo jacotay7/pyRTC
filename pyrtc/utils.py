@@ -11,14 +11,14 @@ not belong to a single subsystem.
 import yaml
 import sys
 import select
-import os 
+import os
 from astropy.io import fits
 import numpy as np
 import psutil
 from scipy.ndimage import median_filter, gaussian_filter
 import socket
 from datetime import datetime
-import time 
+import time
 import logging
 from typing import Any, Iterable, Mapping, Optional
 
@@ -159,7 +159,7 @@ def measure_execution_time(f, args, num_iters=10):
     The return value is tailored to the repository's lightweight performance
     smoke checks: median, interquartile range, and approximate low/high bounds.
     """
-   
+
     #init once
     f(*args)
 
@@ -252,7 +252,7 @@ def append_to_file(filename, data, dtype=np.float32):
 def generate_circular_aperture_mask(N, R, ratio):
     """
     Generates a binary mask of size NxN with a circular aperture of radius R and a central obscuration of radius r.
-    
+
     Parameters:
     N (int): The size of the mask (NxN).
     R (float): The radius of the outer circular aperture.
@@ -264,7 +264,7 @@ def generate_circular_aperture_mask(N, R, ratio):
     r = R * ratio
     x = np.linspace(-N/2, N/2, N)
     xx, yy = np.meshgrid(x,x)
-    mask = (xx**2 + yy**2 <= R**2) 
+    mask = (xx**2 + yy**2 <= R**2)
     if r > 0:
         mask &= (xx**2 + yy**2 >= r**2)
     return mask.astype(bool)
@@ -277,7 +277,7 @@ def load_data(filename, dtype=None):
             data = hdul[0].data
     else:
         raise ValueError("Unsupported file format. Please provide a .npy or .fits file.")
-    
+
     if dtype is not None:
         return data.astype(dtype)
     return data
@@ -395,13 +395,13 @@ def angle_between_vectors(v1, v2):
 def compute_fwhm_dark_subtracted_image(image):
     # Filter to keep only negative values
     negative_pixels = image[image < 1]
-    
+
     # Compute the histogram of negative values
     # Adjust bins and range as necessary for your specific image
     hist, bins = np.histogram(negative_pixels, bins=np.arange(np.min(negative_pixels), 1)+0.5)
     # Since the distribution is symmetric, we can mirror the histogram to get the full distribution
     hist_full = np.concatenate((hist[::-1], hist))
-    
+
     # Compute the bin centers from the bin edges
     bin_centers = (bins[:-1] + bins[1:]) / 2
     bin_centers_full = np.concatenate((-bin_centers[::-1], bin_centers))
@@ -409,14 +409,14 @@ def compute_fwhm_dark_subtracted_image(image):
     # Find the maximum value (mode of the distribution)
     peak_value = np.max(hist_full)
     half_max = peak_value / 2
-    
+
     # Find the points where the histogram crosses the half maximum
     cross_points = np.where(np.diff((hist_full > half_max).astype(int)))[0]
-    
+
     # Assuming the distribution is sufficiently smooth and has a single peak,
     # the FWHM is the distance between the first and last crossing points
     fwhm_value = np.abs(bin_centers_full[cross_points[-1]] - bin_centers_full[cross_points[0]])
-    
+
     return fwhm_value
 
 def clean_image_for_strehl(img, median_filter_size = 3, gaussian_sigma = 1):
@@ -461,7 +461,7 @@ def gaussian_2d_grid(i, j, sigma, grid_size):
             else:
                 # Compute the Gaussian value
                 grid[x, y] = np.exp(-((x - i)**2 + (y - j)**2) / (2 * sigma**2))
-    
+
     grid /= np.sum(grid)
 
     return grid
@@ -593,16 +593,16 @@ def read_yaml_file(file_path):
 def read_input_with_timeout(timeout):
     # Set the list of file descriptors to watch for input (stdin)
     inputs = [sys.stdin]
-    
+
     # Use select to wait for input or timeout
     readable, _, _ = select.select(inputs, [], [], timeout)
-    
+
     if readable:
         user_input = sys.stdin.readline().strip()
         return user_input
     else:
         return None
-    
+
 def is_numeric(s):
     try:
         float(s)

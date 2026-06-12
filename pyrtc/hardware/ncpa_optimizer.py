@@ -82,7 +82,7 @@ class NCPAOptimizer(Optimizer):
         except Exception:
             self.logger.exception("Failed while evaluating NCPA trial")
             raise
-    
+
     def apply_trial(self, trial):
         try:
             modal_coefs = np.zeros(self.wfc_dims, dtype=self.wfc_dtype)
@@ -133,8 +133,8 @@ class NCPAOptimizer(Optimizer):
             self.logger.exception("Failed to apply optimum NCPA correction")
             raise
 
-        return 
-    
+        return
+
     def optimize(self):
         try:
             self.ref_slopes_file = self.slopes.get_property("ref_slopes_file")
@@ -153,7 +153,7 @@ class NCPAOptimizer(Optimizer):
         except Exception:
             self.logger.exception("Failed during NCPA optimization")
             raise
-        return 
+        return
 
 if __name__ == "__main__":
 
@@ -174,7 +174,7 @@ if __name__ == "__main__":
     conf = read_yaml_file(args.config)["optimizer"]
 
     pid = os.getpid()
-    set_affinity((conf["affinity"])%os.cpu_count()) 
+    set_affinity((conf["affinity"])%os.cpu_count())
     decrease_nice(pid)
 
     component = NCPAOptimizer(conf=conf)

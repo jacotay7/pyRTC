@@ -76,7 +76,7 @@ class SpinCam(ScienceCamera):
             self.logger.exception("Failed to apply Spinnaker ROI %s", roi)
             raise
         return
-    
+
     def set_exposure(self, exposure):
         try:
             super().set_exposure(exposure)
@@ -86,7 +86,7 @@ class SpinCam(ScienceCamera):
             self.logger.exception("Failed to apply Spinnaker exposure=%s", exposure)
             raise
         return
-    
+
     def set_binning(self, binning):
         try:
             super().set_binning(binning)
@@ -95,7 +95,7 @@ class SpinCam(ScienceCamera):
             self.logger.exception("Failed to apply Spinnaker binning=%s", binning)
             raise
         return
-    
+
     def set_gain(self, gain):
         try:
             super().set_gain(gain)
@@ -132,10 +132,10 @@ class SpinCam(ScienceCamera):
         return
 
     def expose(self):
-        
+
         self.img = self.camera.get_next_image(timeout=5)
-        self.data = np.ndarray(self.image_shape, 
-                               buffer= self.img.get_image_data(), 
+        self.data = np.ndarray(self.image_shape,
+                               buffer= self.img.get_image_data(),
                                dtype=np.uint16)
         super().expose()
 
@@ -155,10 +155,10 @@ class SpinCam(ScienceCamera):
                     component_logger.info("Closed Spinnaker science camera")
                 except Exception:
                     component_logger.exception("Failed while closing Spinnaker science camera")
-        
+
         return
 
 if __name__ == "__main__":
 
     launch_component(SpinCam, "psf", start = True)
-        
+
