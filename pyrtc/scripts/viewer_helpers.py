@@ -10,7 +10,7 @@ import time
 
 import numpy as np
 
-from pyRTC.streams import open_stream
+from pyrtc.streams import open_stream
 
 
 def is_float_token(value: str) -> bool:

@@ -1,113 +1,113 @@
 specula:
-  className: pyRTC.hardware.SPECULAInterface.SPECULAInterface
-  classFile: ../../pyRTC/hardware/SPECULAInterface.py
+  class_name: pyrtc.hardware.specula_interface.SPECULAInterface
+  class_file: ../../pyrtc/hardware/specula_interface.py
   paramFile: pywfs_SPECULA_params.yaml
-  wfcSection: wfc
-  useAtmosphere: false
-  inputStreams: {}
-  outputStreams: {}
+  wfc_section: wfc
+  use_atmosphere: false
+  input_streams: {}
+  output_streams: {}
 loop:
   gain: 0.1
-  leakyGain: 0.01
-  numDroppedModes: 0
-  pokeAmp: 100
-  numItersIM: 8
+  leaky_gain: 0.01
+  num_dropped_modes: 0
+  poke_amp: 100
+  num_iters_im: 8
   conditioning: 10
   affinity: 2
   method: push-pull
-  className: Loop
-  inputStreams:
+  class_name: Loop
+  input_streams:
     signal: signal
-  outputStreams:
+  output_streams:
     wfc: wfc
   functions:
-  - leakyIntegrator
-  classFile: ../../pyRTC/Loop.py
+  - leaky_integrator
+  class_file: ../../pyrtc/loop.py
 wfs:
   name: SPECULAWFS
   width: 96
   height: 96
-  darkCount: 16
+  dark_count: 16
   affinity: 3
-  className: pyRTC.hardware.SPECULAInterface.SPECULAWFSensor
+  class_name: pyrtc.hardware.specula_interface.SPECULAWFSensor
   resource: specula
-  inputStreams: {}
-  outputStreams:
-    wfsRaw: wfsRaw
+  input_streams: {}
+  output_streams:
+    wfs_raw: wfs_raw
     wfs: wfs
   functions:
   - expose
-  classFile: ../../pyRTC/hardware/SPECULAInterface.py
+  class_file: ../../pyrtc/hardware/specula_interface.py
 slopes:
   type: PYWFS
-  signalType: slopes
+  signal_type: slopes
   affinity: 4
-  flatNorm: true
-  className: SlopesProcess
-  inputStreams:
+  flat_norm: true
+  class_name: SlopesProcess
+  input_streams:
     wfs: wfs
-  outputStreams:
+  output_streams:
     signal: signal
-    signal2D: signal2D
+    signal_2d: signal_2d
   functions:
-  - computeSignal
-  classFile: ../../pyRTC/SlopesProcess.py
+  - compute_signal
+  class_file: ../../pyrtc/slopes_process.py
 wfc:
   name: SPECULADM
-  numActuators: 400
-  numModes: 54
-  flatFile: ''
-  saveFile: specula_flat.npy
-  m2cFile: ''
+  num_actuators: 400
+  num_modes: 54
+  flat_file: ''
+  save_file: specula_flat.npy
+  m2c_file: ''
   affinity: 3
-  hardwareDelay: 0.001
-  frameDelay: 0
-  className: pyRTC.hardware.SPECULAInterface.SPECULAWFCorrector
+  hardware_delay: 0.001
+  frame_delay: 0
+  class_name: pyrtc.hardware.specula_interface.SPECULAWFCorrector
   resource: specula
-  inputStreams:
+  input_streams:
     wfc: wfc
-  outputStreams:
+  output_streams:
     wfc: wfc
-    wfc2D: wfc2D
+    wfc_2d: wfc_2d
   functions:
-  - sendToHardware
-  classFile: ../../pyRTC/hardware/SPECULAInterface.py
+  - send_to_hardware
+  class_file: ../../pyrtc/hardware/specula_interface.py
 psf:
   name: SPECULAPSF
   width: 160
   height: 160
-  darkCount: 1
+  dark_count: 1
   integration: 4
   affinity: 5
-  className: pyRTC.hardware.SPECULAInterface.SPECULAScienceCamera
+  class_name: pyrtc.hardware.specula_interface.SPECULAScienceCamera
   resource: specula
-  inputStreams: {}
-  outputStreams:
-    psfShort: psfShort
-    psfLong: psfLong
+  input_streams: {}
+  output_streams:
+    psf_short: psf_short
+    psf_long: psf_long
     strehl: strehl
     tiptilt: tiptilt
   functions:
   - expose
   - integrate
-  classFile: ../../pyRTC/hardware/SPECULAInterface.py
+  class_file: ../../pyrtc/hardware/specula_interface.py
 manager:
   mode: soft-rtc
-  componentClasses:
-    specula: pyRTC.hardware.SPECULAInterface.SPECULAInterface
-    loop: pyRTC.Loop.Loop
-    wfs: pyRTC.hardware.SPECULAInterface.SPECULAWFSensor
-    slopes: pyRTC.SlopesProcess.SlopesProcess
-    wfc: pyRTC.hardware.SPECULAInterface.SPECULAWFCorrector
-    psf: pyRTC.hardware.SPECULAInterface.SPECULAScienceCamera
-  componentFiles:
-    specula: ../../pyRTC/hardware/SPECULAInterface.py
-    loop: ../../pyRTC/Loop.py
-    wfs: ../../pyRTC/hardware/SPECULAInterface.py
-    slopes: ../../pyRTC/SlopesProcess.py
-    wfc: ../../pyRTC/hardware/SPECULAInterface.py
-    psf: ../../pyRTC/hardware/SPECULAInterface.py
-  graphLayout:
+  component_classes:
+    specula: pyrtc.hardware.specula_interface.SPECULAInterface
+    loop: pyrtc.loop.Loop
+    wfs: pyrtc.hardware.specula_interface.SPECULAWFSensor
+    slopes: pyrtc.slopes_process.SlopesProcess
+    wfc: pyrtc.hardware.specula_interface.SPECULAWFCorrector
+    psf: pyrtc.hardware.specula_interface.SPECULAScienceCamera
+  component_files:
+    specula: ../../pyrtc/hardware/specula_interface.py
+    loop: ../../pyrtc/loop.py
+    wfs: ../../pyrtc/hardware/specula_interface.py
+    slopes: ../../pyrtc/slopes_process.py
+    wfc: ../../pyrtc/hardware/specula_interface.py
+    psf: ../../pyrtc/hardware/specula_interface.py
+  graph_layout:
     positions:
       wfc:
         x: 753.7972500000001

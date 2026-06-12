@@ -7,10 +7,10 @@ All notable changes to `pyrtcao` will be documented in this file.
 ### Fixed
 
 - **`manager.latency()` no longer crashes in the synthetic tutorial.**
-	Component classes referenced by `classFile` are now resolved to their
-	canonical modules (`pyRTC.component_loading`, one shared implementation
+	Component classes referenced by `class_file` are now resolved to their
+	canonical modules (`pyrtc.component_loading`, one shared implementation
 	instead of three divergent copies), bare-name lookup is no longer broken
-	by same-named submodule shadowing, and relative `classFile` paths resolve
+	by same-named submodule shadowing, and relative `class_file` paths resolve
 	against the config file's directory instead of the caller's cwd.
 - **The synthetic SHWFS tutorial now converges.** The examples calibrate the
 	interaction matrix through the live pipeline (DOCRIME, `conditioning: 30`)
@@ -27,34 +27,34 @@ All notable changes to `pyrtcao` will be documented in this file.
 	read, all Loop integrators, and the WavefrontCorrector command read.
 - Hard-RTC RPC protocol v1: versioned message envelope, type-safe property
 	coercion (booleans round-trip correctly), `run()` returns JSON-serializable
-	method results, error messages propagate to `hardwareLauncher.lastError`,
+	method results, error messages propagate to `hardwareLauncher.last_error`,
 	and `run(..., timeout=)` applies a per-call socket timeout.
 - `gpu` pytest marker with CUDA stream tests (auto-skip without CUDA; CI can
 	deselect with `-m "not gpu"`).
 - `benchmarks/check_perf_baseline.py --max-ratio` enforces a performance
 	regression threshold; CI runs it at 5.0x against the committed baseline.
-- Coverage gate extended to `pyRTC.streams`, `pyRTC.rpc`,
-	`pyRTC.component_loading`, and `pyRTC.latency`.
+- Coverage gate extended to `pyrtc.streams`, `pyrtc.rpc`,
+	`pyrtc.component_loading`, and `pyrtc.latency`.
 - Streams guide in the documentation (`guides/streams`).
 
 ### Changed
 
-- **`pyRTC.Pipeline` split into focused modules**: `pyRTC.streams` (pyshmem
-	stream policy + SHM planning), `pyRTC.rpc` (launcher/listener protocol),
-	`pyRTC.manager` (component runtimes + `RTCManager`), and
-	`pyRTC.component_loading`. `pyRTC.Pipeline` remains as a re-export shim
+- **`pyrtc.pipeline` split into focused modules**: `pyrtc.streams` (pyshmem
+	stream policy + SHM planning), `pyrtc.rpc` (launcher/listener protocol),
+	`pyrtc.manager` (component runtimes + `RTCManager`), and
+	`pyrtc.component_loading`. `pyrtc.pipeline` remains as a re-export shim
 	for one release.
 
 - **Shared-memory transport replaced by `pyshmem`.** All shared memory in
-	pyRTC is now provided by the external `pyshmem` package (new required
+	pyrtc is now provided by the external `pyshmem` package (new required
 	dependency `pyshmem>=1.0.4`), using its native API directly. The legacy
 	`ImageSHM` class, its `_meta` / `_gpu_handle` companion segments, and
-	`initExistingShm` are gone. `pyRTC.Pipeline` now exposes two thin policy
-	helpers instead: `create_stream(name, shape, dtype, gpuDevice=None)`
-	(producer-side create-or-reuse) and `open_stream(name, gpuDevice=None)`
+	`initExistingShm` are gone. `pyrtc.pipeline` now exposes two thin policy
+	helpers instead: `create_stream(name, shape, dtype, gpu_device=None)`
+	(producer-side create-or-reuse) and `open_stream(name, gpu_device=None)`
 	(consumer-side attach; CPU view by default, CUDA tensor attach with
-	`gpuDevice`). `clear_shms` now delegates to `pyshmem.unlink_quiet`.
-- `pyRTCComponent.read_stream`/`write_stream` simplified: `read_stream`
+	`gpu_device`). `clear_shms` now delegates to `pyshmem.unlink_quiet`.
+- `pyrtcComponent.read_stream`/`write_stream` simplified: `read_stream`
 	takes only `block` and `timeout`; the `SAFE`/`GPU`/`RELEASE_GIL`/
 	`record_consumption` flags are removed (GPU vs CPU payloads are decided
 	by how the stream was opened). Blocking reads wait for a write the
@@ -63,7 +63,7 @@ All notable changes to `pyrtcao` will be documented in this file.
 - Per-frame lineage metadata (root_time / upstream_write_time /
 	upstream_consume_time) is no longer stored in shared memory. Latency
 	reporting always uses cross-stream `count`/`write_time` event sampling
-	(`pyRTC.latency.collect_stream_event_history`); the `sourceStreams` /
+	(`pyrtc.latency.collect_stream_event_history`); the `sourceStreams` /
 	`lineageSource` stream-config keys were removed.
 - GPU streams are created with a CPU mirror, so CPU-only processes
 	(viewers, telemetry) can always read them, and GPU stream sharing now
@@ -75,21 +75,21 @@ First stable public release of `pyrtcao`.
 
 This release establishes the initial supported package, CLI, documentation, and
 CI/release surface for the `1.0.x` line. The published distribution name is
-`pyrtcao`, the import name remains `pyRTC`, and the user-facing project name is
+`pyrtcao`, the import name remains `pyrtc`, and the user-facing project name is
 `pyrtc`.
 
 ### Added
 
-- PyPI distribution packaging as `pyrtcao` while preserving `import pyRTC`.
+- PyPI distribution packaging as `pyrtcao` while preserving `import pyrtc`.
 - Stable console-script entry points with the `pyrtc-*` prefix:
 	`pyrtc-view`, `pyrtc-view-launch-all`, `pyrtc-shm-monitor`,
 	`pyrtc-clear-shms`, `pyrtc-measure-latency`, `pyrtc-core-bench`, and
 	`pyrtc-ao-loop-bench`.
 - Canonical no-hardware onboarding workflow in `examples/synthetic_shwfs/`.
-- Shared logging system in `pyRTC.logging_utils` covering scripts, benchmarks,
+- Shared logging system in `pyrtc.logging_utils` covering scripts, benchmarks,
 	launchers, component base classes, and key hardware/control-plane paths.
 - Maintainer-facing built-wheel validation helper at
-	`python pyRTC/scripts/validate_dist_install.py --dist-dir dist`.
+	`python pyrtc/scripts/validate_dist_install.py --dist-dir dist`.
 - Cross-platform smoke workflows for macOS and Windows plus Python-versioned
 	Linux install/test coverage for Python 3.9 through 3.13.
 - Docs-build validation in CI and repository-level Read the Docs
@@ -121,14 +121,14 @@ CI/release surface for the `1.0.x` line. The published distribution name is
 	changes and failures more consistently through the shared logger.
 - Viewer and related SHM utilities were updated to use concrete submodule
 	imports rather than fragile package-root re-export imports in order to remain
-	robust when `pyRTC` is resolved as a namespace package.
+	robust when `pyrtc` is resolved as a namespace package.
 - API-reference and component docs were reorganized to remove duplicate Sphinx
 	object registrations and produce a clean docs build.
 
 ### Fixed
 
 - Viewer/CLI import failures that occurred when running from outside the repo
-	root or when `pyRTC` was resolved as a namespace package.
+	root or when `pyrtc` was resolved as a namespace package.
 - Python 3.9 compatibility issues caused by bare PEP 604 union annotations at
 	import time in logging and benchmark modules.
 - Missing benchmark-table kernel mappings and multiple Ruff/lint regressions in
@@ -136,7 +136,7 @@ CI/release surface for the `1.0.x` line. The published distribution name is
 - Headless/non-Qt test collection failures caused by eager Qt backend imports
 	in the viewer module.
 - Documentation import examples that incorrectly recommended
-	`from pyRTC import ...` patterns for classes and launch helpers.
+	`from pyrtc import ...` patterns for classes and launch helpers.
 - Duplicate Sphinx autodoc warnings caused by repeated object indexing across
 	component pages and the API reference.
 - Test-suite warning noise from pytest helper imports and third-party startup
@@ -146,9 +146,9 @@ CI/release surface for the `1.0.x` line. The published distribution name is
 
 - Full repository test coverage for the tracked coverage set now exceeds the
 	release gate, reaching 87.53% at release time.
-- `pyRTC.Modulator`, `pyRTC.Optimizer`, `pyRTC.Telemetry`, and
-	`pyRTC.pyRTCComponent` now have 100% coverage in the tracked release suite.
-- `pyRTC.ScienceCamera` coverage was expanded materially as part of release
+- `pyrtc.modulator`, `pyrtc.optimizer`, `pyrtc.telemetry`, and
+	`pyrtc.component` now have 100% coverage in the tracked release suite.
+- `pyrtc.science_camera` coverage was expanded materially as part of release
 	stabilization.
 - Built-wheel installation, CLI imports, docs builds, performance smoke tests,
 	and synthetic system flows are all exercised in the release-facing workflow
@@ -160,6 +160,6 @@ CI/release surface for the `1.0.x` line. The published distribution name is
 - Python 3.9 through 3.13 are covered by the release CI matrix.
 - GPU and hardware-specific paths should still be validated in the target
 	environment before operational use.
-- Hardware adapters in `pyRTC.hardware` should be treated as reference
+- Hardware adapters in `pyrtc.hardware` should be treated as reference
 	integrations and starting points, not guarantees of site-specific SDK
 	compatibility.

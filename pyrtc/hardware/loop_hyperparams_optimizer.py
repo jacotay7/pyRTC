@@ -13,24 +13,24 @@ import time
 
 import numpy as np
 
-from pyRTC.logging_utils import get_logger
-from pyRTC.Optimizer import Optimizer
-from pyRTC.rpc import Listener
-from pyRTC.streams import open_stream
-from pyRTC.utils import decrease_nice, read_yaml_file, setFromConfig, set_affinity
+from pyrtc.logging_utils import get_logger
+from pyrtc.optimizer import Optimizer
+from pyrtc.rpc import Listener
+from pyrtc.streams import open_stream
+from pyrtc.utils import decrease_nice, read_yaml_file, set_from_config, set_affinity
 
 
 logger = get_logger(__name__)
 
 
 def _input_stream_name(conf, stream_name: str) -> str:
-    mapping = conf.get("inputStreams", {}) if isinstance(conf.get("inputStreams"), dict) else {}
+    mapping = conf.get("input_streams", {}) if isinstance(conf.get("input_streams"), dict) else {}
     value = mapping.get(stream_name, stream_name)
     if isinstance(value, dict):
         value = value.get("shm", value.get("name", stream_name))
     return str(value)
 
-class loopOptimizer(Optimizer):
+class LoopOptimizer(Optimizer):
     """Optimizer for high-level AO loop hyperparameters.
 
     This class evaluates candidate integrator-style loop settings against the
@@ -43,21 +43,21 @@ class loopOptimizer(Optimizer):
         try:
             self.loop = loop
 
-            self.strehlShm = open_stream(_input_stream_name(conf, "strehl"))
-            self.minGain = setFromConfig(conf, "minGain", 0.3)
-            self.maxGain = setFromConfig(conf, "maxGain", 0.6)
-            self.maxLeak = setFromConfig(conf, "maxLeak", 0.1)
-            self.maxDroppedModes = setFromConfig(conf, "maxDroppedModes", 50)
-            self.numReads = setFromConfig(conf, "numReads", 5)
+            self.strehl_shm = open_stream(_input_stream_name(conf, "strehl"))
+            self.min_gain = set_from_config(conf, "min_gain", 0.3)
+            self.max_gain = set_from_config(conf, "max_gain", 0.6)
+            self.max_leak = set_from_config(conf, "max_leak", 0.1)
+            self.max_dropped_modes = set_from_config(conf, "max_dropped_modes", 50)
+            self.num_reads = set_from_config(conf, "num_reads", 5)
 
             super().__init__(conf)
             self.logger.info(
-                "Initialized loop optimizer minGain=%s maxGain=%s maxLeak=%s maxDroppedModes=%s numReads=%s",
-                self.minGain,
-                self.maxGain,
-                self.maxLeak,
-                self.maxDroppedModes,
-                self.numReads,
+                "Initialized loop optimizer min_gain=%s max_gain=%s max_leak=%s max_dropped_modes=%s num_reads=%s",
+                self.min_gain,
+                self.max_gain,
+                self.max_leak,
+                self.max_dropped_modes,
+                self.num_reads,
             )
         except Exception:
             logger.exception("Failed to initialize loop optimizer")
@@ -65,15 +65,15 @@ class loopOptimizer(Optimizer):
 
     def objective(self, trial):
         try:
-            self.applyTrial(trial)
+            self.apply_trial(trial)
             self.loop.run("stop")
             for _ in range(10):
                 self.loop.run("flatten")
             self.loop.run("start")
 
-            result = np.empty(self.numReads)
-            for i in range(self.numReads):
-                result[i] = self.strehlShm.read_new()
+            result = np.empty(self.num_reads)
+            for i in range(self.num_reads):
+                result[i] = self.strehl_shm.read_new()
             score = np.mean(result)
             self.logger.info("Evaluated loop optimizer trial score=%s", score)
             return score
@@ -81,28 +81,28 @@ class loopOptimizer(Optimizer):
             self.logger.exception("Failed while evaluating loop optimizer trial")
             raise
     
-    def applyTrial(self, trial):
+    def apply_trial(self, trial):
         try:
-            self.loop.setProperty("numDroppedModes", trial.suggest_int('numDroppedModes', 0, self.maxDroppedModes))
-            self.loop.setProperty("gain", trial.suggest_float('gain', self.minGain, self.maxGain))
-            self.loop.setProperty("leakyGain", trial.suggest_float('leakyGain', 0, self.maxLeak))
-            self.loop.run("loadIM")
+            self.loop.set_property("num_dropped_modes", trial.suggest_int('num_dropped_modes', 0, self.max_dropped_modes))
+            self.loop.set_property("gain", trial.suggest_float('gain', self.min_gain, self.max_gain))
+            self.loop.set_property("leaky_gain", trial.suggest_float('leaky_gain', 0, self.max_leak))
+            self.loop.run("load_im")
             self.logger.info("Applied loop optimizer trial")
         except Exception:
             self.logger.exception("Failed to apply loop optimizer trial")
             raise
 
-        return super().applyTrial(trial)
+        return super().apply_trial(trial)
 
-    def applyOptimum(self):
+    def apply_optimum(self):
         try:
-            super().applyOptimum()
+            super().apply_optimum()
 
-            self.loop.setProperty("numDroppedModes", self.study.best_params["numDroppedModes"])
-            self.loop.setProperty("gain", self.study.best_params["gain"])
-            self.loop.setProperty("leakyGain", self.study.best_params["leakyGain"])
+            self.loop.set_property("num_dropped_modes", self.study.best_params["num_dropped_modes"])
+            self.loop.set_property("gain", self.study.best_params["gain"])
+            self.loop.set_property("leaky_gain", self.study.best_params["leaky_gain"])
 
-            self.loop.run("loadIM")
+            self.loop.run("load_im")
             self.logger.info("Applied optimum loop hyperparameters")
         except Exception:
             self.logger.exception("Failed to apply optimum loop hyperparameters")
@@ -132,7 +132,7 @@ if __name__ == "__main__":
     set_affinity((conf["affinity"])%os.cpu_count()) 
     decrease_nice(pid)
 
-    component = loopOptimizer(conf=conf)
+    component = LoopOptimizer(conf=conf)
     component.start()
 
     # Go back to communicating with the main program through stdout

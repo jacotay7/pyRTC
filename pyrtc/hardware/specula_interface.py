@@ -1,8 +1,8 @@
-"""Bridge between pyRTC components and a SPECULA optical simulation.
+"""Bridge between pyrtc components and a SPECULA optical simulation.
 
-This module adapts a narrow, pyRTC-owned SPECULA object graph into the
+This module adapts a narrow, pyrtc-owned SPECULA object graph into the
 wavefront-sensor and wavefront-corrector interfaces already used throughout the
-repository. SPECULA owns the optical state while pyRTC owns slopes extraction
+repository. SPECULA owns the optical state while pyrtc owns slopes extraction
 and control.
 """
 
@@ -20,13 +20,13 @@ from typing import Any, Mapping
 
 import numpy as np
 
-from pyRTC.logging_utils import get_logger
-from pyRTC.rpc import Listener
-from pyRTC.ScienceCamera import ScienceCamera
-from pyRTC.WavefrontCorrector import WavefrontCorrector
-from pyRTC.WavefrontSensor import WavefrontSensor
-from pyRTC.pyRTCComponent import pyRTCComponent
-from pyRTC.utils import decrease_nice, read_yaml_file, setFromConfig, set_affinity
+from pyrtc.logging_utils import get_logger
+from pyrtc.rpc import Listener
+from pyrtc.science_camera import ScienceCamera
+from pyrtc.wavefront_corrector import WavefrontCorrector
+from pyrtc.wavefront_sensor import WavefrontSensor
+from pyrtc.component import Component
+from pyrtc.utils import decrease_nice, read_yaml_file, set_from_config, set_affinity
 
 
 logger = get_logger(__name__)
@@ -43,7 +43,7 @@ def _mapping_or_none(value: Any) -> dict[str, Any] | None:
 def _looks_like_specula_provider(provider_conf: Mapping[str, Any] | None, system_conf: Mapping[str, Any] | None = None) -> bool:
     provider_conf = _mapping_or_none(provider_conf)
     if provider_conf is not None:
-        class_name = str(provider_conf.get("className", ""))
+        class_name = str(provider_conf.get("class_name", ""))
         if "SPECULAInterface" in class_name:
             return True
 
@@ -54,7 +54,7 @@ def _looks_like_specula_provider(provider_conf: Mapping[str, Any] | None, system
     wfs_conf = _mapping_or_none(system_conf.get("wfs"))
     if wfs_conf is None:
         return False
-    return "SPECULAWFSensor" in str(wfs_conf.get("className", ""))
+    return "SPECULAWFSensor" in str(wfs_conf.get("class_name", ""))
 
 
 def _load_specula_param_mapping(
@@ -73,7 +73,7 @@ def _load_specula_param_mapping(
     if isinstance(inline_param, Mapping):
         return dict(inline_param)
 
-    param_file = provider_conf.get("paramFile")
+    param_file = provider_conf.get("param_file")
     if isinstance(param_file, str) and param_file:
         loaded = read_yaml_file(param_file)
         if isinstance(loaded, Mapping):
@@ -83,10 +83,10 @@ def _load_specula_param_mapping(
 
 
 def derive_specula_pywfs_geometry(param: Mapping[str, Any]) -> dict[str, Any] | None:
-    """Derive pyRTC PyWFS frame and pupil geometry from a SPECULA config.
+    """Derive pyrtc PyWFS frame and pupil geometry from a SPECULA config.
 
     SPECULA's Pyramid parameters define the pupil footprint inside the detector
-    image. pyRTC historically duplicated that geometry in the ``wfs`` and
+    image. pyrtc historically duplicated that geometry in the ``wfs`` and
     ``slopes`` sections, which drifted easily when the SPECULA YAML changed.
     This helper makes the SPECULA pyramid the source of truth.
     """
@@ -147,7 +147,7 @@ def derive_specula_pywfs_geometry(param: Mapping[str, Any]) -> dict[str, Any] | 
             f"{x1},{y0}",
             f"{x1},{y1}",
         ],
-        "pupilsRadius": pupil_radius,
+        "pupils_radius": pupil_radius,
     }
 
 
@@ -183,9 +183,9 @@ def derive_specula_shwfs_geometry(param: Mapping[str, Any]) -> dict[str, Any] | 
     return {
         "width": width,
         "height": height,
-        "subApSpacing": subap_spacing,
-        "subApOffsetX": offset_x,
-        "subApOffsetY": offset_y,
+        "sub_ap_spacing": subap_spacing,
+        "sub_ap_offset_x": offset_x,
+        "sub_ap_offset_y": offset_y,
     }
 
 
@@ -213,10 +213,10 @@ def derive_specula_wfc_display_geometry(param: Mapping[str, Any]) -> dict[str, A
     geom = str(dm_conf.get("geom", "square")).lower()
     circ_geom = bool(dm_conf.get("circ_geom", geom == "circular"))
     if geom == "square" and not circ_geom:
-        return {"displayGridSize": n_act}
+        return {"display_grid_size": n_act}
 
     layout, _, _ = _circular_zonal_display_mapping(n_act, dm_conf.get("angle_offset", 0.0))
-    return {"displayGridSize": int(layout.shape[0])}
+    return {"display_grid_size": int(layout.shape[0])}
 
 
 def derive_specula_psf_geometry(param: Mapping[str, Any]) -> dict[str, Any] | None:
@@ -242,7 +242,7 @@ def sync_specula_pywfs_config(
     param: Mapping[str, Any] | None = None,
     provider_conf: Mapping[str, Any] | None = None,
 ) -> dict[str, Any] | None:
-    """Mutate a pyRTC config so SPECULA drives PyWFS geometry consistently."""
+    """Mutate a pyrtc config so SPECULA drives PyWFS geometry consistently."""
 
     if not isinstance(system_conf, Mapping):
         return None
@@ -283,12 +283,12 @@ def sync_specula_pywfs_config(
             if isinstance(pupils, list) and pupils:
                 slopes_conf["pupils"] = list(pupils)
                 applied["pupils"] = list(pupils)
-            pupil_radius = geometry.get("pupilsRadius")
+            pupil_radius = geometry.get("pupils_radius")
             if isinstance(pupil_radius, (int, np.integer)):
-                slopes_conf["pupilsRadius"] = int(pupil_radius)
-                applied["pupilsRadius"] = int(pupil_radius)
+                slopes_conf["pupils_radius"] = int(pupil_radius)
+                applied["pupils_radius"] = int(pupil_radius)
         elif str(slopes_conf.get("type", "")).lower() == "shwfs":
-            for key in ("subApSpacing", "subApOffsetX", "subApOffsetY"):
+            for key in ("sub_ap_spacing", "sub_ap_offset_x", "sub_ap_offset_y"):
                 if key in geometry:
                     slopes_conf[key] = int(geometry[key])
                     applied[key] = int(geometry[key])
@@ -296,17 +296,17 @@ def sync_specula_pywfs_config(
     wfc_conf = mutable_system_conf.get("wfc")
     wfc_geometry = derive_specula_wfc_display_geometry(param_mapping)
     if isinstance(wfc_conf, dict) and wfc_geometry is not None:
-        display_grid_size = int(wfc_geometry["displayGridSize"])
-        wfc_conf["displayGridSize"] = display_grid_size
-        applied["displayGridSize"] = display_grid_size
+        display_grid_size = int(wfc_geometry["display_grid_size"])
+        wfc_conf["display_grid_size"] = display_grid_size
+        applied["display_grid_size"] = display_grid_size
 
     psf_component_conf = mutable_system_conf.get("psf")
     psf_geometry = derive_specula_psf_geometry(param_mapping)
     if isinstance(psf_component_conf, dict) and psf_geometry is not None:
         psf_component_conf["width"] = int(psf_geometry["width"])
         psf_component_conf["height"] = int(psf_geometry["height"])
-        applied["psfWidth"] = int(psf_geometry["width"])
-        applied["psfHeight"] = int(psf_geometry["height"])
+        applied["psf_width"] = int(psf_geometry["width"])
+        applied["psf_height"] = int(psf_geometry["height"])
 
     return applied or None
 
@@ -341,7 +341,7 @@ def _load_specula_bindings(*, device_idx: int, precision: int) -> SimpleNamespac
         raise ImportError(
             "SPECULA support requires the optional 'specula' package. "
             "Install SPECULA or add its repository root to PYTHONPATH before "
-            f"constructing SPECULA-backed pyRTC components. Original error: {exc}"
+            f"constructing SPECULA-backed pyrtc components. Original error: {exc}"
         ) from exc
 
     _initialize_specula_runtime(specula, device_idx=device_idx, precision=precision)
@@ -362,7 +362,7 @@ def _load_specula_bindings(*, device_idx: int, precision: int) -> SimpleNamespac
         PSF = importlib.import_module("specula.processing_objects.psf").PSF
     except Exception as exc:
         raise ImportError(
-            "SPECULA initialized but pyRTC could not import the required SPECULA "
+            "SPECULA initialized but pyrtc could not import the required SPECULA "
             f"submodules for the bridge. Original error: {exc}"
         ) from exc
 
@@ -413,11 +413,11 @@ def _default_wfc_layout(num_actuators: int) -> np.ndarray:
 
 
 def _specula_dm_layout(dm: Any, num_actuators: int) -> np.ndarray:
-    """Infer a pyRTC display layout from a SPECULA DM, with a safe fallback.
+    """Infer a pyrtc display layout from a SPECULA DM, with a safe fallback.
 
-    If SPECULA exposes a binary mask whose active cell count matches the pyRTC
+    If SPECULA exposes a binary mask whose active cell count matches the pyrtc
     actuator count, use it directly. Otherwise fall back to the centered
-    synthetic layout so `wfc2D` is always available even for modal bases.
+    synthetic layout so `wfc_2d` is always available even for modal bases.
     """
 
     ifunc_obj = getattr(dm, "ifunc_obj", None)
@@ -539,7 +539,7 @@ class SPECULASystemContext:
     ) -> None:
         self.resource_conf = dict(resource_conf)
         self.system_conf = {} if system_conf is None else dict(system_conf)
-        self.param_file_path = self.resource_conf.get("paramFile") if isinstance(self.resource_conf.get("paramFile"), str) else None
+        self.param_file_path = self.resource_conf.get("param_file") if isinstance(self.resource_conf.get("param_file"), str) else None
         self.param = self._load_param_mapping(self.resource_conf.get("param"), self.param_file_path)
         self.components: dict[str, Any] = {}
         self._lock = threading.RLock()
@@ -584,10 +584,10 @@ class SPECULASystemContext:
         self.dt_t = int(round(self.dt_seconds * 1e9))
         self.atmosphere_enabled = False
 
-        if bool(setFromConfig(self.resource_conf, "useAtmosphere", True)):
-            self.addAtmosphere()
+        if bool(set_from_config(self.resource_conf, "use_atmosphere", True)):
+            self.add_atmosphere()
         else:
-            self.removeAtmosphere()
+            self.remove_atmosphere()
 
         self._seed_generation_times(0)
 
@@ -597,13 +597,13 @@ class SPECULASystemContext:
     def get_component(self, section_name: str) -> Any:
         return self.components.get(str(section_name))
 
-    def addAtmosphere(self) -> None:
+    def add_atmosphere(self) -> None:
         with self._lock:
             self.prop.inputs["atmo_layer_list"].set(self.atmo.outputs["layer_list"])
             self._refresh_propagation_setup()
             self.atmosphere_enabled = True
 
-    def removeAtmosphere(self) -> None:
+    def remove_atmosphere(self) -> None:
         with self._lock:
             self.prop.inputs["atmo_layer_list"].set([])
             self._refresh_propagation_setup()
@@ -700,7 +700,7 @@ class SPECULASystemContext:
         """Refresh AtmoPropagation caches after atmosphere topology changes.
 
         SPECULA's AtmoPropagation caches layer-dependent interpolators and other
-        topology metadata during setup(). When pyRTC toggles the atmosphere on
+        topology metadata during setup(). When pyrtc toggles the atmosphere on
         or off after build time, we need to rebuild those caches explicitly or
         the newly attached atmospheric layers will not participate correctly in
         propagation.
@@ -841,7 +841,7 @@ class SPECULASystemContext:
             command_size = _zonal_actuator_count(dm_conf)
         else:
             raise ValueError(
-                "SPECULAInterface requires dm.type_str='zonal' so pyRTC can send actuator commands "
+                "SPECULAInterface requires dm.type_str='zonal' so pyrtc can send actuator commands "
                 "through the zonal DM while using a separate modal basis as M2C."
             )
         command = self._bindings.BaseValue(
@@ -929,7 +929,7 @@ class SPECULASystemContext:
         dm_type = str(dm_conf.get("type_str", "")).lower()
         if dm_type != "zonal":
             raise ValueError(
-                "SPECULAInterface requires dm.type_str='zonal' so pyRTC can send actuator commands "
+                "SPECULAInterface requires dm.type_str='zonal' so pyrtc can send actuator commands "
                 "and apply a modal M2C basis on top of them."
             )
 
@@ -958,7 +958,7 @@ class SPECULASystemContext:
                 )
 
         wfc_conf = dict(self.system_conf.get("wfc", {}))
-        num_modes = int(wfc_conf.get("numModes", num_actuators))
+        num_modes = int(wfc_conf.get("num_modes", num_actuators))
         basis_conf = _as_mapping(self.param.get("basis"), name="basis")
         basis_type = str(basis_conf.get("type_str", "zernike"))
         basis_kwargs = {
@@ -1098,43 +1098,43 @@ class SPECULAWFSensor(WavefrontSensor):
         self.data = self.context.capture_wfs()
         super().expose()
 
-    def addAtmosphere(self):
-        self.context.addAtmosphere()
+    def add_atmosphere(self):
+        self.context.add_atmosphere()
 
-    def removeAtmosphere(self):
-        self.context.removeAtmosphere()
+    def remove_atmosphere(self):
+        self.context.remove_atmosphere()
 
 
 class SPECULAWFCorrector(WavefrontCorrector):
-    """Wavefront-corrector wrapper that pushes pyRTC commands into SPECULA."""
+    """Wavefront-corrector wrapper that pushes pyrtc commands into SPECULA."""
 
     def __init__(self, corrector_conf, context) -> None:
         self.context = _unwrap_specula_context(context)
         normalized_conf = dict(corrector_conf)
-        normalized_conf["numActuators"] = int(self.context.dm_num_actuators)
-        normalized_conf["numModes"] = int(self.context.modal_to_command.shape[1])
+        normalized_conf["num_actuators"] = int(self.context.dm_num_actuators)
+        normalized_conf["num_modes"] = int(self.context.modal_to_command.shape[1])
         super().__init__(normalized_conf)
         self.layout = self.context.dm_layout.astype(bool)
         self.display_rows = np.asarray(self.context.dm_display_rows, dtype=np.intp)
         self.display_cols = np.asarray(self.context.dm_display_cols, dtype=np.intp)
         # Resolve create_stream through the WavefrontCorrector module so test
         # doubles patched there are honoured for the 2D display stream too.
-        wfc_module = importlib.import_module("pyRTC.WavefrontCorrector")
-        self.correctionVector2D = wfc_module.create_stream(self.output_stream_name("wfc2D"), self.layout.shape, np.float32, gpuDevice=self.gpuDevice)
-        self.register_output_stream("wfc2D", self.correctionVector2D)
-        self.correctionVector2D_template = np.zeros(self.layout.shape, dtype=np.float32)
-        self.write_stream("wfc2D", self.correctionVector2D_template)
-        self.setM2C(self.context.modal_to_command)
+        wfc_module = importlib.import_module("pyrtc.wavefront_corrector")
+        self.correction_vector_2d = wfc_module.create_stream(self.output_stream_name("wfc_2d"), self.layout.shape, np.float32, gpu_device=self.gpu_device)
+        self.register_output_stream("wfc_2d", self.correction_vector_2d)
+        self.correction_vector_2d_template = np.zeros(self.layout.shape, dtype=np.float32)
+        self.write_stream("wfc_2d", self.correction_vector_2d_template)
+        self.set_m2c(self.context.modal_to_command)
         if self.section_name:
             self.context.register_component(self.section_name, self)
 
-    def sendToHardware(self):
-        super().sendToHardware()
-        if self.correctionVector2D is not None:
-            self.correctionVector2D_template.fill(0)
-            self.correctionVector2D_template[self.display_rows, self.display_cols] = self.currentShape - self.flat
-            self.write_stream("wfc2D", self.correctionVector2D_template)
-        self.context.set_dm_command(self.currentShape.astype(np.float32, copy=False))
+    def send_to_hardware(self):
+        super().send_to_hardware()
+        if self.correction_vector_2d is not None:
+            self.correction_vector_2d_template.fill(0)
+            self.correction_vector_2d_template[self.display_rows, self.display_cols] = self.current_shape - self.flat
+            self.write_stream("wfc_2d", self.correction_vector_2d_template)
+        self.context.set_dm_command(self.current_shape.astype(np.float32, copy=False))
 
 
 class SPECULAScienceCamera(ScienceCamera):
@@ -1148,9 +1148,9 @@ class SPECULAScienceCamera(ScienceCamera):
 
     def expose(self):
         frame, model, strehl, tiptilt = self.context.capture_psf()
-        self.data = frame.astype(self.imageRawDType, copy=False)
+        self.data = frame.astype(self.image_raw_dtype, copy=False)
         if not np.any(self.model):
-            self.setModelPSF(model.astype(self.psfLongDtype, copy=False))
+            self.set_model_psf(model.astype(self.psf_long_dtype, copy=False))
         super().expose()
         self.write_stream("strehl", np.array([strehl], dtype=float))
         self.write_stream("tiptilt", np.array([tiptilt], dtype=float))
@@ -1158,10 +1158,10 @@ class SPECULAScienceCamera(ScienceCamera):
     def integrate(self):
         super().integrate()
         if np.any(self.model):
-            self.computeStrehl(median_filter_size=1, gaussian_sigma=0)
+            self.compute_strehl(median_filter_size=1, gaussian_sigma=0)
 
 
-class SPECULAInterface(pyRTCComponent):
+class SPECULAInterface(Component):
     """Manager-visible provider for SPECULA-backed soft-RTC components."""
 
     @staticmethod
@@ -1183,10 +1183,10 @@ class SPECULAInterface(pyRTCComponent):
 
         return [
             {
-                "name": "useAtmosphere",
+                "name": "use_atmosphere",
                 "type": "bool",
                 "description": "Enable or disable atmospheric layers in the active SPECULA propagation chain.",
-                "default": bool(setFromConfig(provider_conf, "useAtmosphere", False)),
+                "default": bool(set_from_config(provider_conf, "use_atmosphere", False)),
                 "persist": True,
             },
             {
@@ -1278,16 +1278,16 @@ class SPECULAInterface(pyRTCComponent):
                 command=command,
             )
             self._useAtmosphere = True
-            self.wfcSection = "wfc"
-            self.wfsInterface = SPECULAWFSensor(self.system_conf["wfs"], self.context)
-            self.dmInterface = SPECULAWFCorrector(self.system_conf["wfc"], self.context)
-            self.psfInterface = SPECULAScienceCamera(self.system_conf["psf"], self.context) if "psf" in self.system_conf else None
+            self.wfc_section = "wfc"
+            self.wfs_interface = SPECULAWFSensor(self.system_conf["wfs"], self.context)
+            self.dm_interface = SPECULAWFCorrector(self.system_conf["wfc"], self.context)
+            self.psf_interface = SPECULAScienceCamera(self.system_conf["psf"], self.context) if "psf" in self.system_conf else None
             return
 
         self.system_conf = conf.get("_systemConfig", conf)
         synced = sync_specula_pywfs_config(self.system_conf, provider_conf=conf)
         if synced:
-            self.logger.info("Synchronized SPECULA PyWFS geometry into pyRTC config: %s", synced)
+            self.logger.info("Synchronized SPECULA PyWFS geometry into pyrtc config: %s", synced)
         self.context = SPECULASystemContext(
             conf,
             self.system_conf,
@@ -1305,37 +1305,37 @@ class SPECULAInterface(pyRTCComponent):
             wind_direction=wind_direction,
             command=command,
         )
-        self._useAtmosphere = bool(setFromConfig(conf, "useAtmosphere", False))
-        self.wfcSection = str(setFromConfig(conf, "wfcSection", "wfc"))
+        self._useAtmosphere = bool(set_from_config(conf, "use_atmosphere", False))
+        self.wfc_section = str(set_from_config(conf, "wfc_section", "wfc"))
         super().__init__(conf)
         if self.section_name:
             self.context.register_component(self.section_name, self)
-        if self.useAtmosphere:
-            self.addAtmosphere()
+        if self.use_atmosphere:
+            self.add_atmosphere()
         else:
-            self.removeAtmosphere()
+            self.remove_atmosphere()
 
-    def addAtmosphere(self):
-        self.context.addAtmosphere()
+    def add_atmosphere(self):
+        self.context.add_atmosphere()
         self._useAtmosphere = True
         self.logger.info("Enabled SPECULA atmosphere")
 
-    def removeAtmosphere(self):
-        self.context.removeAtmosphere()
+    def remove_atmosphere(self):
+        self.context.remove_atmosphere()
         self._useAtmosphere = False
         self.logger.info("Disabled SPECULA atmosphere")
 
     @property
-    def useAtmosphere(self) -> bool:
+    def use_atmosphere(self) -> bool:
         return bool(getattr(self, "_useAtmosphere", False))
 
-    @useAtmosphere.setter
-    def useAtmosphere(self, value: Any) -> None:
+    @use_atmosphere.setter
+    def use_atmosphere(self, value: Any) -> None:
         enabled = bool(value)
         if enabled:
-            self.addAtmosphere()
+            self.add_atmosphere()
         else:
-            self.removeAtmosphere()
+            self.remove_atmosphere()
 
     @property
     def seeing(self) -> float:
@@ -1396,13 +1396,13 @@ class SPECULAInterface(pyRTCComponent):
 
     def get_hardware(self):
         if self._standalone_mode:
-            return self.wfsInterface, self.dmInterface, self.psfInterface
-        return self.context.get_component("wfs"), self.context.get_component(self.wfcSection), self.context.get_component("psf")
+            return self.wfs_interface, self.dm_interface, self.psf_interface
+        return self.context.get_component("wfs"), self.context.get_component(self.wfc_section), self.context.get_component("psf")
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Launch the SPECULA provider component.")
-    parser.add_argument("-c", "--config", required=True, help="Path to the pyRTC config file")
+    parser.add_argument("-c", "--config", required=True, help="Path to the pyrtc config file")
     parser.add_argument("-p", "--port", required=True, help="Port for communication")
     args = parser.parse_args()
 

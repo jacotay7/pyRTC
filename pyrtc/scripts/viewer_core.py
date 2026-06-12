@@ -1,6 +1,6 @@
 """Qt-based shared-memory viewer used by the ``pyrtc-view`` CLI.
 
-The viewer code in this module turns one or more pyRTC shared-memory streams
+The viewer code in this module turns one or more pyrtc shared-memory streams
 into a configurable mosaic of live 2D image panels. It is intentionally UI-
 centric: the classes here manage layout, theming, refresh cadence, and per-panel
 display controls rather than any AO-specific signal processing.
@@ -42,7 +42,7 @@ except ImportError as exc:
     class _QtUnavailableBase:
         def __init__(self, *args, **kwargs):
             raise ImportError(
-                "pyrtc-view requires viewer dependencies. Install with: pip install pyRTC[viewer]"
+                "pyrtc-view requires viewer dependencies. Install with: pip install pyrtc[viewer]"
             ) from _VIEWER_BACKEND_IMPORT_ERROR
 
     class _UnavailableQSizePolicy:
@@ -127,7 +127,7 @@ THEMES = {
 def _require_viewer_backend() -> None:
     if _VIEWER_BACKEND_IMPORT_ERROR is not None:
         raise ImportError(
-            "pyrtc-view requires viewer dependencies. Install with: pip install pyRTC[viewer]"
+            "pyrtc-view requires viewer dependencies. Install with: pip install pyrtc[viewer]"
         ) from _VIEWER_BACKEND_IMPORT_ERROR
 
 

@@ -1,6 +1,6 @@
 """PI tip-tilt modulation stage adapter.
 
-This module implements the pyRTC ``Modulator`` interface for Physik
+This module implements the pyrtc ``Modulator`` interface for Physik
 Instrumente stages driven through ``pipython``. The adapter configures a pair
 of PI wave generators to trace a circular modulation pattern that can be used to
 drive a pyramid wavefront sensor.
@@ -10,14 +10,14 @@ import os
 
 from pipython import GCSDevice, pitools
 
-from pyRTC.Modulator import Modulator
-from pyRTC.manager import launchComponent
-from pyRTC.utils import setFromConfig
+from pyrtc.modulator import Modulator
+from pyrtc.manager import launch_component
+from pyrtc.utils import set_from_config
 
 class PIModulator(Modulator):
     """Hardware modulator for a two-axis PI motion stage.
 
-    The class converts pyRTC modulation parameters into PI wave-table and
+    The class converts pyrtc modulation parameters into PI wave-table and
     wave-generator commands. It encapsulates USB device discovery, servo setup,
     optional auto-zeroing, circle generation, and the start/stop lifecycle used
     when the modulator is run as a standalone component.
@@ -27,21 +27,21 @@ class PIModulator(Modulator):
         try:
             super().__init__(conf)
 
-            self.amplitudeX = conf["amplitude"]
-            self.relativeAmp = setFromConfig(conf, "relativeAmplitude", 1.0)
+            self.amplitude_x = conf["amplitude"]
+            self.relative_amp = set_from_config(conf, "relative_amplitude", 1.0)
             self.frequency = conf["frequency"]
-            self.amplitudeY = conf["amplitude"] * self.relativeAmp
-            self.offsetX = conf["offsetX"]
-            self.offsetY = conf["offsetX"]
-            self.phaseOffset = conf["phaseOffset"]
-            self.sampling = 1 / conf["digitalFreq"]
+            self.amplitude_y = conf["amplitude"] * self.relative_amp
+            self.offset_x = conf["offset_x"]
+            self.offset_y = conf["offset_x"]
+            self.phase_offset = conf["phase_offset"]
+            self.sampling = 1 / conf["digital_freq"]
 
             self.wavegens = (1, 2)
             self.wavetables = (1, 2)
 
             originalDirectory = os.getcwd()
             try:
-                os.chdir(conf["libFolder"])
+                os.chdir(conf["lib_folder"])
                 self.mod = GCSDevice()
                 devices = self.mod.EnumerateUSB()
                 if not devices:
@@ -51,21 +51,21 @@ class PIModulator(Modulator):
             finally:
                 os.chdir(originalDirectory)
 
-            self.servosOn = conf["servosOn"]
+            self.servos_on = conf["servos_on"]
             for axis in self.mod.axes:
-                self.mod.SVO(axis, int(conf["servosOn"]))
-            self.logger.info("Servo state set to %s for axes %s", self.servosOn, tuple(self.mod.axes))
+                self.mod.SVO(axis, int(conf["servos_on"]))
+            self.logger.info("Servo state set to %s for axes %s", self.servos_on, tuple(self.mod.axes))
 
-            if conf["autoZero"]:
+            if conf["auto_zero"]:
                 self.logger.info("Auto-zeroing PI modulator")
                 self.mod.ATZ()
 
             try:
-                self.defineCircle()
+                self.define_circle()
             except Exception:
                 self.logger.exception("Failed to define modulation circle on first attempt; retrying after stop")
                 self.stop()
-                self.defineCircle()
+                self.define_circle()
         except Exception:
             self.logger.exception("Failed to initialize PI modulator")
             raise
@@ -78,36 +78,36 @@ class PIModulator(Modulator):
         
         return    
 
-    def defineCircle(self):
+    def define_circle(self):
         try:
-            numPoints = int(1.0 / (self.frequency * self.sampling))
+            num_points = int(1.0 / (self.frequency * self.sampling))
             self.logger.info(
-                "Defining modulation circle points=%s amplitudeX=%s amplitudeY=%s phaseOffset=%s",
-                numPoints,
-                self.amplitudeX,
-                self.amplitudeY,
-                self.phaseOffset,
+                "Defining modulation circle points=%s amplitude_x=%s amplitude_y=%s phase_offset=%s",
+                num_points,
+                self.amplitude_x,
+                self.amplitude_y,
+                self.phase_offset,
             )
 
             self.mod.WAV_SIN_P(
                 table=self.wavetables[0],
                 firstpoint=0,
-                numpoints=numPoints,
+                numpoints=num_points,
                 append='X',
-                center=numPoints // 2,
-                amplitude=self.amplitudeX,
-                offset=self.offsetX - self.amplitudeX // 2,
-                seglength=numPoints,
+                center=num_points // 2,
+                amplitude=self.amplitude_x,
+                offset=self.offset_x - self.amplitude_x // 2,
+                seglength=num_points,
             )
             self.mod.WAV_SIN_P(
                 table=self.wavetables[1],
-                firstpoint=numPoints // 4 + self.phaseOffset,
-                numpoints=numPoints,
+                firstpoint=num_points // 4 + self.phase_offset,
+                numpoints=num_points,
                 append='X',
-                center=numPoints // 2,
-                amplitude=self.amplitudeY,
-                offset=self.offsetY - self.amplitudeY // 2,
-                seglength=numPoints,
+                center=num_points // 2,
+                amplitude=self.amplitude_y,
+                offset=self.offset_y - self.amplitude_y // 2,
+                seglength=num_points,
             )
             pitools.waitonready(self.mod)
 
@@ -121,7 +121,7 @@ class PIModulator(Modulator):
     def start(self):
         try:
             super().start()
-            startpos = (self.offsetX, self.offsetY + self.amplitudeY // 2)
+            startpos = (self.offset_x, self.offset_y + self.amplitude_y // 2)
             self.logger.info("Moving modulator to start position %s", startpos)
             self.set_position(startpos)
             self.mod.WGO(self.wavegens, mode=[1] * len(self.wavegens))
@@ -146,7 +146,7 @@ class PIModulator(Modulator):
             self.logger.info("Setting PI modulator position to %s", position)
             if len(position) < 2:
                 raise ValueError("Position must contain at least two axis values")
-            if not self.servosOn:
+            if not self.servos_on:
                 self.logger.warning("Ignoring set_position because servos are disabled")
                 return -1
             for i, ax in enumerate(self.mod.axes[:2]):
@@ -158,14 +158,14 @@ class PIModulator(Modulator):
             self.logger.exception("Failed to set PI modulator position to %s", position)
             raise
 
-    def goTo(self, x):
-        return super().goTo(x)
+    def go_to(self, x):
+        return super().go_to(x)
     
-    def adjustAmp(self, amp, restart=True):
+    def adjust_amp(self, amp, restart=True):
         try:
             self.logger.info("Adjusting PI modulator amplitude to %s restart=%s", amp, restart)
-            self.amplitudeX = amp
-            self.amplitudeY = amp * self.relativeAmp
+            self.amplitude_x = amp
+            self.amplitude_y = amp * self.relative_amp
             if restart:
                 self.restart()
         except Exception:
@@ -177,7 +177,7 @@ class PIModulator(Modulator):
         try:
             self.logger.info("Restarting PI modulator")
             self.stop()
-            self.defineCircle()
+            self.define_circle()
             self.start()
         except Exception:
             self.logger.exception("Failed to restart PI modulator")
@@ -185,4 +185,4 @@ class PIModulator(Modulator):
 
 if __name__ == "__main__":
 
-    launchComponent(PIModulator, "modulator", start = True)
+    launch_component(PIModulator, "modulator", start = True)

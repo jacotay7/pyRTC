@@ -1,8 +1,8 @@
 """Notebook-style SPECULA PyWFS soft-RTC example.
 
 SPECULA owns the optical backend for a small Pyramid-WFS simulation while
-pyRTC owns the slopes extraction and control loop. This keeps the first bridge
-close to the existing OOPAO operator workflow and avoids embedding pyRTC inside
+pyrtc owns the slopes extraction and control loop. This keeps the first bridge
+close to the existing OOPAO operator workflow and avoids embedding pyrtc inside
 SPECULA's generic YAML simulation engine.
 """
 
@@ -23,11 +23,11 @@ if WORKSPACE_SPECULA_ROOT.exists() and str(WORKSPACE_SPECULA_ROOT) not in sys.pa
     sys.path.insert(0, str(WORKSPACE_SPECULA_ROOT))
 
 
-from pyRTC.Loop import Loop
-from pyRTC.Pipeline import clear_shms
-from pyRTC.SlopesProcess import SlopesProcess
-from pyRTC.logging_utils import add_logging_cli_args, configure_logging_from_args, get_logger
-from pyRTC.utils import read_yaml_file
+from pyrtc.loop import Loop
+from pyrtc.pipeline import clear_shms
+from pyrtc.slopes_process import SlopesProcess
+from pyrtc.logging_utils import add_logging_cli_args, configure_logging_from_args, get_logger
+from pyrtc.utils import read_yaml_file
 
 
 logger = get_logger("examples.pywfs.pywfs_specula_soft")
@@ -35,10 +35,10 @@ CONFIG_PATH = REPO_ROOT / "examples" / "pywfs" / "pywfs_SPECULA_config.yaml"
 PARAM_PATH = REPO_ROOT / "examples" / "pywfs" / "pywfs_SPECULA_params.yaml"
 DEFAULT_STREAMS = [
     "wfs",
-    "wfsRaw",
+    "wfs_raw",
     "wfc",
     "signal",
-    "signal2D",
+    "signal_2d",
 ]
 
 
@@ -66,7 +66,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--no-clear-shms",
         action="store_true",
-        help="Leave existing pyRTC shared-memory streams untouched.",
+        help="Leave existing pyrtc shared-memory streams untouched.",
     )
     parser.add_argument(
         "--specula-param-file",
@@ -79,7 +79,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 
 def build_system(config: dict, *, specula_param_file: Path) -> dict:
-    from pyRTC.hardware.SPECULAInterface import SPECULAInterface
+    from pyrtc.hardware.specula_interface import SPECULAInterface
 
     specula_param = read_yaml_file(str(specula_param_file))
     sim = SPECULAInterface(conf=config, param=specula_param)
@@ -131,23 +131,23 @@ def prepare_loop(system: dict, *, gain: float, poke_amp: float, compute_im: bool
 
     if compute_im:
         logger.info("Computing interaction matrix with the atmosphere removed")
-        sim.removeAtmosphere()
+        sim.remove_atmosphere()
         dm.flatten()
-        loop.pokeAmp = poke_amp
-        loop.computeIM()
-        sim.addAtmosphere()
+        loop.poke_amp = poke_amp
+        loop.compute_im()
+        sim.add_atmosphere()
     else:
         logger.info("Skipping IM calibration and using an identity-style fallback")
-        loop.IM = np.eye(loop.signalSize, loop.numModes, dtype=loop.signalDType)
-        loop.computeCM()
+        loop.IM = np.eye(loop.signal_size, loop.num_modes, dtype=loop.signal_dtype)
+        loop.compute_cm()
 
-    loop.setGain(gain)
+    loop.set_gain(gain)
     dm.flatten()
 
 
 def format_status_line(system: dict, elapsed: float) -> str:
     slopes = system["slopes"].read(block=False)
-    correction = np.asarray(getattr(system["dm"], "currentShape", system["dm"].read()), dtype=np.float64)
+    correction = np.asarray(getattr(system["dm"], "current_shape", system["dm"].read()), dtype=np.float64)
     residual_rms = float(np.sqrt(np.mean(slopes**2))) if slopes.size else 0.0
     correction_rms = float(np.sqrt(np.mean(correction**2))) if correction.size else 0.0
     return (
@@ -169,8 +169,8 @@ def main(argv=None) -> int:
     logger.info("SPECULA PyWFS soft-RTC tutorial")
     logger.info("Config: %s", CONFIG_PATH)
     logger.info("SPECULA object params: %s", args.specula_param_file)
-    logger.info("SPECULA is the optical backend; pyRTC still owns slopes extraction and control.")
-    logger.info("Viewer: pyrtc-view wfs signal2D --geometry 1x2")
+    logger.info("SPECULA is the optical backend; pyrtc still owns slopes extraction and control.")
+    logger.info("Viewer: pyrtc-view wfs signal_2d --geometry 1x2")
 
     system = build_system(config, specula_param_file=args.specula_param_file)
 

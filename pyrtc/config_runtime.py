@@ -9,8 +9,8 @@ from __future__ import annotations
 
 from typing import Any, Mapping
 
-from pyRTC.component_loading import resolve_class_symbol as _resolve_class_symbol
-from pyRTC.logging_utils import get_logger
+from pyrtc.component_loading import resolve_class_symbol as _resolve_class_symbol
+from pyrtc.logging_utils import get_logger
 
 
 logger = get_logger(__name__)
@@ -24,8 +24,8 @@ def _iter_configured_classes(system_conf: Mapping[str, Any]):
         for resource_conf in resources_conf.values():
             if not isinstance(resource_conf, Mapping):
                 continue
-            class_name = resource_conf.get("className")
-            class_file = resource_conf.get("classFile")
+            class_name = resource_conf.get("class_name")
+            class_file = resource_conf.get("class_file")
             if isinstance(class_name, str) and class_name.strip():
                 yield class_name, class_file if isinstance(class_file, str) else None
 
@@ -34,8 +34,8 @@ def _iter_configured_classes(system_conf: Mapping[str, Any]):
             continue
         if not isinstance(section_conf, Mapping):
             continue
-        class_name = section_conf.get("className")
-        class_file = section_conf.get("classFile")
+        class_name = section_conf.get("class_name")
+        class_file = section_conf.get("class_file")
         if isinstance(class_name, str) and class_name.strip():
             yield class_name, class_file if isinstance(class_file, str) else None
 

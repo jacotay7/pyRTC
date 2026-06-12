@@ -6,16 +6,16 @@ import importlib
 import sys
 from pathlib import Path
 
-from pyRTC import Telemetry
-from pyRTC.exporters.aotpy_export import export_telemetry_session_to_aotpy
+from pyrtc import Telemetry
+from pyrtc.exporters.aotpy_export import export_telemetry_session_to_aotpy
 
 
-AOTPY_CAPTURE_STREAMS = ["wfs", "signal", "wfc", "psfShort"]
+AOTPY_CAPTURE_STREAMS = ["wfs", "signal", "wfc", "psf_short"]
 AOTPY_SEMANTIC_TAGS = {
     "wfs": ["wfs"],
     "signal": ["signal", "slopes"],
     "wfc": ["wfc", "control"],
-    "psfShort": ["psf", "science"],
+    "psf_short": ["psf", "science"],
 }
 
 
@@ -40,11 +40,11 @@ def export_synthetic_session_to_aotpy(*, repo_root: Path, config: dict, config_p
 
     telemetry_dir = repo_root / "examples" / "synthetic_shwfs" / "telemetry"
     export_path = telemetry_dir / f"synthetic_shwfs_{mode_label}.fits"
-    telem = Telemetry({"dataDir": str(telemetry_dir), "functions": []})
+    telem = Telemetry({"data_dir": str(telemetry_dir), "functions": []})
     session_path = telem.save(
         AOTPY_CAPTURE_STREAMS,
         10,
-        semanticTags=AOTPY_SEMANTIC_TAGS,
+        semantic_tags=AOTPY_SEMANTIC_TAGS,
         config=config,
         config_path=config_path,
         metadata={"name": f"Synthetic SHWFS {mode_label.title()} Example"},

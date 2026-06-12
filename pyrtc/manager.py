@@ -1,4 +1,4 @@
-"""System orchestration for pyRTC: component runtimes and the RTCManager."""
+"""System orchestration for pyrtc: component runtimes and the RTCManager."""
 
 from __future__ import annotations
 
@@ -11,35 +11,35 @@ import threading
 import time
 from pathlib import Path
 
-from pyRTC.config_runtime import sync_runtime_config
-from pyRTC.component_loading import (
+from pyrtc.config_runtime import sync_runtime_config
+from pyrtc.component_loading import (
     import_symbol as _import_symbol,
     import_symbol_from_file as _import_symbol_from_file,
 )
-from pyRTC.logging_utils import (
+from pyrtc.logging_utils import (
     PYRTC_LOG_DIR_ENV,
     PYRTC_LOG_FILE_ENV,
     add_logging_cli_args,
     configure_logging_from_args,
     get_logger,
 )
-from pyRTC.rpc import Listener, hardwareLauncher
-from pyRTC.streams import reconcile_expected_output_shms
-from pyRTC.utils import setFromConfig, set_affinity_and_priority
+from pyrtc.rpc import Listener, HardwareLauncher
+from pyrtc.streams import reconcile_expected_output_shms
+from pyrtc.utils import set_from_config, set_affinity_and_priority
 
 logger = get_logger(__name__)
 
-def work(obj, functionName, affinity):
+def work(obj, function_name, affinity):
     """Run one component worker function in a loop while the component lives."""
-    set_affinity_and_priority(functionName, [affinity])
-    workFunction = getattr(obj, functionName, None)
+    set_affinity_and_priority(function_name, [affinity])
+    work_function = getattr(obj, function_name, None)
     while obj.alive:
         if obj.running:
             try:
-                workFunction()
+                work_function()
             except Exception:
                 component_logger = getattr(obj, "logger", logger)
-                component_logger.exception("Worker function '%s' crashed", functionName)
+                component_logger.exception("Worker function '%s' crashed", function_name)
                 time.sleep(0.05)
         else:
             time.sleep(1e-3)
@@ -56,8 +56,8 @@ def build_component_runtime_config(system_conf: dict, section_name: str) -> dict
     return conf
 
 
-def launchComponent(component, confKey, start = True):
-    from pyRTC.config_schema import read_system_config
+def launch_component(component, conf_key, start = True):
+    from pyrtc.config_schema import read_system_config
 
     # Create argument parser
     parser = argparse.ArgumentParser(description="Read a config file from the command line.")
@@ -69,12 +69,12 @@ def launchComponent(component, confKey, start = True):
 
     # Parse command-line arguments
     args = parser.parse_args()
-    configure_logging_from_args(args, app_name=f"pyrtc-{confKey}", component_name=confKey)
+    configure_logging_from_args(args, app_name=f"pyrtc-{conf_key}", component_name=conf_key)
 
     system_conf = read_system_config(args.config)
-    conf = build_component_runtime_config(system_conf, confKey)
+    conf = build_component_runtime_config(system_conf, conf_key)
 
-    set_affinity_and_priority("", setFromConfig(conf, "affinity", 0))
+    set_affinity_and_priority("", set_from_config(conf, "affinity", 0))
 
     try:
         obj = component(conf=conf)
@@ -86,7 +86,7 @@ def launchComponent(component, confKey, start = True):
             listener.listen()
             time.sleep(1e-3)
     except Exception:
-        logger.exception("Failed to launch component %s", confKey)
+        logger.exception("Failed to launch component %s", conf_key)
         raise
 
 
@@ -315,7 +315,7 @@ class HardComponentRuntime(BaseComponentRuntime):
         rpc_timeout=0.25,
         log_dir: str | None = None,
         log_file: str | None = None,
-        launcher_cls=hardwareLauncher,
+        launcher_cls=HardwareLauncher,
     ) -> None:
         super().__init__(
             section_name=section_name,
@@ -399,9 +399,9 @@ class HardComponentRuntime(BaseComponentRuntime):
                 self._record_problem(health.get("error", "health check failed"), state=state)
             return self.state
 
-        if hasattr(self.launcher, "getProperty"):
+        if hasattr(self.launcher, "get_property"):
             try:
-                running = self.launcher.getProperty("running")
+                running = self.launcher.get_property("running")
             except Exception as exc:
                 self._record_problem(f"health check RPC failed: {exc}", state="degraded")
                 return self.state
@@ -503,9 +503,9 @@ def _normalize_manager_mode(mode: str | None) -> str | None:
 
 
 class RTCManager:
-    """Validate, launch, stop, and inspect a pyRTC system as one unit.
+    """Validate, launch, stop, and inspect a pyrtc system as one unit.
 
-    The implementation intentionally lives in ``pyRTC.Pipeline`` because this
+    The implementation intentionally lives in ``pyrtc.pipeline`` because this
     orchestration layer is an extension of the existing shared-memory and
     launcher runtime rather than a separate subsystem.
     """
@@ -516,7 +516,7 @@ class RTCManager:
         *,
         config_path: str | None = None,
         mode: str | None = None,
-        launcher_cls=hardwareLauncher,
+        launcher_cls=HardwareLauncher,
     ) -> None:
         self.config = dict(config)
         self.config_path = config_path
@@ -536,8 +536,8 @@ class RTCManager:
         self._supervisor_stop_event = threading.Event()
 
     @classmethod
-    def from_config_file(cls, config_path: str | Path, *, mode: str | None = None, launcher_cls=hardwareLauncher):
-        from pyRTC.config_schema import read_system_config
+    def from_config_file(cls, config_path: str | Path, *, mode: str | None = None, launcher_cls=HardwareLauncher):
+        from pyrtc.config_schema import read_system_config
 
         normalized = read_system_config(config_path)
         manager = cls(normalized, config_path=str(config_path), mode=mode, launcher_cls=launcher_cls)
@@ -552,12 +552,12 @@ class RTCManager:
         *,
         config_path: str | None = None,
         mode: str | None = None,
-        launcher_cls=hardwareLauncher,
+        launcher_cls=HardwareLauncher,
     ):
         return cls(config, config_path=config_path, mode=mode, launcher_cls=launcher_cls)
 
     def validate(self) -> dict:
-        from pyRTC.config_schema import validate_system_config
+        from pyrtc.config_schema import validate_system_config
 
         self.config = validate_system_config(self.config, config_path=self.config_path)
         self.validated = True
@@ -604,7 +604,7 @@ class RTCManager:
             return self._status_payload()
 
     def _component_sections(self) -> list:
-        from pyRTC.component_descriptors import list_component_sections
+        from pyrtc.component_descriptors import list_component_sections
 
         sections = [section for section in DEFAULT_COMPONENT_ORDER if section in self.config]
         for section in list_component_sections():
@@ -616,7 +616,7 @@ class RTCManager:
             if isinstance(section_conf, dict) and section_name not in sections:
                 sections.append(section_name)
         manager_conf = self.config.get("manager", {})
-        for mapping_name in ("componentModes", "ports", "componentClasses", "componentFiles"):
+        for mapping_name in ("component_modes", "ports", "component_classes", "component_files"):
             mapping = manager_conf.get(mapping_name, {})
             if not isinstance(mapping, dict):
                 continue
@@ -626,14 +626,14 @@ class RTCManager:
         return sections
 
     def _resolve_component_class(self, section_name: str):
-        from pyRTC.component_descriptors import get_component_descriptor
+        from pyrtc.component_descriptors import get_component_descriptor
 
         manager_conf = self.config.get("manager", {})
-        component_classes = manager_conf.get("componentClasses", {})
-        component_files = manager_conf.get("componentFiles", {})
+        component_classes = manager_conf.get("component_classes", {})
+        component_files = manager_conf.get("component_files", {})
         section_conf = self.config[section_name]
-        target = section_conf.get("className", component_classes.get(section_name))
-        class_file = section_conf.get("classFile", component_files.get(section_name))
+        target = section_conf.get("class_name", component_classes.get(section_name))
+        class_file = section_conf.get("class_file", component_files.get(section_name))
         if target is None:
             target = section_conf.get("name")
 
@@ -653,7 +653,7 @@ class RTCManager:
 
     def _resolve_script_path(self, section_name: str, component_class) -> str:
         manager_conf = self.config.get("manager", {})
-        component_files = manager_conf.get("componentFiles", {})
+        component_files = manager_conf.get("component_files", {})
         target = component_files.get(section_name)
         if target is not None:
             return str(target)
@@ -665,7 +665,7 @@ class RTCManager:
 
     def _resolve_component_mode(self, section_name: str) -> str:
         manager_conf = self.config.get("manager", {})
-        component_modes = manager_conf.get("componentModes", {})
+        component_modes = manager_conf.get("component_modes", {})
         return component_modes.get(section_name, manager_conf.get("mode", "soft-rtc"))
 
     def _resolve_resource_class(self, resource_name: str):
@@ -673,10 +673,10 @@ class RTCManager:
         if not isinstance(resources_conf, dict) or resource_name not in resources_conf:
             raise KeyError(resource_name)
         resource_conf = resources_conf[resource_name]
-        target = resource_conf.get("className")
-        class_file = resource_conf.get("classFile")
+        target = resource_conf.get("class_name")
+        class_file = resource_conf.get("class_file")
         if not isinstance(target, str) or not target.strip():
-            raise ValueError(f"resources.{resource_name}: missing className")
+            raise ValueError(f"resources.{resource_name}: missing class_name")
         if "." not in target and class_file:
             component_file = Path(class_file).expanduser()
             if component_file.exists():
@@ -733,27 +733,27 @@ class RTCManager:
 
     def _resolve_restart_policy(self, section_name: str) -> str:
         manager_conf = self.config.get("manager", {})
-        component_policies = manager_conf.get("componentRestartPolicies", {})
-        return str(component_policies.get(section_name, manager_conf.get("restartPolicy", "never")))
+        component_policies = manager_conf.get("component_restart_policies", {})
+        return str(component_policies.get(section_name, manager_conf.get("restart_policy", "never")))
 
     def _resolve_health_check_interval(self) -> float:
         manager_conf = self.config.get("manager", {})
-        return float(manager_conf.get("healthCheckInterval", 1.0))
+        return float(manager_conf.get("health_check_interval", 1.0))
 
     def _resolve_heartbeat_timeout(self) -> float:
         manager_conf = self.config.get("manager", {})
-        return float(manager_conf.get("heartbeatTimeout", 5.0))
+        return float(manager_conf.get("heartbeat_timeout", 5.0))
 
     def _resolve_rpc_timeout(self) -> float:
         manager_conf = self.config.get("manager", {})
-        return float(manager_conf.get("rpcTimeout", 0.25))
+        return float(manager_conf.get("rpc_timeout", 0.25))
 
     def _manager_log_dir(self) -> str | None:
-        value = self.config.get("manager", {}).get("logDir")
+        value = self.config.get("manager", {}).get("log_dir")
         return None if value is None else str(value)
 
     def _manager_log_file(self) -> str | None:
-        value = self.config.get("manager", {}).get("logFile")
+        value = self.config.get("manager", {}).get("log_file")
         return None if value is None else str(value)
 
     def _build_runtimes(self) -> None:
@@ -810,7 +810,7 @@ class RTCManager:
         self._supervisor_stop_event.clear()
         self._supervisor_thread = threading.Thread(
             target=self._supervisor_loop,
-            name="pyRTC-manager-supervisor",
+            name="pyrtc-manager-supervisor",
             daemon=True,
         )
         self._supervisor_thread.start()
@@ -1020,8 +1020,8 @@ class RTCManager:
         samples: int = 2048,
         show_progress: bool = False,
     ) -> dict:
-        from pyRTC.component_descriptors import describe_component_class, get_component_descriptor
-        from pyRTC.latency import infer_stream_path, measure_stream_path_latency
+        from pyrtc.component_descriptors import describe_component_class, get_component_descriptor
+        from pyrtc.latency import infer_stream_path, measure_stream_path_latency
 
         with self._lock:
             if not self.validated:

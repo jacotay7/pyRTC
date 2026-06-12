@@ -36,14 +36,14 @@ class _Stream:
 
 class _Loop:
     def __init__(self):
-        self.properties = {"running": False, "pGain": 0.1}
+        self.properties = {"running": False, "p_gain": 0.1}
         self.calls = []
 
-    def setProperty(self, name, value):
+    def set_property(self, name, value):
         self.properties[name] = value
         self.calls.append(("set", name, value))
 
-    def getProperty(self, name):
+    def get_property(self, name):
         return self.properties[name]
 
     def run(self, name):
@@ -52,14 +52,14 @@ class _Loop:
 
 class _Slopes:
     def __init__(self):
-        self.properties = {"refSlopesFile": "ref.npy", "validSubApsFile": "valid.npy"}
+        self.properties = {"ref_slopes_file": "ref.npy", "valid_sub_aps_file": "valid.npy"}
         self.calls = []
 
-    def setProperty(self, name, value):
+    def set_property(self, name, value):
         self.properties[name] = value
         self.calls.append(("set", name, value))
 
-    def getProperty(self, name):
+    def get_property(self, name):
         return self.properties[name]
 
     def run(self, name):
@@ -67,43 +67,43 @@ class _Slopes:
 
 
 def test_pid_optimizer_apply_trial_and_optimum(monkeypatch):
-    module = importlib.import_module("pyRTC.hardware.PIDOptimizer")
+    module = importlib.import_module("pyrtc.hardware.pid_optimizer")
     monkeypatch.setattr(module, "open_stream", lambda name: _Stream())
 
     loop = _Loop()
-    optimizer = module.PIDOptimizer({"numSteps": 2, "functions": []}, loop)
-    optimizer.study = _Study({"pGain": 0.2, "iGain": 0.01, "dGain": 0.02})
+    optimizer = module.PIDOptimizer({"num_steps": 2, "functions": []}, loop)
+    optimizer.study = _Study({"p_gain": 0.2, "i_gain": 0.01, "d_gain": 0.02})
 
-    optimizer.applyTrial(_Trial())
-    assert loop.properties["pGain"] > 0
-    assert loop.properties["iGain"] >= 0
-    assert loop.properties["dGain"] >= 0
+    optimizer.apply_trial(_Trial())
+    assert loop.properties["p_gain"] > 0
+    assert loop.properties["i_gain"] >= 0
+    assert loop.properties["d_gain"] >= 0
 
-    optimizer.applyOptimum()
-    assert loop.properties["pGain"] == 0.2
-    assert loop.properties["iGain"] == 0.01
-    assert loop.properties["dGain"] == 0.02
+    optimizer.apply_optimum()
+    assert loop.properties["p_gain"] == 0.2
+    assert loop.properties["i_gain"] == 0.01
+    assert loop.properties["d_gain"] == 0.02
 
 
 def test_loop_optimizer_apply_trial_and_optimum(monkeypatch):
-    module = importlib.import_module("pyRTC.hardware.loopHyperparamsOptimizer")
+    module = importlib.import_module("pyrtc.hardware.loop_hyperparams_optimizer")
     monkeypatch.setattr(module, "open_stream", lambda name: _Stream())
 
     loop = _Loop()
-    optimizer = module.loopOptimizer({"numSteps": 2, "functions": []}, loop)
-    optimizer.study = _Study({"numDroppedModes": 1, "gain": 0.4, "leakyGain": 0.02})
+    optimizer = module.LoopOptimizer({"num_steps": 2, "functions": []}, loop)
+    optimizer.study = _Study({"num_dropped_modes": 1, "gain": 0.4, "leaky_gain": 0.02})
 
-    optimizer.applyTrial(_Trial())
-    assert ("run", "loadIM") in loop.calls
+    optimizer.apply_trial(_Trial())
+    assert ("run", "load_im") in loop.calls
 
-    optimizer.applyOptimum()
-    assert loop.properties["numDroppedModes"] == 1
+    optimizer.apply_optimum()
+    assert loop.properties["num_dropped_modes"] == 1
     assert loop.properties["gain"] == 0.4
-    assert loop.properties["leakyGain"] == 0.02
+    assert loop.properties["leaky_gain"] == 0.02
 
 
 def test_ncpa_optimizer_apply_trial_open_loop(monkeypatch):
-    module = importlib.import_module("pyRTC.hardware.NCPAOptimizer")
+    module = importlib.import_module("pyrtc.hardware.ncpa_optimizer")
     wfc_stream = _Stream(shape=(6,), dtype=np.float32)
 
     def _open(name):
@@ -115,8 +115,8 @@ def test_ncpa_optimizer_apply_trial_open_loop(monkeypatch):
 
     loop = _Loop()
     slopes = _Slopes()
-    optimizer = module.NCPAOptimizer({"numSteps": 2, "functions": [], "endMode": 3}, loop, slopes)
-    optimizer.applyTrial(_Trial())
+    optimizer = module.NCPAOptimizer({"num_steps": 2, "functions": [], "end_mode": 3}, loop, slopes)
+    optimizer.apply_trial(_Trial())
 
     assert len(wfc_stream.writes) == 1
     assert wfc_stream.writes[0].shape == (6,)

@@ -1,6 +1,6 @@
-﻿pyRTC.manager
+﻿pyrtc.manager
 =============
 
-.. automodule:: pyRTC.manager
+.. automodule:: pyrtc.manager
    :members:
    :undoc-members:

@@ -1,7 +1,7 @@
-﻿pyRTC.utils
+﻿pyrtc.utils
 ===========
 
-.. automodule:: pyRTC.utils
+.. automodule:: pyrtc.utils
 
    
    .. rubric:: Functions
@@ -30,15 +30,15 @@
       load_data
       measure_execution_time
       next_power_of_two
-      powerLawOG
+      power_law_og
       precise_delay
       read_input_with_timeout
       read_yaml_file
       robust_variance
-      setFromConfig
+      set_from_config
       set_affinity
       set_affinity_and_priority
-      signal2D
+      signal_2d
       validate_component_config
       validate_loop_config
       validate_wfc_config

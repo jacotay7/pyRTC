@@ -1,7 +1,7 @@
-﻿pyRTC.hardware.SyntheticSystems
+﻿pyrtc.hardware.synthetic_systems
 ===============================
 
-.. automodule:: pyRTC.hardware.SyntheticSystems
+.. automodule:: pyrtc.hardware.synthetic_systems
 
    
    .. rubric:: Classes

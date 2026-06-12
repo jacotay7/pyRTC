@@ -1,10 +1,10 @@
-"""CLI for exporting pyRTC telemetry sessions into AOTPy files."""
+"""CLI for exporting pyrtc telemetry sessions into AOTPy files."""
 
 from __future__ import annotations
 
 import argparse
 
-from pyRTC.exporters.aotpy_export import export_telemetry_session_to_aotpy
+from pyrtc.exporters.aotpy_export import export_telemetry_session_to_aotpy
 
 
 def _default_output_path(session_path: str) -> str:
@@ -16,7 +16,7 @@ def _default_output_path(session_path: str) -> str:
 
 
 def _build_arg_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Export a pyRTC telemetry session into an AOTPy file.")
+    parser = argparse.ArgumentParser(description="Export a pyrtc telemetry session into an AOTPy file.")
     parser.add_argument("session", type=str, help="Path to a telemetry session directory or session.json file")
     parser.add_argument("output", nargs="?", type=str, help="Output AOTPy file path. Defaults to <session>.fits")
     parser.add_argument("--name", dest="system_name", type=str, default=None, help="Override the exported AO-system name")

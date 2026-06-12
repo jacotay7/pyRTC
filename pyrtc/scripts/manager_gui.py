@@ -1,16 +1,16 @@
-"""Command-line entrypoint for the pyRTC manager GUI."""
+"""Command-line entrypoint for the pyrtc manager GUI."""
 
 from __future__ import annotations
 
 import argparse
 from pathlib import Path
 
-from pyRTC.logging_utils import add_logging_cli_args, configure_logging_from_args
+from pyrtc.logging_utils import add_logging_cli_args, configure_logging_from_args
 
 
 def _build_arg_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Launch the pyRTC manager GUI.")
-    parser.add_argument("config", nargs="?", help="Optional path to a pyRTC YAML config file")
+    parser = argparse.ArgumentParser(description="Launch the pyrtc manager GUI.")
+    parser.add_argument("config", nargs="?", help="Optional path to a pyrtc YAML config file")
     parser.add_argument("--mode", choices=["soft", "hard", "soft-rtc", "hard-rtc"], default=None, help="Optional manager mode override")
     parser.add_argument("--theme", choices=["dark", "light"], default="dark", help="Initial GUI theme")
     parser.add_argument("--refresh-ms", type=int, default=1000, help="Health and status refresh interval in milliseconds")
@@ -26,11 +26,11 @@ def main(argv=None) -> int:
     logger = configure_logging_from_args(args, app_name="pyrtc-manager-gui", component_name="manager-gui")
 
     try:
-        from pyRTC.gui.main_window import launch_manager_gui
+        from pyrtc.gui.main_window import launch_manager_gui
     except ImportError as exc:
         logger.exception("GUI dependencies are unavailable")
         raise SystemExit(
-            "pyrtc-manager-gui requires GUI dependencies. Install with: pip install pyRTC[gui]"
+            "pyrtc-manager-gui requires GUI dependencies. Install with: pip install pyrtc[gui]"
         ) from exc
 
     mode = args.mode

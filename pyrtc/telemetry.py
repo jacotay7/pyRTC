@@ -1,7 +1,7 @@
-"""Telemetry capture helpers for pyRTC shared-memory streams.
+"""Telemetry capture helpers for pyrtc shared-memory streams.
 
 The :class:`Telemetry` component provides a small, operator-friendly API for
-capturing bounded stretches of existing pyRTC streams into standard NumPy data
+capturing bounded stretches of existing pyrtc streams into standard NumPy data
 products. Each save creates one session directory containing per-stream
 ``frames.npy`` and ``timestamps.npy`` files plus lightweight JSON metadata.
 
@@ -32,10 +32,10 @@ from pathlib import Path
 
 import numpy as np
 
-from pyRTC.logging_utils import get_logger
-from pyRTC.streams import open_stream
-from pyRTC.pyRTCComponent import pyRTCComponent
-from pyRTC.utils import setFromConfig
+from pyrtc.logging_utils import get_logger
+from pyrtc.streams import open_stream
+from pyrtc.component import Component
+from pyrtc.utils import set_from_config
 
 
 logger = get_logger(__name__)
@@ -48,7 +48,7 @@ def _utc_now_iso() -> str:
 
 def _resolve_pyrtc_version() -> str:
     try:
-        return importlib_metadata.version("pyRTC")
+        return importlib_metadata.version("pyrtc")
     except importlib_metadata.PackageNotFoundError:
         return "1.0.0"
 
@@ -96,7 +96,7 @@ def _extract_timestamp(shm) -> float:
     return time.time()
 
 
-def _normalize_stream_specs(streams, numFrames, semanticTags=None, sampling=None) -> list[dict]:
+def _normalize_stream_specs(streams, num_frames, semantic_tags=None, sampling=None) -> list[dict]:
     if isinstance(streams, str):
         stream_names = [streams]
     elif isinstance(streams, (list, tuple)):
@@ -104,12 +104,12 @@ def _normalize_stream_specs(streams, numFrames, semanticTags=None, sampling=None
     else:
         raise TypeError("streams must be a stream name or a list of stream names")
 
-    if isinstance(numFrames, dict):
-        frame_counts = {str(name): int(value) for name, value in numFrames.items()}
+    if isinstance(num_frames, dict):
+        frame_counts = {str(name): int(value) for name, value in num_frames.items()}
     else:
-        frame_counts = {name: int(numFrames) for name in stream_names}
+        frame_counts = {name: int(num_frames) for name in stream_names}
 
-    tag_mapping = semanticTags if isinstance(semanticTags, dict) else None
+    tag_mapping = semantic_tags if isinstance(semantic_tags, dict) else None
     sampling_mapping = sampling if isinstance(sampling, dict) else None
 
     specs = []
@@ -122,13 +122,13 @@ def _normalize_stream_specs(streams, numFrames, semanticTags=None, sampling=None
 
         if tag_mapping is not None:
             tags = tag_mapping.get(stream_name, [])
-        elif semanticTags is None:
+        elif semantic_tags is None:
             tags = []
         else:
-            tags = semanticTags
+            tags = semantic_tags
 
         if tags and not isinstance(tags, (list, tuple)):
-            raise TypeError("semanticTags must be a list of strings or a mapping of stream name to string lists")
+            raise TypeError("semantic_tags must be a list of strings or a mapping of stream name to string lists")
 
         if sampling_mapping is not None:
             stream_sampling = sampling_mapping.get(stream_name)
@@ -237,23 +237,23 @@ def list_telemetry_sessions(data_dir: str | Path) -> list[str]:
     return [str(path.resolve().parent) for path in sorted(base_dir.glob("session_*/session.json"))]
 
 
-class Telemetry(pyRTCComponent):
-    """Capture pyRTC streams into standard NumPy telemetry products.
+class Telemetry(Component):
+    """Capture pyrtc streams into standard NumPy telemetry products.
 
     Parameters
     ----------
     conf : dict, optional
         Telemetry configuration. The most useful keys are:
 
-        ``dataDir``
+        ``data_dir``
             Base directory used for capture output. Defaults to ``./data/``.
 
         ``streams``
             Optional default stream names for :meth:`save_configured_streams`.
 
         ``functions``
-            Standard pyRTC worker-thread configuration inherited from
-            :class:`pyRTC.pyRTCComponent.pyRTCComponent`.
+            Standard pyrtc worker-thread configuration inherited from
+            :class:`pyrtc.component.Component`.
 
     Notes
     -----
@@ -277,16 +277,16 @@ class Telemetry(pyRTCComponent):
         conf = {} if conf is None else conf
         try:
             super().__init__(conf)
-            self.dataDir = Path(setFromConfig(conf, "dataDir", "./data/")).expanduser()
-            self.dataDir.mkdir(parents=True, exist_ok=True)
-            self.configuredStreams = list(setFromConfig(conf, "streams", []))
-            self.mostRecentSave = ""
-            self.mostRecentFile = ""
-            self.allSaves = []
-            self.allFiles = []
-            self.dTypes = []
+            self.data_dir = Path(set_from_config(conf, "data_dir", "./data/")).expanduser()
+            self.data_dir.mkdir(parents=True, exist_ok=True)
+            self.configured_streams = list(set_from_config(conf, "streams", []))
+            self.most_recent_save = ""
+            self.most_recent_file = ""
+            self.all_saves = []
+            self.all_files = []
+            self.dtypes = []
             self.dims = []
-            self.logger.info("Initialized telemetry dataDir=%s configuredStreams=%s", self.dataDir, self.configuredStreams)
+            self.logger.info("Initialized telemetry data_dir=%s configured_streams=%s", self.data_dir, self.configured_streams)
         except Exception:
             logger.exception("Failed to initialize telemetry")
             raise
@@ -304,7 +304,7 @@ class Telemetry(pyRTCComponent):
             "schema_version": TELEMETRY_SESSION_SCHEMA_VERSION,
             "session_id": session_id,
             "created_at": _utc_now_iso(),
-            "pyRTC_version": _resolve_pyrtc_version(),
+            "pyrtc_version": _resolve_pyrtc_version(),
             "host": _host_metadata(),
             "config_path": str(_ensure_path(config_path).resolve()) if config_path is not None else None,
             "config": config,
@@ -315,11 +315,11 @@ class Telemetry(pyRTCComponent):
     def save(
         self,
         streams,
-        numFrames,
+        num_frames,
         *,
-        uniqueStr="",
-        sessionId: str | None = None,
-        semanticTags=None,
+        unique_str="",
+        session_id: str | None = None,
+        semantic_tags=None,
         sampling=None,
         config=None,
         config_path: str | Path | None = None,
@@ -331,14 +331,14 @@ class Telemetry(pyRTCComponent):
         ----------
         streams : str or sequence of str
             Stream name or stream names to capture.
-        numFrames : int or dict
+        num_frames : int or dict
             Number of frames to save. When ``streams`` is a list, this may be
             one shared integer or a mapping of stream name to frame count.
-        uniqueStr : str, optional
+        unique_str : str, optional
             Optional suffix used in the session metadata for operator clarity.
-        sessionId : str, optional
+        session_id : str, optional
             Explicit session identifier. A UUID is generated when omitted.
-        semanticTags : list or dict, optional
+        semantic_tags : list or dict, optional
             Optional semantic labels for future export layers such as AOTPy.
         sampling : object or dict, optional
             Optional sampling metadata stored alongside each stream.
@@ -356,9 +356,9 @@ class Telemetry(pyRTCComponent):
         """
 
         component_logger = getattr(self, "logger", logger)
-        specs = _normalize_stream_specs(streams, numFrames, semanticTags=semanticTags, sampling=sampling)
-        session_id = sessionId or uuid.uuid4().hex
-        session_dir = _build_session_directory(self.dataDir, session_id)
+        specs = _normalize_stream_specs(streams, num_frames, semantic_tags=semantic_tags, sampling=sampling)
+        session_id = session_id or uuid.uuid4().hex
+        session_dir = _build_session_directory(self.data_dir, session_id)
         session_dir.mkdir(parents=True, exist_ok=False)
 
         try:
@@ -410,7 +410,7 @@ class Telemetry(pyRTCComponent):
                     "timestamp_unit": "unix_seconds",
                     "sampling": spec["sampling"],
                     "semantic_tags": spec["semantic_tags"],
-                    "capture_label": uniqueStr or None,
+                    "capture_label": unique_str or None,
                 }
                 with stream_metadata_path.open("w", encoding="utf-8") as handle:
                     json.dump(stream_metadata, handle, indent=2, sort_keys=True)
@@ -429,8 +429,8 @@ class Telemetry(pyRTCComponent):
                 stream_records.append(stream_record)
 
                 last_frames_path = str(frames_path)
-                self.allFiles.append(last_frames_path)
-                self.dTypes.append(dtype)
+                self.all_files.append(last_frames_path)
+                self.dtypes.append(dtype)
                 self.dims.append(list(frame_shape))
 
             session_manifest = self._session_manifest(
@@ -444,36 +444,36 @@ class Telemetry(pyRTCComponent):
             with session_file.open("w", encoding="utf-8") as handle:
                 json.dump(session_manifest, handle, indent=2, sort_keys=True)
 
-            self.mostRecentSave = str(session_dir.resolve())
-            self.mostRecentFile = last_frames_path
-            self.allSaves.append(self.mostRecentSave)
+            self.most_recent_save = str(session_dir.resolve())
+            self.most_recent_file = last_frames_path
+            self.all_saves.append(self.most_recent_save)
             component_logger.info(
                 "Saved telemetry session %s streams=%s frames=%s path=%s",
                 session_id,
                 [spec["name"] for spec in specs],
                 [spec["frame_count"] for spec in specs],
-                self.mostRecentSave,
+                self.most_recent_save,
             )
-            return self.mostRecentSave
+            return self.most_recent_save
         except Exception:
             component_logger.exception("Failed to save telemetry streams %s", [spec["name"] for spec in specs])
             raise
 
-    def save_session(self, streams, numFrames, **kwargs) -> str:
+    def save_session(self, streams, num_frames, **kwargs) -> str:
         """Compatibility wrapper around :meth:`save`."""
 
-        return self.save(streams, numFrames, **kwargs)
+        return self.save(streams, num_frames, **kwargs)
 
-    def save_configured_streams(self, numFrames, **kwargs) -> str:
+    def save_configured_streams(self, num_frames, **kwargs) -> str:
         """Save the streams configured on this telemetry component.
 
         This is a convenience wrapper for configs that already declare a fixed
         telemetry stream set.
         """
 
-        if not self.configuredStreams:
+        if not self.configured_streams:
             raise ValueError("Telemetry has no configured streams to capture")
-        return self.save(self.configuredStreams, numFrames, **kwargs)
+        return self.save(self.configured_streams, num_frames, **kwargs)
 
     def read(self, filename="", dtype=None, *, mmap_mode=None):
         """Read a telemetry save, one saved NumPy capture file, or a raw binary file.
@@ -500,7 +500,7 @@ class Telemetry(pyRTCComponent):
         component_logger = getattr(self, "logger", logger)
         try:
             if filename == "":
-                filename = self.mostRecentFile
+                filename = self.most_recent_file
             if not filename:
                 raise ValueError("No telemetry file available to read")
 
@@ -519,7 +519,7 @@ class Telemetry(pyRTCComponent):
                 return arr
             raise ValueError("File not part of current capture, please provide a dtype")
         except Exception:
-            component_logger.exception("Failed to read telemetry file %s", filename or getattr(self, "mostRecentFile", ""))
+            component_logger.exception("Failed to read telemetry file %s", filename or getattr(self, "most_recent_file", ""))
             raise
 
     def read_last_save(self, *, mmap_mode=None) -> dict:
@@ -533,9 +533,9 @@ class Telemetry(pyRTCComponent):
             under ``data['_session']``.
         """
 
-        if not self.mostRecentSave:
+        if not self.most_recent_save:
             raise ValueError("No telemetry save is available to read")
-        return load_telemetry_session(self.mostRecentSave, mmap_mode=mmap_mode)
+        return load_telemetry_session(self.most_recent_save, mmap_mode=mmap_mode)
 
     def read_session(self, session_path: str | Path = "", *, mmap_mode=None) -> dict:
         """Load one telemetry save by path.
@@ -543,12 +543,12 @@ class Telemetry(pyRTCComponent):
         When ``session_path`` is omitted, the most recent save is used.
         """
 
-        target = session_path or self.mostRecentSave
+        target = session_path or self.most_recent_save
         if not target:
             raise ValueError("No telemetry session available to read")
         return load_telemetry_session(target, mmap_mode=mmap_mode)
 
     def list_sessions(self) -> list[str]:
-        """Return all telemetry session directories under ``dataDir``."""
+        """Return all telemetry session directories under ``data_dir``."""
 
-        return list_telemetry_sessions(self.dataDir)
+        return list_telemetry_sessions(self.data_dir)

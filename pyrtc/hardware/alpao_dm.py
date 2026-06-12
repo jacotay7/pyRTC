@@ -1,7 +1,7 @@
 """ALPAO deformable-mirror adapter.
 
-This module exposes a pyRTC-compatible wavefront-corrector implementation for
-ALPAO mirrors driven through the vendor SDK. The adapter translates pyRTC modal
+This module exposes a pyrtc-compatible wavefront-corrector implementation for
+ALPAO mirrors driven through the vendor SDK. The adapter translates pyrtc modal
 or zonal correction vectors into the actuator command format expected by the
 device and centralizes mirror-specific initialization such as layout discovery,
 command clipping, and optional floating-actuator masking.
@@ -20,9 +20,9 @@ import sys
 
 import numpy as np
 
-from pyRTC.logging_utils import get_logger
-from pyRTC.manager import launchComponent
-from pyRTC.WavefrontCorrector import WavefrontCorrector
+from pyrtc.logging_utils import get_logger
+from pyrtc.manager import launch_component
+from pyrtc.wavefront_corrector import WavefrontCorrector
 
 
 logger = get_logger(__name__)
@@ -48,7 +48,7 @@ class ALPAODM(WavefrontCorrector):
     """Wavefront-corrector adapter for an ALPAO deformable mirror.
 
     The class wraps the ALPAO SDK object and presents it through the standard
-    ``WavefrontCorrector`` interface used by the rest of pyRTC. It is
+    ``WavefrontCorrector`` interface used by the rest of pyrtc. It is
     responsible for discovering the mirror geometry, applying safety limits to
     outgoing commands, handling optional floating-actuator masks, and resetting
     the device on teardown.
@@ -60,43 +60,43 @@ class ALPAODM(WavefrontCorrector):
 
             self.serial = conf["serial"]
             self.dm = DM(self.serial)
-            self.CAP = self.commandCap
-            self.numActuators = int(self.dm.Get('NBOfActuator'))
+            self.CAP = self.command_cap
+            self.num_actuators = int(self.dm.Get('NBOfActuator'))
 
-            layout = self.generateLayout()
-            self.setLayout(layout)
+            layout = self.generate_layout()
+            self.set_layout(layout)
 
-            floating_file = conf.get("floatingActuatorsFile", "")
+            floating_file = conf.get("floating_actuators_file", "")
             if floating_file.endswith('.npy'):
-                floatActuatorInds = np.load(floating_file)
-                self.deactivateActuators(floatActuatorInds)
+                float_actuator_inds = np.load(floating_file)
+                self.deactivate_actuators(float_actuator_inds)
                 self.logger.info("Loaded floating actuators from %s", floating_file)
 
             self.flatten()
-            self.logger.info("Initialized ALPAO DM serial=%s actuators=%s cap=%s", self.serial, self.numActuators, self.commandCap)
+            self.logger.info("Initialized ALPAO DM serial=%s actuators=%s cap=%s", self.serial, self.num_actuators, self.command_cap)
         except Exception:
             logger.exception("Failed to initialize ALPAO DM")
             raise
 
         return
 
-    def generateLayout(self):
+    def generate_layout(self):
         try:
-            if self.numActuators == 97:
+            if self.num_actuators == 97:
                 xx, yy = np.meshgrid(np.arange(11), np.arange(11))
                 layout = np.sqrt((xx - 5)**2 + (yy - 5)**2) < 5.5
                 self.logger.info("Generated ALPAO 97-actuator layout")
                 return layout
-            raise ValueError(f"Unsupported ALPAO actuator count: {self.numActuators}")
+            raise ValueError(f"Unsupported ALPAO actuator count: {self.num_actuators}")
         except Exception:
-            self.logger.exception("Failed to generate ALPAO layout for actuators=%s", getattr(self, "numActuators", None))
+            self.logger.exception("Failed to generate ALPAO layout for actuators=%s", getattr(self, "num_actuators", None))
             raise
     
-    def sendToHardware(self):
+    def send_to_hardware(self):
         #Do all of the normal updating of the super class
-        super().sendToHardware()
+        super().send_to_hardware()
         #Send the correction to the actual mirror
-        self.dm.Send(self.currentShape)
+        self.dm.Send(self.current_shape)
         return
 
     def __del__(self):
@@ -116,4 +116,4 @@ class ALPAODM(WavefrontCorrector):
 
 if __name__ == "__main__":
 
-    launchComponent(ALPAODM, "wfc", start = True)
+    launch_component(ALPAODM, "wfc", start = True)

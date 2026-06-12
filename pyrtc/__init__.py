@@ -1,12 +1,12 @@
-"""Public package exports for pyRTC.
+"""Public package exports for pyrtc.
 
-pyRTC provides the building blocks needed to assemble an adaptive-optics real-
+pyrtc provides the building blocks needed to assemble an adaptive-optics real-
 time controller in Python. The package root re-exports the main component base
 classes, orchestration helpers, pyshmem-backed stream helpers, and logging
 utilities so users can build systems from a compact public API surface.
 """
 
-from .Loop import Loop
+from .loop import Loop
 from .component_descriptors import (
 	ComponentDescriptor,
 	ConfigFieldDescriptor,
@@ -23,10 +23,10 @@ from .component_descriptors import (
 from .config_schema import normalize_system_config, read_system_config, validate_system_config
 from .logging_utils import add_logging_cli_args, configure_logging, configure_logging_from_args, get_logger
 from .latency import LatencyReport, LatencySegment, LatencyStatistics, format_latency_report
-from .Modulator import Modulator
-from .Optimizer import Optimizer
-from .manager import RTCManager, launchComponent
-from .rpc import Listener, hardwareLauncher
+from .modulator import Modulator
+from .optimizer import Optimizer
+from .manager import RTCManager, launch_component
+from .rpc import Listener, HardwareLauncher
 from .streams import (
 	clear_shms,
 	create_stream,
@@ -34,19 +34,19 @@ from .streams import (
 	normalize_gpu_device,
 	open_stream,
 )
-from .ScienceCamera import ScienceCamera
-from .SlopesProcess import SlopesProcess
-from .Telemetry import (
+from .science_camera import ScienceCamera
+from .slopes_process import SlopesProcess
+from .telemetry import (
 	Telemetry,
 	list_telemetry_sessions,
 	load_telemetry_manifest,
 	load_telemetry_session,
 )
-from .WavefrontCorrector import WavefrontCorrector
-from .WavefrontSensor import WavefrontSensor
-from .pyRTCComponent import pyRTCComponent
-from .utils import setFromConfig
-from . import Pipeline, utils
+from .wavefront_corrector import WavefrontCorrector
+from .wavefront_sensor import WavefrontSensor
+from .component import Component
+from .utils import set_from_config
+from . import pipeline, utils
 
 __all__ = [
 	"clear_shms",
@@ -58,7 +58,7 @@ __all__ = [
 	"LatencyStatistics",
 	"Modulator",
 	"Optimizer",
-	"Pipeline",
+	"pipeline",
 	"RTCManager",
 	"ScienceCamera",
 	"SlopesProcess",
@@ -71,7 +71,7 @@ __all__ = [
 	"normalize_system_config",
 	"gpu_torch_available",
 	"get_logger",
-	"hardwareLauncher",
+	"HardwareLauncher",
 	"open_stream",
 	"read_system_config",
 	"configure_logging",
@@ -81,15 +81,15 @@ __all__ = [
 	"ComponentDescriptor",
 	"ConfigFieldDescriptor",
 	"build_descriptor_catalog",
-	"launchComponent",
+	"launch_component",
 	"describe_component_class",
 	"normalize_gpu_device",
 	"get_component_descriptor",
 	"list_component_descriptors",
 	"list_component_sections",
-	"pyRTCComponent",
+	"Component",
 	"register_component_descriptor",
-	"setFromConfig",
+	"set_from_config",
 	"StreamDescriptor",
 	"unregister_component_descriptor",
 	"validate_config_with_descriptor",

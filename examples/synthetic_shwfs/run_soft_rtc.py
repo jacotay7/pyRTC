@@ -18,11 +18,11 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 
-from pyRTC.Loop import Loop
-from pyRTC.Pipeline import clear_shms
-from pyRTC.SlopesProcess import SlopesProcess
-from pyRTC.config_schema import read_system_config
-from pyRTC.hardware.SyntheticSystems import (
+from pyrtc.loop import Loop
+from pyrtc.pipeline import clear_shms
+from pyrtc.slopes_process import SlopesProcess
+from pyrtc.config_schema import read_system_config
+from pyrtc.hardware.synthetic_systems import (
     SyntheticSHWFS,
     SyntheticScienceCamera,
     SyntheticWFC,
@@ -32,14 +32,14 @@ from pyRTC.hardware.SyntheticSystems import (
 
 
 DEFAULT_STREAMS = (
-    "wfsRaw",
+    "wfs_raw",
     "wfs",
     "signal",
-    "signal2D",
+    "signal_2d",
     "wfc",
-    "wfc2D",
-    "psfShort",
-    "psfLong",
+    "wfc_2d",
+    "psf_short",
+    "psf_long",
     "strehl",
     "tiptilt",
 )
@@ -52,13 +52,13 @@ def read_yaml_file(file_path):
 
 
 def expected_stream_specs(config: dict) -> dict:
-    from pyRTC.Pipeline import expected_output_shm_specs_for_config
+    from pyrtc.pipeline import expected_output_shm_specs_for_config
 
     return expected_output_shm_specs_for_config(config)
 
 
 def _existing_shm_spec(name: str):
-    from pyRTC.Pipeline import _existing_shm_spec as _pipeline_existing_shm_spec
+    from pyrtc.pipeline import _existing_shm_spec as _pipeline_existing_shm_spec
 
     return _pipeline_existing_shm_spec(name)
 
@@ -139,10 +139,10 @@ def stop_system(system: dict) -> None:
 
 
 def ensure_synthetic_interaction_matrix(config: dict) -> Path:
-    output_path = Path(config["loop"]["IMFile"])
-    num_modes = int(config["wfc"]["numModes"])
+    output_path = Path(config["loop"]["im_file"])
+    num_modes = int(config["wfc"]["num_modes"])
     num_regions = _signal_2d_shape(config)[1]
-    layout = _default_wfc_layout(int(config["wfc"]["numActuators"]))
+    layout = _default_wfc_layout(int(config["wfc"]["num_actuators"]))
     interaction_matrix = build_synthetic_shwfs_response_matrix(num_regions, num_modes, layout)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     np.save(output_path, interaction_matrix.astype(np.float32))
@@ -150,7 +150,7 @@ def ensure_synthetic_interaction_matrix(config: dict) -> Path:
 
 
 def _signal_2d_shape(config: dict) -> tuple[int, int]:
-    spacing = int(round(float(config["slopes"]["subApSpacing"])))
+    spacing = int(round(float(config["slopes"]["sub_ap_spacing"])))
     width = int(config["wfs"]["width"])
     height = int(config["wfs"]["height"])
     num_regions = min(width, height) // spacing

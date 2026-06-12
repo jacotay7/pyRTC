@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-"""Shared logging configuration helpers for pyRTC.
+"""Shared logging configuration helpers for pyrtc.
 
 This module defines the common logging surface used by library code, scripts,
 benchmarks, and hard-RTC child processes. It centralizes environment-variable
@@ -21,7 +21,7 @@ PYRTC_LOG_DIR_ENV = "PYRTC_LOG_DIR"
 PYRTC_LOG_FILE_ENV = "PYRTC_LOG_FILE"
 PYRTC_LOG_COLOR_ENV = "PYRTC_LOG_COLOR"
 PYRTC_LOG_CONSOLE_ENV = "PYRTC_LOG_CONSOLE"
-PYRTC_LOGGER_NAME = "pyRTC"
+PYRTC_LOGGER_NAME = "pyrtc"
 
 _LEVEL_NAMES = {
     "CRITICAL": logging.CRITICAL,
@@ -44,7 +44,7 @@ _RESET = "\033[0m"
 class _ColorFormatter(logging.Formatter):
     """Formatter that optionally colorizes the rendered log level.
 
-    Console and file handlers in pyRTC share the same structured message format.
+    Console and file handlers in pyrtc share the same structured message format.
     This formatter only changes the log-level field when color is enabled, which
     keeps terminal output easier to scan without affecting file logs.
     """

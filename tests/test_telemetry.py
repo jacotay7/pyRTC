@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-tele_mod = importlib.import_module("pyRTC.Telemetry")
+tele_mod = importlib.import_module("pyrtc.telemetry")
 
 
 def test_telemetry_save_and_read(monkeypatch, tmp_path):
@@ -20,8 +20,8 @@ def test_telemetry_save_and_read(monkeypatch, tmp_path):
 
     monkeypatch.setattr(tele_mod, "open_stream", lambda name: _SHM())
 
-    t = tele_mod.Telemetry({"dataDir": str(tmp_path), "functions": []})
-    session_path = t.save("signal", 3, uniqueStr="u")
+    t = tele_mod.Telemetry({"data_dir": str(tmp_path), "functions": []})
+    session_path = t.save("signal", 3, unique_str="u")
     arr = t.read()
     assert arr.shape == (3, 2)
     assert Path(session_path).is_dir()
@@ -59,12 +59,12 @@ def test_telemetry_save_session_supports_multi_stream_grouped_capture(monkeypatc
     }
     monkeypatch.setattr(tele_mod, "open_stream", lambda name: streams[name])
 
-    telemetry = tele_mod.Telemetry({"dataDir": str(tmp_path), "functions": [], "streams": ["signal", "wfc"]})
+    telemetry = tele_mod.Telemetry({"data_dir": str(tmp_path), "functions": [], "streams": ["signal", "wfc"]})
     session_path = telemetry.save(
         ["signal", "wfc"],
         {"signal": 2, "wfc": 1},
-        uniqueStr="group",
-        semanticTags={"signal": ["signal"], "wfc": ["wfc", "control"]},
+        unique_str="group",
+        semantic_tags={"signal": ["signal"], "wfc": ["wfc", "control"]},
         sampling={"signal": {"mode": "every_frame"}},
         config={"metadata": {"name": "synthetic"}},
         config_path=tmp_path / "config.yaml",
@@ -96,27 +96,27 @@ def test_telemetry_save_configured_streams_uses_component_config(monkeypatch, tm
             return self._data
 
     monkeypatch.setattr(tele_mod, "open_stream", lambda name: _SHM())
-    telemetry = tele_mod.Telemetry({"dataDir": str(tmp_path), "functions": [], "streams": ["signal"]})
+    telemetry = tele_mod.Telemetry({"data_dir": str(tmp_path), "functions": [], "streams": ["signal"]})
 
-    session_path = telemetry.save_configured_streams(2, uniqueStr="cfg")
+    session_path = telemetry.save_configured_streams(2, unique_str="cfg")
     loaded = telemetry.read_last_save()
 
-    assert session_path == telemetry.mostRecentSave
+    assert session_path == telemetry.most_recent_save
     assert loaded["signal"]["frames"].shape == (2, 3)
 
 
 def test_telemetry_error_paths(monkeypatch, tmp_path):
-    telemetry_module = importlib.import_module("pyRTC.Telemetry")
+    telemetry_module = importlib.import_module("pyrtc.telemetry")
 
     def bad_component_init(self, conf):
         raise RuntimeError("telemetry init failed")
 
     with monkeypatch.context() as mp:
-        mp.setattr(telemetry_module.pyRTCComponent, "__init__", bad_component_init)
+        mp.setattr(telemetry_module.Component, "__init__", bad_component_init)
         with pytest.raises(RuntimeError, match="telemetry init failed"):
             telemetry_module.Telemetry({"functions": []})
 
-    t = telemetry_module.Telemetry({"dataDir": str(tmp_path), "functions": []})
+    t = telemetry_module.Telemetry({"data_dir": str(tmp_path), "functions": []})
 
     monkeypatch.setattr(telemetry_module, "open_stream", lambda name: (_ for _ in ()).throw(RuntimeError("missing shm")))
     with pytest.raises(RuntimeError, match="missing shm"):
@@ -150,7 +150,7 @@ def test_telemetry_error_paths(monkeypatch, tmp_path):
     with pytest.raises(FileNotFoundError, match="Telemetry capture file not found"):
         telemetry_module.load_telemetry_session(session_path)
 
-    empty_telemetry = telemetry_module.Telemetry({"dataDir": str(tmp_path / "empty"), "functions": []})
+    empty_telemetry = telemetry_module.Telemetry({"data_dir": str(tmp_path / "empty"), "functions": []})
     with pytest.raises(ValueError, match="no configured streams"):
         empty_telemetry.save_configured_streams(1)
 

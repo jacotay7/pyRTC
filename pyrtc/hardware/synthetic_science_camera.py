@@ -1,8 +1,8 @@
 """Launchable hard-RTC entry point for the synthetic science-camera adapter."""
 
-from pyRTC.manager import launchComponent
-from pyRTC.hardware.SyntheticSystems import SyntheticScienceCamera
+from pyrtc.manager import launch_component
+from pyrtc.hardware.synthetic_systems import SyntheticScienceCamera
 
 
 if __name__ == "__main__":
-    launchComponent(SyntheticScienceCamera, "psf", start=True)
+    launch_component(SyntheticScienceCamera, "psf", start=True)

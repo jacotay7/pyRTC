@@ -15,9 +15,9 @@ from pathlib import Path
 import numpy as np
 from benchmarks.core_compute_bench import run_core_compute_benchmarks
 
-from pyRTC.logging_utils import add_logging_cli_args, configure_logging_from_args, get_logger
-from pyRTC.scripts.measure_latency import compute_latency_seconds
-from pyRTC.utils import measure_execution_time
+from pyrtc.logging_utils import add_logging_cli_args, configure_logging_from_args, get_logger
+from pyrtc.scripts.measure_latency import compute_latency_seconds
+from pyrtc.utils import measure_execution_time
 
 
 logger = get_logger(__name__)
@@ -78,7 +78,7 @@ def _benchmark_latency_math(num_samples: int):
 
 
 def _build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Run lightweight pyRTC performance smoke checks.")
+    parser = argparse.ArgumentParser(description="Run lightweight pyrtc performance smoke checks.")
     parser.add_argument("--output", type=str, default="benchmarks/perf_smoke_report.json", help="JSON output path")
     parser.add_argument("--num-iters", type=int, default=200, help="Iterations for measure_execution_time benchmark")
     parser.add_argument("--num-samples", type=int, default=10000, help="Sample size for latency math benchmark")

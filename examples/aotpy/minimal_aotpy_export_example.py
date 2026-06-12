@@ -1,4 +1,4 @@
-"""Minimal pyRTC -> AOTPy export example.
+"""Minimal pyrtc -> AOTPy export example.
 
 This example is intentionally small and self-contained.
 It does not require a running RTC system or shared-memory streams.
@@ -34,7 +34,7 @@ except ImportError:
     import aotpy
 
 
-from pyRTC.exporters.aotpy_export import export_telemetry_session_to_aotpy, telemetry_session_to_aotpy
+from pyrtc.exporters.aotpy_export import export_telemetry_session_to_aotpy, telemetry_session_to_aotpy
 
 
 EXAMPLE_DIR = Path(__file__).resolve().parent
@@ -111,7 +111,7 @@ def create_fake_telemetry_stream(session_dir: Path) -> Path:
         ),
         write_stream(
             session_dir,
-            "psfShort",
+            "psf_short",
             frames=np.stack(
                 [
                     np.eye(8, dtype=np.int32),
@@ -127,7 +127,7 @@ def create_fake_telemetry_stream(session_dir: Path) -> Path:
         "schema_version": 1,
         "session_id": "minimal-example-session",
         "created_at": "2026-03-09T12:00:00Z",
-        "pyRTC_version": "1.0.0",
+        "pyrtc_version": "1.0.0",
         "host": {
             "hostname": "example-host",
             "platform": "example-platform",
@@ -136,8 +136,8 @@ def create_fake_telemetry_stream(session_dir: Path) -> Path:
         "config_path": None,
         "config": {
             "metadata": {"name": "Minimal AOTPy Export Example"},
-            "slopes": {"type": "SHWFS", "signalType": "slopes"},
-            "wfc": {"numModes": 2},
+            "slopes": {"type": "SHWFS", "signal_type": "slopes"},
+            "wfc": {"num_modes": 2},
             "loop": {"gain": 0.35},
         },
         "metadata": {"operator": "example-script"},

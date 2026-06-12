@@ -2,17 +2,17 @@ from importlib import import_module
 
 
 _EXPORTS = {
-    "ALPAODM": (".ALPAODM", "ALPAODM"),
-    "SPECULAInterface": (".SPECULAInterface", "SPECULAInterface"),
-    "spinCam": (".SpinnakerScienceCam", "spinCam"),
-    "XIMEA_WFS": (".ximeaWFS", "XIMEA_WFS"),
-    "PIModulator": (".PIModulator", "PIModulator"),
-    "NCPAOptimizer": (".NCPAOptimizer", "NCPAOptimizer"),
-    "PIDOptimizer": (".PIDOptimizer", "PIDOptimizer"),
-    "SyntheticSHWFS": (".SyntheticSystems", "SyntheticSHWFS"),
-    "SyntheticScienceCamera": (".SyntheticSystems", "SyntheticScienceCamera"),
-    "SyntheticWFC": (".SyntheticSystems", "SyntheticWFC"),
-    "loopOptimizer": (".loopHyperparamsOptimizer", "loopOptimizer"),
+    "ALPAODM": (".alpao_dm", "ALPAODM"),
+    "SPECULAInterface": (".specula_interface", "SPECULAInterface"),
+    "SpinCam": (".spinnaker_science_cam", "SpinCam"),
+    "XIMEA_WFS": (".ximea_wfs", "XIMEA_WFS"),
+    "PIModulator": (".pi_modulator", "PIModulator"),
+    "NCPAOptimizer": (".ncpa_optimizer", "NCPAOptimizer"),
+    "PIDOptimizer": (".pid_optimizer", "PIDOptimizer"),
+    "SyntheticSHWFS": (".synthetic_systems", "SyntheticSHWFS"),
+    "SyntheticScienceCamera": (".synthetic_systems", "SyntheticScienceCamera"),
+    "SyntheticWFC": (".synthetic_systems", "SyntheticWFC"),
+    "LoopOptimizer": (".loop_hyperparams_optimizer", "LoopOptimizer"),
 }
 
 __all__ = list(_EXPORTS)
@@ -27,7 +27,7 @@ def __getattr__(name):
         module = import_module(module_name, __name__)
     except Exception as exc:
         raise ImportError(
-            f"Unable to import pyRTC.hardware.{name}. This usually means the required "
+            f"Unable to import pyrtc.hardware.{name}. This usually means the required "
             f"vendor SDK or optional dependency is not installed. Original error: {exc}"
         ) from exc
 

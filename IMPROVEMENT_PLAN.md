@@ -1,4 +1,4 @@
-# pyRTC Improvement Plan
+# pyrtc Improvement Plan
 
 Status tracker for the post-pyshmem-migration cleanup. Grounded in the README's
 stated goals: performance as a primary design constraint, the synthetic SHWFS
@@ -15,15 +15,15 @@ plus the second gate extension round (Loop/SlopesProcess/manager) noted in D9.
 ## A. Front door (user-visible bugs in the advertised quick start)
 
 - [x] **A1 — `manager.latency()` crashes in the flagship tutorial.** *Fixed.*
-  Root causes (all pre-existing): (1) `classFile` entries pointing at files
-  inside the pyRTC package were exec'd as duplicate modules, producing class
-  objects that missed the descriptor registry — `pyRTC/component_loading.py`
+  Root causes (all pre-existing): (1) `class_file` entries pointing at files
+  inside the pyrtc package were exec'd as duplicate modules, producing class
+  objects that missed the descriptor registry — `pyrtc/component_loading.py`
   now resolves them to canonical modules and is the single implementation
   shared by `config_schema`, `config_runtime`, and the manager (was 3 copies);
   (2) bare-name lookup could return a shadowing submodule instead of the
-  class (`pyRTC/hardware/SyntheticSHWFS.py` file vs `SyntheticSHWFS` class) —
+  class (`pyrtc/hardware/synthetic_shwfs.py` file vs `SyntheticSHWFS` class) —
   lookup now skips modules and sees through the shadow; (3) relative
-  `classFile` paths were resolved against the CWD — `validate_system_config`
+  `class_file` paths were resolved against the CWD — `validate_system_config`
   now resolves all relative path fields against the config file's directory
   *before* validation. Regression tests in `tests/test_manager.py`.
 
@@ -34,17 +34,17 @@ plus the second gate extension round (Loop/SlopesProcess/manager) noted in D9.
   30`) exactly like a real AO system: residual RMS 0.99 → 0.010, Strehl
   0.25 → 0.97, in both soft and hard (RPC-driven) tutorials.
   `ensure_identity_interaction_matrix` → `ensure_synthetic_interaction_matrix`;
-  `SyntheticWFC.sync_system_config` publishes `displayGridSize` so SHM
+  `SyntheticWFC.sync_system_config` publishes `display_grid_size` so SHM
   planning matches the synthetic layout. Regression test:
   `tests/system/test_synthetic_convergence.py` (closed < 0.5 × open RMS).
 
 ## B. Performance (the README's #1 design constraint)
 
 - [x] **B3 — Zero-alloc hot-path reads.** *Done.* pyshmem 1.0.5 forwards
-  `out=` through `read_new()`/`read_new_async()` (tested); pyRTC
+  `out=` through `read_new()`/`read_new_async()` (tested); pyrtc
   `read_stream(..., out=)` forwards it, and preallocated buffers are used in
-  `SlopesProcess.computeSignal` (full WFS image), all `Loop` integrators
-  (signal + wfc), and `WavefrontCorrector.sendToHardware` (wfc). `out=` is
+  `SlopesProcess.compute_signal` (full WFS image), all `Loop` integrators
+  (signal + wfc), and `WavefrontCorrector.send_to_hardware` (wfc). `out=` is
   ignored for GPU-attached streams by design.
 
 - [x] **B4 — Perf baseline gate in CI.** *Done.* The checker previously only
@@ -57,16 +57,16 @@ plus the second gate extension round (Loop/SlopesProcess/manager) noted in D9.
 
 - [ ] **B5 — Profile the per-write lock.** Benchmarks show no regression
   today (baseline ratio ~1.01). Revisit only if 60x60-GPU-scale profiles show
-  the flock; the fix would be a designed pyshmem addition, not a pyRTC
+  the flock; the fix would be a designed pyshmem addition, not a pyrtc
   workaround.
 
 ## C. Architecture and code health
 
 - [x] **C6 — Split `Pipeline.py`.** *Done.* Implementation now lives in:
-  `pyRTC/streams.py` (pyshmem stream policy + SHM planning), `pyRTC/rpc.py`
-  (`hardwareLauncher`/`Listener` JSON socket protocol), `pyRTC/manager.py`
-  (component runtimes, `RTCManager`, `launchComponent`, `work`), and
-  `pyRTC/component_loading.py` (class resolution). `pyRTC.Pipeline` is a
+  `pyrtc/streams.py` (pyshmem stream policy + SHM planning), `pyrtc/rpc.py`
+  (`hardwareLauncher`/`Listener` JSON socket protocol), `pyrtc/manager.py`
+  (component runtimes, `RTCManager`, `launch_component`, `work`), and
+  `pyrtc/component_loading.py` (class resolution). `pyrtc.pipeline` is a
   re-export shim kept for one release; all internal imports use the new
   modules. Tests that monkeypatch by module path were retargeted.
 
@@ -75,8 +75,8 @@ plus the second gate extension round (Loop/SlopesProcess/manager) noted in D9.
   (booleans round-trip; `_coerce_property_value`), `run` passes an explicit
   `args` list and returns JSON-serializable results (NumPy converted via
   `item()`/`tolist()`), child error strings propagate to
-  `hardwareLauncher.lastError`, `run(..., timeout=)` applies a per-call
-  socket timeout (the hard tutorial now uses it for `computeIM`), and the
+  `hardwareLauncher.last_error`, `run(..., timeout=)` applies a per-call
+  socket timeout (the hard tutorial now uses it for `compute_im`), and the
   listener stops cleanly on RTC disconnect instead of raising
   `BrokenPipeError`. `Listener.handle_request` is pure/testable;
   `tests/test_rpc.py` covers dispatch, coercion, lifecycle, and a
@@ -124,7 +124,7 @@ plus the second gate extension round (Loop/SlopesProcess/manager) noted in D9.
 
 - `python -m pytest` (coverage-gated suite) and `pytest tests/system
   tests/notebooks -q --no-cov`
-- `ruff check pyRTC tests benchmarks examples`
+- `ruff check pyrtc tests benchmarks examples`
 - `pyrtc-ao-loop-bench` + `benchmarks/check_perf_baseline.py` against the
   committed baseline (confirm B3 didn't regress; last pre-B3 run was ratio
   ~1.01)
@@ -136,21 +136,21 @@ plus the second gate extension round (Loop/SlopesProcess/manager) noted in D9.
 - [ ] **F1 — Standardize naming to snake_case across the entire repository
   (no backwards compatibility).** Eliminate camelCase everywhere:
   - **Python identifiers**: functions, methods, attributes, and locals
-    (`launchComponent` → `launch_component`, `getProperty` → `get_property`,
-    `computeIM` → `compute_im`, `numModes` → `num_modes`,
+    (`launch_component` → `launch_component`, `get_property` → `get_property`,
+    `compute_im` → `compute_im`, `num_modes` → `num_modes`,
     `hardwareLauncher` → rename class to `HardwareLauncher` or fold into the
     rpc rename, …). Class names stay PEP 8 `CapWords`.
   - **Config keys** in YAML system configs and `component_descriptors`
-    (`gpuDevice` → `gpu_device`, `IMFile` → `im_file`,
-    `numDroppedModes` → `num_dropped_modes`, `inputStreams` →
+    (`gpu_device` → `gpu_device`, `im_file` → `im_file`,
+    `num_dropped_modes` → `num_dropped_modes`, `input_streams` →
     `input_streams`, …) with all example configs and validation updated
     together. No alias layer — old keys become validation errors.
   - **Module filenames**: `WavefrontSensor.py` → `wavefront_sensor.py` etc.,
-    updating imports, `componentFiles` entries, docs, and CI references.
+    updating imports, `component_files` entries, docs, and CI references.
   - **Open question to settle before starting**: whether the import package
     itself becomes lowercase `pyrtc` (full consistency, matches the
     user-facing name; CLAUDE.md currently says the import name stays
-    `pyRTC`).
+    `pyrtc`).
   - Suggested order: (1) config keys + descriptors, (2) Python identifiers
     module-by-module with the test suite green after each, (3) module/file
     renames, (4) docs/README/CLAUDE.md sweep. Each phase is a separate
@@ -161,7 +161,7 @@ plus the second gate extension round (Loop/SlopesProcess/manager) noted in D9.
 
 Only two things could not be expressed with pyshmem's native API during the
 migration; neither is needed today. If profiling or features ever demand
-them, design them properly in pyshmem rather than working around it in pyRTC:
+them, design them properly in pyshmem rather than working around it in pyrtc:
 
 1. **Per-frame provenance metadata** — only if frame-accurate cross-process
    lineage becomes a requirement again (the old root/upstream timestamps were

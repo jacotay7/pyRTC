@@ -1,29 +1,29 @@
-import pyRTC
+import pyrtc
 
 
 def test_package_root_imports():
-    assert pyRTC.Loop is not None
-    assert pyRTC.RTCManager is not None
-    assert pyRTC.WavefrontSensor is not None
-    assert pyRTC.WavefrontCorrector is not None
-    assert pyRTC.SlopesProcess is not None
-    assert pyRTC.ScienceCamera is not None
-    assert pyRTC.Optimizer is not None
-    assert pyRTC.Telemetry is not None
-    assert pyRTC.ComponentDescriptor is not None
-    assert pyRTC.ConfigFieldDescriptor is not None
-    assert pyRTC.get_component_descriptor is not None
+    assert pyrtc.loop is not None
+    assert pyrtc.RTCManager is not None
+    assert pyrtc.wavefront_sensor is not None
+    assert pyrtc.wavefront_corrector is not None
+    assert pyrtc.slopes_process is not None
+    assert pyrtc.science_camera is not None
+    assert pyrtc.optimizer is not None
+    assert pyrtc.telemetry is not None
+    assert pyrtc.ComponentDescriptor is not None
+    assert pyrtc.ConfigFieldDescriptor is not None
+    assert pyrtc.get_component_descriptor is not None
 
 
 def test_package_exposes_module_helpers():
-    assert pyRTC.Pipeline is not None
-    assert pyRTC.utils is not None
-    assert callable(pyRTC.setFromConfig)
-    assert callable(pyRTC.launchComponent)
-    assert callable(pyRTC.open_stream)
-    assert callable(pyRTC.create_stream)
-    assert callable(pyRTC.build_descriptor_catalog)
-    assert callable(pyRTC.describe_component_class)
-    assert callable(pyRTC.list_component_descriptors)
-    assert callable(pyRTC.register_component_descriptor)
-    assert callable(pyRTC.validate_config_with_descriptor)
+    assert pyrtc.pipeline is not None
+    assert pyrtc.utils is not None
+    assert callable(pyrtc.set_from_config)
+    assert callable(pyrtc.launch_component)
+    assert callable(pyrtc.open_stream)
+    assert callable(pyrtc.create_stream)
+    assert callable(pyrtc.build_descriptor_catalog)
+    assert callable(pyrtc.describe_component_class)
+    assert callable(pyrtc.list_component_descriptors)
+    assert callable(pyrtc.register_component_descriptor)
+    assert callable(pyrtc.validate_config_with_descriptor)

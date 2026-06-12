@@ -1,4 +1,4 @@
-"""Descriptor metadata for pyRTC components.
+"""Descriptor metadata for pyrtc components.
 
 The descriptor model captures the stable, machine-readable information that
 future manager, GUI, and plugin layers need: config fields, worker functions,
@@ -10,12 +10,12 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field
 from typing import Any, Mapping, Type
 
-from pyRTC.Loop import Loop
-from pyRTC.ScienceCamera import ScienceCamera
-from pyRTC.SlopesProcess import SlopesProcess
-from pyRTC.Telemetry import Telemetry
-from pyRTC.WavefrontCorrector import WavefrontCorrector
-from pyRTC.WavefrontSensor import WavefrontSensor
+from pyrtc.loop import Loop
+from pyrtc.science_camera import ScienceCamera
+from pyrtc.slopes_process import SlopesProcess
+from pyrtc.telemetry import Telemetry
+from pyrtc.wavefront_corrector import WavefrontCorrector
+from pyrtc.wavefront_sensor import WavefrontSensor
 
 
 @dataclass(frozen=True)
@@ -66,7 +66,7 @@ class ConfigFieldDescriptor:
 
 @dataclass(frozen=True)
 class StreamDescriptor:
-    """Describe one named pyRTC stream used by a component."""
+    """Describe one named pyrtc stream used by a component."""
 
     name: str
     direction: str
@@ -217,22 +217,22 @@ BUILTIN_COMPONENT_DESCRIPTORS: tuple[ComponentDescriptor, ...] = (
         ),
         optional_fields=(
             ConfigFieldDescriptor("name", "str", "Component display name.", default="wavefrontSensor"),
-            ConfigFieldDescriptor("darkCount", "int", "Number of exposures to average for dark acquisition.", default=1000, minimum=0),
-            ConfigFieldDescriptor("darkFile", "str", "Path to a persisted dark frame.", default=""),
-            ConfigFieldDescriptor("downsampleFactor", "int", "Integer factor applied to the processed image.", default=0, minimum=0),
-            ConfigFieldDescriptor("rotationAngle", "float", "Rotation angle in degrees applied to the processed image.", default=0.0),
+            ConfigFieldDescriptor("dark_count", "int", "Number of exposures to average for dark acquisition.", default=1000, minimum=0),
+            ConfigFieldDescriptor("dark_file", "str", "Path to a persisted dark frame.", default=""),
+            ConfigFieldDescriptor("downsample_factor", "int", "Integer factor applied to the processed image.", default=0, minimum=0),
+            ConfigFieldDescriptor("rotation_angle", "float", "Rotation angle in degrees applied to the processed image.", default=0.0),
             ConfigFieldDescriptor("functions", "list[str]", "Worker methods started in component threads.", default=[]),
             ConfigFieldDescriptor("affinity", "int", "Base CPU affinity for the component.", default=0),
-            ConfigFieldDescriptor("gpuDevice", "str | None", "Optional GPU device identifier.", default=None),
+            ConfigFieldDescriptor("gpu_device", "str | None", "Optional GPU device identifier.", default=None),
         ),
         worker_functions=("expose",),
         input_streams=(),
         output_streams=(
-            StreamDescriptor("wfsRaw", "output", dtype="uint16", shape="(width, height)", description="Raw WFS image stream."),
+            StreamDescriptor("wfs_raw", "output", dtype="uint16", shape="(width, height)", description="Raw WFS image stream."),
             StreamDescriptor("wfs", "output", dtype="int32", shape="(processed_width, processed_height)", description="Dark-subtracted processed WFS image stream."),
         ),
         supports_hard_rtc=True,
-        calibration_artifacts=("darkFile",),
+        calibration_artifacts=("dark_file",),
     ),
     ComponentDescriptor(
         section_name="slopes",
@@ -241,35 +241,35 @@ BUILTIN_COMPONENT_DESCRIPTORS: tuple[ComponentDescriptor, ...] = (
         description="Signal reduction stage that converts WFS images into slopes or related wavefront signals.",
         required_fields=(
             ConfigFieldDescriptor("type", "str", "Wavefront-sensor reduction mode such as SHWFS or PYWFS.", required=True, choices=("SHWFS", "PYWFS")),
-            ConfigFieldDescriptor("signalType", "str", "Signal representation produced by the reducer.", required=True),
+            ConfigFieldDescriptor("signal_type", "str", "Signal representation produced by the reducer.", required=True),
         ),
         optional_fields=(
-            ConfigFieldDescriptor("imageNoise", "float", "Configured image noise estimate.", default=0.0, minimum=0.0),
-            ConfigFieldDescriptor("centralObscurationRatio", "float", "Central obscuration ratio used by PYWFS paths.", default=0.0, minimum=0.0),
-            ConfigFieldDescriptor("flatNorm", "bool", "Whether to normalize the PYWFS flat.", default=True),
+            ConfigFieldDescriptor("image_noise", "float", "Configured image noise estimate.", default=0.0, minimum=0.0),
+            ConfigFieldDescriptor("central_obscuration_ratio", "float", "Central obscuration ratio used by PYWFS paths.", default=0.0, minimum=0.0),
+            ConfigFieldDescriptor("flat_norm", "bool", "Whether to normalize the PYWFS flat.", default=True),
             ConfigFieldDescriptor("pupils", "list[str]", "Pupil centers for PYWFS in 'x,y' form.", default=[]),
-            ConfigFieldDescriptor("pupilsRadius", "int", "Pupil radius for explicit PYWFS geometry.", default=None, minimum=1),
+            ConfigFieldDescriptor("pupils_radius", "int", "Pupil radius for explicit PYWFS geometry.", default=None, minimum=1),
             ConfigFieldDescriptor("contrast", "float", "SHWFS contrast parameter.", default=0.0),
-            ConfigFieldDescriptor("subApSpacing", "float", "Sub-aperture spacing for SHWFS layouts.", default=None, minimum=1),
-            ConfigFieldDescriptor("subApOffsetX", "int", "SHWFS X offset in pixels.", default=0, minimum=0),
-            ConfigFieldDescriptor("subApOffsetY", "int", "SHWFS Y offset in pixels.", default=0, minimum=0),
-            ConfigFieldDescriptor("refSlopeCount", "int", "Number of frames used to average reference slopes.", default=1000, minimum=1),
-            ConfigFieldDescriptor("validSubApsFile", "str", "Path to the valid sub-aperture mask file.", default=""),
-            ConfigFieldDescriptor("refSlopesFile", "str", "Path to the reference slopes file.", default=""),
+            ConfigFieldDescriptor("sub_ap_spacing", "float", "Sub-aperture spacing for SHWFS layouts.", default=None, minimum=1),
+            ConfigFieldDescriptor("sub_ap_offset_x", "int", "SHWFS X offset in pixels.", default=0, minimum=0),
+            ConfigFieldDescriptor("sub_ap_offset_y", "int", "SHWFS Y offset in pixels.", default=0, minimum=0),
+            ConfigFieldDescriptor("ref_slope_count", "int", "Number of frames used to average reference slopes.", default=1000, minimum=1),
+            ConfigFieldDescriptor("valid_sub_aps_file", "str", "Path to the valid sub-aperture mask file.", default=""),
+            ConfigFieldDescriptor("ref_slopes_file", "str", "Path to the reference slopes file.", default=""),
             ConfigFieldDescriptor("functions", "list[str]", "Worker methods started in component threads.", default=[]),
             ConfigFieldDescriptor("affinity", "int", "Base CPU affinity for the component.", default=0),
-            ConfigFieldDescriptor("gpuDevice", "str | None", "Optional GPU device identifier.", default=None),
+            ConfigFieldDescriptor("gpu_device", "str | None", "Optional GPU device identifier.", default=None),
         ),
-        worker_functions=("computeSignal",),
+        worker_functions=("compute_signal",),
         input_streams=(
             StreamDescriptor("wfs", "input", dtype="int32", shape="(processed_width, processed_height)", description="Processed wavefront-sensor image stream."),
         ),
         output_streams=(
             StreamDescriptor("signal", "output", dtype="float32", shape="(signal_size,)", description="Flattened residual signal stream."),
-            StreamDescriptor("signal2D", "output", dtype="float32", shape="(signal_rows, signal_cols)", description="2D visualization of the residual signal."),
+            StreamDescriptor("signal_2d", "output", dtype="float32", shape="(signal_rows, signal_cols)", description="2D visualization of the residual signal."),
         ),
         supports_hard_rtc=True,
-        calibration_artifacts=("validSubApsFile", "refSlopesFile"),
+        calibration_artifacts=("valid_sub_aps_file", "ref_slopes_file"),
     ),
     ComponentDescriptor(
         section_name="loop",
@@ -278,38 +278,38 @@ BUILTIN_COMPONENT_DESCRIPTORS: tuple[ComponentDescriptor, ...] = (
         description="Adaptive-optics controller that converts residual signals into correction commands.",
         required_fields=(),
         optional_fields=(
-            ConfigFieldDescriptor("numDroppedModes", "int", "Number of controlled modes to suppress.", default=0, minimum=0),
-            ConfigFieldDescriptor("CMMethod", "str", "Control-matrix inversion method ('svd' or 'tikhonov').", default="svd"),
+            ConfigFieldDescriptor("num_dropped_modes", "int", "Number of controlled modes to suppress.", default=0, minimum=0),
+            ConfigFieldDescriptor("cm_method", "str", "Control-matrix inversion method ('svd' or 'tikhonov').", default="svd"),
             ConfigFieldDescriptor("conditioning", "float | None", "Optional target conditioning number used to truncate small singular values.", default=None, minimum=1.0),
-            ConfigFieldDescriptor("tikhonovReg", "float", "Tikhonov regularization strength used when CMMethod is 'tikhonov'.", default=0.0, minimum=0.0),
+            ConfigFieldDescriptor("tikhonov_reg", "float", "Tikhonov regularization strength used when cm_method is 'tikhonov'.", default=0.0, minimum=0.0),
             ConfigFieldDescriptor("gain", "float", "Integrator gain.", default=0.1),
-            ConfigFieldDescriptor("leakyGain", "float", "Leaky-integrator gain.", default=0.0),
-            ConfigFieldDescriptor("hardwareDelay", "float", "Estimated hardware delay.", default=0.0, minimum=0.0),
-            ConfigFieldDescriptor("pokeAmp", "float", "Calibration poke amplitude.", default=1e-2, minimum=0.0),
-            ConfigFieldDescriptor("numItersIM", "int", "Interaction-matrix calibration iteration count.", default=100, minimum=1),
+            ConfigFieldDescriptor("leaky_gain", "float", "Leaky-integrator gain.", default=0.0),
+            ConfigFieldDescriptor("hardware_delay", "float", "Estimated hardware delay.", default=0.0, minimum=0.0),
+            ConfigFieldDescriptor("poke_amp", "float", "Calibration poke amplitude.", default=1e-2, minimum=0.0),
+            ConfigFieldDescriptor("num_iters_im", "int", "Interaction-matrix calibration iteration count.", default=100, minimum=1),
             ConfigFieldDescriptor("delay", "int", "Artificial delay in frames.", default=0, minimum=0),
-            ConfigFieldDescriptor("IMMethod", "str", "Interaction-matrix calibration method.", default="push-pull"),
-            ConfigFieldDescriptor("IMFile", "str", "Path to the interaction-matrix file.", default=""),
-            ConfigFieldDescriptor("pGain", "float", "PID proportional gain.", default=0.1),
-            ConfigFieldDescriptor("iGain", "float", "PID integral gain.", default=0.0),
-            ConfigFieldDescriptor("dGain", "float", "PID derivative gain.", default=0.0),
-            ConfigFieldDescriptor("controlLimits", "list[float]", "PID control output limits.", default=[float("-inf"), float("inf")]),
-            ConfigFieldDescriptor("integralLimits", "list[float]", "PID integral limits.", default=[float("-inf"), float("inf")]),
-            ConfigFieldDescriptor("absoluteLimits", "list[float]", "Absolute correction limits.", default=[float("-inf"), float("inf")]),
-            ConfigFieldDescriptor("derivativeFilter", "float", "PID derivative filter coefficient.", default=0.1),
+            ConfigFieldDescriptor("im_method", "str", "Interaction-matrix calibration method.", default="push-pull"),
+            ConfigFieldDescriptor("im_file", "str", "Path to the interaction-matrix file.", default=""),
+            ConfigFieldDescriptor("p_gain", "float", "PID proportional gain.", default=0.1),
+            ConfigFieldDescriptor("i_gain", "float", "PID integral gain.", default=0.0),
+            ConfigFieldDescriptor("d_gain", "float", "PID derivative gain.", default=0.0),
+            ConfigFieldDescriptor("control_limits", "list[float]", "PID control output limits.", default=[float("-inf"), float("inf")]),
+            ConfigFieldDescriptor("integral_limits", "list[float]", "PID integral limits.", default=[float("-inf"), float("inf")]),
+            ConfigFieldDescriptor("absolute_limits", "list[float]", "Absolute correction limits.", default=[float("-inf"), float("inf")]),
+            ConfigFieldDescriptor("derivative_filter", "float", "PID derivative filter coefficient.", default=0.1),
             ConfigFieldDescriptor("functions", "list[str]", "Worker methods started in component threads.", default=[]),
             ConfigFieldDescriptor("affinity", "int", "Base CPU affinity for the component.", default=0),
-            ConfigFieldDescriptor("gpuDevice", "str | None", "Optional GPU device identifier.", default=None),
+            ConfigFieldDescriptor("gpu_device", "str | None", "Optional GPU device identifier.", default=None),
         ),
-        worker_functions=("standardIntegrator", "standardIntegratorPOL", "leakyIntegrator", "pidIntegrator", "pidIntegratorPOL"),
+        worker_functions=("standard_integrator", "standard_integrator_pol", "leaky_integrator", "pid_integrator", "pid_integrator_pol"),
         input_streams=(
             StreamDescriptor("signal", "input", dtype="float32", shape="(signal_size,)", description="Residual signal from slopes processing."),
         ),
         output_streams=(
-            StreamDescriptor("wfc", "output", dtype="float32", shape="(numModes,)", description="Modal correction vector sent to the wavefront corrector."),
+            StreamDescriptor("wfc", "output", dtype="float32", shape="(num_modes,)", description="Modal correction vector sent to the wavefront corrector."),
         ),
         supports_hard_rtc=True,
-        calibration_artifacts=("IMFile",),
+        calibration_artifacts=("im_file",),
     ),
     ComponentDescriptor(
         section_name="wfc",
@@ -318,29 +318,29 @@ BUILTIN_COMPONENT_DESCRIPTORS: tuple[ComponentDescriptor, ...] = (
         description="Wavefront-corrector interface that maps modal commands into actuator space and hardware updates.",
         required_fields=(
             ConfigFieldDescriptor("name", "str", "Component display name.", required=True),
-            ConfigFieldDescriptor("numActuators", "int", "Number of actuators in zonal space.", required=True, minimum=1),
-            ConfigFieldDescriptor("numModes", "int", "Number of controlled modes in modal space.", required=True, minimum=1),
+            ConfigFieldDescriptor("num_actuators", "int", "Number of actuators in zonal space.", required=True, minimum=1),
+            ConfigFieldDescriptor("num_modes", "int", "Number of controlled modes in modal space.", required=True, minimum=1),
         ),
         optional_fields=(
-            ConfigFieldDescriptor("m2cFile", "str", "Path to the mode-to-command matrix.", default=""),
-            ConfigFieldDescriptor("flatFile", "str", "Path to the flat shape file.", default=""),
-            ConfigFieldDescriptor("floatingInfluenceRadius", "int", "Radius used when floating inactive actuators.", default=1, minimum=0),
-            ConfigFieldDescriptor("frameDelay", "int", "Artificial frame delay in actuator space.", default=0, minimum=0),
-            ConfigFieldDescriptor("saveFile", "str", "Path used when saving a zonal shape.", default="wfcShape.npy"),
+            ConfigFieldDescriptor("m2c_file", "str", "Path to the mode-to-command matrix.", default=""),
+            ConfigFieldDescriptor("flat_file", "str", "Path to the flat shape file.", default=""),
+            ConfigFieldDescriptor("floating_influence_radius", "int", "Radius used when floating inactive actuators.", default=1, minimum=0),
+            ConfigFieldDescriptor("frame_delay", "int", "Artificial frame delay in actuator space.", default=0, minimum=0),
+            ConfigFieldDescriptor("save_file", "str", "Path used when saving a zonal shape.", default="wfc_shape.npy"),
             ConfigFieldDescriptor("functions", "list[str]", "Worker methods started in component threads.", default=[]),
             ConfigFieldDescriptor("affinity", "int", "Base CPU affinity for the component.", default=0),
-            ConfigFieldDescriptor("gpuDevice", "str | None", "Optional GPU device identifier.", default=None),
+            ConfigFieldDescriptor("gpu_device", "str | None", "Optional GPU device identifier.", default=None),
         ),
-        worker_functions=("sendToHardware",),
+        worker_functions=("send_to_hardware",),
         input_streams=(
-            StreamDescriptor("wfc", "input", dtype="float32", shape="(numModes,)", description="Modal correction vector from the loop controller."),
+            StreamDescriptor("wfc", "input", dtype="float32", shape="(num_modes,)", description="Modal correction vector from the loop controller."),
         ),
         output_streams=(
-            StreamDescriptor("wfc", "output", dtype="float32", shape="(numModes,)", description="Published correction vector for readers and launchers."),
-            StreamDescriptor("wfc2D", "output", dtype="float32", shape="layout.shape", optional=True, description="Optional 2D actuator-layout visualization stream."),
+            StreamDescriptor("wfc", "output", dtype="float32", shape="(num_modes,)", description="Published correction vector for readers and launchers."),
+            StreamDescriptor("wfc_2d", "output", dtype="float32", shape="layout.shape", optional=True, description="Optional 2D actuator-layout visualization stream."),
         ),
         supports_hard_rtc=True,
-        calibration_artifacts=("m2cFile", "flatFile"),
+        calibration_artifacts=("m2c_file", "flat_file"),
     ),
     ComponentDescriptor(
         section_name="psf",
@@ -351,38 +351,38 @@ BUILTIN_COMPONENT_DESCRIPTORS: tuple[ComponentDescriptor, ...] = (
             ConfigFieldDescriptor("name", "str", "Component display name.", required=True),
             ConfigFieldDescriptor("width", "int", "Image width in pixels.", required=True, minimum=1),
             ConfigFieldDescriptor("height", "int", "Image height in pixels.", required=True, minimum=1),
-            ConfigFieldDescriptor("darkCount", "int", "Number of exposures to average for dark acquisition.", required=True, minimum=1),
+            ConfigFieldDescriptor("dark_count", "int", "Number of exposures to average for dark acquisition.", required=True, minimum=1),
             ConfigFieldDescriptor("integration", "int", "Number of frames averaged for the long-exposure PSF.", required=True, minimum=1),
         ),
         optional_fields=(
-            ConfigFieldDescriptor("darkFile", "str", "Path to a persisted dark frame.", default=""),
-            ConfigFieldDescriptor("modelFile", "str", "Path to a model PSF file.", default=""),
+            ConfigFieldDescriptor("dark_file", "str", "Path to a persisted dark frame.", default=""),
+            ConfigFieldDescriptor("model_file", "str", "Path to a model PSF file.", default=""),
             ConfigFieldDescriptor("functions", "list[str]", "Worker methods started in component threads.", default=[]),
             ConfigFieldDescriptor("affinity", "int", "Base CPU affinity for the component.", default=0),
-            ConfigFieldDescriptor("gpuDevice", "str | None", "Optional GPU device identifier.", default=None),
+            ConfigFieldDescriptor("gpu_device", "str | None", "Optional GPU device identifier.", default=None),
         ),
         worker_functions=("expose", "integrate"),
         input_streams=(),
         output_streams=(
-            StreamDescriptor("psfShort", "output", dtype="int32", shape="(width, height)", description="Short-exposure PSF image stream."),
-            StreamDescriptor("psfLong", "output", dtype="float64", shape="(width, height)", description="Long-exposure PSF image stream."),
+            StreamDescriptor("psf_short", "output", dtype="int32", shape="(width, height)", description="Short-exposure PSF image stream."),
+            StreamDescriptor("psf_long", "output", dtype="float64", shape="(width, height)", description="Long-exposure PSF image stream."),
             StreamDescriptor("strehl", "output", dtype="float", shape="(1,)", description="Scalar Strehl estimate."),
             StreamDescriptor("tiptilt", "output", dtype="float", shape="(1,)", description="Scalar tip-tilt estimate."),
         ),
         supports_hard_rtc=True,
-        calibration_artifacts=("darkFile", "modelFile"),
+        calibration_artifacts=("dark_file", "model_file"),
     ),
     ComponentDescriptor(
         section_name="telemetry",
         category="telemetry",
         component_class=Telemetry,
-        description="Telemetry capture helper for persisting existing pyRTC streams to disk.",
+        description="Telemetry capture helper for persisting existing pyrtc streams to disk.",
         required_fields=(),
         optional_fields=(
-            ConfigFieldDescriptor("dataDir", "str", "Base directory used for telemetry capture files.", default="./data/"),
+            ConfigFieldDescriptor("data_dir", "str", "Base directory used for telemetry capture files.", default="./data/"),
             ConfigFieldDescriptor("functions", "list[str]", "Worker methods started in component threads.", default=[]),
             ConfigFieldDescriptor("affinity", "int", "Base CPU affinity for the component.", default=0),
-            ConfigFieldDescriptor("gpuDevice", "str | None", "Optional GPU device identifier.", default=None),
+            ConfigFieldDescriptor("gpu_device", "str | None", "Optional GPU device identifier.", default=None),
         ),
         worker_functions=(),
         input_streams=(

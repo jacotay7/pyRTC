@@ -1,21 +1,21 @@
-"""Aggregation shim for pyRTC's runtime infrastructure.
+"""Aggregation shim for pyrtc's runtime infrastructure.
 
-The historical ``pyRTC.Pipeline`` module grew to hold several unrelated
+The historical ``pyrtc.pipeline`` module grew to hold several unrelated
 concerns. The implementation now lives in focused modules:
 
-- :mod:`pyRTC.streams` — pyshmem-backed stream policy and SHM planning
-- :mod:`pyRTC.rpc` — hard-RTC launcher/listener JSON socket protocol
-- :mod:`pyRTC.manager` — component runtimes and :class:`RTCManager`
+- :mod:`pyrtc.streams` — pyshmem-backed stream policy and SHM planning
+- :mod:`pyrtc.rpc` — hard-RTC launcher/listener JSON socket protocol
+- :mod:`pyrtc.manager` — component runtimes and :class:`RTCManager`
 
 This module re-exports the public names so existing imports keep working.
 Prefer importing from the focused modules in new code.
 """
 
-from pyRTC.component_loading import (  # noqa: F401
+from pyrtc.component_loading import (  # noqa: F401
     import_symbol as _import_symbol,
     import_symbol_from_file as _import_symbol_from_file,
 )
-from pyRTC.manager import (  # noqa: F401
+from pyrtc.manager import (  # noqa: F401
     DEFAULT_COMPONENT_ORDER,
     BaseComponentRuntime,
     ComponentRuntimeStatus,
@@ -23,16 +23,16 @@ from pyRTC.manager import (  # noqa: F401
     RTCManager,
     SoftComponentRuntime,
     build_component_runtime_config,
-    launchComponent,
+    launch_component,
     work,
 )
-from pyRTC.rpc import (  # noqa: F401
+from pyrtc.rpc import (  # noqa: F401
     Listener,
     _socket_read_json,
     _socket_send_json,
-    hardwareLauncher,
+    HardwareLauncher,
 )
-from pyRTC.streams import (  # noqa: F401
+from pyrtc.streams import (  # noqa: F401
     TORCH_AVAILABLE,
     _existing_shm_spec,
     _stream_aliases,

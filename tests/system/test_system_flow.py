@@ -5,19 +5,19 @@ import numpy as np
 from testsupport import DummySHM
 
 
-loop_mod = importlib.import_module("pyRTC.Loop")
-wfc_mod = importlib.import_module("pyRTC.WavefrontCorrector")
+loop_mod = importlib.import_module("pyrtc.loop")
+wfc_mod = importlib.import_module("pyrtc.wavefront_corrector")
 
 
 def test_loop_wfc_system_flow_smoke(monkeypatch):
     streams = {}
 
-    def _make_stream(name, shape, dtype, gpuDevice=None):
-        stream = DummySHM(name, shape, dtype, gpuDevice=gpuDevice)
+    def _make_stream(name, shape, dtype, gpu_device=None):
+        stream = DummySHM(name, shape, dtype, gpu_device=gpu_device)
         streams[name] = stream
         return stream
 
-    def _open_existing(name, gpuDevice=None):
+    def _open_existing(name, gpu_device=None):
         return streams[name]
 
     monkeypatch.setattr(wfc_mod, "create_stream", _make_stream)
@@ -28,8 +28,8 @@ def test_loop_wfc_system_flow_smoke(monkeypatch):
     wfc = wfc_mod.WavefrontCorrector(
         {
             "name": "wfc-smoke",
-            "numActuators": 4,
-            "numModes": 4,
+            "num_actuators": 4,
+            "num_modes": 4,
             "functions": [],
         }
     )
@@ -37,22 +37,22 @@ def test_loop_wfc_system_flow_smoke(monkeypatch):
     loop = loop_mod.Loop(
         {
             "functions": [],
-            "numDroppedModes": 1,
+            "num_dropped_modes": 1,
             "gain": 0.5,
         }
     )
 
-    loop.IM = np.eye(loop.signalSize, loop.numModes, dtype=np.float32)
-    loop.computeCM()
-    loop.setGain(0.5)
+    loop.IM = np.eye(loop.signal_size, loop.num_modes, dtype=np.float32)
+    loop.compute_cm()
+    loop.set_gain(0.5)
 
     streams["signal"].write(np.array([0.2, -0.1, 0.4, 0.3], dtype=np.float32))
-    loop.standardIntegratorPOL()
+    loop.standard_integrator_pol()
 
     correction = streams["wfc"].read()
     assert correction.shape == (4,)
-    assert np.any(np.abs(correction[: loop.numActiveModes]) > 0)
-    assert np.allclose(correction[loop.numActiveModes :], 0.0)
+    assert np.any(np.abs(correction[: loop.num_active_modes]) > 0)
+    assert np.allclose(correction[loop.num_active_modes :], 0.0)
 
     # Ensure objects are referenced so constructors/destructors are exercised in test scope.
     assert wfc is not None

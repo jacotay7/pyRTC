@@ -1,6 +1,6 @@
 """Wavefront-corrector abstractions and modal-to-zonal mapping helpers.
 
-This module defines the base class used by pyRTC deformable mirrors and other
+This module defines the base class used by pyrtc deformable mirrors and other
 corrective devices. It manages command streams, flat handling, actuator masks,
 and optional 2D layout views, while leaving hardware transport details to the
 concrete adapter subclasses.
@@ -19,11 +19,11 @@ import numpy as np
 import matplotlib.pyplot as plt
 from numba import jit
 
-from pyRTC.logging_utils import get_logger
-from pyRTC.manager import launchComponent
-from pyRTC.streams import create_stream
-from pyRTC.pyRTCComponent import pyRTCComponent
-from pyRTC.utils import gaussian_2d_grid, setFromConfig
+from pyrtc.logging_utils import get_logger
+from pyrtc.manager import launch_component
+from pyrtc.streams import create_stream
+from pyrtc.component import Component
+from pyrtc.utils import gaussian_2d_grid, set_from_config
 
 logger = get_logger(__name__)
 
@@ -35,70 +35,70 @@ def ModaltoZonalWithFlat(correction=np.array([],dtype=np.float32),
 
     return M2C@correction + flat
 
-class WavefrontCorrector(pyRTCComponent):
+class WavefrontCorrector(Component):
     """
     Base class for deformable mirrors and other wavefront-correction devices.
 
     ``WavefrontCorrector`` is responsible for the control-plane machinery around
     command generation: SHM output, flat shapes, mode-to-command transforms,
     floating actuator handling, and delayed command buffers. Subclasses are left
-    to implement the device-specific transport in ``sendToHardware``.
+    to implement the device-specific transport in ``send_to_hardware``.
 
     Config
     ------
     name : str
         Name of the wavefront corrector.
-    numActuators : int
+    num_actuators : int
         Number of actuators. Required.
-    numModes : int
+    num_modes : int
         Number of modes. Required.
     affinity : str
         Affinity setting.
-    m2cFile : str
+    m2c_file : str
         Path to the mode-to-command file.
-    floatingInfluenceRadius : int, optional
+    floating_influence_radius : int, optional
         Radius for floating influence. Default is 1.
-    frameDelay : int, optional
+    frame_delay : int, optional
         Frame delay. Default is 0.
-    saveFile : str, optional
-        File to save the shape. Default is "wfcShape.npy".
+    save_file : str, optional
+        File to save the shape. Default is "wfc_shape.npy".
 
     Attributes
     ----------
     name : str
         Name of the wavefront corrector.
-    numActuators : int
+    num_actuators : int
         Number of actuators.
-    numModes : int
+    num_modes : int
         Number of modes.
     affinity : str
         Affinity setting.
-    m2cFile : str
+    m2c_file : str
         Path to the mode-to-command file.
-    correctionVector : pyshmem.SharedMemory
+    correction_vector : pyshmem.SharedMemory
         Correction vector.
-    correctionVector2D : pyshmem.SharedMemory or None
+    correction_vector_2d : pyshmem.SharedMemory or None
         2D correction vector for display.
     flat : numpy.ndarray
         Initial flat shape.
-    flatModal : numpy.ndarray
+    flat_modal : numpy.ndarray
         Flat shape in modal basis.
-    currentShape : numpy.ndarray
+    current_shape : numpy.ndarray
         Current shape.
-    actuatorStatus : numpy.ndarray
+    actuator_status : numpy.ndarray
         Status of each actuator.
     index_map : numpy.ndarray or None
         Index map for actuators.
-    floatingInfluenceRadius : int
+    floating_influence_radius : int
         Radius for floating influence.
-    floatMatrix : numpy.ndarray
+    float_matrix : numpy.ndarray
         Floating actuator matrix.
-    frameDelay : int
+    frame_delay : int
         Frame delay.
-    commandCap : float or None
+    command_cap : float or None
         Optional absolute limit applied to actuator-space commands before they
         are handed to the hardware adapter.
-    saveFile : str
+    save_file : str
         File to save the shape.
     layout : numpy.ndarray or None
         Layout of the actuators.
@@ -108,11 +108,11 @@ class WavefrontCorrector(pyRTCComponent):
         Floating mode-to-command matrix.
     C2M : numpy.ndarray
         Command-to-mode matrix.
-    currentCorrection : numpy.ndarray
+    current_correction : numpy.ndarray
         Current correction vector.
-    shapeBuffer : numpy.ndarray
+    shape_buffer : numpy.ndarray
         Buffer for shapes with frame delay.
-    correctionVector2D_template : numpy.ndarray
+    correction_vector_2d_template : numpy.ndarray
         Template for the 2D correction vector.
     """
     def __init__(self, conf) -> None:
@@ -120,40 +120,40 @@ class WavefrontCorrector(pyRTCComponent):
             super().__init__(conf)
 
             self.name = conf["name"]
-            self.numActuators = conf["numActuators"]
-            self.numModes = conf["numModes"]
-            self.m2cFile = setFromConfig(conf, "m2cFile", "")
+            self.num_actuators = conf["num_actuators"]
+            self.num_modes = conf["num_modes"]
+            self.m2c_file = set_from_config(conf, "m2c_file", "")
 
-            self.correctionVector = create_stream(self.output_stream_name("wfc"), (self.numModes,), np.float32, gpuDevice=self.gpuDevice)
-            self.register_output_stream("wfc", self.correctionVector)
+            self.correction_vector = create_stream(self.output_stream_name("wfc"), (self.num_modes,), np.float32, gpu_device=self.gpu_device)
+            self.register_output_stream("wfc", self.correction_vector)
             # Pre-allocated hot-path read buffer (ignored for GPU streams).
-            self._wfcBuffer = np.empty((self.numModes,), dtype=np.float32)
-            self.correctionVector2D = None
+            self._wfcBuffer = np.empty((self.num_modes,), dtype=np.float32)
+            self.correction_vector_2d = None
 
-            self.setLayout(None)
+            self.set_layout(None)
 
-            self.flat = np.zeros(self.numActuators, dtype=np.float32)
-            self.flatModal = np.zeros(self.numModes, dtype=self.flat.dtype)
-            self.currentShape = np.zeros_like(self.flat)
-            self.flatFile = setFromConfig(conf, "flatFile", "")
-            self.commandCap = setFromConfig(conf, "commandCap", None)
-            self.loadFlat()
+            self.flat = np.zeros(self.num_actuators, dtype=np.float32)
+            self.flat_modal = np.zeros(self.num_modes, dtype=self.flat.dtype)
+            self.current_shape = np.zeros_like(self.flat)
+            self.flat_file = set_from_config(conf, "flat_file", "")
+            self.command_cap = set_from_config(conf, "command_cap", None)
+            self.load_flat()
 
-            self.actuatorStatus = np.array([True] * self.numActuators)
+            self.actuator_status = np.array([True] * self.num_actuators)
             self.index_map = None
-            self.floatingInfluenceRadius = setFromConfig(conf, "floatingInfluenceRadius", 1)
-            self.floatMatrix = np.eye(self.numActuators, dtype=self.flat.dtype)
+            self.floating_influence_radius = set_from_config(conf, "floating_influence_radius", 1)
+            self.float_matrix = np.eye(self.num_actuators, dtype=self.flat.dtype)
 
-            self.setDelay(setFromConfig(conf, "frameDelay", 0))
+            self.set_delay(set_from_config(conf, "frame_delay", 0))
 
-            self.saveFile = setFromConfig(conf, "saveFile", "wfcShape.npy")
-            self.readM2C()
+            self.save_file = set_from_config(conf, "save_file", "wfc_shape.npy")
+            self.read_m2c()
             self.logger.info(
-                "Initialized wavefront corrector name=%s actuators=%s modes=%s commandCap=%s",
+                "Initialized wavefront corrector name=%s actuators=%s modes=%s command_cap=%s",
                 self.name,
-                self.numActuators,
-                self.numModes,
-                self.commandCap,
+                self.num_actuators,
+                self.num_modes,
+                self.command_cap,
             )
         except Exception:
             logger.exception("Failed to initialize wavefront corrector")
@@ -162,7 +162,7 @@ class WavefrontCorrector(pyRTCComponent):
         
         return
 
-    def setFlat(self, flat):
+    def set_flat(self, flat):
         """
         Set the flat shape.
 
@@ -179,7 +179,7 @@ class WavefrontCorrector(pyRTCComponent):
             raise
         return
 
-    def loadFlat(self,filename=''):
+    def load_flat(self,filename=''):
         """
         Loads the Flat from a file.
 
@@ -191,7 +191,7 @@ class WavefrontCorrector(pyRTCComponent):
         #If no file given, first try dark file
         try:
             if filename == '':
-                filename = self.flatFile
+                filename = self.flat_file
             if filename == '':
                 flat = np.zeros_like(self.flat)
                 self.logger.info("No flat file configured; using zeros")
@@ -203,12 +203,12 @@ class WavefrontCorrector(pyRTCComponent):
                 else:
                     raise ValueError(f"Unsupported flat file format: {filename}")
                 self.logger.info("Loaded flat from %s", filename)
-            self.setFlat(flat)
+            self.set_flat(flat)
         except Exception:
-            self.logger.exception("Failed to load flat from %s", filename or self.flatFile)
+            self.logger.exception("Failed to load flat from %s", filename or self.flat_file)
             raise
         return
-    def setLayout(self, layout):
+    def set_layout(self, layout):
         """
         Set the layout of the actuators.
 
@@ -221,10 +221,10 @@ class WavefrontCorrector(pyRTCComponent):
             self.layout = layout
             if isinstance(self.layout, np.ndarray):
                 self.layout = self.layout > 0
-                self.correctionVector2D = create_stream(self.output_stream_name("wfc2D"), self.layout.shape, np.float32, gpuDevice=self.gpuDevice)
-                self.register_output_stream("wfc2D", self.correctionVector2D)
-                self.write_stream("wfc2D", np.zeros(self.layout.shape, dtype=np.float32))
-                self.correctionVector2D_template = self.read_stream("wfc2D", block=False)
+                self.correction_vector_2d = create_stream(self.output_stream_name("wfc_2d"), self.layout.shape, np.float32, gpu_device=self.gpu_device)
+                self.register_output_stream("wfc_2d", self.correction_vector_2d)
+                self.write_stream("wfc_2d", np.zeros(self.layout.shape, dtype=np.float32))
+                self.correction_vector_2d_template = self.read_stream("wfc_2d", block=False)
 
                 self.index_map = np.zeros(self.layout.shape, dtype=int)
                 self.index_map[self.layout > 0] = np.arange(np.sum(self.layout)).astype(int) + 1
@@ -237,7 +237,7 @@ class WavefrontCorrector(pyRTCComponent):
 
         return
     
-    def deactivateActuators(self, actuators):
+    def deactivate_actuators(self, actuators):
         """
         Deactivate specified actuators. Actuators are assumed to be floating
 
@@ -255,21 +255,21 @@ class WavefrontCorrector(pyRTCComponent):
 
             if isinstance(self.layout, np.ndarray):
                 if len(self.layout.shape) != 2:
-                    raise Exception("Layout must be 2 dimensions to float actuators. To remove dead actuators, remove them from the M2C. OR set the layout to be 2D and the floatingInfluenceRadius to a 0")
+                    raise Exception("Layout must be 2 dimensions to float actuators. To remove dead actuators, remove them from the M2C. OR set the layout to be 2D and the floating_influence_radius to a 0")
                 act_to_float_mask = np.zeros_like(self.index_map)
                 for act in actuators:
                     act_to_float_mask[np.where(self.index_map == act + 1)] = 1
-                    self.actuatorStatus[act] = False
+                    self.actuator_status[act] = False
 
                 for act in actuators:
                     i, j = np.where(self.index_map == act + 1)
-                    inlfluence_map = gaussian_2d_grid(i, j, self.floatingInfluenceRadius, self.layout.shape[0])
+                    inlfluence_map = gaussian_2d_grid(i, j, self.floating_influence_radius, self.layout.shape[0])
                     inlfluence_map *= self.layout * (1 - act_to_float_mask)
                     inlfluence_map /= np.sum(inlfluence_map)
                     inlfluence_map[inlfluence_map < np.max(inlfluence_map) / 10] = 0
-                    self.floatMatrix[act] = inlfluence_map[self.layout > 0]
+                    self.float_matrix[act] = inlfluence_map[self.layout > 0]
 
-                self.setM2C(self.M2C)
+                self.set_m2c(self.M2C)
                 self.logger.info("Deactivated actuators %s", actuators)
             else:
                 logger.warning("No layout set for DM")
@@ -279,7 +279,7 @@ class WavefrontCorrector(pyRTCComponent):
 
         return
     
-    def reactivateActuators(self, actuators):
+    def reactivate_actuators(self, actuators):
         """
         Reactivate specified actuators.
 
@@ -290,46 +290,46 @@ class WavefrontCorrector(pyRTCComponent):
         """
         try:
             for act in actuators:
-                self.actuatorStatus[act] = True
-            self.floatMatrix = np.eye(self.numActuators, dtype=self.flat.dtype)
-            actsToDeactivate = [i for i in range(self.numActuators) if not self.actuatorStatus[i]]
-            if len(actsToDeactivate) > 0:
-                self.deactivateActuators(actsToDeactivate)
+                self.actuator_status[act] = True
+            self.float_matrix = np.eye(self.num_actuators, dtype=self.flat.dtype)
+            acts_to_deactivate = [i for i in range(self.num_actuators) if not self.actuator_status[i]]
+            if len(acts_to_deactivate) > 0:
+                self.deactivate_actuators(acts_to_deactivate)
             self.logger.info("Reactivated actuators %s", actuators)
         except Exception:
             self.logger.exception("Failed to reactivate actuators %s", actuators)
             raise
         return
 
-    def setM2C(self, M2C):
+    def set_m2c(self, M2C):
         """
         Set the mode-to-command matrix. This is the basis for correction.
 
         Parameters
         ----------
         M2C : numpy.ndarray or None
-            Mode-to-command matrix to set. Axes are [numActuators, numModes]
+            Mode-to-command matrix to set. Axes are [num_actuators, num_modes]
         """
         try:
             if not isinstance(M2C, np.ndarray):
-                self.M2C = np.eye(self.numActuators)[:, :self.numModes]
+                self.M2C = np.eye(self.num_actuators)[:, :self.num_modes]
             else:
                 self.M2C = M2C
 
             self.M2C = self.M2C.astype(self.flat.dtype)
 
-            self.f_M2C = self.floatMatrix @ self.M2C
+            self.f_M2C = self.float_matrix @ self.M2C
 
             self.C2M = np.linalg.pinv(self.M2C)
-            self.numModes = self.M2C.shape[1]
-            self.currentCorrection = np.zeros(self.numModes, dtype=self.flat.dtype)
-            self.flatModal = self.C2M @ self.flat
+            self.num_modes = self.M2C.shape[1]
+            self.current_correction = np.zeros(self.num_modes, dtype=self.flat.dtype)
+            self.flat_modal = self.C2M @ self.flat
             self.logger.info("Configured M2C matrix shape=%s", self.M2C.shape)
         except Exception:
             self.logger.exception("Failed to configure M2C matrix")
             raise
 
-    def setDelay(self,delay):
+    def set_delay(self,delay):
         """
         Sets an artificial frame delay. Used for testing, nominally the delay should always be zero.
 
@@ -339,10 +339,10 @@ class WavefrontCorrector(pyRTCComponent):
             Frame delay to set.
         """
         try:
-            self.frameDelay = delay
-            self.shapeBuffer = np.zeros((self.frameDelay + 1, *self.currentShape.shape), dtype=self.currentShape.dtype)
-            for i in range(self.shapeBuffer.shape[0]):
-                self.shapeBuffer[i] = self.flat.copy()
+            self.frame_delay = delay
+            self.shape_buffer = np.zeros((self.frame_delay + 1, *self.current_shape.shape), dtype=self.current_shape.dtype)
+            for i in range(self.shape_buffer.shape[0]):
+                self.shape_buffer[i] = self.flat.copy()
             self.logger.info("Set artificial frame delay to %s", delay)
         except Exception:
             self.logger.exception("Failed to set frame delay to %s", delay)
@@ -350,65 +350,65 @@ class WavefrontCorrector(pyRTCComponent):
         
         return
     
-    def readM2C(self, filename=''):
+    def read_m2c(self, filename=''):
         """
         Read the mode-to-command matrix from a file.
 
         Parameters
         ----------
         filename : str, optional
-            File to read the mode-to-command matrix from. If not specified, uses the configured m2cFile.
+            File to read the mode-to-command matrix from. If not specified, uses the configured m2c_file.
         """
         try:
             if filename == '':
-                filename = self.m2cFile
+                filename = self.m2c_file
 
             if '.dat' in filename:
-                M2C = np.fromfile(filename, dtype=np.float64).reshape(self.numActuators, self.numModes)
+                M2C = np.fromfile(filename, dtype=np.float64).reshape(self.num_actuators, self.num_modes)
             elif '.npy' in filename:
                 M2C = np.load(filename)
             else:
-                self.setM2C(None)
+                self.set_m2c(None)
                 self.logger.info("No M2C file configured; using identity basis")
                 return
         
-            self.setM2C(M2C)
+            self.set_m2c(M2C)
             self.logger.info("Loaded M2C matrix from %s", filename)
         except Exception:
-            self.logger.exception("Failed to read M2C matrix from %s", filename or self.m2cFile)
+            self.logger.exception("Failed to read M2C matrix from %s", filename or self.m2c_file)
             raise
         return 
     
-    def sendToHardware(self):
+    def send_to_hardware(self):
         """
         Send the current correction to the hardware. Nominally, this function is overwritten by the
         child hardware class and registered to the real-time loop from the config.
         """
         #Read a new modal correction in M2C basis
-        self.currentCorrection = self.read_stream("wfc", out=self._wfcBuffer)
+        self.current_correction = self.read_stream("wfc", out=self._wfcBuffer)
         #If we added a frame delay
-        if self.frameDelay > 0:
+        if self.frame_delay > 0:
             #Roll back shape buffer by 1
-            self.shapeBuffer[:-1] = self.shapeBuffer[1:]
+            self.shape_buffer[:-1] = self.shape_buffer[1:]
             #Compute a new shape in zonal basis
-            self.shapeBuffer[-1] = ModaltoZonalWithFlat(self.currentCorrection, 
+            self.shape_buffer[-1] = ModaltoZonalWithFlat(self.current_correction, 
                                                         self.f_M2C,
                                                         self.flat)
             #Set the current shape
-            self.currentShape = self.shapeBuffer[0]
+            self.current_shape = self.shape_buffer[0]
         else:
-            self.currentShape = ModaltoZonalWithFlat(self.currentCorrection, 
+            self.current_shape = ModaltoZonalWithFlat(self.current_correction, 
                                                      self.f_M2C,
                                                      self.flat)
 
-        if self.commandCap is not None:
-            self.currentShape = np.clip(self.currentShape, -self.commandCap, self.commandCap)
+        if self.command_cap is not None:
+            self.current_shape = np.clip(self.current_shape, -self.command_cap, self.command_cap)
         
         #If we have a 2D SHM instance, update it 
-        if self.correctionVector2D is not None:
-            self.correctionVector2D_template.fill(0)
-            self.correctionVector2D_template[self.layout] = self.currentShape - self.flat
-            self.write_stream("wfc2D", self.correctionVector2D_template)
+        if self.correction_vector_2d is not None:
+            self.correction_vector_2d_template.fill(0)
+            self.correction_vector_2d_template[self.layout] = self.current_shape - self.flat
+            self.write_stream("wfc_2d", self.correction_vector_2d_template)
         #Overwrite with hardware instructions after this to send to hardware
         return
 
@@ -434,10 +434,10 @@ class WavefrontCorrector(pyRTCComponent):
         correction : numpy.ndarray
             Correction vector to write.
         """
-        self.currentCorrection = correction
-        #We assume that sendToHardware is registered to the real-time loop
+        self.current_correction = correction
+        #We assume that send_to_hardware is registered to the real-time loop
         #And that the WFC is running (i.e. start has been called)
-        self.write_stream("wfc", self.currentCorrection)
+        self.write_stream("wfc", self.current_correction)
         return 
 
     def flatten(self):
@@ -447,7 +447,7 @@ class WavefrontCorrector(pyRTCComponent):
         #Sending a zero correction will be the flat since the correction
         #is always assumed to be on top of the flat.
         try:
-            self.write(np.zeros_like(self.currentCorrection))
+            self.write(np.zeros_like(self.current_correction))
             self.logger.info("Flattened wavefront corrector")
         except Exception:
             self.logger.exception("Failed to flatten wavefront corrector")
@@ -466,7 +466,7 @@ class WavefrontCorrector(pyRTCComponent):
             Amplitude to push the mode with.
         """
         try:
-            corr = np.zeros_like(self.currentCorrection)
+            corr = np.zeros_like(self.current_correction)
             corr[int(mode)] = float(amp)
             self.write(corr)
             self.logger.info("Pushed mode %s with amplitude %s", mode, amp)
@@ -475,53 +475,53 @@ class WavefrontCorrector(pyRTCComponent):
             raise
         return
 
-    def saveShape(self, filename=''):
+    def save_shape(self, filename=''):
         """
         Save the current shape to a file.
 
         Parameters
         ----------
         filename : str, optional
-            File to save the shape to. If not specified, uses the configured saveFile.
+            File to save the shape to. If not specified, uses the configured save_file.
         """
         try:
             if filename == '':
-                filename = self.saveFile
+                filename = self.save_file
             if filename == '':
                 raise ValueError("No output filename provided for shape save")
-            np.save(filename, self.currentShape)
+            np.save(filename, self.current_shape)
             self.logger.info("Saved current shape to %s", filename)
         except Exception:
-            self.logger.exception("Failed to save current shape to %s", filename or self.saveFile)
+            self.logger.exception("Failed to save current shape to %s", filename or self.save_file)
             raise
         return
 
-    def plot(self, addFlat=False):
+    def plot(self, add_flat=False):
         """
         Plot the current correction.
 
         Parameters
         ----------
-        removeFlat : bool, optional
+        remove_flat : bool, optional
             If True, removes the flat shape from the current correction before plotting. Default is False.
         """
-        curCorrection = self.read()
-        if addFlat:
-            curCorrection += self.flatModal
+        cur_correction = self.read()
+        if add_flat:
+            cur_correction += self.flat_modal
 
         if isinstance(self.layout, np.ndarray):
-            newShape = np.zeros(self.layout.shape)
-            newShape[self.layout] = self.M2C@curCorrection
+            new_shape = np.zeros(self.layout.shape)
+            new_shape[self.layout] = self.M2C@cur_correction
         else:
-            newShape = curCorrection
+            new_shape = cur_correction
             
-        if len(newShape.shape) == 1:
+        if len(new_shape.shape) == 1:
             # plt.figure(figsize=(12,5))
-            plt.plot(newShape)
+            plt.plot(new_shape)
             plt.show()
-        elif len(newShape.shape) == 2:
+        elif len(new_shape.shape) == 2:
             # plt.figure(figsize=(10,8))
-            plt.imshow(newShape, cmap = "inferno", aspect='auto', origin='lower')
+            plt.imshow(new_shape, cmap = "inferno", aspect='auto', origin='lower')
             plt.colorbar()
             plt.show()
 
@@ -529,4 +529,4 @@ class WavefrontCorrector(pyRTCComponent):
 
 if __name__ == "__main__":
 
-    launchComponent(WavefrontCorrector, "wfc", start = True)
+    launch_component(WavefrontCorrector, "wfc", start = True)

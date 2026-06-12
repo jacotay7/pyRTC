@@ -1,6 +1,6 @@
 """Base optimization component for slow control-plane tuning tasks.
 
-The optimizer layer in pyRTC is used for tasks such as loop gain tuning or
+The optimizer layer in pyrtc is used for tasks such as loop gain tuning or
 hardware-assisted aberration optimization. These workflows are intentionally
 outside the steady-state real-time pipeline, which makes them a good fit for an
 Optuna-based trial/study abstraction.
@@ -12,20 +12,20 @@ import time
 
 import optuna
 
-from pyRTC.logging_utils import get_logger
-from pyRTC.rpc import Listener
-from pyRTC.pyRTCComponent import pyRTCComponent
-from pyRTC.utils import decrease_nice, read_yaml_file, set_affinity, setFromConfig
+from pyrtc.logging_utils import get_logger
+from pyrtc.rpc import Listener
+from pyrtc.component import Component
+from pyrtc.utils import decrease_nice, read_yaml_file, set_affinity, set_from_config
 
 
 logger = get_logger(__name__)
 
-class Optimizer(pyRTCComponent):
+class Optimizer(Component):
     """
     Abstract Optuna-backed optimization driver.
 
     ``Optimizer`` is meant to be subclassed by hardware- or algorithm-specific
-    optimizers in :mod:`pyRTC.hardware`. The base class owns the Optuna study,
+    optimizers in :mod:`pyrtc.hardware`. The base class owns the Optuna study,
     default CMA-ES sampler choice, and the helper methods used to run a full
     study or advance one trial at a time.
 
@@ -38,7 +38,7 @@ class Optimizer(pyRTCComponent):
         Name of the optimizer component.
     study : optuna.Study
         The Optuna study object, initialized with a CMA-ES sampler.
-    numSteps : int
+    num_steps : int
         Number of steps/trials to perform during optimization.
 
     Methods
@@ -47,11 +47,11 @@ class Optimizer(pyRTCComponent):
         Defines the objective function for the optimization.
     optimize():
         Performs the optimization process.
-    applyOptimum():
+    apply_optimum():
         Applies the optimum values obtained from the optimization process.
-    applyTrial(trial):
+    apply_trial(trial):
         Applies a given trial.
-    applyNext():
+    apply_next():
         Requests and applies the next trial from the study.
     """
 
@@ -63,17 +63,17 @@ class Optimizer(pyRTCComponent):
         Parameters
         ----------
         conf : dict
-            Optimizer configuration. The base class uses ``numSteps`` while
+            Optimizer configuration. The base class uses ``num_steps`` while
             subclasses may require additional problem-specific keys.
         """
         try:
             self.name = "Optimizer"
             self.study = optuna.create_study(direction='maximize', 
                                              sampler=optuna.samplers.CmaEsSampler())
-            self.numSteps = setFromConfig(conf, "numSteps", 100)
+            self.num_steps = set_from_config(conf, "num_steps", 100)
 
             super().__init__(conf)
-            self.logger.info("Initialized optimizer numSteps=%s", self.numSteps)
+            self.logger.info("Initialized optimizer num_steps=%s", self.num_steps)
         except Exception:
             logger.exception("Failed to initialize optimizer")
             raise
@@ -100,16 +100,16 @@ class Optimizer(pyRTCComponent):
         """
         component_logger = getattr(self, "logger", logger)
         try:
-            component_logger.info("Starting optimization for %s trials", self.numSteps)
-            self.study.optimize(self.objective, n_trials=self.numSteps)
-            self.applyOptimum()
+            component_logger.info("Starting optimization for %s trials", self.num_steps)
+            self.study.optimize(self.objective, n_trials=self.num_steps)
+            self.apply_optimum()
             component_logger.info("Completed optimization")
         except Exception:
             component_logger.exception("Failed during optimization")
             raise
         return
     
-    def applyOptimum(self):
+    def apply_optimum(self):
         """
         Applies the optimum values obtained from the optimization process.
 
@@ -118,7 +118,7 @@ class Optimizer(pyRTCComponent):
         """
         return
     
-    def applyTrial(self, trial):
+    def apply_trial(self, trial):
         """
         Applies a given trial.
 
@@ -126,24 +126,24 @@ class Optimizer(pyRTCComponent):
         """
         return
     
-    def applyNext(self):
+    def apply_next(self):
         """
         Requests and applies the next trial from the study.
 
         This method obtains the next trial from the study and applies it 
-        using the applyTrial method.
+        using the apply_trial method.
         """
         component_logger = getattr(self, "logger", logger)
         try:
             trial = self.study.ask()
             component_logger.info("Applying next trial %s", trial)
-            self.applyTrial(trial)
+            self.apply_trial(trial)
         except Exception:
             component_logger.exception("Failed to apply next optimization trial")
             raise
         return
 
-    def resetStudy(self):
+    def reset_study(self):
         component_logger = getattr(self, "logger", logger)
         try:
             self.study = optuna.create_study(direction='maximize', 

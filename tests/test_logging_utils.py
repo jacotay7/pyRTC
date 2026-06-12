@@ -2,7 +2,7 @@ import argparse
 import os
 from pathlib import Path
 
-from pyRTC.logging_utils import add_logging_cli_args, configure_logging, get_logger
+from pyrtc.logging_utils import add_logging_cli_args, configure_logging, get_logger
 
 
 def test_add_logging_cli_args_supports_runtime_overrides():
@@ -18,7 +18,7 @@ def test_add_logging_cli_args_supports_runtime_overrides():
 
 def test_get_logger_prefixes_non_pyrtc_names():
     logger = get_logger("scripts.view")
-    assert logger.name == "pyRTC.scripts.view"
+    assert logger.name == "pyrtc.scripts.view"
 
 
 def test_configure_logging_writes_file_and_exports_env(tmp_path, monkeypatch):

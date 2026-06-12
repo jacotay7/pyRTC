@@ -2,8 +2,8 @@ import os
 
 import numpy as np
 
-import pyRTC.Pipeline as pipeline
-from pyRTC.logging_utils import configure_logging
+import pyrtc.pipeline as pipeline
+from pyrtc.logging_utils import configure_logging
 
 
 def _cleanup_shm(shm):
@@ -14,7 +14,7 @@ def _cleanup_shm(shm):
 
 
 def test_normalize_gpu_device_falls_back(monkeypatch):
-    import pyRTC.streams as streams
+    import pyrtc.streams as streams
 
     monkeypatch.setattr(streams, "TORCH_AVAILABLE", False)
     assert pipeline.normalize_gpu_device("cuda:0", "ctx") is None
@@ -96,36 +96,36 @@ def test_clear_shms(unique_name):
 def test_expected_output_specs_follow_component_output_aliases():
     config = {
         "wfs": {
-            "className": "WavefrontSensor",
+            "class_name": "WavefrontSensor",
             "width": 16,
             "height": 16,
-            "darkCount": 1,
-            "outputStreams": {"wfsRaw": "raw_custom", "wfs": "wfs_custom"},
+            "dark_count": 1,
+            "output_streams": {"wfs_raw": "raw_custom", "wfs": "wfs_custom"},
         },
         "slopes": {
-            "className": "SlopesProcess",
+            "class_name": "SlopesProcess",
             "type": "SHWFS",
-            "signalType": "slopes",
-            "subApSpacing": 4,
-            "subApOffsetX": 0,
-            "subApOffsetY": 0,
-            "outputStreams": {"signal": "signal_custom", "signal2D": "signal2d_custom"},
+            "signal_type": "slopes",
+            "sub_ap_spacing": 4,
+            "sub_ap_offset_x": 0,
+            "sub_ap_offset_y": 0,
+            "output_streams": {"signal": "signal_custom", "signal_2d": "signal2d_custom"},
         },
         "wfc": {
-            "className": "WavefrontCorrector",
+            "class_name": "WavefrontCorrector",
             "name": "dm",
-            "numActuators": 8,
-            "numModes": 8,
-            "outputStreams": {"wfc": "wfc_custom", "wfc2D": "wfc2d_custom"},
+            "num_actuators": 8,
+            "num_modes": 8,
+            "output_streams": {"wfc": "wfc_custom", "wfc_2d": "wfc2d_custom"},
         },
         "psf": {
-            "className": "ScienceCamera",
+            "class_name": "ScienceCamera",
             "name": "cam",
             "width": 8,
             "height": 8,
-            "darkCount": 1,
+            "dark_count": 1,
             "integration": 1,
-            "outputStreams": {"psfShort": "short_custom", "psfLong": "long_custom", "strehl": "strehl_custom", "tiptilt": "tiptilt_custom"},
+            "output_streams": {"psf_short": "short_custom", "psf_long": "long_custom", "strehl": "strehl_custom", "tiptilt": "tiptilt_custom"},
         },
     }
 
@@ -141,7 +141,7 @@ def test_expected_output_specs_follow_component_output_aliases():
 
 
 def test_hardware_launcher_write_and_read():
-    hl = pipeline.hardwareLauncher("dummy.py", "c.yaml", 9999)
+    hl = pipeline.HardwareLauncher("dummy.py", "c.yaml", 9999)
     calls = []
 
     def _write(msg):
@@ -153,7 +153,7 @@ def test_hardware_launcher_write_and_read():
     hl.running = True
     hl.write = _write
     hl.read = _read
-    assert hl.getProperty("x") == 42
+    assert hl.get_property("x") == 42
     assert calls[0]["type"] == "get"
 
 
@@ -184,13 +184,13 @@ def test_hardware_launcher_inherits_logging_env(monkeypatch, tmp_path):
         captured["env"] = env
         return _DummyProcess()
 
-    import pyRTC.rpc as rpc
+    import pyrtc.rpc as rpc
 
     monkeypatch.setattr(rpc, "Popen", _fake_popen)
     monkeypatch.setattr(rpc.socket, "socket", lambda *args, **kwargs: _DummySocket())
     monkeypatch.setattr(rpc.time, "sleep", lambda _seconds: None)
 
-    launcher = pipeline.hardwareLauncher("child.py", "config.yaml", 4567, timeout=1.5)
+    launcher = pipeline.HardwareLauncher("child.py", "config.yaml", 4567, timeout=1.5)
     launcher.launch()
 
     assert captured["command"][0] == os.sys.executable

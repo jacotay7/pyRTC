@@ -2,7 +2,7 @@
 
 This module contains the numerical update kernels and the high-level
 ``Loop`` component that turn measured residuals into new correction commands.
-It is the control-plane heart of pyRTC: interaction matrices, control matrices,
+It is the control-plane heart of pyrtc: interaction matrices, control matrices,
 integrators, and command dispatch all come together here.
 """
 
@@ -21,73 +21,73 @@ import time
 from typing import Any
 from numba import jit
 
-from pyRTC.logging_utils import get_logger
-from pyRTC.manager import launchComponent
-from pyRTC.streams import gpu_torch_available, open_stream
-from pyRTC.pyRTCComponent import pyRTCComponent
-from pyRTC.utils import add_to_buffer, get_tmp_filepath, setFromConfig
+from pyrtc.logging_utils import get_logger
+from pyrtc.manager import launch_component
+from pyrtc.streams import gpu_torch_available, open_stream
+from pyrtc.component import Component
+from pyrtc.utils import add_to_buffer, get_tmp_filepath, set_from_config
 
 logger = get_logger(__name__)
 
 COMMON_CONDITIONING_LINES = (10.0, 100.0, 1e3, 1e4, 1e5, 1e6)
 
 @jit(nopython=True, nogil=True, cache=False, fastmath=True)
-def leakyIntegratorNumba(slopes: np.ndarray, 
+def leaky_integrator_numba(slopes: np.ndarray, 
                          resconstructionMatrix: np.ndarray, 
-                         oldCorrection: np.ndarray,
+                         old_correction: np.ndarray,
                          correction: np.ndarray,
                          leak: np.float32,
-                         numActiveModes: int) -> np.ndarray:
+                         num_active_modes: int) -> np.ndarray:
     
     # Perform the matrix-vector multiplication using np.dot
     correction = np.dot(resconstructionMatrix, slopes)
     
     # Apply the leaky integrator formula with an unrolled loop
-    for i in range(numActiveModes + 1):
-        correction[i] = (1 - leak) * oldCorrection[i] - correction[i]
+    for i in range(num_active_modes + 1):
+        correction[i] = (1 - leak) * old_correction[i] - correction[i]
     
     # Zero out the rest of the correction vector
-    for i in range(numActiveModes + 1, correction.size):
+    for i in range(num_active_modes + 1, correction.size):
         correction[i] = 0.0
     
     return correction
 
-def leakIntegratorGPU(slopes:np.ndarray, 
+def leak_integrator_gpu(slopes:np.ndarray, 
                                 resconstructionMatrix:Any,
-                                oldCorrection:np.ndarray,
+                                old_correction:np.ndarray,
                                 leak:float,
-                                numActiveModes:int
+                                num_active_modes:int
                                 ):
     """Run the leaky-integrator control update on a CUDA-backed torch matrix."""
 
     if not gpu_torch_available():
-        raise ImportError("leakIntegratorGPU requires PyTorch. Install with 'pip install pyRTC[gpu]' or 'pip install torch'.")
+        raise ImportError("leak_integrator_gpu requires PyTorch. Install with 'pip install pyrtc[gpu]' or 'pip install torch'.")
 
     import torch
 
     slopes_GPU = torch.tensor(slopes, device='cuda')
-    correctionGPU = torch.matmul(resconstructionMatrix, slopes_GPU) 
-    correctionGPU[numActiveModes:] = 0
-    return np.subtract((1-leak)*oldCorrection, correctionGPU.cpu().numpy())
+    correction_gpu = torch.matmul(resconstructionMatrix, slopes_GPU) 
+    correction_gpu[num_active_modes:] = 0
+    return np.subtract((1-leak)*old_correction, correction_gpu.cpu().numpy())
 
 @jit(nopython=True, nogil=True, cache=False, fastmath=True)
-def compCorrection(CM=np.array([[]], dtype=np.float32),  
+def comp_correction(CM=np.array([[]], dtype=np.float32),  
                     slopes=np.array([], dtype=np.float32)):
     """Apply a control matrix to a slope vector and return the correction."""
 
     return np.dot(CM,slopes)
 
 @jit(nopython=True, nogil=True, cache=False, fastmath=True)
-def updateCorrection(correction=np.array([], dtype=np.float32), 
-                     gCM=np.array([[]], dtype=np.float32),  
+def update_correction(correction=np.array([], dtype=np.float32), 
+                     g_cm=np.array([[]], dtype=np.float32),  
                      slopes=np.array([], dtype=np.float32)):
     """Update an existing correction using a pre-scaled control matrix."""
 
-    return correction - np.dot(gCM,slopes)
+    return correction - np.dot(g_cm,slopes)
 
 # @jit(nopython=True)
 
-class Loop(pyRTCComponent):
+class Loop(Component):
     """
     Real-time controller that closes the adaptive optics loop.
 
@@ -102,37 +102,37 @@ class Loop(pyRTCComponent):
 
     Config
     ------
-    numDroppedModes : int, optional
+    num_dropped_modes : int, optional
         Number of modes to drop. Default is 0.
     gain : float, optional
         Gain for the integrator. Default is 0.1.
-    leakyGain : float, optional
+    leaky_gain : float, optional
         Leaky integrator gain. Default is 0.0.
-    hardwareDelay : float, optional
+    hardware_delay : float, optional
         Delay for the hardware. Default is 0.0.
-    pokeAmp : float, optional
+    poke_amp : float, optional
         Amplitude for poking. Default is 0.01.
-    numItersIM : int, optional
+    num_iters_im : int, optional
         Number of iterations for interaction matrix computation. Default is 100.
     delay : int, optional
         Delay for corrections. Default is 0.
-    IMMethod : str, optional
+    im_method : str, optional
         Method for interaction matrix computation. Default is "push-pull".
-    IMFile : str, optional
+    im_file : str, optional
         File to save the interaction matrix. Default is "".
-    pGain : float, optional
+    p_gain : float, optional
         Proportional gain for PID integrator. Default is 0.1.
-    iGain : float, optional
+    i_gain : float, optional
         Integral gain for PID integrator. Default is 0.0.
-    dGain : float, optional
+    d_gain : float, optional
         Derivative gain for PID integrator. Default is 0.0.
-    controlLimits : list, optional
+    control_limits : list, optional
         Control limits for PID integrator. Default is [-inf, inf].
-    integralLimits : list, optional
+    integral_limits : list, optional
         Integral limits for PID integrator. Default is [-inf, inf].
-    absoluteLimits : list, optional
+    absolute_limits : list, optional
         Absolute limits for corrections. Default is [-inf, inf].
-    derivativeFilter : float, optional
+    derivative_filter : float, optional
         Filter for the derivative term. Default is 0.1.
 
     Attributes
@@ -141,31 +141,31 @@ class Loop(pyRTCComponent):
         Loop configuration.
     name : str
         Name of the loop.
-    signalDType : type
+    signal_dtype : type
         Data type of the wavefront sensor signal.
-    signalSize : int
+    signal_size : int
         Size of the wavefront sensor signal.
-    signalShm : pyshmem.SharedMemory
+    signal_shm : pyshmem.SharedMemory
         Shared memory object for the wavefront sensor signal.
-    nullSignal : numpy.ndarray
+    null_signal : numpy.ndarray
         Null signal.
-    signal2DDType : type
+    signal_2d_dtype : type
         Data type of the 2D wavefront sensor signal.
-    signal2DSize : int
+    signal_2d_size : int
         Size of the 2D wavefront sensor signal.
     signal2D_width : int
         Width of the 2D wavefront sensor signal.
     signal2D_height : int
         Height of the 2D wavefront sensor signal.
-    wfcDType : type
+    wfc_dtype : type
         Data type of the wavefront corrector.
-    numModes : int
+    num_modes : int
         Number of modes in the wavefront corrector.
-    wfcShm : pyshmem.SharedMemory
+    wfc_shm : pyshmem.SharedMemory
         Shared memory object for the wavefront corrector.
-    numDroppedModes : int
+    num_dropped_modes : int
         Number of dropped modes.
-    numActiveModes : int
+    num_active_modes : int
         Number of active modes.
     flat : numpy.ndarray
         Flat correction vector.
@@ -175,52 +175,52 @@ class Loop(pyRTCComponent):
         Control matrix.
     gain : float
         Gain for the integrator.
-    leakyGain : float
+    leaky_gain : float
         Leaky integrator gain.
-    perturbAmp : float
+    perturb_amp : float
         Perturbation amplitude.
-    hardwareDelay : float
+    hardware_delay : float
         Delay for the hardware.
-    pokeAmp : float
+    poke_amp : float
         Amplitude for poking.
-    numItersIM : int
+    num_iters_im : int
         Number of iterations for interaction matrix computation.
     delay : int
         Delay for corrections.
-    IMMethod : str
+    im_method : str
         Method for interaction matrix computation.
-    IMFile : str
+    im_file : str
         File to save the interaction matrix.
-    pGain : float
+    p_gain : float
         Proportional gain for PID integrator.
-    iGain : float
+    i_gain : float
         Integral gain for PID integrator.
-    dGain : float
+    d_gain : float
         Derivative gain for PID integrator.
-    controlLimits : list
+    control_limits : list
         Control limits for PID integrator.
-    integralLimits : list
+    integral_limits : list
         Integral limits for PID integrator.
-    absoluteLimits : list
+    absolute_limits : list
         Absolute limits for corrections.
-    derivativeFilter : float
+    derivative_filter : float
         Filter for the derivative term.
-    CMMethod : str
+    cm_method : str
         Control-matrix inversion method. Supported values are ``svd`` and
         ``tikhonov``.
     conditioning : float or None
         Optional target conditioning number used to truncate small singular
         values when computing the control matrix.
-    tikhonovReg : float
-        Tikhonov regularization strength used when ``CMMethod`` is
+    tikhonov_reg : float
+        Tikhonov regularization strength used when ``cm_method`` is
         ``tikhonov``.
     integral : numpy.ndarray
         Integral term for PID integrator.
-    previousWfError : numpy.ndarray
+    previous_wf_error : numpy.ndarray
         Previous wavefront error.
-    previousDerivative : numpy.ndarray
+    previous_derivative : numpy.ndarray
         Previous derivative term.
-    controlOutput : numpy.ndarray
+    control_output : numpy.ndarray
         Control output.
     """
     def __init__(self, conf) -> None:
@@ -237,37 +237,37 @@ class Loop(pyRTCComponent):
                 Wavefront corrector configuration.
             loop : dict
                 Loop configuration containing
-                numDroppedModes : int, optional
+                num_dropped_modes : int, optional
                     Number of modes to drop. Default is 0.
                 gain : float, optional
                     Gain for the integrator. Default is 0.1.
-                leakyGain : float, optional
+                leaky_gain : float, optional
                     Leaky integrator gain. Default is 0.0.
-                hardwareDelay : float, optional
+                hardware_delay : float, optional
                     Delay for the hardware. Default is 0.0.
-                pokeAmp : float, optional
+                poke_amp : float, optional
                     Amplitude for poking. Default is 0.01.
-                numItersIM : int, optional
+                num_iters_im : int, optional
                     Number of iterations for interaction matrix computation. Default is 100.
                 delay : int, optional
                     Delay for corrections. Default is 0.
-                IMMethod : str, optional
+                im_method : str, optional
                     Method for interaction matrix computation. Default is "push-pull".
-                IMFile : str, optional
+                im_file : str, optional
                     File to save the interaction matrix. Default is "".
-                pGain : float, optional
+                p_gain : float, optional
                     Proportional gain for PID integrator. Default is 0.1.
-                iGain : float, optional
+                i_gain : float, optional
                     Integral gain for PID integrator. Default is 0.0.
-                dGain : float, optional
+                d_gain : float, optional
                     Derivative gain for PID integrator. Default is 0.0.
-                controlLimits : list, optional
+                control_limits : list, optional
                     Control limits for PID integrator. Default is [-inf, inf].
-                integralLimits : list, optional
+                integral_limits : list, optional
                     Integral limits for PID integrator. Default is [-inf, inf].
-                absoluteLimits : list, optional
+                absolute_limits : list, optional
                     Absolute limits for corrections. Default is [-inf, inf].
-                derivativeFilter : float, optional
+                derivative_filter : float, optional
                     Filter for the derivative term. Default is 0.1.
         """
         try:
@@ -276,72 +276,72 @@ class Loop(pyRTCComponent):
             self.conf = conf
         
         #Read wfs signal's metadata and open a stream to the shared memory
-            self.signalShm = open_stream(self.input_stream_name("signal"), gpuDevice=self.gpuDevice)
-            self.signalShape = tuple(self.signalShm.shape)
-            self.signalDType = np.dtype(self.signalShm.dtype)
-            self.register_input_stream("signal", self.signalShm)
-            self.signalSize = int(np.prod(self.signalShape))
-            self.nullSignal = np.zeros(self.signalShape, dtype=self.signalDType)
+            self.signal_shm = open_stream(self.input_stream_name("signal"), gpu_device=self.gpu_device)
+            self.signal_shape = tuple(self.signal_shm.shape)
+            self.signal_dtype = np.dtype(self.signal_shm.dtype)
+            self.register_input_stream("signal", self.signal_shm)
+            self.signal_size = int(np.prod(self.signal_shape))
+            self.null_signal = np.zeros(self.signal_shape, dtype=self.signal_dtype)
 
         #Read wfc metadata and open a stream to the shared memory
-            self.wfcShm = open_stream(self.output_stream_name("wfc"), gpuDevice=self.gpuDevice)
-            self.wfcShape = tuple(self.wfcShm.shape)
-            self.wfcDType = np.dtype(self.wfcShm.dtype)
-            self.register_output_stream("wfc", self.wfcShm)
-            self.numModes = int(np.prod(self.wfcShape))
+            self.wfc_shm = open_stream(self.output_stream_name("wfc"), gpu_device=self.gpu_device)
+            self.wfc_shape = tuple(self.wfc_shm.shape)
+            self.wfc_dtype = np.dtype(self.wfc_shm.dtype)
+            self.register_output_stream("wfc", self.wfc_shm)
+            self.num_modes = int(np.prod(self.wfc_shape))
 
-            self.numDroppedModes = setFromConfig(self.conf, "numDroppedModes", 0)
-            self.numActiveModes = self.numModes - self.numDroppedModes
-            self.flat = np.zeros(self.numModes, dtype=self.wfcDType)
-            self.nullCorrection = np.zeros_like(self.flat)
+            self.num_dropped_modes = set_from_config(self.conf, "num_dropped_modes", 0)
+            self.num_active_modes = self.num_modes - self.num_dropped_modes
+            self.flat = np.zeros(self.num_modes, dtype=self.wfc_dtype)
+            self.null_correction = np.zeros_like(self.flat)
 
-            self.IM = np.zeros((self.signalSize, self.numModes),dtype=self.signalDType)
-            self.CM = np.zeros((self.numModes, self.signalSize),dtype=self.signalDType)
-            self.gain = setFromConfig(self.conf, "gain", 0.1)
-            self.leakyGain = setFromConfig(self.conf, "leakyGain", 0.0)
-            self.perturbAmp = 0
-            self.hardwareDelay = setFromConfig(self.conf, "hardwareDelay", 0.0)
-            self.pokeAmp = setFromConfig(self.conf, "pokeAmp", 1e-2)
-            self.numItersIM = setFromConfig(self.conf, "numItersIM", 100)
-            self.delay = setFromConfig(self.conf, "delay", 0)
-            self.IMMethod = setFromConfig(self.conf, "IMMethod", "push-pull")
-            self.IMFile = setFromConfig(self.conf, "IMFile", "")
-            self.CMMethod = str(setFromConfig(self.conf, "CMMethod", "svd")).lower()
-            conditioning = setFromConfig(self.conf, "conditioning", None)
+            self.IM = np.zeros((self.signal_size, self.num_modes),dtype=self.signal_dtype)
+            self.CM = np.zeros((self.num_modes, self.signal_size),dtype=self.signal_dtype)
+            self.gain = set_from_config(self.conf, "gain", 0.1)
+            self.leaky_gain = set_from_config(self.conf, "leaky_gain", 0.0)
+            self.perturb_amp = 0
+            self.hardware_delay = set_from_config(self.conf, "hardware_delay", 0.0)
+            self.poke_amp = set_from_config(self.conf, "poke_amp", 1e-2)
+            self.num_iters_im = set_from_config(self.conf, "num_iters_im", 100)
+            self.delay = set_from_config(self.conf, "delay", 0)
+            self.im_method = set_from_config(self.conf, "im_method", "push-pull")
+            self.im_file = set_from_config(self.conf, "im_file", "")
+            self.cm_method = str(set_from_config(self.conf, "cm_method", "svd")).lower()
+            conditioning = set_from_config(self.conf, "conditioning", None)
             self.conditioning = None if conditioning is None else float(conditioning)
-            self.tikhonovReg = float(setFromConfig(self.conf, "tikhonovReg", 0.0))
-            self.lastSingularValues = np.array([], dtype=np.float64)
-            self.lastRetainedSingularMask = np.array([], dtype=bool)
-            self.lastSuggestedConditioning = None
-            self.lastSingularValueFit = None
+            self.tikhonov_reg = float(set_from_config(self.conf, "tikhonov_reg", 0.0))
+            self.last_singular_values = np.array([], dtype=np.float64)
+            self.last_retained_singular_mask = np.array([], dtype=bool)
+            self.last_suggested_conditioning = None
+            self.last_singular_value_fit = None
         
-            self.clDocrime = False
-            self.numItersDC = 0
+            self.cl_docrime = False
+            self.num_iters_dc = 0
             tmp2 = self.flat.copy().reshape(self.flat.size, 1)
-            tmp = self.nullSignal.copy().reshape(self.nullSignal.size, 1)
-            self.docrimeCross = np.zeros_like(tmp @ tmp2.T)
-            self.docrimeAuto = np.zeros_like(tmp2 @ tmp2.T)
-            self.docrimeBuffer = np.zeros((1 + self.delay, *tmp2.shape), dtype=self.wfcDType)
+            tmp = self.null_signal.copy().reshape(self.null_signal.size, 1)
+            self.docrime_cross = np.zeros_like(tmp @ tmp2.T)
+            self.docrime_auto = np.zeros_like(tmp2 @ tmp2.T)
+            self.docrime_buffer = np.zeros((1 + self.delay, *tmp2.shape), dtype=self.wfc_dtype)
         
-            self.pGain = setFromConfig(self.conf, "pGain", 0.1)
-            self.iGain = setFromConfig(self.conf, "iGain", 0.0)
-            self.dGain = setFromConfig(self.conf, "dGain", 0.0)
-            self.controlLimits = setFromConfig(self.conf, "controlLimits", [-np.inf, np.inf])
-            self.integralLimits = setFromConfig(self.conf, "integralLimits", [-np.inf, np.inf])
-            self.absoluteLimits = setFromConfig(self.conf, "absoluteLimits", [-np.inf, np.inf])
-            self.derivativeFilter = setFromConfig(self.conf, "derivativeFilter", 0.1)
+            self.p_gain = set_from_config(self.conf, "p_gain", 0.1)
+            self.i_gain = set_from_config(self.conf, "i_gain", 0.0)
+            self.d_gain = set_from_config(self.conf, "d_gain", 0.0)
+            self.control_limits = set_from_config(self.conf, "control_limits", [-np.inf, np.inf])
+            self.integral_limits = set_from_config(self.conf, "integral_limits", [-np.inf, np.inf])
+            self.absolute_limits = set_from_config(self.conf, "absolute_limits", [-np.inf, np.inf])
+            self.derivative_filter = set_from_config(self.conf, "derivative_filter", 0.1)
             self.integral = 0
 
-            self.previousWfError = np.zeros_like(self.read_stream("wfc", block=False))
-            self.previousDerivative = np.zeros_like(self.previousWfError)
-            self.controlOutput = np.zeros_like(self.previousWfError)
+            self.previous_wf_error = np.zeros_like(self.read_stream("wfc", block=False))
+            self.previous_derivative = np.zeros_like(self.previous_wf_error)
+            self.control_output = np.zeros_like(self.previous_wf_error)
 
             # Pre-allocated hot-path read buffers (ignored for GPU streams).
-            self._signalBuffer = np.empty(self.signalShape, dtype=self.signalDType)
-            self._wfcBuffer = np.empty(self.wfcShape, dtype=self.wfcDType)
+            self._signalBuffer = np.empty(self.signal_shape, dtype=self.signal_dtype)
+            self._wfcBuffer = np.empty(self.wfc_shape, dtype=self.wfc_dtype)
 
-            self.loadIM()
-            self.logger.info("Initialized loop signalShape=%s wfcShape=%s numModes=%s", self.signalShape, self.wfcShape, self.numModes)
+            self.load_im()
+            self.logger.info("Initialized loop signal_shape=%s wfc_shape=%s num_modes=%s", self.signal_shape, self.wfc_shape, self.num_modes)
         except Exception:
             logger.exception("Failed to initialize loop")
             raise
@@ -356,9 +356,9 @@ class Loop(pyRTCComponent):
     def gain(self, gain):
         self._gain = float(gain)
         if hasattr(self, "CM"):
-            self.gCM = self._gain * self.CM
+            self.g_cm = self._gain * self.CM
 
-    def setGain(self, gain):
+    def set_gain(self, gain):
         """
         Set the integrator gain. Only needed for certain integrators.
 
@@ -376,7 +376,7 @@ class Loop(pyRTCComponent):
             raise
         return
 
-    def setPeturbAmp(self, amp):
+    def set_peturb_amp(self, amp):
         """
         Set the perturbation amplitude.
 
@@ -387,55 +387,55 @@ class Loop(pyRTCComponent):
         """
         component_logger = getattr(self, "logger", logger)
         try:
-            self.perturbAmp = amp
+            self.perturb_amp = amp
             component_logger.info("Set perturbation amplitude to %s", amp)
         except Exception:
             component_logger.exception("Failed to set perturbation amplitude to %s", amp)
             raise
         return
 
-    def pushPullIM(self):
+    def push_pull_im(self):
         """
         Compute the interaction matrix using the push-pull method.
         """
         #For each mode
-        for i in range(self.numModes):
+        for i in range(self.num_modes):
             #Reset the correction
             correction = self.flat.copy()
             #Plus amplitude
-            correction[i] = self.pokeAmp
+            correction[i] = self.poke_amp
             #Post a new shape to be made
-            self.sendToWfc(correction)
+            self.send_to_wfc(correction)
             #Add some delay to ensure one-to-one
-            time.sleep(self.hardwareDelay)
+            time.sleep(self.hardware_delay)
             #Burn the first new image since we were moving the DM during the exposure
             self.read_stream("signal")
             #Average out N new WFS frames
             tmp_plus = np.zeros_like(self.IM[:,i])
-            for n in range(self.numItersIM):
+            for n in range(self.num_iters_im):
                 tmp_plus += self.read_stream("signal")
-            tmp_plus /= self.numItersIM
+            tmp_plus /= self.num_iters_im
 
             #Minus amplitude
-            correction[i] = -self.pokeAmp
+            correction[i] = -self.poke_amp
             #Post a new shape to be made
-            self.sendToWfc(correction)
+            self.send_to_wfc(correction)
             #Add some delay to ensure one-to-one
-            time.sleep(self.hardwareDelay)
+            time.sleep(self.hardware_delay)
             #Burn the first new image since we were moving the DM during the exposure
             self.read_stream("signal")
             #Average out N new WFS frames
             tmp_minus = np.zeros_like(self.IM[:,i])
-            for n in range(self.numItersIM):
+            for n in range(self.num_iters_im):
                 tmp_minus += self.read_stream("signal")
-            tmp_minus /= self.numItersIM
+            tmp_minus /= self.num_iters_im
 
             #Compute the normalized difference
-            self.IM[:,i] = (tmp_plus-tmp_minus)/(2*self.pokeAmp)
+            self.IM[:,i] = (tmp_plus-tmp_minus)/(2*self.poke_amp)
 
         return
     
-    def docrimeIM(self):
+    def docrime_im(self):
         """
         Compute the interaction matrix using the DOCRIME method.
         """        
@@ -450,99 +450,99 @@ class Loop(pyRTCComponent):
         # corrections = np.zeros((1+self.delay, *correction.shape), dtype=correction.dtype)
 
         #Get an initial slope reading to set shapes
-        slopes = self.nullSignal.copy()
+        slopes = self.null_signal.copy()
         slopes = slopes.reshape(slopes.size,1)
-        self.docrimeCross = np.zeros_like(self.docrimeCross)
-        self.docrimeAuto = np.zeros_like(self.docrimeAuto)
+        self.docrime_cross = np.zeros_like(self.docrime_cross)
+        self.docrime_auto = np.zeros_like(self.docrime_auto)
 
 
-        for i in range(self.numItersIM):
+        for i in range(self.num_iters_im):
             #Compute new random shape
-            correction = np.random.uniform(-self.pokeAmp,self.pokeAmp,correction.size).astype(correction.dtype).reshape(correction.shape)
+            correction = np.random.uniform(-self.poke_amp,self.poke_amp,correction.size).astype(correction.dtype).reshape(correction.shape)
             
             #Get current WFS response
             #I put this first to match CL case
             slopes = self.read_stream("signal").reshape(slopes.shape)
 
             #Send random shape to mirror
-            self.sendToWfc(correction)
+            self.send_to_wfc(correction)
 
-            add_to_buffer(self.docrimeBuffer, correction)
+            add_to_buffer(self.docrime_buffer, correction)
 
             #Correlate Current response with old correction by delay time
-            self.docrimeCross += slopes@self.docrimeBuffer[0].T
-            self.docrimeAuto += self.docrimeBuffer[0]@self.docrimeBuffer[0].T
+            self.docrime_cross += slopes@self.docrime_buffer[0].T
+            self.docrime_auto += self.docrime_buffer[0]@self.docrime_buffer[0].T
 
-        self.docrimeCross /= self.numItersIM 
-        self.docrimeAuto /= self.numItersIM
-        self.IM = self.docrimeCross @np.linalg.inv(self.docrimeAuto)
+        self.docrime_cross /= self.num_iters_im 
+        self.docrime_auto /= self.num_iters_im
+        self.IM = self.docrime_cross @np.linalg.inv(self.docrime_auto)
 
-        self.docrimeCross = np.zeros_like(self.docrimeCross)
-        self.docrimeAuto = np.zeros_like(self.docrimeAuto)
+        self.docrime_cross = np.zeros_like(self.docrime_cross)
+        self.docrime_auto = np.zeros_like(self.docrime_auto)
 
         return
 
-    def computeIM(self):
+    def compute_im(self):
         """
-        Compute the interaction matrix using the specified method. Method specified using IMMethod, default is push-pull.
+        Compute the interaction matrix using the specified method. Method specified using im_method, default is push-pull.
         """
         component_logger = getattr(self, "logger", logger)
         try:
-            component_logger.info("Computing interaction matrix using method=%s", self.IMMethod)
-            if self.IMMethod == 'docrime':
-                self.docrimeIM()
+            component_logger.info("Computing interaction matrix using method=%s", self.im_method)
+            if self.im_method == 'docrime':
+                self.docrime_im()
             else:
-                self.pushPullIM()
+                self.push_pull_im()
 
-            self.computeCM()
+            self.compute_cm()
         except Exception:
-            component_logger.exception("Failed to compute interaction matrix using method=%s", getattr(self, "IMMethod", None))
+            component_logger.exception("Failed to compute interaction matrix using method=%s", getattr(self, "im_method", None))
             raise
         return
     
-    def saveIM(self,filename=''):
+    def save_im(self,filename=''):
         """
         Save the interaction matrix to a file.
 
         Parameters
         ----------
         filename : str, optional
-            File to save the interaction matrix to. If not specified, uses the configured IMFile.
+            File to save the interaction matrix to. If not specified, uses the configured im_file.
         """
         component_logger = getattr(self, "logger", logger)
         try:
             if filename == '':
-                filename = self.IMFile
+                filename = self.im_file
             if filename == '':
                 raise ValueError("No interaction matrix filename provided")
             np.save(filename, self.IM)
             component_logger.info("Saved interaction matrix to %s", filename)
         except Exception:
-            component_logger.exception("Failed to save interaction matrix to %s", filename or getattr(self, "IMFile", ""))
+            component_logger.exception("Failed to save interaction matrix to %s", filename or getattr(self, "im_file", ""))
             raise
 
-    def loadIM(self,filename=''):
+    def load_im(self,filename=''):
         """
         Load the interaction matrix from a file.
 
         Parameters
         ----------
         filename : str, optional
-            File to load the interaction matrix from. If not specified, uses the configured IMFile.
+            File to load the interaction matrix from. If not specified, uses the configured im_file.
         """
         component_logger = getattr(self, "logger", logger)
         try:
             if filename == '':
-                filename = self.IMFile
+                filename = self.im_file
             if filename == '':
                 self.IM = np.zeros_like(self.IM)
                 component_logger.info("No interaction matrix file configured; using zeros")
             else:
                 self.IM = np.load(filename)
                 component_logger.info("Loaded interaction matrix from %s", filename)
-            self.computeCM()
+            self.compute_cm()
         except Exception:
-            component_logger.exception("Failed to load interaction matrix from %s", filename or getattr(self, "IMFile", ""))
+            component_logger.exception("Failed to load interaction matrix from %s", filename or getattr(self, "im_file", ""))
             raise
 
     def flatten(self):
@@ -551,7 +551,7 @@ class Loop(pyRTCComponent):
         """
         component_logger = getattr(self, "logger", logger)
         try:
-            self.sendToWfc(self.flat)
+            self.send_to_wfc(self.flat)
             component_logger.info("Flattened loop correction")
         except Exception:
             component_logger.exception("Failed to flatten loop correction")
@@ -630,24 +630,24 @@ class Loop(pyRTCComponent):
             return None, None
         return best_fit["conditioning"], best_fit
 
-    def getSingularValues(self) -> np.ndarray:
+    def get_singular_values(self) -> np.ndarray:
         if self.IM.size == 0:
             return np.array([], dtype=np.float64)
         return np.linalg.svd(self.IM, compute_uv=False)
 
-    def suggestConditioningNumber(self):
-        singular_values = self.getSingularValues()
+    def suggest_conditioning_number(self):
+        singular_values = self.get_singular_values()
         suggestion, fit = self._suggest_conditioning_from_singular_values(singular_values)
-        self.lastSuggestedConditioning = suggestion
-        self.lastSingularValueFit = fit
+        self.last_suggested_conditioning = suggestion
+        self.last_singular_value_fit = fit
         return suggestion
 
-    def plotSingularValues(self, conditioning_lines=COMMON_CONDITIONING_LINES, ax=None):
-        singular_values = self.getSingularValues()
-        self.lastSingularValues = singular_values
+    def plot_singular_values(self, conditioning_lines=COMMON_CONDITIONING_LINES, ax=None):
+        singular_values = self.get_singular_values()
+        self.last_singular_values = singular_values
         suggestion, fit = self._suggest_conditioning_from_singular_values(singular_values)
-        self.lastSuggestedConditioning = suggestion
-        self.lastSingularValueFit = fit
+        self.last_suggested_conditioning = suggestion
+        self.last_singular_value_fit = fit
 
         if ax is None:
             fig = plt.figure(figsize=(8, 4.5))
@@ -681,7 +681,7 @@ class Loop(pyRTCComponent):
         ax.legend(loc="best", fontsize="small")
         return suggestion
 
-    def _compute_inverse_from_svd(self, matrix, method: str, conditioning, tikhonovReg: float):
+    def _compute_inverse_from_svd(self, matrix, method: str, conditioning, tikhonov_reg: float):
         matrix = np.asarray(matrix, dtype=np.float64)
         num_modes = matrix.shape[1]
 
@@ -701,14 +701,14 @@ class Loop(pyRTCComponent):
         if method == "svd":
             inverse_singular_values[retained] = 1.0 / singular_values[retained]
         else:
-            if tikhonovReg < 0:
-                raise ValueError("tikhonovReg must be non-negative")
-            inverse_singular_values[retained] = singular_values[retained] / (singular_values[retained] ** 2 + tikhonovReg ** 2)
+            if tikhonov_reg < 0:
+                raise ValueError("tikhonov_reg must be non-negative")
+            inverse_singular_values[retained] = singular_values[retained] / (singular_values[retained] ** 2 + tikhonov_reg ** 2)
 
         inverse = (Vh.T * inverse_singular_values) @ U.T
         return inverse.astype(self.CM.dtype, copy=False), singular_values, retained
     
-    def computeCM(self, method=None, numDroppedModes=None, conditioning=None, tikhonovReg=None):
+    def compute_cm(self, method=None, num_dropped_modes=None, conditioning=None, tikhonov_reg=None):
         """
         Compute the control matrix from the interaction matrix.
 
@@ -716,63 +716,63 @@ class Loop(pyRTCComponent):
         ----------
         method : str, optional
             Inversion method to use. Supported values are ``svd`` and
-            ``tikhonov``. Defaults to the configured ``CMMethod``.
-        numDroppedModes : int, optional
+            ``tikhonov``. Defaults to the configured ``cm_method``.
+        num_dropped_modes : int, optional
             Number of modal commands to suppress before inversion. Defaults to
-            the configured ``numDroppedModes``.
+            the configured ``num_dropped_modes``.
         conditioning : float, optional
             Optional target conditioning number. Singular values below
             ``max(s) / conditioning`` are discarded.
-        tikhonovReg : float, optional
+        tikhonov_reg : float, optional
             Tikhonov regularization strength used when ``method`` is
-            ``tikhonov``. Defaults to the configured ``tikhonovReg``.
+            ``tikhonov``. Defaults to the configured ``tikhonov_reg``.
         """
         component_logger = getattr(self, "logger", logger)
         try:
-            method = self._validate_cm_method(self.CMMethod if method is None else method)
-            requested_dropped_modes = self.numDroppedModes if numDroppedModes is None else int(numDroppedModes)
+            method = self._validate_cm_method(self.cm_method if method is None else method)
+            requested_dropped_modes = self.num_dropped_modes if num_dropped_modes is None else int(num_dropped_modes)
             requested_conditioning = self.conditioning if conditioning is None else conditioning
-            requested_tikhonov = self.tikhonovReg if tikhonovReg is None else float(tikhonovReg)
+            requested_tikhonov = self.tikhonov_reg if tikhonov_reg is None else float(tikhonov_reg)
 
             if requested_conditioning is not None:
                 requested_conditioning = float(requested_conditioning)
                 if requested_conditioning <= 1:
                     raise ValueError("conditioning must be greater than 1 when provided")
 
-            self.numDroppedModes = requested_dropped_modes
-            self.CMMethod = method
+            self.num_dropped_modes = requested_dropped_modes
+            self.cm_method = method
             self.conditioning = requested_conditioning
-            self.tikhonovReg = requested_tikhonov
-            self.numActiveModes = self.numModes - self.numDroppedModes
-            if self.numActiveModes < 0:
-                raise ValueError("Invalid number of modes used in CM. Check numDroppedModes")
-            active_im = self.IM[:, :self.numActiveModes]
+            self.tikhonov_reg = requested_tikhonov
+            self.num_active_modes = self.num_modes - self.num_dropped_modes
+            if self.num_active_modes < 0:
+                raise ValueError("Invalid number of modes used in CM. Check num_dropped_modes")
+            active_im = self.IM[:, :self.num_active_modes]
             inverse, singular_values, retained = self._compute_inverse_from_svd(
                 active_im,
-                method=self.CMMethod,
+                method=self.cm_method,
                 conditioning=self.conditioning,
-                tikhonovReg=self.tikhonovReg,
+                tikhonov_reg=self.tikhonov_reg,
             )
 
             self.CM[:, :] = 0
-            self.CM[:self.numActiveModes, :] = inverse
-            self.CM[self.numActiveModes:, :] = 0
-            self.gCM = self.gain * self.CM
-            self.fIM = np.copy(self.IM)
-            self.fIM[:, self.numActiveModes:] = 0
-            self.lastSingularValues = singular_values
-            self.lastRetainedSingularMask = retained
+            self.CM[:self.num_active_modes, :] = inverse
+            self.CM[self.num_active_modes:, :] = 0
+            self.g_cm = self.gain * self.CM
+            self.f_im = np.copy(self.IM)
+            self.f_im[:, self.num_active_modes:] = 0
+            self.last_singular_values = singular_values
+            self.last_retained_singular_mask = retained
             suggestion, fit = self._suggest_conditioning_from_singular_values(singular_values)
-            self.lastSuggestedConditioning = suggestion
-            self.lastSingularValueFit = fit
+            self.last_suggested_conditioning = suggestion
+            self.last_singular_value_fit = fit
             component_logger.info(
-                "Computed control matrix method=%s activeModes=%s droppedModes=%s conditioning=%s retainedSingularValues=%s tikhonovReg=%s",
-                self.CMMethod,
-                self.numActiveModes,
-                self.numDroppedModes,
+                "Computed control matrix method=%s active_modes=%s dropped_modes=%s conditioning=%s retained_singular_values=%s tikhonov_reg=%s",
+                self.cm_method,
+                self.num_active_modes,
+                self.num_dropped_modes,
                 self.conditioning,
                 int(np.count_nonzero(retained)),
-                self.tikhonovReg,
+                self.tikhonov_reg,
             )
         except Exception:
             component_logger.exception("Failed to compute control matrix")
@@ -780,7 +780,7 @@ class Loop(pyRTCComponent):
         return 
         
     # @jit(nopython=True)
-    def updateCorrectionPOL(self, correction=np.array([], dtype=np.float32), slopes=np.array([], dtype=np.float32)):
+    def update_correction_pol(self, correction=np.array([], dtype=np.float32), slopes=np.array([], dtype=np.float32)):
         """
         Update the correction using pseudo open loop slopes.
 
@@ -798,65 +798,65 @@ class Loop(pyRTCComponent):
         """   
         # Compute POL Slopes s_{POL} = s_{RES} + IM*c_{n-1}
         # print(f'slopes: {slopes.shape}, IM: {self.IM.shape}, corr: {correction.shape}')
-        s_pol = slopes - self.fIM@correction
+        s_pol = slopes - self.f_im@correction
 
         # Update Command Vector c_n = g*CM*s_{POL} + (1 − g) c_{n-1}  https://arxiv.org/pdf/1903.12124.pdf Eq 3
-        return (1-self.gain)*correction - np.dot(self.gCM,s_pol)
+        return (1-self.gain)*correction - np.dot(self.g_cm,s_pol)
 
-    def standardIntegratorPOL(self):
+    def standard_integrator_pol(self):
         """
         Standard integrator using the pseudo open loop slopes.
         """
         residual_slopes = self.read_stream("signal", out=self._signalBuffer)
-        currentCorrection = self.read_stream("wfc", block=False, out=self._wfcBuffer)
-        # print(f'slopes: {residual_slopes.shape}, IM: {self.IM.shape}, corr: {currentCorrection.shape}')
+        current_correction = self.read_stream("wfc", block=False, out=self._wfcBuffer)
+        # print(f'slopes: {residual_slopes.shape}, IM: {self.IM.shape}, corr: {current_correction.shape}')
 
-        newCorrection = self.updateCorrectionPOL(correction=currentCorrection, 
+        new_correction = self.update_correction_pol(correction=current_correction, 
                                                  slopes=residual_slopes)
-        newCorrection[self.numActiveModes:] = 0
-        self.sendToWfc(newCorrection)
+        new_correction[self.num_active_modes:] = 0
+        self.send_to_wfc(new_correction)
 
         return
 
     
-    def standardIntegrator(self):
+    def standard_integrator(self):
         """
         Standard integrator.
         """
         slopes = self.read_stream("signal", out=self._signalBuffer)
-        newCorrection = leakyIntegratorNumba(slopes, 
-                         self.gCM, 
+        new_correction = leaky_integrator_numba(slopes, 
+                         self.g_cm, 
                  self.read_stream("wfc", block=False, out=self._wfcBuffer).squeeze(),
-                         self.nullCorrection,
+                         self.null_correction,
                          np.float32(0),#No leak
-                         self.numActiveModes)
-        self.sendToWfc(newCorrection, slopes=slopes)
+                         self.num_active_modes)
+        self.send_to_wfc(new_correction, slopes=slopes)
         return
     
-    def leakyIntegrator(self):
+    def leaky_integrator(self):
         """
         Leaky integrator.
         """
         slopes = self.read_stream("signal", out=self._signalBuffer)
-        newCorrection = leakyIntegratorNumba(slopes, 
-                         self.gCM, 
+        new_correction = leaky_integrator_numba(slopes, 
+                         self.g_cm, 
                  self.read_stream("wfc", block=False, out=self._wfcBuffer).squeeze(),
-                         self.nullCorrection,
-                         np.float32(self.leakyGain),
-                         self.numActiveModes)
-        self.sendToWfc(newCorrection, slopes=slopes)
+                         self.null_correction,
+                         np.float32(self.leaky_gain),
+                         self.num_active_modes)
+        self.send_to_wfc(new_correction, slopes=slopes)
         return
 
-    def pidIntegratorPOL(self):
+    def pid_integrator_pol(self):
         """
         PID integrator using the pseudo-open loop slopes.
         """
         slopes = self.read_stream("signal", out=self._signalBuffer)
         correction = self.read_stream("wfc", block=False, out=self._wfcBuffer)
-        polSlopes = slopes - self.fIM@correction
-        return self.pidIntegrator(slopes=polSlopes, correction=correction)
+        pol_slopes = slopes - self.f_im@correction
+        return self.pid_integrator(slopes=pol_slopes, correction=correction)
 
-    def pidIntegrator(self, slopes = None, correction = None):
+    def pid_integrator(self, slopes = None, correction = None):
         """
         PID integrator.
 
@@ -873,91 +873,91 @@ class Loop(pyRTCComponent):
             correction = self.read_stream("wfc", block=False)
 
         #Compute raw error term (numba accelerated)
-        wfError = compCorrection(CM=self.CM, 
+        wf_error = comp_correction(CM=self.CM, 
                                     slopes=slopes)
-        derivative = (wfError - self.previousWfError) 
+        derivative = (wf_error - self.previous_wf_error) 
         
         # Apply low-pass filter to the derivative to reduce noise
-        derivative = self.derivativeFilter * derivative + (1 - self.derivativeFilter) * self.previousDerivative
+        derivative = self.derivative_filter * derivative + (1 - self.derivative_filter) * self.previous_derivative
         
         # Update integral (anti-windup: conditional integration)
-        # notOutputLimiting = self.controlLimits[0] is None or self.controlLimits[1] is None
-        isClipped = np.any(self.controlOutput == self.controlLimits[0]) or np.any(self.controlOutput == self.controlLimits[1])
+        # not_output_limiting = self.control_limits[0] is None or self.control_limits[1] is None
+        is_clipped = np.any(self.control_output == self.control_limits[0]) or np.any(self.control_output == self.control_limits[1])
         #Check to make sure we aren't actively clipping the correction
-        if not isClipped:
+        if not is_clipped:
             #Add to integral
-            self.integral += wfError 
+            self.integral += wf_error 
             #Clip integral term
-            self.integral = np.clip(self.integral, *self.integralLimits)
+            self.integral = np.clip(self.integral, *self.integral_limits)
 
         # Calculate PID output
-        controlOutput = self.pGain * wfError + self.iGain * self.integral + self.dGain * derivative
+        control_output = self.p_gain * wf_error + self.i_gain * self.integral + self.d_gain * derivative
 
-        controlOutput = np.clip(controlOutput, *self.controlLimits)
+        control_output = np.clip(control_output, *self.control_limits)
 
         #Get new correction vector from the control output
-        newCorrection = (1-self.leakyGain)*correction - controlOutput #Negative control direction is convention for pyRTC
+        new_correction = (1-self.leaky_gain)*correction - control_output #Negative control direction is convention for pyrtc
 
         #Remove anything in non-corrected modes (might be redundant)
-        newCorrection[self.numActiveModes:] = 0
+        new_correction[self.num_active_modes:] = 0
         
         # Clip correction (force the loop to not over correct a mode)
-        newCorrection = np.clip(newCorrection, *self.absoluteLimits)
+        new_correction = np.clip(new_correction, *self.absolute_limits)
         
         #Apply new correction to mirror
-        self.sendToWfc(newCorrection, slopes = slopes)
+        self.send_to_wfc(new_correction, slopes = slopes)
 
         # Save state for next iteration
-        self.previousWfError = wfError
-        self.previousDerivative = derivative
-        self.controlOutput = controlOutput
+        self.previous_wf_error = wf_error
+        self.previous_derivative = derivative
+        self.control_output = control_output
         
         return
 
-    def sendToWfc(self, correction, slopes=None):
+    def send_to_wfc(self, correction, slopes=None):
         #Get an initial slope reading to set shapes
         correction = correction.reshape(self.flat.shape)
-        if self.clDocrime and isinstance(slopes, np.ndarray):
+        if self.cl_docrime and isinstance(slopes, np.ndarray):
 
             slopes = slopes.reshape(slopes.size, 1)
             #Compute new random shape
-            randShape = np.random.uniform(-self.pokeAmp,
-                                          self.pokeAmp,
-                                          correction.size).astype(self.docrimeBuffer[0].dtype).reshape(self.docrimeBuffer[0].shape)
+            rand_shape = np.random.uniform(-self.poke_amp,
+                                          self.poke_amp,
+                                          correction.size).astype(self.docrime_buffer[0].dtype).reshape(self.docrime_buffer[0].shape)
 
             #Adds to end of buffer (i.e. pos -1)
-            add_to_buffer(self.docrimeBuffer,randShape)
+            add_to_buffer(self.docrime_buffer,rand_shape)
 
-            randShape = randShape.astype(correction.dtype).reshape(correction.shape)
+            rand_shape = rand_shape.astype(correction.dtype).reshape(correction.shape)
 
             #Only add randomness to active modes, otherwise it will build up
-            if self.numActiveModes > 0:
-                correction[:self.numActiveModes] += randShape[:self.numActiveModes]
-                correction[self.numActiveModes:] = randShape[self.numActiveModes:]
+            if self.num_active_modes > 0:
+                correction[:self.num_active_modes] += rand_shape[:self.num_active_modes]
+                correction[self.num_active_modes:] = rand_shape[self.num_active_modes:]
             else:
-                correction = randShape
+                correction = rand_shape
 
             #Send our new pertubation to the WFC
             self.write_stream("wfc", correction)
 
             #Correlate Current response with old correction by delay time
-            self.docrimeCross += slopes@self.docrimeBuffer[0].T
-            self.docrimeAuto += self.docrimeBuffer[0]@self.docrimeBuffer[0].T
+            self.docrime_cross += slopes@self.docrime_buffer[0].T
+            self.docrime_auto += self.docrime_buffer[0]@self.docrime_buffer[0].T
 
-            self.numItersDC += 1
+            self.num_iters_dc += 1
 
         else:
             self.write_stream("wfc", correction)
         return
 
-    def solveDocrime(self):
+    def solve_docrime(self):
 
         component_logger = getattr(self, "logger", logger)
         try:
-            self.clDCIM = (self.docrimeCross / self.numItersDC) @ np.linalg.inv(self.docrimeAuto / self.numItersDC)
-            tmpFilePath = get_tmp_filepath(self.IMFile, uniqueStr="CL_docrime")
-            component_logger.info("Saving DOCRIME matrix to %s", tmpFilePath)
-            np.save(tmpFilePath, self.clDCIM)
+            self.cl_dcim = (self.docrime_cross / self.num_iters_dc) @ np.linalg.inv(self.docrime_auto / self.num_iters_dc)
+            tmp_file_path = get_tmp_filepath(self.im_file, unique_str="CL_docrime")
+            component_logger.info("Saving DOCRIME matrix to %s", tmp_file_path)
+            np.save(tmp_file_path, self.cl_dcim)
         except Exception:
             component_logger.exception("Failed to solve DOCRIME interaction matrix")
             raise
@@ -965,11 +965,11 @@ class Loop(pyRTCComponent):
         return
 
 
-    def plotIM(self, row=None):
+    def plot_im(self, row=None):
 
         plt.imshow(self.IM, cmap = 'inferno', aspect='auto')
         plt.show()
 
 if __name__ == "__main__":
 
-    launchComponent(Loop, "loop", start = False)
+    launch_component(Loop, "loop", start = False)

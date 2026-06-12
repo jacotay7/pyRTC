@@ -3,7 +3,7 @@
 This uses the same lab YAML as the soft example, but switches runtime behavior
 at the manager call site with ``mode="hard"``. In hard mode,
 ``manager.get_component(...)`` returns a control proxy, so parameter changes use
-``getProperty`` and ``setProperty`` and methods use ``run``.
+``get_property`` and ``set_property`` and methods use ``run``.
 """
 
 # %% Imports
@@ -20,13 +20,13 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 
-from pyRTC.Pipeline import RTCManager, clear_shms, open_stream
-from pyRTC.logging_utils import add_logging_cli_args, configure_logging_from_args, get_logger
+from pyrtc.pipeline import RTCManager, clear_shms, open_stream
+from pyrtc.logging_utils import add_logging_cli_args, configure_logging_from_args, get_logger
 
 
 logger = get_logger("examples.sharp_lab.shwfs.hard")
 CONFIG_PATH = REPO_ROOT / "examples" / "sharp_lab" / "config.yaml"
-DEFAULT_STREAMS = ["wfs", "wfsRaw", "wfc", "wfc2D", "signal", "signal2D", "psfShort", "psfLong", "strehl", "tiptilt"]
+DEFAULT_STREAMS = ["wfs", "wfs_raw", "wfc", "wfc_2d", "signal", "signal_2d", "psf_short", "psf_long", "strehl", "tiptilt"]
 
 
 # %% CLI
@@ -73,17 +73,17 @@ def main(argv=None) -> int:
     logger.info("SHARP lab SHWFS hard-RTC tutorial")
     logger.info("Config: %s", CONFIG_PATH)
     logger.info("Manager call: RTCManager.from_config_file(CONFIG_PATH, mode='hard')")
-    logger.info("Viewer: pyrtc-view wfs signal2D psfShort psfLong --geometry 2x2")
+    logger.info("Viewer: pyrtc-view wfs signal_2d psf_short psf_long --geometry 2x2")
 
     manager.start()
     try:
         loop = manager.get_component("loop")
         wfc = manager.get_component("wfc")
 
-        logger.info("Hard mode proxy read: loop.getProperty('gain') -> %s", loop.getProperty("gain"))
-        logger.info("Hard mode proxy write: loop.setProperty('gain', 0.10)")
-        loop.setProperty("gain", 0.10)
-        logger.info("Remote loop gain is now %s", loop.getProperty("gain"))
+        logger.info("Hard mode proxy read: loop.get_property('gain') -> %s", loop.get_property("gain"))
+        logger.info("Hard mode proxy write: loop.set_property('gain', 0.10)")
+        loop.set_property("gain", 0.10)
+        logger.info("Remote loop gain is now %s", loop.get_property("gain"))
 
         wfc.run("flatten")
 

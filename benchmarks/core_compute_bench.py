@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-"""Low-level kernel benchmark suite for pyRTC compute hotspots.
+"""Low-level kernel benchmark suite for pyrtc compute hotspots.
 
 The benchmarks in this module measure the p99 throughput and latency of the
 individual kernels that dominate synthetic AO-loop runtime. These results are
@@ -20,16 +20,16 @@ from typing import Any, Callable, Dict
 
 import numpy as np
 
-from pyRTC.Loop import leakIntegratorGPU, leakyIntegratorNumba
-from pyRTC.Pipeline import gpu_torch_available
-from pyRTC.logging_utils import add_logging_cli_args, configure_logging_from_args, get_logger
-from pyRTC.SlopesProcess import (
-    computeSlopesPYWFSOptimNumba,
-    computeSlopesPYWFSTorch,
-    computeSlopesSHWFSOptimNumba,
+from pyrtc.loop import leak_integrator_gpu, leaky_integrator_numba
+from pyrtc.pipeline import gpu_torch_available
+from pyrtc.logging_utils import add_logging_cli_args, configure_logging_from_args, get_logger
+from pyrtc.slopes_process import (
+    compute_slopes_pywfs_optim_numba,
+    compute_slopes_pywfs_torch,
+    compute_slopes_shwfs_optim_numba,
 )
-from pyRTC.WavefrontCorrector import ModaltoZonalWithFlat
-from pyRTC.WavefrontSensor import downsample_int32_image_jit, rotate_image_jit
+from pyrtc.wavefront_corrector import ModaltoZonalWithFlat
+from pyrtc.wavefront_sensor import downsample_int32_image_jit, rotate_image_jit
 
 
 logger = get_logger(__name__)
@@ -39,9 +39,9 @@ CORE_KERNEL_LABELS = {
     "wavefront_sensor.downsample_int32_image_jit": "WFS downsample",
     "wavefront_sensor.rotate_image_jit": "WFS rotate",
     "wavefront_corrector.ModaltoZonalWithFlat": "WFC modal->zonal",
-    "loop.leakyIntegratorNumba": "Loop integrator",
-    "slopes.computeSlopesPYWFSOptimNumba": "PYWFS slopes",
-    "slopes.computeSlopesSHWFSOptimNumba": "SHWFS slopes",
+    "loop.leaky_integrator_numba": "Loop integrator",
+    "slopes.compute_slopes_pywfs_optim_numba": "PYWFS slopes",
+    "slopes.compute_slopes_shwfs_optim_numba": "SHWFS slopes",
 }
 
 
@@ -79,12 +79,12 @@ def _build_summary_table(results: Dict[str, Any]) -> str:
             cpu_summary = _format_stats(stats)
             gpu_summary = "-"
             gpu_profile = gpu_profiles.get(profile_name, {})
-            if kernel_name == "loop.leakyIntegratorNumba":
-                gpu_stats = gpu_profile.get("loop.leakIntegratorGPU")
+            if kernel_name == "loop.leaky_integrator_numba":
+                gpu_stats = gpu_profile.get("loop.leak_integrator_gpu")
                 if gpu_profile.get("status", {}).get("available") is True and gpu_stats:
                     gpu_summary = _format_stats(gpu_stats)
-            elif kernel_name == "slopes.computeSlopesPYWFSOptimNumba":
-                gpu_stats = gpu_profile.get("slopes.computeSlopesPYWFSTorch")
+            elif kernel_name == "slopes.compute_slopes_pywfs_optim_numba":
+                gpu_stats = gpu_profile.get("slopes.compute_slopes_pywfs_torch")
                 if gpu_profile.get("status", {}).get("available") is True and gpu_stats:
                     gpu_summary = _format_stats(gpu_stats)
             rows.append([
@@ -235,7 +235,7 @@ def _bench_loop_leaky_integrator(iterations: int, warmup: int, signal_size: int,
     num_active_modes = max(1, num_modes - 2)
 
     return _time_kernel(
-        lambda: leakyIntegratorNumba(slopes, recon, old_correction, correction, leak, num_active_modes),
+        lambda: leaky_integrator_numba(slopes, recon, old_correction, correction, leak, num_active_modes),
         iterations=iterations,
         warmup=warmup,
     )
@@ -271,7 +271,7 @@ def _bench_slopes_pywfs_numba(iterations: int, warmup: int, image_side: int, pix
     ref_slopes = np.zeros(2 * pixels_per_pupil, dtype=np.float32)
 
     return _time_kernel(
-        lambda: computeSlopesPYWFSOptimNumba(
+        lambda: compute_slopes_pywfs_optim_numba(
             image,
             p1_mask,
             p2_mask,
@@ -305,7 +305,7 @@ def _bench_slopes_shwfs_numba(iterations: int, warmup: int, num_regions: int, sp
     spacing_val = np.float32(spacing)
 
     return _time_kernel(
-        lambda: computeSlopesSHWFSOptimNumba(
+        lambda: compute_slopes_shwfs_optim_numba(
             image,
             slopes,
             unaberrated,
@@ -339,7 +339,7 @@ def _bench_gpu_kernels(iterations: int, warmup: int, signal_size: int, num_modes
     recon_gpu = torch.tensor(recon_np, device="cuda")
 
     leak_stats = _time_kernel(
-        lambda: leakIntegratorGPU(slopes_np, recon_gpu, old_np, 0.05, max(1, num_modes - 2)),
+        lambda: leak_integrator_gpu(slopes_np, recon_gpu, old_np, 0.05, max(1, num_modes - 2)),
         iterations=iterations,
         warmup=warmup,
     )
@@ -356,7 +356,7 @@ def _bench_gpu_kernels(iterations: int, warmup: int, signal_size: int, num_modes
     ref = torch.zeros(2 * pixels_per_pupil, device="cuda", dtype=torch.float32)
 
     slopes_stats = _time_kernel(
-        lambda: computeSlopesPYWFSTorch(
+        lambda: compute_slopes_pywfs_torch(
             image,
             p1_mask,
             p2_mask,
@@ -372,8 +372,8 @@ def _bench_gpu_kernels(iterations: int, warmup: int, signal_size: int, num_modes
 
     return {
         "status": {"available": True, "device": str(torch.cuda.get_device_name(0))},
-        "loop.leakIntegratorGPU": leak_stats,
-        "slopes.computeSlopesPYWFSTorch": slopes_stats,
+        "loop.leak_integrator_gpu": leak_stats,
+        "slopes.compute_slopes_pywfs_torch": slopes_stats,
     }
 
 
@@ -393,11 +393,11 @@ def _run_profile_benchmarks(grid_size: int, iterations: int, warmup: int):
         "wavefront_corrector.ModaltoZonalWithFlat": _bench_wfc_modal_to_zonal(
             iterations, warmup, num_modes, num_modes
         ),
-        "loop.leakyIntegratorNumba": _bench_loop_leaky_integrator(iterations, warmup, signal_size, num_modes),
-        "slopes.computeSlopesPYWFSOptimNumba": _bench_slopes_pywfs_numba(
+        "loop.leaky_integrator_numba": _bench_loop_leaky_integrator(iterations, warmup, signal_size, num_modes),
+        "slopes.compute_slopes_pywfs_optim_numba": _bench_slopes_pywfs_numba(
             iterations, warmup, pywfs_side, pixels_per_pupil
         ),
-        "slopes.computeSlopesSHWFSOptimNumba": _bench_slopes_shwfs_numba(
+        "slopes.compute_slopes_shwfs_optim_numba": _bench_slopes_shwfs_numba(
             iterations, warmup, num_regions, spacing, int_n
         ),
     }
@@ -470,7 +470,7 @@ def run_core_compute_benchmarks(
 
 def _build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Benchmark core pyRTC compute kernels (JIT + optional GPU paths)."
+        description="Benchmark core pyrtc compute kernels (JIT + optional GPU paths)."
     )
     parser.add_argument("--iterations", type=int, default=2000, help="Timed iterations per kernel")
     parser.add_argument("--warmup", type=int, default=200, help="Warmup iterations per kernel")

@@ -10,20 +10,20 @@ from pathlib import Path
 
 import numpy as np
 
-from pyRTC.Pipeline import RTCManager, clear_shms, open_stream
-from pyRTC.config_schema import read_system_config
+from pyrtc.pipeline import RTCManager, clear_shms, open_stream
+from pyrtc.config_schema import read_system_config
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SYNTHETIC_CONFIG_PATH = REPO_ROOT / "examples" / "synthetic_shwfs" / "config.yaml"
 STREAMS = [
-    "wfsRaw",
+    "wfs_raw",
     "wfs",
     "signal",
-    "signal2D",
+    "signal_2d",
     "wfc",
-    "wfc2D",
-    "psfShort",
-    "psfLong",
+    "wfc_2d",
+    "psf_short",
+    "psf_long",
     "strehl",
     "tiptilt",
 ]
@@ -42,9 +42,9 @@ def test_synthetic_loop_converges_after_calibration(tmp_path):
 
     config = read_system_config(SYNTHETIC_CONFIG_PATH)
     # Shorten calibration for test runtime; the example uses more iterations.
-    config["loop"]["numItersIM"] = 400
-    config["loop"]["IMFile"] = str(tmp_path / "im.npy")
-    np.save(config["loop"]["IMFile"], np.zeros((98, 97), dtype=np.float32))
+    config["loop"]["num_iters_im"] = 400
+    config["loop"]["im_file"] = str(tmp_path / "im.npy")
+    np.save(config["loop"]["im_file"], np.zeros((98, 97), dtype=np.float32))
 
     manager = RTCManager.from_config(config, config_path=str(SYNTHETIC_CONFIG_PATH), mode="soft")
     try:
@@ -59,7 +59,7 @@ def test_synthetic_loop_converges_after_calibration(tmp_path):
         time.sleep(0.2)
         open_loop_rms = _residual_rms(signal_stream)
 
-        loop.computeIM()
+        loop.compute_im()
         loop.start()
         time.sleep(1.5)
         closed_loop_rms = _residual_rms(signal_stream)

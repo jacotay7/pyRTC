@@ -1,4 +1,4 @@
-import pyRTC.scripts.validate_dist_install as validate_dist_install
+import pyrtc.scripts.validate_dist_install as validate_dist_install
 
 
 def test_find_built_wheel_returns_latest_sorted_match(tmp_path):
@@ -19,5 +19,5 @@ def test_build_validation_commands_include_wheel_and_import_check(tmp_path):
     assert commands[0][0:3] == [validate_dist_install.sys.executable, "-m", "venv"]
     assert str(wheel_path) in commands[2]
     assert commands[3][1] == "-c"
-    assert "import pyRTC" in commands[3][2]
+    assert "import pyrtc" in commands[3][2]
     assert commands[4][-1] == "--help"

@@ -1,6 +1,6 @@
-﻿pyRTC.Pipeline
+﻿pyrtc.pipeline
 ==============
 
-.. automodule:: pyRTC.Pipeline
+.. automodule:: pyrtc.pipeline
    :members:
    :undoc-members:

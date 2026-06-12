@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 from typing import Dict
 
-from pyRTC.logging_utils import add_logging_cli_args, configure_logging_from_args, get_logger
+from pyrtc.logging_utils import add_logging_cli_args, configure_logging_from_args, get_logger
 
 
 logger = get_logger(__name__)

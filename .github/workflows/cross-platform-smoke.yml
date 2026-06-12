@@ -46,13 +46,13 @@ jobs:
         run: python -m twine check dist/*
 
       - name: Verify built wheel installs cleanly
-        run: python pyRTC/scripts/validate_dist_install.py --dist-dir dist
+        run: python pyrtc/scripts/validate_dist_install.py --dist-dir dist
 
       - name: Run ruff lint checks
-        run: ruff check pyRTC tests benchmarks
+        run: ruff check pyrtc tests benchmarks
 
       - name: Verify import
-        run: python -c "import pyRTC; print('pyRTC import OK')"
+        run: python -c "import pyrtc; print('pyrtc import OK')"
 
       - name: Run pytest with coverage
         run: pytest

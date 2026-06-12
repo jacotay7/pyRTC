@@ -1,8 +1,8 @@
-"""AOTPy export helpers for pyRTC telemetry sessions.
+"""AOTPy export helpers for pyrtc telemetry sessions.
 
 The exporter is deliberately session-oriented and stays outside the real-time
 path. It maps the self-describing telemetry sessions produced by
-``pyRTC.Telemetry`` into partial ``aotpy.AOSystem`` objects while keeping any
+``pyrtc.telemetry`` into partial ``aotpy.AOSystem`` objects while keeping any
 assumptions explicit in metadata.
 
 Current mapping priorities are:
@@ -10,7 +10,7 @@ Current mapping priorities are:
 - ``wfs`` streams become detector pixel-intensity sequences on a wavefront sensor
 - ``signal`` streams become WFS measurements when they can be interpreted safely
 - ``wfc`` streams become loop-command sequences on a deformable mirror
-- ``psfShort`` and ``psfLong`` become scoring-camera detector sequences
+- ``psf_short`` and ``psf_long`` become scoring-camera detector sequences
 
 Any session metadata or stream details that do not map cleanly into AOTPy are
 preserved as AO-system metadata rather than being discarded silently.
@@ -26,8 +26,8 @@ from typing import Any
 
 import numpy as np
 
-from pyRTC.Telemetry import load_telemetry_session
-from pyRTC.config_schema import read_system_config
+from pyrtc.telemetry import load_telemetry_session
+from pyrtc.config_schema import read_system_config
 
 
 AOTPY_OPTIONAL_DEPENDENCY_MESSAGE = (
@@ -64,7 +64,7 @@ def _infer_mode(explicit_mode: str | None, resolved_config: dict | None) -> str:
         return str(explicit_mode).upper()
 
     metadata = (resolved_config or {}).get("metadata", {})
-    for key in ("aoMode", "ao_mode"):
+    for key in ("ao_mode", "ao_mode"):
         value = metadata.get(key)
         if isinstance(value, str) and value.strip():
             return value.strip().upper()
@@ -309,7 +309,7 @@ def _build_wfs(aotpy, *, uid_prefix: str, telescope, resolved_config: dict | Non
             uid=f"{uid_prefix}_PYRAMID_WFS",
             source=source,
             n_valid_subapertures=n_valid_subapertures,
-            n_sides=int(slopes_conf.get("nSides", 4)),
+            n_sides=int(slopes_conf.get("n_sides", 4)),
             dimensions=dimensions,
             measurements=measurements,
             ref_measurements=ref_measurements,
@@ -351,7 +351,7 @@ def _build_wfc(aotpy, *, uid_prefix: str, telescope, resolved_config: dict | Non
         flattened,
         time=_build_time(aotpy, f"{uid_prefix}_COMMAND_TIME", wfc_entry["timestamps"]),
         metadata=_image_metadata(aotpy, wfc_entry["metadata"]["name"], wfc_entry, record)
-        + [_metadatum(aotpy, "PRTCNMOD", wfc_conf.get("numModes"))],
+        + [_metadatum(aotpy, "PRTCNMOD", wfc_conf.get("num_modes"))],
     )
     return dm, commands
 
@@ -389,7 +389,7 @@ def telemetry_session_to_aotpy(
     ao_mode: str | None = None,
     config: dict | None = None,
 ):
-    """Convert one pyRTC telemetry session into an ``aotpy.AOSystem``.
+    """Convert one pyrtc telemetry session into an ``aotpy.AOSystem``.
 
     Parameters
     ----------
@@ -418,7 +418,7 @@ def telemetry_session_to_aotpy(
         system_name
         or manifest.get("metadata", {}).get("name")
         or (resolved_config or {}).get("metadata", {}).get("name")
-        or f"pyRTC_{manifest['session_id'][:8]}"
+        or f"pyrtc_{manifest['session_id'][:8]}"
     )
     uid_prefix = _slug(exported_name).upper()
     date_beginning, date_end = _session_time_bounds(loaded_session)
@@ -437,11 +437,11 @@ def telemetry_session_to_aotpy(
             _metadatum(aotpy, "PRTCSID", manifest.get("session_id")),
             _metadatum(aotpy, "PRTCSVER", manifest.get("schema_version")),
             _metadatum(aotpy, "PRTCREAT", manifest.get("created_at")),
-            _metadatum(aotpy, "PRTCVER", manifest.get("pyRTC_version")),
+            _metadatum(aotpy, "PRTCVER", manifest.get("pyrtc_version")),
             _metadatum(aotpy, "PRTCPATH", manifest.get("config_path")),
             _metadatum(aotpy, "PRTCSTRS", [record["name"] for record in manifest.get("streams", [])]),
             _metadatum(aotpy, "PRTCUNMP", roles["unmapped"]),
-            _metadatum(aotpy, "PRTCXPRT", "pyRTC.exporters.aotpy_export"),
+            _metadatum(aotpy, "PRTCXPRT", "pyrtc.exporters.aotpy_export"),
         ]
     )
     if manifest.get("metadata"):
@@ -514,7 +514,7 @@ def export_telemetry_session_to_aotpy(
     file_type: str | None = None,
     overwrite: bool = False,
 ) -> Path:
-    """Export one pyRTC telemetry session to an on-disk AOTPy file."""
+    """Export one pyrtc telemetry session to an on-disk AOTPy file."""
 
     output = Path(output_path).expanduser()
     if output.exists() and not overwrite:

@@ -1,32 +1,32 @@
 loop:
   gain: 0.425
-  leakyGain: 0.026
-  numDroppedModes: 14
-  pokeAmp: 0.02
-  numItersIM: 50
+  leaky_gain: 0.026
+  num_dropped_modes: 14
+  poke_amp: 0.02
+  num_iters_im: 50
   affinity: 2
   delay: 2
   method: push-pull
-  IMFile: "/home/whetstone/pyRTC/examples/sharp_lab/calib/IM.npy"
-  pGain: 0.28
-  iGain: 0.066
-  dGain: 0.078
-  controlLimits: [-0.05, 0.05]
-  absoluteLimits: [-0.3, 0.3]
-  integralLimits: [-0.1, 0.1]
-  derivativeFilter: 0.1
-  hardwareDelay: 0.001 #seconds
-  className: Loop
-  inputStreams:
+  im_file: "/home/whetstone/pyrtc/examples/sharp_lab/calib/IM.npy"
+  p_gain: 0.28
+  i_gain: 0.066
+  d_gain: 0.078
+  control_limits: [-0.05, 0.05]
+  absolute_limits: [-0.3, 0.3]
+  integral_limits: [-0.1, 0.1]
+  derivative_filter: 0.1
+  hardware_delay: 0.001 #seconds
+  class_name: Loop
+  input_streams:
     signal: signal
-  outputStreams:
+  output_streams:
     wfc: wfc
   functions:
-  # - standardIntegrator
-  # - standardIntegratorPOL
-  - leakyIntegrator
-  # - pidIntegratorPOL
-  # - pidIntegrator
+  # - standard_integrator
+  # - standard_integrator_pol
+  - leaky_integrator
+  # - pid_integrator_pol
+  # - pid_integrator
 
 
 wfs:
@@ -35,59 +35,59 @@ wfs:
   binning: 1 
   exposure: 2500
   gain: 0
-  bitDepth: 10
+  bit_depth: 10
   left: 400 #416 
   top: 270 
   width: 400 
   height: 400 
-  darkCount: 2000
-  darkFile: "/home/whetstone/pyRTC/examples/sharp_lab/calib/dark.npy"
+  dark_count: 2000
+  dark_file: "/home/whetstone/pyrtc/examples/sharp_lab/calib/dark.npy"
   affinity: 3
-  className: XIMEA_WFS
-  inputStreams: {}
-  outputStreams:
-    wfsRaw: wfsRaw
+  class_name: XIMEA_WFS
+  input_streams: {}
+  output_streams:
+    wfs_raw: wfs_raw
     wfs: wfs
   functions:
   - expose
 
 slopes:
   type: SHWFS
-  signalType: slopes
-  refSlopesFile: "/home/whetstone/pyRTC/examples/sharp_lab/calib/ref.npy"
-  validSubApsFile: "/home/whetstone/pyRTC/examples/sharp_lab/calib/validSubAps.npy"
-  subApSpacing: 15.54 #7.78
-  subApOffsetX: 13
-  subApOffsetY: 3
-  imageNoise: 1.3
+  signal_type: slopes
+  ref_slopes_file: "/home/whetstone/pyrtc/examples/sharp_lab/calib/ref.npy"
+  valid_sub_aps_file: "/home/whetstone/pyrtc/examples/sharp_lab/calib/valid_sub_aps.npy"
+  sub_ap_spacing: 15.54 #7.78
+  sub_ap_offset_x: 13
+  sub_ap_offset_y: 3
+  image_noise: 1.3
   contrast: 6
   affinity: 4
-  className: SlopesProcess
-  inputStreams:
+  class_name: SlopesProcess
+  input_streams:
     wfs: wfs
-  outputStreams:
+  output_streams:
     signal: signal
-    signal2D: signal2D
+    signal_2d: signal_2d
   functions:
-  - computeSignal
+  - compute_signal
 # wfs:
 #   name: XIMEA
 #   serial: "13056250"
 #   type: PYWFS
-#   signalType: slopes
-#   pupilsRadius: 32
+#   signal_type: slopes
+#   pupils_radius: 32
 #   binning: 2
 #   exposure: 3333
 #   gain: 0
-#   bitDepth: 10
+#   bit_depth: 10
 #   left: 272
 #   top: 50
 #   width: 192
 #   height: 192
-#   darkCount: 1000
-#   darkFile: "/home/whetstone/pyRTC/examples/sharp_lab/calib/dark.npy"
+#   dark_count: 1000
+#   dark_file: "/home/whetstone/pyrtc/examples/sharp_lab/calib/dark.npy"
 #   affinity: 12
-#   flatNorm: True
+#   flat_norm: True
 #   pupils: 
 #   - 44,57
 #   - 45,138
@@ -95,111 +95,111 @@ slopes:
 #   - 130,138
 #   functions:
 #   - expose
-#   - computeSignal
+#   - compute_signal
 
 wfc:
   name: "ALPAO"
   serial: "BAX118"
-  numActuators: 97
-  numModes: 94
-  flatFile: "/home/whetstone/pyRTC/examples/sharp_lab/calib/wfcShape.npy"
-  saveFile: "/home/whetstone/pyRTC/examples/sharp_lab/calib/wfcShape.npy"
-  m2cFile:  "/home/whetstone/pyRTC/examples/sharp_lab/calib/m2c_kl.npy" 
-  floatingActuatorsFile: ""
-  floatingInfluenceRadius: 1
+  num_actuators: 97
+  num_modes: 94
+  flat_file: "/home/whetstone/pyrtc/examples/sharp_lab/calib/wfc_shape.npy"
+  save_file: "/home/whetstone/pyrtc/examples/sharp_lab/calib/wfc_shape.npy"
+  m2c_file:  "/home/whetstone/pyrtc/examples/sharp_lab/calib/m2c_kl.npy" 
+  floating_actuators_file: ""
+  floating_influence_radius: 1
   affinity: 5
-  commandCap: 0.8
-  frameDelay: 0
-  className: ALPAODM
-  inputStreams: {}
-  outputStreams:
+  command_cap: 0.8
+  frame_delay: 0
+  class_name: ALPAODM
+  input_streams: {}
+  output_streams:
     wfc: wfc
-    wfc2D: wfc2D
+    wfc_2d: wfc_2d
   functions:
-  - sendToHardware
+  - send_to_hardware
 
 psf:
   name: "FLIR"
   index: 0
   exposure: 300
   gain: 0
-  bitDepth: 16
+  bit_depth: 16
   left: 936
   top: 448
   width: 128
   height: 128
-  darkCount: 2000
-  darkFile: "/home/whetstone/pyRTC/examples/sharp_lab/calib/psfDark.npy"
-  modelFile: "/home/whetstone/pyRTC/examples/sharp_lab/calib/modelPSF.npy"
+  dark_count: 2000
+  dark_file: "/home/whetstone/pyrtc/examples/sharp_lab/calib/psfDark.npy"
+  model_file: "/home/whetstone/pyrtc/examples/sharp_lab/calib/model_psf.npy"
   integration: 1
   affinity: 6
-  className: spinCam
-  inputStreams: {}
-  outputStreams:
-    psfShort: psfShort
-    psfLong: psfLong
+  class_name: SpinCam
+  input_streams: {}
+  output_streams:
+    psf_short: psf_short
+    psf_long: psf_long
     strehl: strehl
     tiptilt: tiptilt
   functions:
   - expose
   - integrate
-  - computeStrehl
+  - compute_strehl
 
 optimizer:
   ncpa:
     name: "NCPA"
-    numSteps: 100
-    startMode: 0
-    endMode: 40
-    correctionMag: 0.003
-    numReads: 1
+    num_steps: 100
+    start_mode: 0
+    end_mode: 40
+    correction_mag: 0.003
+    num_reads: 1
     affinity: 10
   pid:
     name: "PID"
-    numSteps: 100
-    maxPGain: 0.5
-    maxIGain: 0.1
-    maxDGain: 0.1
-    numReads: 1
+    num_steps: 100
+    max_p_gain: 0.5
+    max_i_gain: 0.1
+    max_d_gain: 0.1
+    num_reads: 1
     affinity: 10
   loop:
     name: "hyper"
-    numSteps: 100
-    minGain: 0.3
-    maxGain: 0.6
-    maxLeak: 0.05
-    maxDroppedModes: 30
-    numReads: 1
+    num_steps: 100
+    min_gain: 0.3
+    max_gain: 0.6
+    max_leak: 0.05
+    max_dropped_modes: 30
+    num_reads: 1
     affinity: 10
 
 # modulator:
 #   name: 'E-727'
-#   className: PIModulator
-#   inputStreams: {}
-#   outputStreams: {}
-#   libFolder: '/opt/PI/lib64/'
-#   digitalFreq: 20000 #Hz
+#   class_name: PIModulator
+#   input_streams: {}
+#   output_streams: {}
+#   lib_folder: '/opt/PI/lib64/'
+#   digital_freq: 20000 #Hz
 #   frequency: 300 #Hz
 #   amplitude: 1000
-#   relativeAmplitude: 1
-#   offsetX: 2500
-#   offsetY: 2500
-#   phaseOffset: 0
-#   servosOn: True
-#   autoZero: True
+#   relative_amplitude: 1
+#   offset_x: 2500
+#   offset_y: 2500
+#   phase_offset: 0
+#   servos_on: True
+#   auto_zero: True
 
 manager:
   mode: soft-rtc
-  componentClasses:
-    wfs: pyRTC.hardware.XIMEA_WFS
-    slopes: pyRTC.SlopesProcess.SlopesProcess
-    loop: pyRTC.Loop.Loop
-    wfc: pyRTC.hardware.ALPAODM
-    psf: pyRTC.hardware.spinCam
-  componentFiles:
-    wfs: ../../pyRTC/hardware/ximeaWFS.py
-    slopes: ../../pyRTC/SlopesProcess.py
-    loop: ../../pyRTC/Loop.py
-    wfc: ../../pyRTC/hardware/ALPAODM.py
-    psf: ../../pyRTC/hardware/SpinnakerScienceCam.py
+  component_classes:
+    wfs: pyrtc.hardware.XIMEA_WFS
+    slopes: pyrtc.slopes_process.SlopesProcess
+    loop: pyrtc.loop.Loop
+    wfc: pyrtc.hardware.alpao_dm
+    psf: pyrtc.hardware.SpinCam
+  component_files:
+    wfs: ../../pyrtc/hardware/ximea_wfs.py
+    slopes: ../../pyrtc/slopes_process.py
+    loop: ../../pyrtc/loop.py
+    wfc: ../../pyrtc/hardware/alpao_dm.py
+    psf: ../../pyrtc/hardware/spinnaker_science_cam.py
 

@@ -60,10 +60,10 @@ def build_validation_commands(venv_dir: Path, wheel_path: Path) -> list[list[str
             "-c",
             (
                 "import importlib.metadata as md; "
-                "import pyRTC; "
+                "import pyrtc; "
                 "print('built wheel import OK'); "
                 "print(md.version('pyrtcao')); "
-                "print(sorted(pyRTC.__all__)[:5])"
+                "print(sorted(pyrtc.__all__)[:5])"
             ),
         ],
         [python_exe, "-m", "benchmarks.core_compute_bench", "--help"],

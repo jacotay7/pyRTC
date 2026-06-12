@@ -11,9 +11,9 @@ import subprocess
 from typing import Any
 import yaml
 
-from pyRTC.manager import DEFAULT_COMPONENT_ORDER, RTCManager
-from pyRTC.component_descriptors import describe_component_class, get_component_descriptor, list_component_descriptors, list_component_sections
-from pyRTC.config_schema import read_system_config
+from pyrtc.manager import DEFAULT_COMPONENT_ORDER, RTCManager
+from pyrtc.component_descriptors import describe_component_class, get_component_descriptor, list_component_descriptors, list_component_sections
+from pyrtc.config_schema import read_system_config
 
 from .models import GraphEdgeModel, GraphNodeModel, GraphSnapshot
 
@@ -21,9 +21,9 @@ from .models import GraphEdgeModel, GraphNodeModel, GraphSnapshot
 _CONFIG_ONLY_FIELDS = {
     "functions",
     "affinity",
-    "gpuDevice",
+    "gpu_device",
     "type",
-    "signalType",
+    "signal_type",
 }
 
 _NON_COMPONENT_TOP_LEVEL_SECTIONS = {"manager", "streams", "metadata", "resources"}
@@ -40,8 +40,8 @@ _NON_ACTION_METHODS = {
     "refresh_health",
     "restart",
     "run",
-    "getProperty",
-    "setProperty",
+    "get_property",
+    "set_property",
     "shutdown",
     "get_hardware",
 }
@@ -74,7 +74,7 @@ def _normalize_runtime_parameter_rows(raw_rows: Any) -> list[dict[str, Any]]:
 def _is_live_runtime_field(name: str) -> bool:
     if name in _CONFIG_ONLY_FIELDS:
         return False
-    if name.endswith(("File", "Dir", "Path")):
+    if name.endswith(("_file", "_dir", "_path")):
         return False
     return True
 
@@ -99,7 +99,7 @@ def _infer_layout(index: int) -> tuple[float, float]:
 
 def _graph_layout_positions(config: dict[str, Any]) -> dict[str, dict[str, float]]:
     manager_conf = config.get("manager", {}) if isinstance(config.get("manager"), dict) else {}
-    graph_layout = manager_conf.get("graphLayout", {}) if isinstance(manager_conf.get("graphLayout"), dict) else {}
+    graph_layout = manager_conf.get("graph_layout", {}) if isinstance(manager_conf.get("graph_layout"), dict) else {}
     positions = graph_layout.get("positions", {}) if isinstance(graph_layout.get("positions"), dict) else {}
     normalized: dict[str, dict[str, float]] = {}
     for section_name, value in positions.items():
@@ -128,7 +128,7 @@ def _import_component_class(class_path: str, component_file: str | None = None):
         return getattr(module, attr_name)
 
     if "." not in class_path:
-        for module_name in ("pyRTC.hardware", "pyRTC"):
+        for module_name in ("pyrtc.hardware", "pyrtc"):
             try:
                 module = importlib.import_module(module_name)
                 if hasattr(module, class_path):
@@ -180,7 +180,7 @@ def _normalize_stream_alias_map(raw_mapping: Any) -> dict[str, str]:
 
 def _component_stream_name(config: dict[str, Any], section_name: str, direction: str, stream_name: str) -> str:
     section_conf = config.get(section_name, {}) if isinstance(config.get(section_name), dict) else {}
-    mapping_name = "inputStreams" if direction == "input" else "outputStreams"
+    mapping_name = "input_streams" if direction == "input" else "output_streams"
     aliases = _normalize_stream_alias_map(section_conf.get(mapping_name, {}))
     return aliases.get(stream_name, stream_name)
 
@@ -334,11 +334,11 @@ class ManagerAdapter:
         if not self.config:
             raise RuntimeError("No config is loaded")
         manager_conf = self.config.setdefault("manager", {})
-        graph_layout = manager_conf.setdefault("graphLayout", {})
+        graph_layout = manager_conf.setdefault("graph_layout", {})
         positions = graph_layout.setdefault("positions", {})
         positions[section_name] = {"x": float(x), "y": float(y)}
         if self.manager is not None:
-            self.manager.config.setdefault("manager", {}).setdefault("graphLayout", {}).setdefault("positions", {})[section_name] = {
+            self.manager.config.setdefault("manager", {}).setdefault("graph_layout", {}).setdefault("positions", {})[section_name] = {
                 "x": float(x),
                 "y": float(y),
             }
@@ -348,7 +348,7 @@ class ManagerAdapter:
             raise RuntimeError("No config is loaded")
         manager_conf = self.config.get("manager", {})
         if isinstance(manager_conf, dict):
-            graph_layout = manager_conf.get("graphLayout", {})
+            graph_layout = manager_conf.get("graph_layout", {})
             if isinstance(graph_layout, dict):
                 positions = graph_layout.get("positions", {})
                 if isinstance(positions, dict):
@@ -356,7 +356,7 @@ class ManagerAdapter:
         if self.manager is not None:
             manager_conf = self.manager.config.get("manager", {})
             if isinstance(manager_conf, dict):
-                graph_layout = manager_conf.get("graphLayout", {})
+                graph_layout = manager_conf.get("graph_layout", {})
                 if isinstance(graph_layout, dict):
                     positions = graph_layout.get("positions", {})
                     if isinstance(positions, dict):
@@ -379,8 +379,8 @@ class ManagerAdapter:
         if not self.config:
             return None
         section_conf = self.config.get(section_name, {}) if isinstance(self.config.get(section_name), dict) else {}
-        class_path = section_conf.get("className") or section_conf.get("name")
-        component_file = section_conf.get("classFile")
+        class_path = section_conf.get("class_name") or section_conf.get("name")
+        component_file = section_conf.get("class_file")
         if not class_path:
             return None
         try:
@@ -425,12 +425,12 @@ class ManagerAdapter:
             component_conf[field_descriptor.name] = _default_value_for_field(field_descriptor)
         if "name" in descriptor.field_map and not component_conf.get("name"):
             component_conf["name"] = descriptor.class_name
-        component_conf["className"] = resolved_class_path or descriptor.class_path
+        component_conf["class_name"] = resolved_class_path or descriptor.class_path
         if component_file:
-            component_conf["classFile"] = str(Path(component_file).expanduser().resolve())
-        descriptor_for_aliases = describe_component_class(_import_component_class(component_conf["className"], component_conf.get("classFile")))
-        component_conf["inputStreams"] = {stream.name: stream.name for stream in descriptor_for_aliases.input_streams if stream.name != "*"}
-        component_conf["outputStreams"] = {stream.name: stream.name for stream in descriptor_for_aliases.output_streams if stream.name != "*"}
+            component_conf["class_file"] = str(Path(component_file).expanduser().resolve())
+        descriptor_for_aliases = describe_component_class(_import_component_class(component_conf["class_name"], component_conf.get("class_file")))
+        component_conf["input_streams"] = {stream.name: stream.name for stream in descriptor_for_aliases.input_streams if stream.name != "*"}
+        component_conf["output_streams"] = {stream.name: stream.name for stream in descriptor_for_aliases.output_streams if stream.name != "*"}
         if config_overrides:
             coerced_overrides = {}
             for name, value in config_overrides.items():
@@ -441,16 +441,16 @@ class ManagerAdapter:
                     coerced_overrides[name] = _coerce_runtime_value(value, field_descriptor.field_type)
             component_conf.update(coerced_overrides)
         if input_streams is not None:
-            component_conf["inputStreams"] = dict(input_streams)
+            component_conf["input_streams"] = dict(input_streams)
         if output_streams is not None:
-            component_conf["outputStreams"] = dict(output_streams)
+            component_conf["output_streams"] = dict(output_streams)
         self.config[normalized] = component_conf
 
         manager_conf = self.config.setdefault("manager", {})
-        component_classes = manager_conf.setdefault("componentClasses", {})
+        component_classes = manager_conf.setdefault("component_classes", {})
         component_classes[normalized] = resolved_class_path or descriptor.class_path
         if component_file:
-            manager_conf.setdefault("componentFiles", {})[normalized] = str(Path(component_file).expanduser().resolve())
+            manager_conf.setdefault("component_files", {})[normalized] = str(Path(component_file).expanduser().resolve())
         self._rebuild_manager()
 
     def remove_component(self, section_name: str) -> None:
@@ -458,7 +458,7 @@ class ManagerAdapter:
             raise KeyError(section_name)
         self.config.pop(section_name, None)
         manager_conf = self.config.get("manager", {}) if isinstance(self.config.get("manager"), dict) else {}
-        for mapping_name in ("componentClasses", "componentFiles", "componentModes", "ports", "componentRestartPolicies"):
+        for mapping_name in ("component_classes", "component_files", "component_modes", "ports", "component_restart_policies"):
             mapping = manager_conf.get(mapping_name)
             if isinstance(mapping, dict):
                 mapping.pop(section_name, None)
@@ -468,15 +468,15 @@ class ManagerAdapter:
             for stream_name, stream_conf in streams_conf.items():
                 if not isinstance(stream_conf, dict):
                     continue
-                output_component = stream_conf.get("outputComponent", stream_conf.get("producer"))
-                input_components = stream_conf.get("inputComponents", stream_conf.get("consumers", []))
+                output_component = stream_conf.get("output_component", stream_conf.get("producer"))
+                input_components = stream_conf.get("input_components", stream_conf.get("consumers", []))
                 if output_component == section_name:
                     stale_names.append(stream_name)
                     continue
                 if isinstance(input_components, list) and section_name in input_components:
                     remaining = [item for item in input_components if item != section_name]
                     if remaining:
-                        stream_conf["inputComponents"] = remaining
+                        stream_conf["input_components"] = remaining
                     else:
                         stale_names.append(stream_name)
             for stream_name in stale_names:
@@ -506,23 +506,23 @@ class ManagerAdapter:
         resolved_output_role = (output_role or component_stream or normalized_name).strip()
         resolved_input_role = (input_role or component_stream or normalized_name).strip()
         producer_conf = self.config.setdefault(output_component, {})
-        producer_outputs = producer_conf.setdefault("outputStreams", {})
+        producer_outputs = producer_conf.setdefault("output_streams", {})
         producer_outputs[resolved_output_role] = normalized_name
         for input_component in input_components:
             consumer_conf = self.config.setdefault(input_component, {})
-            consumer_inputs = consumer_conf.setdefault("inputStreams", {})
+            consumer_inputs = consumer_conf.setdefault("input_streams", {})
             consumer_inputs[resolved_input_role] = normalized_name
         streams_conf = self.config.setdefault("streams", {})
         existing = streams_conf.get(normalized_name, {}) if isinstance(streams_conf.get(normalized_name), dict) else {}
-        current_inputs = list(existing.get("inputComponents", []))
+        current_inputs = list(existing.get("input_components", []))
         for input_component in input_components:
             if input_component not in current_inputs:
                 current_inputs.append(input_component)
         payload = {
-            "outputComponent": output_component,
-            "inputComponents": current_inputs,
+            "output_component": output_component,
+            "input_components": current_inputs,
         }
-        payload["componentStream"] = resolved_output_role
+        payload["component_stream"] = resolved_output_role
         payload["inputRole"] = resolved_input_role
         streams_conf[normalized_name] = payload
         self._rebuild_manager()
@@ -535,18 +535,18 @@ class ManagerAdapter:
             raise KeyError(stream_name)
         stream_conf = streams_conf.get(stream_name, {})
         if isinstance(stream_conf, dict):
-            output_component = stream_conf.get("outputComponent", stream_conf.get("producer"))
-            component_stream = stream_conf.get("componentStream", stream_name)
+            output_component = stream_conf.get("output_component", stream_conf.get("producer"))
+            component_stream = stream_conf.get("component_stream", stream_name)
             input_role = stream_conf.get("inputRole", component_stream)
             if isinstance(output_component, str) and output_component in self.config:
-                producer_outputs = self.config[output_component].get("outputStreams", {})
+                producer_outputs = self.config[output_component].get("output_streams", {})
                 if isinstance(producer_outputs, dict):
                     producer_outputs.pop(component_stream, None)
-            input_components = stream_conf.get("inputComponents", stream_conf.get("consumers", []))
+            input_components = stream_conf.get("input_components", stream_conf.get("consumers", []))
             if isinstance(input_components, list):
                 for input_component in input_components:
                     if input_component in self.config:
-                        consumer_inputs = self.config[input_component].get("inputStreams", {})
+                        consumer_inputs = self.config[input_component].get("input_streams", {})
                         if isinstance(consumer_inputs, dict):
                             consumer_inputs.pop(input_role, None)
         streams_conf.pop(stream_name, None)
@@ -712,8 +712,8 @@ class ManagerAdapter:
 
         if runtime.mode == "hard-rtc" and hasattr(target, "run"):
             result = target.run(function_name)
-            if result == -1 and getattr(target, "lastError", None):
-                raise RuntimeError(target.lastError)
+            if result == -1 and getattr(target, "last_error", None):
+                raise RuntimeError(target.last_error)
             self._last_status = manager.status()
             return result
 
@@ -730,32 +730,32 @@ class ManagerAdapter:
         rows.extend(
             [
                 {
-                    "name": "className",
+                    "name": "class_name",
                     "type": "str",
                     "required": True,
                     "description": "Fully qualified or built-in component class name.",
-                    "value": conf.get("className", ""),
+                    "value": conf.get("class_name", ""),
                 },
                 {
-                    "name": "classFile",
+                    "name": "class_file",
                     "type": "str | None",
                     "required": False,
                     "description": "Optional Python file containing the component class.",
-                    "value": conf.get("classFile"),
+                    "value": conf.get("class_file"),
                 },
                 {
-                    "name": "inputStreams",
+                    "name": "input_streams",
                     "type": "dict[str,str]",
                     "required": False,
                     "description": "Semantic input stream roles mapped to SHM names.",
-                    "value": conf.get("inputStreams", {}),
+                    "value": conf.get("input_streams", {}),
                 },
                 {
-                    "name": "outputStreams",
+                    "name": "output_streams",
                     "type": "dict[str,str]",
                     "required": False,
                     "description": "Semantic output stream roles mapped to SHM names.",
-                    "value": conf.get("outputStreams", {}),
+                    "value": conf.get("output_streams", {}),
                 },
             ]
         )
@@ -794,10 +794,10 @@ class ManagerAdapter:
             target = manager.get_component(section_name)
             if not _is_live_runtime_field(name):
                 return fallback
-            if runtime.mode == "hard-rtc" and hasattr(target, "getProperty"):
+            if runtime.mode == "hard-rtc" and hasattr(target, "get_property"):
                 try:
-                    value = target.getProperty(name)
-                    if value == -1 and getattr(target, "lastError", None):
+                    value = target.get_property(name)
+                    if value == -1 and getattr(target, "last_error", None):
                         return fallback
                     return value
                 except Exception:
@@ -822,9 +822,9 @@ class ManagerAdapter:
             field_type = descriptor.field_map[name].field_type
         elif name in runtime_defs:
             field_type = runtime_defs[name]["type"]
-        elif name == "classFile":
+        elif name == "class_file":
             field_type = "str | None"
-        elif name in {"inputStreams", "outputStreams"}:
+        elif name in {"input_streams", "output_streams"}:
             field_type = "dict[str,str]"
         value = _coerce_runtime_value(raw_value, field_type)
 
@@ -842,10 +842,10 @@ class ManagerAdapter:
         ):
             runtime = manager.runtimes[section_name]
             target = manager.get_component(section_name)
-            if runtime.mode == "hard-rtc" and hasattr(target, "setProperty"):
-                result = target.setProperty(name, value)
-                if result == -1 and getattr(target, "lastError", None):
-                    raise RuntimeError(target.lastError)
+            if runtime.mode == "hard-rtc" and hasattr(target, "set_property"):
+                result = target.set_property(name, value)
+                if result == -1 and getattr(target, "last_error", None):
+                    raise RuntimeError(target.last_error)
             else:
                 if not hasattr(target, name):
                     return value
@@ -882,9 +882,9 @@ class ManagerAdapter:
             for stream_name, stream_conf in streams_conf.items():
                 if not isinstance(stream_conf, dict):
                     continue
-                if stream_conf.get("outputComponent", stream_conf.get("producer")) == section_name:
+                if stream_conf.get("output_component", stream_conf.get("producer")) == section_name:
                     output_names.add(stream_name)
-                input_components = stream_conf.get("inputComponents", stream_conf.get("consumers", []))
+                input_components = stream_conf.get("input_components", stream_conf.get("consumers", []))
                 if isinstance(input_components, list) and section_name in input_components:
                     input_names.add(stream_name)
             input_streams = tuple(sorted(input_names))
@@ -952,8 +952,8 @@ class ManagerAdapter:
         for stream_name, stream_conf in streams_conf.items():
             if not isinstance(stream_conf, dict):
                 continue
-            source_section = stream_conf.get("outputComponent", stream_conf.get("producer"))
-            input_components = stream_conf.get("inputComponents", stream_conf.get("consumers", []))
+            source_section = stream_conf.get("output_component", stream_conf.get("producer"))
+            input_components = stream_conf.get("input_components", stream_conf.get("consumers", []))
             if not isinstance(source_section, str) or not isinstance(input_components, list):
                 continue
             for target_section in input_components:
@@ -983,7 +983,7 @@ class ManagerAdapter:
     def suggested_viewer_streams(self) -> list[str]:
         snapshot = self.build_graph_snapshot(self._last_status)
         available = {stream for node in snapshot.nodes for stream in node.output_streams}
-        preferred = ["wfsRaw", "wfs", "signal2D", "wfc2D", "psfShort", "psfLong"]
+        preferred = ["wfs_raw", "wfs", "signal_2d", "wfc_2d", "psf_short", "psf_long"]
         selected = [stream for stream in preferred if stream in available]
         if selected:
             return selected

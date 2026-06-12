@@ -23,11 +23,11 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 
-from pyRTC.Loop import Loop
-from pyRTC.Pipeline import clear_shms
-from pyRTC.SlopesProcess import SlopesProcess
-from pyRTC.logging_utils import add_logging_cli_args, configure_logging_from_args, get_logger
-from pyRTC.utils import read_yaml_file
+from pyrtc.loop import Loop
+from pyrtc.pipeline import clear_shms
+from pyrtc.slopes_process import SlopesProcess
+from pyrtc.logging_utils import add_logging_cli_args, configure_logging_from_args, get_logger
+from pyrtc.utils import read_yaml_file
 
 
 logger = get_logger("examples.pywfs.pywfs_oopao_soft")
@@ -35,13 +35,13 @@ CONFIG_PATH = REPO_ROOT / "examples" / "pywfs" / "pywfs_OOPAO_config.yaml"
 PARAM_PATH = REPO_ROOT / "examples" / "pywfs" / "pywfs_OOPAO_params.yaml"
 DEFAULT_STREAMS = [
     "wfs",
-    "wfsRaw",
+    "wfs_raw",
     "wfc",
-    "wfc2D",
+    "wfc_2d",
     "signal",
-    "signal2D",
-    "psfShort",
-    "psfLong",
+    "signal_2d",
+    "psf_short",
+    "psf_long",
     "strehl",
     "tiptilt",
 ]
@@ -77,7 +77,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--no-clear-shms",
         action="store_true",
-        help="Leave existing pyRTC shared-memory streams untouched.",
+        help="Leave existing pyrtc shared-memory streams untouched.",
     )
     parser.add_argument(
         "--oopao-param-file",
@@ -94,11 +94,11 @@ def configure_kl_basis(sim, dm, num_modes: int) -> None:
     from OOPAO.calibration.compute_KL_modal_basis import compute_KL_basis
 
     basis = compute_KL_basis(sim.tel, sim.atm, sim.dm)
-    dm.setM2C(basis[:, :num_modes])
+    dm.set_m2c(basis[:, :num_modes])
 
 
 def build_system(config: dict, *, use_kl_basis: bool, oopao_param_file: Path) -> dict:
-    from pyRTC.hardware.OOPAOInterface import OOPAOInterface
+    from pyrtc.hardware.oopao_interface import OOPAOInterface
 
     oopao_param = read_yaml_file(str(oopao_param_file))
     logger.info(
@@ -108,7 +108,7 @@ def build_system(config: dict, *, use_kl_basis: bool, oopao_param_file: Path) ->
     sim = OOPAOInterface(conf=config, param=oopao_param)
     wfs, dm, psf = sim.get_hardware()
     if use_kl_basis:
-        configure_kl_basis(sim, dm, int(config["wfc"]["numModes"]))
+        configure_kl_basis(sim, dm, int(config["wfc"]["num_modes"]))
 
     return {
         "sim": sim,
@@ -156,23 +156,23 @@ def prepare_loop(system: dict, *, gain: float, poke_amp: float, compute_im: bool
 
     if compute_im:
         logger.info("Computing interaction matrix with the atmosphere removed")
-        sim.removeAtmosphere()
+        sim.remove_atmosphere()
         dm.flatten()
-        loop.pokeAmp = poke_amp
-        loop.computeIM()
-        sim.addAtmosphere()
+        loop.poke_amp = poke_amp
+        loop.compute_im()
+        sim.add_atmosphere()
     else:
         logger.info("Skipping IM calibration and using an identity-style fallback")
-        loop.IM = np.eye(loop.signalSize, loop.numModes, dtype=loop.signalDType)
-        loop.computeCM()
+        loop.IM = np.eye(loop.signal_size, loop.num_modes, dtype=loop.signal_dtype)
+        loop.compute_cm()
 
-    loop.setGain(gain)
+    loop.set_gain(gain)
     dm.flatten()
 
 
 def format_status_line(system: dict, elapsed: float) -> str:
     slopes = system["slopes"].read(block=False)
-    correction = np.asarray(getattr(system["dm"], "currentShape", system["dm"].read()), dtype=np.float64)
+    correction = np.asarray(getattr(system["dm"], "current_shape", system["dm"].read()), dtype=np.float64)
     residual_rms = float(np.sqrt(np.mean(slopes**2))) if slopes.size else 0.0
     correction_rms = float(np.sqrt(np.mean(correction**2))) if correction.size else 0.0
     strehl = float(system["psf"].strehl_ratio)
@@ -201,7 +201,7 @@ def main(argv=None) -> int:
     logger.info("OOPAO PyWFS soft-RTC tutorial")
     logger.info("Config: %s", CONFIG_PATH)
     logger.info("OOPAO object params: %s", args.oopao_param_file)
-    logger.info("Viewer: pyrtc-view wfs signal2D wfc2D psfShort psfLong --geometry 2x3")
+    logger.info("Viewer: pyrtc-view wfs signal_2d wfc_2d psf_short psf_long --geometry 2x3")
     logger.info(
         "To reuse your own OOPAO objects instead of this YAML file, construct OOPAOInterface with explicit tel=..., atm=..., wfs=... arguments."
     )

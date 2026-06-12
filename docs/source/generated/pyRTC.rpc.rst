@@ -1,6 +1,6 @@
-﻿pyRTC.rpc
+﻿pyrtc.rpc
 =========
 
-.. automodule:: pyRTC.rpc
+.. automodule:: pyrtc.rpc
    :members:
    :undoc-members:

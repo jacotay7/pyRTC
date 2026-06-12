@@ -6,9 +6,9 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from pyRTC import Telemetry
-from pyRTC.exporters import aotpy_export
-from pyRTC.scripts import export_aotpy as export_aotpy_cli
+from pyrtc import Telemetry
+from pyrtc.exporters import aotpy_export
+from pyrtc.scripts import export_aotpy as export_aotpy_cli
 
 
 pytestmark = pytest.mark.skipif(
@@ -25,7 +25,7 @@ RUN_AOTPY_ROUNDTRIP = os.environ.get("PYRTC_RUN_AOTPY_ROUNDTRIP") == "1"
 
 
 def _make_test_session(monkeypatch, tmp_path, *, include_science=True):
-    telemetry_module = importlib.import_module("pyRTC.Telemetry")
+    telemetry_module = importlib.import_module("pyrtc.telemetry")
 
     class _SHM:
         def __init__(self, data, timestamp):
@@ -48,24 +48,24 @@ def _make_test_session(monkeypatch, tmp_path, *, include_science=True):
     stream_names = ["wfs", "signal", "wfc"]
 
     if include_science:
-        streams["psfShort"] = (_SHM(np.ones((8, 8), dtype=np.int32), 103.0), [8, 8], np.int32)
-        streams["psfLong"] = (_SHM(np.full((8, 8), 2.0, dtype=np.float64), 104.0), [8, 8], np.float64)
-        semantic_tags["psfShort"] = ["psf", "science"]
-        semantic_tags["psfLong"] = ["psf", "science"]
-        stream_names.extend(["psfShort", "psfLong"])
+        streams["psf_short"] = (_SHM(np.ones((8, 8), dtype=np.int32), 103.0), [8, 8], np.int32)
+        streams["psf_long"] = (_SHM(np.full((8, 8), 2.0, dtype=np.float64), 104.0), [8, 8], np.float64)
+        semantic_tags["psf_short"] = ["psf", "science"]
+        semantic_tags["psf_long"] = ["psf", "science"]
+        stream_names.extend(["psf_short", "psf_long"])
 
     monkeypatch.setattr(aotpy_export, "_import_aotpy", lambda: aotpy)
     monkeypatch.setattr(telemetry_module, "initExistingShm", lambda name: streams[name])
 
-    telemetry = Telemetry({"dataDir": str(tmp_path), "functions": []})
+    telemetry = Telemetry({"data_dir": str(tmp_path), "functions": []})
     return telemetry.save(
         stream_names,
         2 if include_science else 1,
-        semanticTags=semantic_tags,
+        semantic_tags=semantic_tags,
         config={
             "metadata": {"name": "Synthetic Export"},
-            "slopes": {"type": "SHWFS", "signalType": "slopes"},
-            "wfc": {"numModes": 2},
+            "slopes": {"type": "SHWFS", "signal_type": "slopes"},
+            "wfc": {"num_modes": 2},
             "loop": {"gain": 0.35},
         },
         metadata={"operator": "pytest"},
@@ -105,7 +105,7 @@ def test_aotpy_export_roundtrip_integration(monkeypatch, tmp_path):
 
 
 def test_aotpy_export_surfaces_missing_optional_dependency(monkeypatch, tmp_path):
-    telemetry_module = importlib.import_module("pyRTC.Telemetry")
+    telemetry_module = importlib.import_module("pyrtc.telemetry")
 
     class _SHM:
         def __init__(self):
@@ -117,7 +117,7 @@ def test_aotpy_export_surfaces_missing_optional_dependency(monkeypatch, tmp_path
     monkeypatch.setattr(telemetry_module, "initExistingShm", lambda name: (_SHM(), [2], np.float32))
     monkeypatch.setattr(aotpy_export.importlib, "import_module", lambda name: (_ for _ in ()).throw(ImportError("missing aotpy")))
 
-    telemetry = Telemetry({"dataDir": str(tmp_path), "functions": []})
+    telemetry = Telemetry({"data_dir": str(tmp_path), "functions": []})
     session_path = telemetry.save("signal", 1)
 
     with pytest.raises(RuntimeError, match="optional 'aotpy' dependency"):

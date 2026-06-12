@@ -1,10 +1,10 @@
-"""Tests for component class resolution (pyRTC.component_loading)."""
+"""Tests for component class resolution (pyrtc.component_loading)."""
 
 from pathlib import Path
 
 import pytest
 
-from pyRTC.component_loading import (
+from pyrtc.component_loading import (
     canonical_pyrtc_module_name,
     import_symbol,
     import_symbol_from_file,
@@ -15,19 +15,19 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_canonical_name_maps_package_files():
-    assert canonical_pyrtc_module_name(REPO_ROOT / "pyRTC" / "Loop.py") == "pyRTC.Loop"
+    assert canonical_pyrtc_module_name(REPO_ROOT / "pyrtc" / "loop.py") == "pyrtc.loop"
     assert (
-        canonical_pyrtc_module_name(REPO_ROOT / "pyRTC" / "hardware" / "SyntheticSystems.py")
-        == "pyRTC.hardware.SyntheticSystems"
+        canonical_pyrtc_module_name(REPO_ROOT / "pyrtc" / "hardware" / "synthetic_systems.py")
+        == "pyrtc.hardware.synthetic_systems"
     )
     assert canonical_pyrtc_module_name(Path("/tmp/elsewhere.py")) is None
-    assert canonical_pyrtc_module_name(REPO_ROOT / "pyRTC" / "notes.txt") is None
+    assert canonical_pyrtc_module_name(REPO_ROOT / "pyrtc" / "notes.txt") is None
 
 
 def test_import_symbol_from_file_reuses_canonical_class():
-    from pyRTC.Loop import Loop
+    from pyrtc.loop import Loop
 
-    resolved = import_symbol_from_file(str(REPO_ROOT / "pyRTC" / "Loop.py"), "Loop")
+    resolved = import_symbol_from_file(str(REPO_ROOT / "pyrtc" / "loop.py"), "Loop")
     assert resolved is Loop
 
 
@@ -40,9 +40,9 @@ def test_import_symbol_from_file_loads_custom_module(tmp_path):
 
 
 def test_import_symbol_dotted_path():
-    from pyRTC.Loop import Loop
+    from pyrtc.loop import Loop
 
-    assert import_symbol("pyRTC.Loop.Loop") is Loop
+    assert import_symbol("pyrtc.loop.Loop") is Loop
 
 
 def test_import_symbol_bare_name_skips_shadowing_module():
@@ -50,7 +50,7 @@ def test_import_symbol_bare_name_skips_shadowing_module():
 
     # Importing the same-named *module* binds it on the package and shadows
     # the lazy class re-export; resolution must still find the class.
-    importlib.import_module("pyRTC.hardware.SyntheticSHWFS")
+    importlib.import_module("pyrtc.hardware.synthetic_shwfs")
     resolved = import_symbol("SyntheticSHWFS")
     assert isinstance(resolved, type)
     assert resolved.__name__ == "SyntheticSHWFS"
@@ -70,7 +70,7 @@ def test_resolve_class_symbol_prefers_existing_class_file(tmp_path):
 
 
 def test_resolve_class_symbol_falls_back_to_name_when_file_missing():
-    from pyRTC.Loop import Loop
+    from pyrtc.loop import Loop
 
-    resolved = resolve_class_symbol("pyRTC.Loop.Loop", "/nonexistent/path.py")
+    resolved = resolve_class_symbol("pyrtc.loop.Loop", "/nonexistent/path.py")
     assert resolved is Loop

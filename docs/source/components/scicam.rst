@@ -1,6 +1,6 @@
 .. scicam:
 
-.. currentmodule:: pyRTC.ScienceCamera
+.. currentmodule:: pyrtc.science_camera
 
 
 Science Camera
@@ -18,8 +18,8 @@ The following example shows the typical `soft-RTC` pattern for science-camera se
 
 .. code-block:: python
 
-  from pyRTC.ScienceCamera import ScienceCamera
-  from pyRTC.utils import read_yaml_file
+  from pyrtc.science_camera import ScienceCamera
+  from pyrtc.utils import read_yaml_file
 
   conf = read_yaml_file("path/to/config.yaml")
   sci = ScienceCamera(conf["psf"])
@@ -36,12 +36,12 @@ If the science camera is tied to a specific vendor SDK or operational process bo
 
 .. code-block:: python
   
-  from pyRTC.Pipeline import hardwareLauncher
+  from pyrtc.pipeline import HardwareLauncher
 
   config = 'path/to/config.yaml'
   port = 3003
 
-  sci = hardwareLauncher('path/to/pyRTC/hardware/myScienceCamera.py', config, port)
+  sci = HardwareLauncher('path/to/pyrtc/hardware/myScienceCamera.py', config, port)
   sci.launch()
   sci.run("integrate")
 
@@ -57,7 +57,7 @@ Common configuration and workflow concerns include:
 - ROI, gain, binning, and exposure settings
 - downstream analysis such as Strehl and centroid-derived metrics
 
-This class is often subclassed for site-specific cameras under `pyRTC.hardware`.
+This class is often subclassed for site-specific cameras under `pyrtc.hardware`.
 
 
 Parameters

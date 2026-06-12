@@ -1,16 +1,16 @@
-"""CLI for validating a pyRTC system configuration file."""
+"""CLI for validating a pyrtc system configuration file."""
 
 from __future__ import annotations
 
 import argparse
 import json
 
-from pyRTC.config_schema import read_system_config
-from pyRTC.utils import ConfigValidationError
+from pyrtc.config_schema import read_system_config
+from pyrtc.utils import ConfigValidationError
 
 
 def _build_arg_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Validate a pyRTC system configuration file.")
+    parser = argparse.ArgumentParser(description="Validate a pyrtc system configuration file.")
     parser.add_argument("config", type=str, help="Path to the YAML config file")
     parser.add_argument(
         "--format",

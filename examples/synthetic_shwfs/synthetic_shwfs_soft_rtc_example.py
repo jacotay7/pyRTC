@@ -20,10 +20,10 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 
-from pyRTC import Telemetry
-from pyRTC.latency import format_latency_report
-from pyRTC.Pipeline import RTCManager, clear_shms, open_stream
-from pyRTC.logging_utils import add_logging_cli_args, configure_logging_from_args, get_logger
+from pyrtc import Telemetry
+from pyrtc.latency import format_latency_report
+from pyrtc.pipeline import RTCManager, clear_shms, open_stream
+from pyrtc.logging_utils import add_logging_cli_args, configure_logging_from_args, get_logger
 from examples.synthetic_shwfs.aotpy_helpers import export_synthetic_session_to_aotpy
 
 
@@ -31,13 +31,13 @@ logger = get_logger("examples.synthetic_shwfs.soft")
 CONFIG_PATH = REPO_ROOT / "examples" / "synthetic_shwfs" / "config.yaml"
 DEFAULT_STREAMS = [
     "wfs",
-    "wfsRaw",
+    "wfs_raw",
     "wfc",
-    "wfc2D",
+    "wfc_2d",
     "signal",
-    "signal2D",
-    "psfShort",
-    "psfLong",
+    "signal_2d",
+    "psf_short",
+    "psf_long",
     "strehl",
     "tiptilt",
 ]
@@ -62,7 +62,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--no-clear-shms",
         action="store_true",
-        help="Leave existing pyRTC shared-memory streams in place.",
+        help="Leave existing pyrtc shared-memory streams in place.",
     )
     parser.add_argument(
         "--no-calibration",
@@ -87,26 +87,26 @@ def ensure_synthetic_interaction_matrix(config: dict) -> Path:
     integrator actually close the loop and converge.
     """
 
-    from pyRTC.hardware.SyntheticSystems import (
+    from pyrtc.hardware.synthetic_systems import (
         _default_wfc_layout,
         build_synthetic_shwfs_response_matrix,
     )
 
     wfs_conf = config["wfs"]
     slopes_conf = config["slopes"]
-    output_path = Path(config["loop"]["IMFile"])
-    num_modes = int(config["wfc"]["numModes"])
+    output_path = Path(config["loop"]["im_file"])
+    num_modes = int(config["wfc"]["num_modes"])
 
     image_width = int(wfs_conf["width"])
     image_height = int(wfs_conf["height"])
-    downsample = int(wfs_conf.get("downsampleFactor", 0))
+    downsample = int(wfs_conf.get("downsample_factor", 0))
     if downsample > 0:
         image_width //= downsample
         image_height //= downsample
 
-    subap_spacing = int(slopes_conf["subApSpacing"])
+    subap_spacing = int(slopes_conf["sub_ap_spacing"])
     num_regions = min(image_width, image_height) // subap_spacing
-    layout = _default_wfc_layout(int(config["wfc"]["numActuators"]))
+    layout = _default_wfc_layout(int(config["wfc"]["num_actuators"]))
     interaction_matrix = build_synthetic_shwfs_response_matrix(num_regions, num_modes, layout)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -179,7 +179,7 @@ def main(argv=None) -> int:
     logger.info("Config: %s", CONFIG_PATH)
     logger.info("Manager call: RTCManager.from_config_file(CONFIG_PATH, mode='soft')")
     logger.info("Interaction matrix: %s", im_path)
-    logger.info("Viewer: pyrtc-view wfs signal2D psfShort psfLong --geometry 2x2")
+    logger.info("Viewer: pyrtc-view wfs signal_2d psf_short psf_long --geometry 2x2")
 
     # Step 4: start the full stack.
     manager.start()
@@ -196,20 +196,20 @@ def main(argv=None) -> int:
 
         # Step 5b: calibrate the interaction matrix through the live pipeline.
         # The analytic file written above is only a starting point; measuring
-        # the IM end-to-end (DOCRIME by default, see loop.IMMethod) captures
+        # the IM end-to-end (DOCRIME by default, see loop.im_method) captures
         # the real WFS gain so the integrator actually converges.
         if args.no_calibration:
             logger.info("Skipping IM calibration (--no-calibration)")
         else:
             logger.info(
                 "Calibrating IM with %s (%s iterations) — takes a few seconds",
-                loop.IMMethod,
-                loop.numItersIM,
+                loop.im_method,
+                loop.num_iters_im,
             )
             loop.stop()
             loop.flatten()
             calibration_start = time.perf_counter()
-            loop.computeIM()
+            loop.compute_im()
             logger.info(
                 "Calibration finished in %.1fs; closing the loop",
                 time.perf_counter() - calibration_start,
@@ -227,7 +227,7 @@ def main(argv=None) -> int:
 
         # Telemetry is an ordinary helper object: capture one or more streams,
         # then reopen the most recent save as NumPy arrays plus timestamps.
-        telem = Telemetry({"dataDir": str(REPO_ROOT / "examples" / "synthetic_shwfs" / "telemetry")})
+        telem = Telemetry({"data_dir": str(REPO_ROOT / "examples" / "synthetic_shwfs" / "telemetry")})
         telem.save(["wfs", "wfc"], 10)
         telemetry_data = telem.read_last_save()
         logger.info(

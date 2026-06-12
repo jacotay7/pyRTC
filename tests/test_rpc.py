@@ -1,10 +1,10 @@
-"""Tests for the hard-RTC RPC message protocol (pyRTC.rpc)."""
+"""Tests for the hard-RTC RPC message protocol (pyrtc.rpc)."""
 
 import numpy as np
 import pytest
 
-import pyRTC.rpc as rpc
-from pyRTC.rpc import Listener, PROTOCOL_VERSION, _coerce_property_value, hardwareLauncher
+import pyrtc.rpc as rpc
+from pyrtc.rpc import Listener, PROTOCOL_VERSION, _coerce_property_value, HardwareLauncher
 
 
 class _Hardware:
@@ -12,7 +12,7 @@ class _Hardware:
         self.gain = 0.1
         self.enabled = False
         self.label = "dm"
-        self.numModes = 10
+        self.num_modes = 10
         self.modes = [1, 2]
         self.calls = []
         self.unset = None
@@ -61,10 +61,10 @@ def test_get_returns_property():
 
 def test_set_coerces_onto_current_type():
     listener = _listener()
-    reply = listener.handle_request({"type": "set", "property": "numModes", "value": 12.0, "protocol": PROTOCOL_VERSION})
+    reply = listener.handle_request({"type": "set", "property": "num_modes", "value": 12.0, "protocol": PROTOCOL_VERSION})
     assert reply["status"] == "OK"
-    assert listener.hardware.numModes == 12
-    assert isinstance(listener.hardware.numModes, int)
+    assert listener.hardware.num_modes == 12
+    assert isinstance(listener.hardware.num_modes, int)
 
 
 def test_set_bool_string_false_is_false():
@@ -180,43 +180,43 @@ class _FakeSocket:
 
 
 def test_launcher_run_honors_per_call_timeout(monkeypatch):
-    launcher = hardwareLauncher("dummy.py", "c.yaml", 9999)
+    launcher = HardwareLauncher("dummy.py", "c.yaml", 9999)
     launcher.running = True
-    launcher.processSocket = _FakeSocket()
+    launcher.process_socket = _FakeSocket()
     sent = []
     launcher.write = lambda message: sent.append(message)
     launcher.read = lambda: {"status": "OK", "protocol": PROTOCOL_VERSION}
 
-    assert launcher.run("computeIM", timeout=60.0) == 1
+    assert launcher.run("compute_im", timeout=60.0) == 1
 
     assert sent[0]["type"] == "run"
     assert sent[0]["args"] == []
     assert sent[0]["protocol"] == PROTOCOL_VERSION
     # timeout applied for the call, then restored
-    assert launcher.processSocket.timeouts == [60.0, 0.25]
+    assert launcher.process_socket.timeouts == [60.0, 0.25]
 
 
 def test_launcher_surfaces_child_error_message():
-    launcher = hardwareLauncher("dummy.py", "c.yaml", 9999)
+    launcher = HardwareLauncher("dummy.py", "c.yaml", 9999)
     launcher.running = True
     launcher.write = lambda message: None
     launcher.read = lambda: {"status": "BAD", "error": "run 'boom' failed: hardware fault", "protocol": PROTOCOL_VERSION}
 
     assert launcher.run("boom") == -1
-    assert "hardware fault" in launcher.lastError
+    assert "hardware fault" in launcher.last_error
 
 
 def test_launcher_round_trip_through_listener_dispatch():
     hardware = _Hardware()
     listener = _listener(hardware)
-    launcher = hardwareLauncher("dummy.py", "c.yaml", 9999)
+    launcher = HardwareLauncher("dummy.py", "c.yaml", 9999)
     launcher.running = True
     launcher.write = lambda message: setattr(launcher, "_pending", listener.handle_request(message))
     launcher.read = lambda: launcher._pending
 
-    assert launcher.setProperty("gain", 0.3) == 1
+    assert launcher.set_property("gain", 0.3) == 1
     assert hardware.gain == 0.3
-    assert launcher.getProperty("gain") == 0.3
+    assert launcher.get_property("gain") == 0.3
     assert launcher.run("echo", 7) == 7
 
 
@@ -245,22 +245,22 @@ class _FakeProcess:
 
 
 def test_launcher_close_terminates_live_process_when_forced():
-    launcher = hardwareLauncher("dummy.py", "c.yaml", 9999)
+    launcher = HardwareLauncher("dummy.py", "c.yaml", 9999)
     launcher.running = True
-    launcher.processSocket = _FakeSocket()
+    launcher.process_socket = _FakeSocket()
     process = _FakeProcess(exit_code=None)
     launcher.process = process
 
     launcher.close(force=True)
 
     assert launcher.running is False
-    assert launcher.processSocket is None
+    assert launcher.process_socket is None
     assert launcher.process is None
     assert process.terminated is True
 
 
 def test_launcher_close_without_force_leaves_process_untouched():
-    launcher = hardwareLauncher("dummy.py", "c.yaml", 9999)
+    launcher = HardwareLauncher("dummy.py", "c.yaml", 9999)
     launcher.running = True
     process = _FakeProcess(exit_code=None)
     launcher.process = process
@@ -272,7 +272,7 @@ def test_launcher_close_without_force_leaves_process_untouched():
 
 
 def test_health_check_reports_dead_child():
-    launcher = hardwareLauncher("dummy.py", "c.yaml", 9999)
+    launcher = HardwareLauncher("dummy.py", "c.yaml", 9999)
     launcher.process = _FakeProcess(exit_code=3)
 
     health = launcher.health_check()
@@ -282,21 +282,21 @@ def test_health_check_reports_dead_child():
 
 
 def test_health_check_degraded_when_rpc_fails():
-    launcher = hardwareLauncher("dummy.py", "c.yaml", 9999)
+    launcher = HardwareLauncher("dummy.py", "c.yaml", 9999)
     launcher.process = _FakeProcess(exit_code=None)
     launcher.running = True
-    launcher.processSocket = _FakeSocket()
+    launcher.process_socket = _FakeSocket()
     launcher.write = lambda message: (_ for _ in ()).throw(ConnectionError("gone"))
 
     health = launcher.health_check(timeout=0.5)
 
     assert health["state"] == "degraded"
     # the per-call timeout was applied and restored
-    assert launcher.processSocket.timeouts == [0.5, 0.25]
+    assert launcher.process_socket.timeouts == [0.5, 0.25]
 
 
 def test_health_check_degraded_when_component_not_running():
-    launcher = hardwareLauncher("dummy.py", "c.yaml", 9999)
+    launcher = HardwareLauncher("dummy.py", "c.yaml", 9999)
     launcher.process = _FakeProcess(exit_code=None)
     launcher.running = True
     launcher.write = lambda message: None
@@ -309,7 +309,7 @@ def test_health_check_degraded_when_component_not_running():
 
 
 def test_health_check_running():
-    launcher = hardwareLauncher("dummy.py", "c.yaml", 9999)
+    launcher = HardwareLauncher("dummy.py", "c.yaml", 9999)
     launcher.process = _FakeProcess(exit_code=None)
     launcher.running = True
     launcher.write = lambda message: None
@@ -322,7 +322,7 @@ def test_health_check_running():
 
 
 def test_launcher_shutdown_sends_message_and_closes():
-    launcher = hardwareLauncher("dummy.py", "c.yaml", 9999)
+    launcher = HardwareLauncher("dummy.py", "c.yaml", 9999)
     launcher.running = True
     sent = []
     launcher.write = lambda message: sent.append(message)

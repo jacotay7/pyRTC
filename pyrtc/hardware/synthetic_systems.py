@@ -2,7 +2,7 @@
 
 The classes in this module emulate a minimal Shack-Hartmann sensor path and a
 science camera without requiring external SDKs or laboratory hardware. They are
-designed to exercise the normal pyRTC control pipeline rather than to model a
+designed to exercise the normal pyrtc control pipeline rather than to model a
 particular instrument with high optical fidelity.
 """
 
@@ -10,11 +10,11 @@ import time
 
 import numpy as np
 
-from pyRTC.streams import open_stream
-from pyRTC.ScienceCamera import ScienceCamera
-from pyRTC.WavefrontCorrector import WavefrontCorrector
-from pyRTC.WavefrontSensor import WavefrontSensor
-from pyRTC.utils import setFromConfig
+from pyrtc.streams import open_stream
+from pyrtc.science_camera import ScienceCamera
+from pyrtc.wavefront_corrector import WavefrontCorrector
+from pyrtc.wavefront_sensor import WavefrontSensor
+from pyrtc.utils import set_from_config
 
 
 def _numeric_from_config(conf, key, default):
@@ -89,146 +89,146 @@ class SyntheticSHWFS(WavefrontSensor):
     def __init__(self, conf):
         super().__init__(conf)
 
-        self.frameRateHz = float(_numeric_from_config(conf, "frameRateHz", 200.0))
-        self.framePeriod = 0.0 if self.frameRateHz <= 0 else 1.0 / self.frameRateHz
-        self.backgroundLevel = float(_numeric_from_config(conf, "backgroundLevel", 150.0))
-        self.spotFlux = float(_numeric_from_config(conf, "spotFlux", 3500.0))
-        self.spotSigmaPx = float(_numeric_from_config(conf, "spotSigmaPx", 1.1))
-        self.readNoise = float(_numeric_from_config(conf, "readNoise", 4.0))
-        self.disturbanceAmplitude = float(_numeric_from_config(conf, "disturbanceAmplitude", 0.35))
-        self.disturbanceFrequencyHz = float(_numeric_from_config(conf, "disturbanceFrequencyHz", 1.0))
-        self.disturbanceDriftHz = float(_numeric_from_config(conf, "disturbanceDriftHz", 0.35))
-        self.maxSpotMotionPx = float(_numeric_from_config(conf, "maxSpotMotionPx", 1.25))
-        self.slopeToPixelGain = float(_numeric_from_config(conf, "slopeToPixelGain", 1.6))
-        self.subApSpacing = int(setFromConfig(conf, "subApSpacing", 8))
-        self.subApOffsetX = int(setFromConfig(conf, "subApOffsetX", 0))
-        self.subApOffsetY = int(setFromConfig(conf, "subApOffsetY", 0))
-        self.seed = int(setFromConfig(conf, "seed", 7))
+        self.frame_rate_hz = float(_numeric_from_config(conf, "frame_rate_hz", 200.0))
+        self.frame_period = 0.0 if self.frame_rate_hz <= 0 else 1.0 / self.frame_rate_hz
+        self.background_level = float(_numeric_from_config(conf, "background_level", 150.0))
+        self.spot_flux = float(_numeric_from_config(conf, "spot_flux", 3500.0))
+        self.spot_sigma_px = float(_numeric_from_config(conf, "spot_sigma_px", 1.1))
+        self.read_noise = float(_numeric_from_config(conf, "read_noise", 4.0))
+        self.disturbance_amplitude = float(_numeric_from_config(conf, "disturbance_amplitude", 0.35))
+        self.disturbance_frequency_hz = float(_numeric_from_config(conf, "disturbance_frequency_hz", 1.0))
+        self.disturbance_drift_hz = float(_numeric_from_config(conf, "disturbance_drift_hz", 0.35))
+        self.max_spot_motion_px = float(_numeric_from_config(conf, "max_spot_motion_px", 1.25))
+        self.slope_to_pixel_gain = float(_numeric_from_config(conf, "slope_to_pixel_gain", 1.6))
+        self.sub_ap_spacing = int(set_from_config(conf, "sub_ap_spacing", 8))
+        self.sub_ap_offset_x = int(set_from_config(conf, "sub_ap_offset_x", 0))
+        self.sub_ap_offset_y = int(set_from_config(conf, "sub_ap_offset_y", 0))
+        self.seed = int(set_from_config(conf, "seed", 7))
 
-        self.numRegions = min(
-            (self.imageShape[0] - self.subApOffsetY) // self.subApSpacing,
-            (self.imageShape[1] - self.subApOffsetX) // self.subApSpacing,
+        self.num_regions = min(
+            (self.image_shape[0] - self.sub_ap_offset_y) // self.sub_ap_spacing,
+            (self.image_shape[1] - self.sub_ap_offset_x) // self.sub_ap_spacing,
         )
-        if self.numRegions < 1:
+        if self.num_regions < 1:
             raise ValueError("SyntheticSHWFS requires at least one valid SHWFS sub-aperture")
 
-        self.signal2DShape = (2 * self.numRegions, self.numRegions)
-        self.signalSize = int(np.prod(self.signal2DShape))
-        self.numModes = int(setFromConfig(conf, "numModes", self.signalSize))
-        if self.numModes < 1:
-            raise ValueError("SyntheticSHWFS requires numModes >= 1")
-        self.wfcLayout = _default_wfc_layout(self.numModes)
+        self.signal_2d_shape = (2 * self.num_regions, self.num_regions)
+        self.signal_size = int(np.prod(self.signal_2d_shape))
+        self.num_modes = int(set_from_config(conf, "num_modes", self.signal_size))
+        if self.num_modes < 1:
+            raise ValueError("SyntheticSHWFS requires num_modes >= 1")
+        self.wfc_layout = _default_wfc_layout(self.num_modes)
 
         self.rng = np.random.default_rng(self.seed)
-        self.responseMatrix = self._build_response_matrix()
-        self.modalPhases = self.rng.uniform(0.0, 2.0 * np.pi, self.numModes).astype(np.float32)
-        self.modalAmplitudes = (
-            self.disturbanceAmplitude / np.sqrt(np.arange(1, self.numModes + 1, dtype=np.float32))
+        self.response_matrix = self._build_response_matrix()
+        self.modal_phases = self.rng.uniform(0.0, 2.0 * np.pi, self.num_modes).astype(np.float32)
+        self.modal_amplitudes = (
+            self.disturbance_amplitude / np.sqrt(np.arange(1, self.num_modes + 1, dtype=np.float32))
         ).astype(np.float32)
-        self.modalFrequencies = np.linspace(
-            self.disturbanceFrequencyHz,
-            self.disturbanceFrequencyHz + self.disturbanceDriftHz,
-            self.numModes,
+        self.modal_frequencies = np.linspace(
+            self.disturbance_frequency_hz,
+            self.disturbance_frequency_hz + self.disturbance_drift_hz,
+            self.num_modes,
             dtype=np.float32,
         )
-        self.localCoords = (np.arange(self.subApSpacing, dtype=np.float32) + 0.5) - (0.5 * self.subApSpacing)
-        self.localGridX, self.localGridY = np.meshgrid(self.localCoords, self.localCoords)
-        self.startTime = time.perf_counter()
-        self.lastExposeTime = self.startTime
-        self.frameCounter = 0
-        self.lastModalDisturbance = np.zeros(self.numModes, dtype=np.float32)
-        self.lastSlopeSignal = np.zeros(self.signalSize, dtype=np.float32)
-        self.lastCorrection = np.zeros(self.numModes, dtype=np.float32)
-        self.correctionShm = None
+        self.local_coords = (np.arange(self.sub_ap_spacing, dtype=np.float32) + 0.5) - (0.5 * self.sub_ap_spacing)
+        self.local_grid_x, self.local_grid_y = np.meshgrid(self.local_coords, self.local_coords)
+        self.start_time = time.perf_counter()
+        self.last_expose_time = self.start_time
+        self.frame_counter = 0
+        self.last_modal_disturbance = np.zeros(self.num_modes, dtype=np.float32)
+        self.last_slope_signal = np.zeros(self.signal_size, dtype=np.float32)
+        self.last_correction = np.zeros(self.num_modes, dtype=np.float32)
+        self.correction_shm = None
 
         return
 
     def _build_response_matrix(self):
-        return build_synthetic_shwfs_response_matrix(self.numRegions, self.numModes, self.wfcLayout)
+        return build_synthetic_shwfs_response_matrix(self.num_regions, self.num_modes, self.wfc_layout)
 
     def _sleep_for_frame_rate(self):
-        if self.framePeriod <= 0.0:
+        if self.frame_period <= 0.0:
             return
-        elapsed = time.perf_counter() - self.lastExposeTime
-        remaining = self.framePeriod - elapsed
+        elapsed = time.perf_counter() - self.last_expose_time
+        remaining = self.frame_period - elapsed
         if remaining > 0:
             time.sleep(remaining)
 
     def _ensure_correction_stream(self):
-        if self.correctionShm is not None:
+        if self.correction_shm is not None:
             return
         try:
-            self.correctionShm = open_stream(self.input_stream_name("wfc"), gpuDevice=self.gpuDevice)
+            self.correction_shm = open_stream(self.input_stream_name("wfc"), gpu_device=self.gpu_device)
         except Exception:
-            self.correctionShm = None
+            self.correction_shm = None
 
     def _modal_disturbance(self, elapsed_seconds):
-        primary = np.sin(2.0 * np.pi * self.modalFrequencies * elapsed_seconds + self.modalPhases)
+        primary = np.sin(2.0 * np.pi * self.modal_frequencies * elapsed_seconds + self.modal_phases)
         secondary = np.cos(
-            2.0 * np.pi * (0.37 * self.modalFrequencies + 0.11) * elapsed_seconds
-            + 0.5 * self.modalPhases
+            2.0 * np.pi * (0.37 * self.modal_frequencies + 0.11) * elapsed_seconds
+            + 0.5 * self.modal_phases
         )
-        disturbance = self.modalAmplitudes * (primary + 0.35 * secondary)
+        disturbance = self.modal_amplitudes * (primary + 0.35 * secondary)
         return disturbance.astype(np.float32)
 
     def _current_correction(self):
         self._ensure_correction_stream()
-        if self.correctionShm is None:
-            return np.zeros(self.numModes, dtype=np.float32)
+        if self.correction_shm is None:
+            return np.zeros(self.num_modes, dtype=np.float32)
 
-        correction = np.asarray(self.correctionShm.read(), dtype=np.float32).ravel()
-        if correction.size < self.numModes:
-            padded = np.zeros(self.numModes, dtype=np.float32)
+        correction = np.asarray(self.correction_shm.read(), dtype=np.float32).ravel()
+        if correction.size < self.num_modes:
+            padded = np.zeros(self.num_modes, dtype=np.float32)
             padded[: correction.size] = correction
             return padded
-        return correction[: self.numModes].astype(np.float32, copy=False)
+        return correction[: self.num_modes].astype(np.float32, copy=False)
 
     def _render_spot_grid(self, slopes_2d):
-        image = np.full(self.imageShape, self.backgroundLevel, dtype=np.float32)
-        for row_index in range(self.numRegions):
-            start_row = self.subApOffsetY + row_index * self.subApSpacing
-            end_row = start_row + self.subApSpacing
-            for col_index in range(self.numRegions):
-                start_col = self.subApOffsetX + col_index * self.subApSpacing
-                end_col = start_col + self.subApSpacing
+        image = np.full(self.image_shape, self.background_level, dtype=np.float32)
+        for row_index in range(self.num_regions):
+            start_row = self.sub_ap_offset_y + row_index * self.sub_ap_spacing
+            end_row = start_row + self.sub_ap_spacing
+            for col_index in range(self.num_regions):
+                start_col = self.sub_ap_offset_x + col_index * self.sub_ap_spacing
+                end_col = start_col + self.sub_ap_spacing
 
                 x_shift = np.clip(
-                    self.slopeToPixelGain * slopes_2d[row_index, col_index],
-                    -self.maxSpotMotionPx,
-                    self.maxSpotMotionPx,
+                    self.slope_to_pixel_gain * slopes_2d[row_index, col_index],
+                    -self.max_spot_motion_px,
+                    self.max_spot_motion_px,
                 )
                 y_shift = np.clip(
-                    self.slopeToPixelGain * slopes_2d[row_index + self.numRegions, col_index],
-                    -self.maxSpotMotionPx,
-                    self.maxSpotMotionPx,
+                    self.slope_to_pixel_gain * slopes_2d[row_index + self.num_regions, col_index],
+                    -self.max_spot_motion_px,
+                    self.max_spot_motion_px,
                 )
-                patch = self.spotFlux * np.exp(
+                patch = self.spot_flux * np.exp(
                     -(
-                        (self.localGridX - x_shift) ** 2 + (self.localGridY - y_shift) ** 2
+                        (self.local_grid_x - x_shift) ** 2 + (self.local_grid_y - y_shift) ** 2
                     )
-                    / (2.0 * self.spotSigmaPx**2)
+                    / (2.0 * self.spot_sigma_px**2)
                 )
                 image[start_row:end_row, start_col:end_col] += patch.astype(np.float32)
 
-        if self.readNoise > 0.0:
-            image += self.rng.normal(0.0, self.readNoise, size=self.imageShape).astype(np.float32)
-        image = np.clip(image, 0.0, np.iinfo(self.imageRawDType).max)
-        return image.astype(self.imageRawDType)
+        if self.read_noise > 0.0:
+            image += self.rng.normal(0.0, self.read_noise, size=self.image_shape).astype(np.float32)
+        image = np.clip(image, 0.0, np.iinfo(self.image_raw_dtype).max)
+        return image.astype(self.image_raw_dtype)
 
     def expose(self):
         self._sleep_for_frame_rate()
-        elapsed_seconds = time.perf_counter() - self.startTime
+        elapsed_seconds = time.perf_counter() - self.start_time
         modal_disturbance = self._modal_disturbance(elapsed_seconds)
         correction = self._current_correction()
-        slope_signal = self.responseMatrix @ (modal_disturbance - correction)
-        slopes_2d = slope_signal.reshape(self.signal2DShape)
+        slope_signal = self.response_matrix @ (modal_disturbance - correction)
+        slopes_2d = slope_signal.reshape(self.signal_2d_shape)
 
-        self.lastModalDisturbance = modal_disturbance
-        self.lastCorrection = correction
-        self.lastSlopeSignal = slope_signal.astype(np.float32, copy=False)
+        self.last_modal_disturbance = modal_disturbance
+        self.last_correction = correction
+        self.last_slope_signal = slope_signal.astype(np.float32, copy=False)
         self.data = self._render_spot_grid(slopes_2d)
-        self.frameCounter += 1
-        self.lastExposeTime = time.perf_counter()
+        self.frame_counter += 1
+        self.last_expose_time = time.perf_counter()
         super().expose()
         return
 
@@ -245,75 +245,75 @@ class SyntheticScienceCamera(ScienceCamera):
     def __init__(self, conf):
         super().__init__(conf)
 
-        self.frameRateHz = float(_numeric_from_config(conf, "frameRateHz", 50.0))
-        self.framePeriod = 0.0 if self.frameRateHz <= 0 else 1.0 / self.frameRateHz
-        self.backgroundLevel = float(_numeric_from_config(conf, "backgroundLevel", 50.0))
-        self.peakFlux = float(_numeric_from_config(conf, "peakFlux", 25000.0))
-        self.baseSigmaPx = float(_numeric_from_config(conf, "baseSigmaPx", 1.6))
-        self.residualBlurGain = float(_numeric_from_config(conf, "residualBlurGain", 2.5))
-        self.tipTiltGain = float(_numeric_from_config(conf, "tipTiltGain", 2.0))
-        self.readNoise = float(_numeric_from_config(conf, "readNoise", 3.0))
-        self.seed = int(setFromConfig(conf, "seed", 13))
+        self.frame_rate_hz = float(_numeric_from_config(conf, "frame_rate_hz", 50.0))
+        self.frame_period = 0.0 if self.frame_rate_hz <= 0 else 1.0 / self.frame_rate_hz
+        self.background_level = float(_numeric_from_config(conf, "background_level", 50.0))
+        self.peak_flux = float(_numeric_from_config(conf, "peak_flux", 25000.0))
+        self.base_sigma_px = float(_numeric_from_config(conf, "base_sigma_px", 1.6))
+        self.residual_blur_gain = float(_numeric_from_config(conf, "residual_blur_gain", 2.5))
+        self.tip_tilt_gain = float(_numeric_from_config(conf, "tip_tilt_gain", 2.0))
+        self.read_noise = float(_numeric_from_config(conf, "read_noise", 3.0))
+        self.seed = int(set_from_config(conf, "seed", 13))
 
         self.rng = np.random.default_rng(self.seed)
-        self.signalShm = None
-        self.frameCounter = 0
-        self.lastExposeTime = time.perf_counter()
-        self.gridY, self.gridX = np.indices(self.imageShape, dtype=np.float32)
-        self.centerY = 0.5 * (self.imageShape[0] - 1)
-        self.centerX = 0.5 * (self.imageShape[1] - 1)
+        self.signal_shm = None
+        self.frame_counter = 0
+        self.last_expose_time = time.perf_counter()
+        self.grid_y, self.grid_x = np.indices(self.image_shape, dtype=np.float32)
+        self.center_y = 0.5 * (self.image_shape[0] - 1)
+        self.center_x = 0.5 * (self.image_shape[1] - 1)
 
         return
 
     def _sleep_for_frame_rate(self):
-        if self.framePeriod <= 0.0:
+        if self.frame_period <= 0.0:
             return
-        elapsed = time.perf_counter() - self.lastExposeTime
-        remaining = self.framePeriod - elapsed
+        elapsed = time.perf_counter() - self.last_expose_time
+        remaining = self.frame_period - elapsed
         if remaining > 0:
             time.sleep(remaining)
 
     def _ensure_signal_stream(self):
-        if self.signalShm is not None:
+        if self.signal_shm is not None:
             return
         try:
-            self.signalShm = open_stream(self.input_stream_name("signal"))
+            self.signal_shm = open_stream(self.input_stream_name("signal"))
         except Exception:
-            self.signalShm = None
+            self.signal_shm = None
 
     def _current_signal(self):
         self._ensure_signal_stream()
-        if self.signalShm is None:
+        if self.signal_shm is None:
             return np.zeros(1, dtype=np.float32)
-        return np.asarray(self.signalShm.read(), dtype=np.float32).ravel()
+        return np.asarray(self.signal_shm.read(), dtype=np.float32).ravel()
 
     def expose(self):
         self._sleep_for_frame_rate()
         signal = self._current_signal()
         residual_rms = float(np.sqrt(np.mean(signal**2))) if signal.size > 0 else 0.0
 
-        tip = self.tipTiltGain * float(signal[0]) if signal.size > 0 else 0.0
+        tip = self.tip_tilt_gain * float(signal[0]) if signal.size > 0 else 0.0
         tilt_index = signal.size // 2
-        tilt = self.tipTiltGain * float(signal[tilt_index]) if signal.size > 0 else 0.0
-        sigma = self.baseSigmaPx + self.residualBlurGain * residual_rms
-        peak = self.peakFlux / (1.0 + 2.0 * residual_rms)
-        image = self.backgroundLevel + peak * np.exp(
+        tilt = self.tip_tilt_gain * float(signal[tilt_index]) if signal.size > 0 else 0.0
+        sigma = self.base_sigma_px + self.residual_blur_gain * residual_rms
+        peak = self.peak_flux / (1.0 + 2.0 * residual_rms)
+        image = self.background_level + peak * np.exp(
             -(
-                (self.gridX - (self.centerX + tip)) ** 2
-                + (self.gridY - (self.centerY + tilt)) ** 2
+                (self.grid_x - (self.center_x + tip)) ** 2
+                + (self.grid_y - (self.center_y + tilt)) ** 2
             )
             / (2.0 * sigma**2)
         )
-        if self.readNoise > 0.0:
-            image += self.rng.normal(0.0, self.readNoise, size=self.imageShape)
+        if self.read_noise > 0.0:
+            image += self.rng.normal(0.0, self.read_noise, size=self.image_shape)
 
         self.strehl_ratio = float(np.clip(1.0 / (1.0 + 3.0 * residual_rms), 0.0, 1.0))
         self.peak_dist = float(np.hypot(tip, tilt))
-        self.strehlShm.write(np.array([self.strehl_ratio], dtype=float))
-        self.tipTiltShm.write(np.array([self.peak_dist], dtype=float))
-        self.data = np.clip(image, 0.0, np.iinfo(self.imageRawDType).max).astype(self.imageRawDType)
-        self.frameCounter += 1
-        self.lastExposeTime = time.perf_counter()
+        self.strehl_shm.write(np.array([self.strehl_ratio], dtype=float))
+        self.tip_tilt_shm.write(np.array([self.peak_dist], dtype=float))
+        self.data = np.clip(image, 0.0, np.iinfo(self.image_raw_dtype).max).astype(self.image_raw_dtype)
+        self.frame_counter += 1
+        self.last_expose_time = time.perf_counter()
         super().expose()
         return
 
@@ -330,22 +330,22 @@ class SyntheticWFC(WavefrontCorrector):
     def __init__(self, conf):
         super().__init__(conf)
         if self.layout is None:
-            self.setLayout(_default_wfc_layout(self.numActuators))
+            self.set_layout(_default_wfc_layout(self.num_actuators))
 
     @classmethod
     def sync_system_config(cls, system_conf):
         """Publish the synthetic layout size so SHM planning matches runtime.
 
-        The generic ``wfc2D`` planning spec assumes ``displayGridSize``; the
-        synthetic corrector derives its layout from ``numActuators``, so this
+        The generic ``wfc_2d`` planning spec assumes ``display_grid_size``; the
+        synthetic corrector derives its layout from ``num_actuators``, so this
         hook keeps :func:`expected_output_shm_specs_for_config` consistent
         with the stream the component actually creates.
         """
 
         wfc_conf = system_conf.get("wfc")
-        if isinstance(wfc_conf, dict) and "numActuators" in wfc_conf:
-            layout = _default_wfc_layout(int(wfc_conf["numActuators"]))
-            wfc_conf.setdefault("displayGridSize", int(layout.shape[0]))
+        if isinstance(wfc_conf, dict) and "num_actuators" in wfc_conf:
+            layout = _default_wfc_layout(int(wfc_conf["num_actuators"]))
+            wfc_conf.setdefault("display_grid_size", int(layout.shape[0]))
 
 
 def _default_wfc_layout(num_actuators: int) -> np.ndarray:

@@ -6,7 +6,7 @@ import argparse
 import json
 from pathlib import Path
 
-from pyRTC.logging_utils import add_logging_cli_args, configure_logging_from_args, get_logger
+from pyrtc.logging_utils import add_logging_cli_args, configure_logging_from_args, get_logger
 
 
 logger = get_logger(__name__)
@@ -21,14 +21,14 @@ CPU_KERNELS = [
     ("wavefront_sensor.downsample_int32_image_jit", "WFS downsample"),
     ("wavefront_sensor.rotate_image_jit", "WFS rotate"),
     ("wavefront_corrector.ModaltoZonalWithFlat", "WFC modal->zonal"),
-    ("loop.leakyIntegratorNumba", "Loop integrator"),
-    ("slopes.computeSlopesPYWFSOptimNumba", "PYWFS slopes"),
-    ("slopes.computeSlopesSHWFSOptimNumba", "SHWFS slopes"),
+    ("loop.leaky_integrator_numba", "Loop integrator"),
+    ("slopes.compute_slopes_pywfs_optim_numba", "PYWFS slopes"),
+    ("slopes.compute_slopes_shwfs_optim_numba", "SHWFS slopes"),
 ]
 
 GPU_KERNELS = {
-    "loop.leakyIntegratorNumba": "loop.leakIntegratorGPU",
-    "slopes.computeSlopesPYWFSOptimNumba": "slopes.computeSlopesPYWFSTorch",
+    "loop.leaky_integrator_numba": "loop.leak_integrator_gpu",
+    "slopes.compute_slopes_pywfs_optim_numba": "slopes.compute_slopes_pywfs_torch",
 }
 
 

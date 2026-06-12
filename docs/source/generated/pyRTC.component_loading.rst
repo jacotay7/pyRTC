@@ -1,6 +1,6 @@
-﻿pyRTC.component_loading
+﻿pyrtc.component_loading
 =======================
 
-.. automodule:: pyRTC.component_loading
+.. automodule:: pyrtc.component_loading
    :members:
    :undoc-members:

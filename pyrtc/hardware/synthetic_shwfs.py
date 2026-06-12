@@ -1,8 +1,8 @@
 """Launchable hard-RTC entry point for the synthetic SHWFS adapter."""
 
-from pyRTC.manager import launchComponent
-from pyRTC.hardware.SyntheticSystems import SyntheticSHWFS
+from pyrtc.manager import launch_component
+from pyrtc.hardware.synthetic_systems import SyntheticSHWFS
 
 
 if __name__ == "__main__":
-    launchComponent(SyntheticSHWFS, "wfs", start=True)
+    launch_component(SyntheticSHWFS, "wfs", start=True)

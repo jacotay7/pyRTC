@@ -1,7 +1,7 @@
 import numpy as np
 import importlib
 
-wfc_mod = importlib.import_module("pyRTC.WavefrontCorrector")
+wfc_mod = importlib.import_module("pyrtc.wavefront_corrector")
 
 
 def test_modal_to_zonal_with_flat():
@@ -19,29 +19,29 @@ def test_wavefront_corrector_core(monkeypatch, tmp_path):
 
     conf = {
         "name": "wfc",
-        "numActuators": 9,
-        "numModes": 4,
-        "m2cFile": "",
-        "frameDelay": 1,
-        "saveFile": str(tmp_path / "shape.npy"),
+        "num_actuators": 9,
+        "num_modes": 4,
+        "m2c_file": "",
+        "frame_delay": 1,
+        "save_file": str(tmp_path / "shape.npy"),
         "functions": [],
     }
     wfc = wfc_mod.WavefrontCorrector(conf)
 
     layout = np.ones((3, 3), dtype=bool)
-    wfc.setLayout(layout)
-    assert wfc.correctionVector2D is not None
+    wfc.set_layout(layout)
+    assert wfc.correction_vector_2d is not None
 
     m2c = np.random.RandomState(0).randn(9, 4).astype(np.float32)
-    wfc.setM2C(m2c)
+    wfc.set_m2c(m2c)
     assert wfc.M2C.shape == (9, 4)
 
     corr = np.ones(4, dtype=np.float32)
     wfc.write(corr)
     assert np.array_equal(wfc.read(), corr)
 
-    wfc.sendToHardware()
-    assert wfc.currentShape.shape == (9,)
+    wfc.send_to_hardware()
+    assert wfc.current_shape.shape == (9,)
 
     wfc.push(1, 0.25)
     pushed = wfc.read()
@@ -50,12 +50,12 @@ def test_wavefront_corrector_core(monkeypatch, tmp_path):
     wfc.flatten()
     assert np.all(wfc.read() == 0)
 
-    wfc.deactivateActuators([0, 2])
-    assert not wfc.actuatorStatus[0]
-    wfc.reactivateActuators([0, 2])
-    assert wfc.actuatorStatus[0]
+    wfc.deactivate_actuators([0, 2])
+    assert not wfc.actuator_status[0]
+    wfc.reactivate_actuators([0, 2])
+    assert wfc.actuator_status[0]
 
-    wfc.saveShape()
+    wfc.save_shape()
     assert (tmp_path / "shape.npy").exists()
 
 
@@ -66,20 +66,20 @@ def test_wavefront_corrector_applies_command_cap(monkeypatch):
 
     conf = {
         "name": "wfc",
-        "numActuators": 3,
-        "numModes": 3,
-        "m2cFile": "",
-        "commandCap": 0.5,
+        "num_actuators": 3,
+        "num_modes": 3,
+        "m2c_file": "",
+        "command_cap": 0.5,
         "functions": [],
     }
     wfc = wfc_mod.WavefrontCorrector(conf)
 
-    wfc.setM2C(np.eye(3, dtype=np.float32))
+    wfc.set_m2c(np.eye(3, dtype=np.float32))
     wfc.write(np.array([2.0, -0.75, 0.25], dtype=np.float32))
 
-    wfc.sendToHardware()
+    wfc.send_to_hardware()
 
-    assert np.allclose(wfc.currentShape, np.array([0.5, -0.5, 0.25], dtype=np.float32))
+    assert np.allclose(wfc.current_shape, np.array([0.5, -0.5, 0.25], dtype=np.float32))
 
 
 def test_wavefront_corrector_clears_wfc2d_outside_layout(monkeypatch):
@@ -89,9 +89,9 @@ def test_wavefront_corrector_clears_wfc2d_outside_layout(monkeypatch):
 
     conf = {
         "name": "wfc",
-        "numActuators": 5,
-        "numModes": 5,
-        "m2cFile": "",
+        "num_actuators": 5,
+        "num_modes": 5,
+        "m2c_file": "",
         "functions": [],
     }
     wfc = wfc_mod.WavefrontCorrector(conf)
@@ -104,15 +104,15 @@ def test_wavefront_corrector_clears_wfc2d_outside_layout(monkeypatch):
         ],
         dtype=bool,
     )
-    wfc.setLayout(layout)
-    wfc.setM2C(np.eye(5, dtype=np.float32))
+    wfc.set_layout(layout)
+    wfc.set_m2c(np.eye(5, dtype=np.float32))
     wfc.write(np.arange(5, dtype=np.float32))
 
     # Simulate stale garbage in the non-actuator area from a previous frame.
-    wfc.correctionVector2D_template[:] = 1234.0
+    wfc.correction_vector_2d_template[:] = 1234.0
 
-    wfc.sendToHardware()
+    wfc.send_to_hardware()
 
-    wfc2d = wfc.correctionVector2D.read()
+    wfc2d = wfc.correction_vector_2d.read()
     assert np.all(wfc2d[~layout] == 0.0)
     assert np.array_equal(wfc2d[layout], np.arange(5, dtype=np.float32))

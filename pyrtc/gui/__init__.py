@@ -1,4 +1,4 @@
-"""Optional Qt GUI helpers for pyRTC manager operations."""
+"""Optional Qt GUI helpers for pyrtc manager operations."""
 
 from .manager_adapter import ManagerAdapter
 from .models import GraphEdgeModel, GraphNodeModel, GraphSnapshot

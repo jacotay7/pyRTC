@@ -1,4 +1,4 @@
-"""GPU stream tests for pyRTC's pyshmem-backed transport.
+"""GPU stream tests for pyrtc's pyshmem-backed transport.
 
 These tests require a CUDA-capable torch installation, which GitHub-hosted
 CI runners do not provide: every test is skipped automatically when CUDA is
@@ -12,7 +12,7 @@ import numpy as np
 import pytest
 
 import pyshmem
-from pyRTC.streams import clear_shms, create_stream, open_stream
+from pyrtc.streams import clear_shms, create_stream, open_stream
 
 CUDA_AVAILABLE = pyshmem.gpu_available()
 
@@ -30,17 +30,17 @@ def stream_name():
 
 
 def test_create_stream_gpu_producer_has_cpu_mirror(stream_name):
-    shm = create_stream(stream_name, (8,), np.float32, gpuDevice="cuda:0")
+    shm = create_stream(stream_name, (8,), np.float32, gpu_device="cuda:0")
     try:
         assert shm.gpu_enabled
-        assert shm.cpu_mirror, "pyRTC GPU streams must always carry a CPU mirror"
+        assert shm.cpu_mirror, "pyrtc GPU streams must always carry a CPU mirror"
         shm.write(np.arange(8, dtype=np.float32))
     finally:
         shm.close()
 
 
 def test_cpu_consumer_reads_numpy_from_gpu_stream(stream_name):
-    producer = create_stream(stream_name, (8,), np.float32, gpuDevice="cuda:0")
+    producer = create_stream(stream_name, (8,), np.float32, gpu_device="cuda:0")
     try:
         producer.write(np.arange(8, dtype=np.float32))
 
@@ -58,11 +58,11 @@ def test_cpu_consumer_reads_numpy_from_gpu_stream(stream_name):
 def test_gpu_consumer_reads_cuda_tensor(stream_name):
     import torch
 
-    producer = create_stream(stream_name, (8,), np.float32, gpuDevice="cuda:0")
+    producer = create_stream(stream_name, (8,), np.float32, gpu_device="cuda:0")
     try:
         producer.write(np.arange(8, dtype=np.float32))
 
-        consumer = open_stream(stream_name, gpuDevice="cuda:0")
+        consumer = open_stream(stream_name, gpu_device="cuda:0")
         try:
             payload = consumer.read()
             assert isinstance(payload, torch.Tensor)
@@ -77,7 +77,7 @@ def test_gpu_consumer_reads_cuda_tensor(stream_name):
 def test_gpu_write_accepts_cuda_tensor(stream_name):
     import torch
 
-    producer = create_stream(stream_name, (4,), np.float32, gpuDevice="cuda:0")
+    producer = create_stream(stream_name, (4,), np.float32, gpu_device="cuda:0")
     try:
         producer.write(torch.full((4,), 3.0, device="cuda:0"))
 
@@ -91,8 +91,8 @@ def test_gpu_write_accepts_cuda_tensor(stream_name):
 
 
 def test_unsupported_gpu_dtype_falls_back_to_cpu(stream_name):
-    # uint16 (the wfsRaw dtype) has no torch equivalent in pyshmem's GPU map.
-    shm = create_stream(stream_name, (4,), np.uint16, gpuDevice="cuda:0")
+    # uint16 (the wfs_raw dtype) has no torch equivalent in pyshmem's GPU map.
+    shm = create_stream(stream_name, (4,), np.uint16, gpu_device="cuda:0")
     try:
         assert not shm.gpu_enabled
         shm.write(np.arange(4, dtype=np.uint16))
@@ -105,7 +105,7 @@ def test_gpu_stream_read_new_with_out_buffer_on_mirror(stream_name):
     import threading
     import time
 
-    producer = create_stream(stream_name, (4,), np.float32, gpuDevice="cuda:0")
+    producer = create_stream(stream_name, (4,), np.float32, gpu_device="cuda:0")
     try:
         producer.write(np.zeros(4, dtype=np.float32))
         consumer = open_stream(stream_name)

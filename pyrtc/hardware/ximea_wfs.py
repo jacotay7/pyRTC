@@ -1,16 +1,16 @@
 """XIMEA wavefront-sensor camera adapter.
 
 This module provides the camera-facing portion of a Shack-Hartmann-style
-wavefront sensor built on XIMEA hardware. It maps pyRTC configuration and frame
+wavefront sensor built on XIMEA hardware. It maps pyrtc configuration and frame
 acquisition semantics onto the ``xiapi`` SDK so the rest of the pipeline can
 interact with the device through the standard ``WavefrontSensor`` interface.
 """
 
 import time
 
-from pyRTC.logging_utils import get_logger
-from pyRTC.manager import launchComponent
-from pyRTC.WavefrontSensor import WavefrontSensor
+from pyrtc.logging_utils import get_logger
+from pyrtc.manager import launch_component
+from pyrtc.wavefront_sensor import WavefrontSensor
 from ximea import xiapi
 
 
@@ -22,7 +22,7 @@ class XIMEA_WFS(WavefrontSensor):
     The class handles device connection, runtime camera configuration, and
     frame capture for XIMEA-backed sensors. It intentionally focuses on the raw
     image transport layer; slope extraction and other wavefront-sensing logic
-    remain in the normal pyRTC processing components.
+    remain in the normal pyrtc processing components.
     """
 
     def __init__(self, conf):
@@ -31,18 +31,18 @@ class XIMEA_WFS(WavefrontSensor):
             self.cam = xiapi.Camera()
             self.cam.open_device_by("XI_OPEN_BY_SN", conf["serial"])
 
-            self.downsampledImage = None
-            if "bitDepth" in conf:
-                self.setBitDepth(conf["bitDepth"])
+            self.downsampled_image = None
+            if "bit_depth" in conf:
+                self.set_bit_depth(conf["bit_depth"])
             if "binning" in conf:
-                self.setBinning(conf["binning"])
+                self.set_binning(conf["binning"])
             if "exposure" in conf:
-                self.setExposure(conf["exposure"])
+                self.set_exposure(conf["exposure"])
             if "top" in conf and "left" in conf and "width" in conf and "height" in conf:
                 roi = [conf["width"], conf["height"], conf["left"], conf["top"]]
-                self.setRoi(roi)
+                self.set_roi(roi)
             if "gain" in conf:
-                self.setGain(conf["gain"])
+                self.set_gain(conf["gain"])
 
             self.img = xiapi.Image()
             self.cam.start_acquisition()
@@ -53,22 +53,22 @@ class XIMEA_WFS(WavefrontSensor):
 
         return
 
-    def setRoi(self, roi):
+    def set_roi(self, roi):
         try:
-            super().setRoi(roi)
-            self.cam.set_param('width', self.roiWidth)
-            self.cam.set_param('height', self.roiHeight)
-            self.cam.set_param('offsetX', self.roiLeft)
-            self.cam.set_param('offsetY', self.roiTop)
+            super().set_roi(roi)
+            self.cam.set_param('width', self.roi_width)
+            self.cam.set_param('height', self.roi_height)
+            self.cam.set_param('offset_x', self.roi_left)
+            self.cam.set_param('offset_y', self.roi_top)
             self.logger.info("Applied XIMEA ROI %s", roi)
         except Exception:
             self.logger.exception("Failed to apply XIMEA ROI %s", roi)
             raise
         return
     
-    def setExposure(self, exposure):
+    def set_exposure(self, exposure):
         try:
-            super().setExposure(exposure)
+            super().set_exposure(exposure)
             self.cam.set_param('exposure', self.exposure)
             self.logger.info("Applied XIMEA exposure=%s", self.exposure)
         except Exception:
@@ -76,9 +76,9 @@ class XIMEA_WFS(WavefrontSensor):
             raise
         return
     
-    def setBinning(self, binning):
+    def set_binning(self, binning):
         try:
-            super().setBinning(binning)
+            super().set_binning(binning)
             if self.binning == 2:
                 self.cam.set_param('downsampling', "XI_DWN_2x2")
             self.logger.info("Applied XIMEA binning=%s", self.binning)
@@ -87,9 +87,9 @@ class XIMEA_WFS(WavefrontSensor):
             raise
         return
     
-    def setGain(self, gain):
+    def set_gain(self, gain):
         try:
-            super().setGain(gain)
+            super().set_gain(gain)
             self.cam.set_param('gain', self.gain)
             self.logger.info("Applied XIMEA gain=%s", self.gain)
         except Exception:
@@ -97,14 +97,14 @@ class XIMEA_WFS(WavefrontSensor):
             raise
         return
     
-    def setBitDepth(self, bitDepth):
+    def set_bit_depth(self, bit_depth):
         try:
-            super().setBitDepth(bitDepth)
-            if self.bitDepth > 8:
+            super().set_bit_depth(bit_depth)
+            if self.bit_depth > 8:
                 self.cam.set_param('imgdataformat', "XI_MONO16")
-            self.logger.info("Applied XIMEA bitDepth=%s", self.bitDepth)
+            self.logger.info("Applied XIMEA bit_depth=%s", self.bit_depth)
         except Exception:
-            self.logger.exception("Failed to apply XIMEA bitDepth=%s", bitDepth)
+            self.logger.exception("Failed to apply XIMEA bit_depth=%s", bit_depth)
             raise
         return
 
@@ -143,4 +143,4 @@ class XIMEA_WFS(WavefrontSensor):
     
 if __name__ == "__main__":
 
-    launchComponent(XIMEA_WFS, "wfs", start = True)
+    launch_component(XIMEA_WFS, "wfs", start = True)

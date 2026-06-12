@@ -1,15 +1,15 @@
-"""Tests for the pyshmem-backed stream policy (pyRTC.streams)."""
+"""Tests for the pyshmem-backed stream policy (pyrtc.streams)."""
 
 import numpy as np
 
-import pyRTC.streams as streams
-from pyRTC.streams import _existing_shm_spec, clear_shms, create_stream
+import pyrtc.streams as streams
+from pyrtc.streams import _existing_shm_spec, clear_shms, create_stream
 
 
 def test_create_stream_falls_back_when_torch_missing(monkeypatch, unique_name):
     name = unique_name("notorch")
     monkeypatch.setattr(streams, "TORCH_AVAILABLE", False)
-    shm = create_stream(name, (4,), np.float32, gpuDevice="cuda:0")
+    shm = create_stream(name, (4,), np.float32, gpu_device="cuda:0")
     try:
         assert not shm.gpu_enabled
     finally:
@@ -20,7 +20,7 @@ def test_create_stream_falls_back_when_cuda_unavailable(monkeypatch, unique_name
     name = unique_name("nocuda")
     monkeypatch.setattr(streams, "TORCH_AVAILABLE", True)
     monkeypatch.setattr(streams.pyshmem, "gpu_available", lambda: False)
-    shm = create_stream(name, (4,), np.float32, gpuDevice="cuda:0")
+    shm = create_stream(name, (4,), np.float32, gpu_device="cuda:0")
     try:
         assert not shm.gpu_enabled
     finally:
@@ -33,7 +33,7 @@ def test_create_stream_falls_back_for_unsupported_gpu_dtype(monkeypatch, unique_
     monkeypatch.setattr(streams.pyshmem, "gpu_available", lambda: True)
     # uint16 has no torch equivalent, so the dtype check fires before any
     # CUDA work happens — safe to exercise without a GPU.
-    shm = create_stream(name, (4,), np.uint16, gpuDevice="cuda:0")
+    shm = create_stream(name, (4,), np.uint16, gpu_device="cuda:0")
     try:
         assert not shm.gpu_enabled
         shm.write(np.arange(4, dtype=np.uint16))

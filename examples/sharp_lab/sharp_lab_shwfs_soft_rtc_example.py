@@ -20,13 +20,13 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 
-from pyRTC.Pipeline import RTCManager, clear_shms, open_stream
-from pyRTC.logging_utils import add_logging_cli_args, configure_logging_from_args, get_logger
+from pyrtc.pipeline import RTCManager, clear_shms, open_stream
+from pyrtc.logging_utils import add_logging_cli_args, configure_logging_from_args, get_logger
 
 
 logger = get_logger("examples.sharp_lab.shwfs.soft")
 CONFIG_PATH = REPO_ROOT / "examples" / "sharp_lab" / "config.yaml"
-DEFAULT_STREAMS = ["wfs", "wfsRaw", "wfc", "wfc2D", "signal", "signal2D", "psfShort", "psfLong", "strehl", "tiptilt"]
+DEFAULT_STREAMS = ["wfs", "wfs_raw", "wfc", "wfc_2d", "signal", "signal_2d", "psf_short", "psf_long", "strehl", "tiptilt"]
 
 
 # %% CLI
@@ -73,7 +73,7 @@ def main(argv=None) -> int:
     logger.info("SHARP lab SHWFS soft-RTC tutorial")
     logger.info("Config: %s", CONFIG_PATH)
     logger.info("Manager call: RTCManager.from_config_file(CONFIG_PATH, mode='soft')")
-    logger.info("Viewer: pyrtc-view wfs signal2D psfShort psfLong --geometry 2x2")
+    logger.info("Viewer: pyrtc-view wfs signal_2d psf_short psf_long --geometry 2x2")
 
     manager.start()
     try:

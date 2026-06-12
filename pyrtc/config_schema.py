@@ -1,7 +1,7 @@
-"""System-level configuration validation for pyRTC.
+"""System-level configuration validation for pyrtc.
 
-This module builds on the component-local validators in ``pyRTC.utils`` and
-adds a whole-system view of a pyRTC configuration file. It is intentionally
+This module builds on the component-local validators in ``pyrtc.utils`` and
+adds a whole-system view of a pyrtc configuration file. It is intentionally
 lightweight: validation is implemented in Python without introducing a schema
 framework dependency, and the result is a normalized config mapping that future
 manager and GUI layers can reuse.
@@ -13,13 +13,13 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any, Mapping
 
-from pyRTC.component_descriptors import (
+from pyrtc.component_descriptors import (
     describe_component_class,
     get_component_descriptor,
     list_component_sections,
     validate_config_with_descriptor,
 )
-from pyRTC.utils import (
+from pyrtc.utils import (
     ConfigValidationError,
     read_yaml_file,
     validate_loop_config,
@@ -38,7 +38,7 @@ ALLOWED_RESTART_POLICIES = {"never", "on-failure", "always"}
 
 
 def _resolve_class_symbol(class_name: str, class_file: str | None = None):
-    from pyRTC.component_loading import resolve_class_symbol
+    from pyrtc.component_loading import resolve_class_symbol
 
     return resolve_class_symbol(class_name, class_file)
 
@@ -46,8 +46,8 @@ def _resolve_class_symbol(class_name: str, class_file: str | None = None):
 def _default_stream_aliases_for_section(section_name: str, section_conf: Mapping[str, Any]) -> tuple[dict[str, str], dict[str, str]]:
     descriptor = get_component_descriptor(section_name)
     if descriptor is None:
-        class_name = section_conf.get("className")
-        class_file = section_conf.get("classFile")
+        class_name = section_conf.get("class_name")
+        class_file = section_conf.get("class_file")
         if isinstance(class_name, str) and class_name.strip():
             try:
                 descriptor = describe_component_class(_resolve_class_symbol(class_name, class_file if isinstance(class_file, str) else None))
@@ -91,8 +91,8 @@ def _resolve_relative_path_fields(value: Any, *, base_dir: Path, parent_key: str
     if isinstance(value, Mapping):
         resolved = {}
         for key, item in value.items():
-            is_path_field = isinstance(key, str) and key.endswith(("File", "Dir", "Path"))
-            is_component_file_entry = parent_key == "componentFiles"
+            is_path_field = isinstance(key, str) and key.endswith(("_file", "_dir", "_path"))
+            is_component_file_entry = parent_key == "component_files"
             if (is_path_field or is_component_file_entry) and _is_relative_path_string(item):
                 resolved[key] = str((base_dir / item).resolve())
             else:
@@ -190,19 +190,19 @@ def _validate_functions_section(section_name: str, section_conf: Mapping[str, An
 
 
 def _validate_component_class_and_streams(section_name: str, section_conf: Mapping[str, Any]) -> None:
-    class_name = section_conf.get("className")
-    class_file = section_conf.get("classFile")
+    class_name = section_conf.get("class_name")
+    class_file = section_conf.get("class_file")
     if not isinstance(class_name, str) or not class_name.strip():
-        raise ConfigValidationError(f"{section_name}: 'className' must be a non-empty string")
+        raise ConfigValidationError(f"{section_name}: 'class_name' must be a non-empty string")
     if class_file is not None and (not isinstance(class_file, str) or not class_file.strip()):
-        raise ConfigValidationError(f"{section_name}: 'classFile' must be a non-empty string when provided")
+        raise ConfigValidationError(f"{section_name}: 'class_file' must be a non-empty string when provided")
     try:
         component_class = _resolve_class_symbol(class_name, class_file if isinstance(class_file, str) else None)
     except Exception as exc:
-        raise ConfigValidationError(f"{section_name}: unable to resolve className '{class_name}'") from exc
+        raise ConfigValidationError(f"{section_name}: unable to resolve class_name '{class_name}'") from exc
 
     descriptor = describe_component_class(component_class)
-    for mapping_name, streams in (("inputStreams", descriptor.input_streams), ("outputStreams", descriptor.output_streams)):
+    for mapping_name, streams in (("input_streams", descriptor.input_streams), ("output_streams", descriptor.output_streams)):
         raw_mapping = section_conf.get(mapping_name, {})
         if raw_mapping is None:
             continue
@@ -226,7 +226,7 @@ def _validate_slopes_config(conf: Any) -> None:
     component = "slopes"
     conf = _require_mapping(conf, component)
 
-    required = ["type", "signalType"]
+    required = ["type", "signal_type"]
     missing = [key for key in required if key not in conf]
     if missing:
         raise ConfigValidationError(f"{component}: missing required config key(s): {', '.join(missing)}")
@@ -238,21 +238,21 @@ def _validate_slopes_config(conf: Any) -> None:
     if slopes_type not in {"shwfs", "pywfs"}:
         raise ConfigValidationError(f"{component}: unsupported type '{conf['type']}'")
 
-    signal_type = conf["signalType"]
+    signal_type = conf["signal_type"]
     if not isinstance(signal_type, str) or not signal_type.strip():
-        raise ConfigValidationError(f"{component}: 'signalType' must be a non-empty string")
+        raise ConfigValidationError(f"{component}: 'signal_type' must be a non-empty string")
 
-    _validate_optional_numeric(conf, "imageNoise", component, minimum=0.0)
-    _validate_optional_numeric(conf, "centralObscurationRatio", component, minimum=0.0)
-    _validate_optional_numeric(conf, "refSlopeCount", component, minimum=1)
+    _validate_optional_numeric(conf, "image_noise", component, minimum=0.0)
+    _validate_optional_numeric(conf, "central_obscuration_ratio", component, minimum=0.0)
+    _validate_optional_numeric(conf, "ref_slope_count", component, minimum=1)
 
     if slopes_type == "shwfs":
-        for key in ("subApSpacing", "subApOffsetX", "subApOffsetY"):
+        for key in ("sub_ap_spacing", "sub_ap_offset_x", "sub_ap_offset_y"):
             if key not in conf:
                 raise ConfigValidationError(f"{component}: '{key}' is required for SHWFS")
-        _validate_optional_numeric(conf, "subApSpacing", component, minimum=1.0)
-        _coerce_int(conf["subApOffsetX"], component, "subApOffsetX", minimum=0)
-        _coerce_int(conf["subApOffsetY"], component, "subApOffsetY", minimum=0)
+        _validate_optional_numeric(conf, "sub_ap_spacing", component, minimum=1.0)
+        _coerce_int(conf["sub_ap_offset_x"], component, "sub_ap_offset_x", minimum=0)
+        _coerce_int(conf["sub_ap_offset_y"], component, "sub_ap_offset_y", minimum=0)
 
     if slopes_type == "pywfs" and "pupils" in conf:
         pupils = conf["pupils"]
@@ -263,16 +263,16 @@ def _validate_slopes_config(conf: Any) -> None:
                 raise ConfigValidationError(
                     "slopes: pupil entries must be strings in the form 'x,y'"
                 )
-        if "pupilsRadius" not in conf:
-            raise ConfigValidationError("slopes: 'pupilsRadius' is required when 'pupils' is provided")
-        _coerce_int(conf["pupilsRadius"], component, "pupilsRadius", minimum=1)
+        if "pupils_radius" not in conf:
+            raise ConfigValidationError("slopes: 'pupils_radius' is required when 'pupils' is provided")
+        _coerce_int(conf["pupils_radius"], component, "pupils_radius", minimum=1)
 
 
 def _validate_psf_config(conf: Any) -> None:
     component = "psf"
     conf = _require_mapping(conf, component)
 
-    required = ["name", "width", "height", "darkCount", "integration"]
+    required = ["name", "width", "height", "dark_count", "integration"]
     missing = [key for key in required if key not in conf]
     if missing:
         raise ConfigValidationError(f"{component}: missing required config key(s): {', '.join(missing)}")
@@ -280,7 +280,7 @@ def _validate_psf_config(conf: Any) -> None:
     if not isinstance(conf["name"], str) or not conf["name"].strip():
         raise ConfigValidationError(f"{component}: 'name' must be a non-empty string")
 
-    for key in ("width", "height", "darkCount", "integration"):
+    for key in ("width", "height", "dark_count", "integration"):
         _coerce_int(conf[key], component, key, minimum=1)
 
 
@@ -288,8 +288,8 @@ def _validate_telemetry_config(conf: Any) -> None:
     component = "telemetry"
     conf = _require_mapping(conf, component)
 
-    if "dataDir" in conf and (not isinstance(conf["dataDir"], str) or not conf["dataDir"].strip()):
-        raise ConfigValidationError("telemetry: 'dataDir' must be a non-empty string when provided")
+    if "data_dir" in conf and (not isinstance(conf["data_dir"], str) or not conf["data_dir"].strip()):
+        raise ConfigValidationError("telemetry: 'data_dir' must be a non-empty string when provided")
     if "streams" in conf:
         streams = conf["streams"]
         if not isinstance(streams, list) or not all(isinstance(item, str) and item.strip() for item in streams):
@@ -306,38 +306,38 @@ def _validate_manager_config(conf: Any, *, system_conf: Mapping[str, Any]) -> No
             f"manager: 'mode' must be one of {sorted(ALLOWED_MANAGER_MODES)}"
         )
 
-    if "restartPolicy" in conf:
-        policy = conf["restartPolicy"]
+    if "restart_policy" in conf:
+        policy = conf["restart_policy"]
         if not isinstance(policy, str) or policy not in ALLOWED_RESTART_POLICIES:
             raise ConfigValidationError(
-                f"manager: 'restartPolicy' must be one of {sorted(ALLOWED_RESTART_POLICIES)}"
+                f"manager: 'restart_policy' must be one of {sorted(ALLOWED_RESTART_POLICIES)}"
             )
 
-    if "componentRestartPolicies" in conf:
-        restart_policies = _require_mapping(conf["componentRestartPolicies"], "manager.componentRestartPolicies")
+    if "component_restart_policies" in conf:
+        restart_policies = _require_mapping(conf["component_restart_policies"], "manager.component_restart_policies")
         for section_name, policy in restart_policies.items():
             if not _is_valid_manager_section(section_name, system_conf):
                 raise ConfigValidationError(
-                    f"manager.componentRestartPolicies: unknown component section '{section_name}'"
+                    f"manager.component_restart_policies: unknown component section '{section_name}'"
                 )
             if not isinstance(policy, str) or policy not in ALLOWED_RESTART_POLICIES:
                 raise ConfigValidationError(
-                    f"manager.componentRestartPolicies: policy for '{section_name}' must be one of {sorted(ALLOWED_RESTART_POLICIES)}"
+                    f"manager.component_restart_policies: policy for '{section_name}' must be one of {sorted(ALLOWED_RESTART_POLICIES)}"
                 )
 
-    for key in ("healthCheckInterval", "heartbeatTimeout", "rpcTimeout"):
+    for key in ("health_check_interval", "heartbeat_timeout", "rpc_timeout"):
         _validate_optional_numeric(conf, key, component, minimum=1e-6)
 
-    if "componentModes" in conf:
-        component_modes = _require_mapping(conf["componentModes"], "manager.componentModes")
+    if "component_modes" in conf:
+        component_modes = _require_mapping(conf["component_modes"], "manager.component_modes")
         for section_name, launch_mode in component_modes.items():
             if not _is_valid_manager_section(section_name, system_conf):
                 raise ConfigValidationError(
-                    f"manager.componentModes: unknown component section '{section_name}'"
+                    f"manager.component_modes: unknown component section '{section_name}'"
                 )
             if not isinstance(launch_mode, str) or launch_mode not in ALLOWED_MANAGER_MODES:
                 raise ConfigValidationError(
-                    f"manager.componentModes: mode for '{section_name}' must be one of {sorted(ALLOWED_MANAGER_MODES)}"
+                    f"manager.component_modes: mode for '{section_name}' must be one of {sorted(ALLOWED_MANAGER_MODES)}"
                 )
 
     if "ports" in conf:
@@ -347,7 +347,7 @@ def _validate_manager_config(conf: Any, *, system_conf: Mapping[str, Any]) -> No
                 raise ConfigValidationError(f"manager.ports: unknown component section '{section_name}'")
             _coerce_int(port, "manager.ports", section_name, minimum=1)
 
-    for mapping_name in ("componentClasses", "componentFiles"):
+    for mapping_name in ("component_classes", "component_files"):
         if mapping_name in conf:
             mapping_value = _require_mapping(conf[mapping_name], f"manager.{mapping_name}")
             for section_name, target in mapping_value.items():
@@ -358,28 +358,28 @@ def _validate_manager_config(conf: Any, *, system_conf: Mapping[str, Any]) -> No
                         f"manager.{mapping_name}: target for '{section_name}' must be a non-empty string"
                     )
 
-    if "graphLayout" in conf:
-        graph_layout = _require_mapping(conf["graphLayout"], "manager.graphLayout")
+    if "graph_layout" in conf:
+        graph_layout = _require_mapping(conf["graph_layout"], "manager.graph_layout")
         positions = graph_layout.get("positions", {})
         if positions is not None:
-            positions = _require_mapping(positions, "manager.graphLayout.positions")
+            positions = _require_mapping(positions, "manager.graph_layout.positions")
             for section_name, value in positions.items():
                 if not _is_valid_manager_section(str(section_name), system_conf):
                     raise ConfigValidationError(
-                        f"manager.graphLayout.positions: unknown component section '{section_name}'"
+                        f"manager.graph_layout.positions: unknown component section '{section_name}'"
                     )
-                position_conf = _require_mapping(value, f"manager.graphLayout.positions.{section_name}")
+                position_conf = _require_mapping(value, f"manager.graph_layout.positions.{section_name}")
                 for axis in ("x", "y"):
                     if axis not in position_conf:
                         raise ConfigValidationError(
-                            f"manager.graphLayout.positions.{section_name}: missing '{axis}'"
+                            f"manager.graph_layout.positions.{section_name}: missing '{axis}'"
                         )
-                    _validate_optional_numeric(position_conf, axis, f"manager.graphLayout.positions.{section_name}")
+                    _validate_optional_numeric(position_conf, axis, f"manager.graph_layout.positions.{section_name}")
 
-    if "logDir" in conf and (not isinstance(conf["logDir"], str) or not conf["logDir"].strip()):
-        raise ConfigValidationError("manager: 'logDir' must be a non-empty string when provided")
-    if "logFile" in conf and (not isinstance(conf["logFile"], str) or not conf["logFile"].strip()):
-        raise ConfigValidationError("manager: 'logFile' must be a non-empty string when provided")
+    if "log_dir" in conf and (not isinstance(conf["log_dir"], str) or not conf["log_dir"].strip()):
+        raise ConfigValidationError("manager: 'log_dir' must be a non-empty string when provided")
+    if "log_file" in conf and (not isinstance(conf["log_file"], str) or not conf["log_file"].strip()):
+        raise ConfigValidationError("manager: 'log_file' must be a non-empty string when provided")
 
 
 def _validate_resources_config(conf: Any) -> None:
@@ -389,24 +389,24 @@ def _validate_resources_config(conf: Any) -> None:
         if not isinstance(resource_name, str) or not resource_name.strip():
             raise ConfigValidationError("resources: resource names must be non-empty strings")
         resource_conf = _require_mapping(resource_conf, f"resources.{resource_name}")
-        class_name = resource_conf.get("className")
-        class_file = resource_conf.get("classFile")
+        class_name = resource_conf.get("class_name")
+        class_file = resource_conf.get("class_file")
         if not isinstance(class_name, str) or not class_name.strip():
-            raise ConfigValidationError(f"resources.{resource_name}: 'className' must be a non-empty string")
+            raise ConfigValidationError(f"resources.{resource_name}: 'class_name' must be a non-empty string")
         if class_file is not None and (not isinstance(class_file, str) or not class_file.strip()):
-            raise ConfigValidationError(f"resources.{resource_name}: 'classFile' must be a non-empty string when provided")
+            raise ConfigValidationError(f"resources.{resource_name}: 'class_file' must be a non-empty string when provided")
         try:
             _resolve_class_symbol(class_name, class_file if isinstance(class_file, str) else None)
         except Exception as exc:
             raise ConfigValidationError(
-                f"resources.{resource_name}: unable to resolve className '{class_name}'"
+                f"resources.{resource_name}: unable to resolve class_name '{class_name}'"
             ) from exc
 
 
 def _validate_component_resource_bindings(conf: Mapping[str, Any]) -> None:
     resources_conf = conf.get("resources", {}) if isinstance(conf.get("resources"), Mapping) else {}
     manager_conf = conf.get("manager", {}) if isinstance(conf.get("manager"), Mapping) else {}
-    component_modes = manager_conf.get("componentModes", {}) if isinstance(manager_conf.get("componentModes"), Mapping) else {}
+    component_modes = manager_conf.get("component_modes", {}) if isinstance(manager_conf.get("component_modes"), Mapping) else {}
     default_mode = str(manager_conf.get("mode", "soft-rtc"))
     component_sections = {
         section_name
@@ -442,7 +442,7 @@ def _validate_component_resource_bindings(conf: Mapping[str, Any]) -> None:
 def _validate_streams_config(conf: Any, *, system_conf: Mapping[str, Any]) -> None:
     """Validate optional stream metadata overrides.
 
-    The preferred terminology is ``outputComponent`` and ``inputComponents``.
+    The preferred terminology is ``output_component`` and ``input_components``.
     ``producer`` and ``consumers`` remain supported as backward-compatible
     aliases.
     """
@@ -462,24 +462,24 @@ def _validate_streams_config(conf: Any, *, system_conf: Mapping[str, Any]) -> No
                 _coerce_int(axis, f"streams.{stream_name}", "shape axis", minimum=1)
         if "dtype" in stream_conf and (not isinstance(stream_conf["dtype"], str) or not stream_conf["dtype"].strip()):
             raise ConfigValidationError(f"streams.{stream_name}: 'dtype' must be a non-empty string")
-        output_component = stream_conf.get("outputComponent", stream_conf.get("producer"))
+        output_component = stream_conf.get("output_component", stream_conf.get("producer"))
         if output_component is not None and not _is_valid_manager_section(str(output_component), system_conf):
             raise ConfigValidationError(
-                f"streams.{stream_name}: 'outputComponent' must reference a known component section"
+                f"streams.{stream_name}: 'output_component' must reference a known component section"
             )
-        input_components = stream_conf.get("inputComponents", stream_conf.get("consumers"))
+        input_components = stream_conf.get("input_components", stream_conf.get("consumers"))
         if input_components is not None:
             if not isinstance(input_components, list):
-                raise ConfigValidationError(f"streams.{stream_name}: 'inputComponents' must be a list")
+                raise ConfigValidationError(f"streams.{stream_name}: 'input_components' must be a list")
             for input_component in input_components:
                 if not _is_valid_manager_section(str(input_component), system_conf):
                     raise ConfigValidationError(
                         f"streams.{stream_name}: input component '{input_component}' is not a known component section"
                     )
-        if "componentStream" in stream_conf:
-            component_stream = stream_conf["componentStream"]
+        if "component_stream" in stream_conf:
+            component_stream = stream_conf["component_stream"]
             if not isinstance(component_stream, str) or not component_stream.strip():
-                raise ConfigValidationError(f"streams.{stream_name}: 'componentStream' must be a non-empty semantic stream name")
+                raise ConfigValidationError(f"streams.{stream_name}: 'component_stream' must be a non-empty semantic stream name")
 
 
 def _validate_metadata_config(conf: Any) -> None:
@@ -497,7 +497,7 @@ def _validate_metadata_config(conf: Any) -> None:
 def _processed_wfs_shape(wfs_conf: Mapping[str, Any]) -> tuple[int, int]:
     width = _coerce_int(wfs_conf["width"], "wfs", "width", minimum=1)
     height = _coerce_int(wfs_conf["height"], "wfs", "height", minimum=1)
-    downsample = _coerce_int(wfs_conf.get("downsampleFactor", 0), "wfs", "downsampleFactor", minimum=0)
+    downsample = _coerce_int(wfs_conf.get("downsample_factor", 0), "wfs", "downsample_factor", minimum=0)
     if downsample > 0:
         width //= downsample
         height //= downsample
@@ -512,32 +512,32 @@ def _validate_cross_component_consistency(conf: Mapping[str, Any]) -> None:
     loop_conf = conf["loop"]
     wfc_conf = conf["wfc"]
 
-    num_modes = _coerce_int(wfc_conf["numModes"], "wfc", "numModes", minimum=1)
-    dropped_modes = _coerce_int(loop_conf.get("numDroppedModes", 0), "loop", "numDroppedModes", minimum=0)
+    num_modes = _coerce_int(wfc_conf["num_modes"], "wfc", "num_modes", minimum=1)
+    dropped_modes = _coerce_int(loop_conf.get("num_dropped_modes", 0), "loop", "num_dropped_modes", minimum=0)
     if dropped_modes >= num_modes:
         raise ConfigValidationError(
-            f"loop: 'numDroppedModes' ({dropped_modes}) must be less than wfc.numModes ({num_modes})"
+            f"loop: 'num_dropped_modes' ({dropped_modes}) must be less than wfc.num_modes ({num_modes})"
         )
 
     slopes_type = str(slopes_conf["type"]).lower()
     if slopes_type == "shwfs":
         image_width, image_height = _processed_wfs_shape(wfs_conf)
-        subap_spacing = float(slopes_conf["subApSpacing"])
+        subap_spacing = float(slopes_conf["sub_ap_spacing"])
         if subap_spacing < 1:
             raise ConfigValidationError(
-                f"slopes: 'subApSpacing' must be >= 1, got {subap_spacing}"
+                f"slopes: 'sub_ap_spacing' must be >= 1, got {subap_spacing}"
             )
         num_regions = min(image_width, image_height) // subap_spacing
         if num_regions < 1:
             raise ConfigValidationError(
-                "slopes: SHWFS geometry yields zero sub-apertures; adjust wfs dimensions or subApSpacing"
+                "slopes: SHWFS geometry yields zero sub-apertures; adjust wfs dimensions or sub_ap_spacing"
             )
 
-        if "numModes" in wfs_conf:
-            wfs_num_modes = _coerce_int(wfs_conf["numModes"], "wfs", "numModes", minimum=1)
+        if "num_modes" in wfs_conf:
+            wfs_num_modes = _coerce_int(wfs_conf["num_modes"], "wfs", "num_modes", minimum=1)
             if wfs_num_modes != num_modes:
                 raise ConfigValidationError(
-                    f"wfs: 'numModes' ({wfs_num_modes}) must match wfc.numModes ({num_modes}) for a consistent control vector size"
+                    f"wfs: 'num_modes' ({wfs_num_modes}) must match wfc.num_modes ({num_modes}) for a consistent control vector size"
                 )
 
         streams_conf = conf.get("streams", {})
@@ -548,17 +548,17 @@ def _validate_cross_component_consistency(conf: Mapping[str, Any]) -> None:
                 raise ConfigValidationError(
                     f"streams.signal: shape {actual_shape} does not match expected SHWFS signal shape {(expected_signal_size,)}"
                 )
-        if "signal2D" in streams_conf and "shape" in streams_conf["signal2D"]:
+        if "signal_2d" in streams_conf and "shape" in streams_conf["signal_2d"]:
             expected_signal2d_shape = (2 * num_regions, num_regions)
-            actual_shape = tuple(int(axis) for axis in streams_conf["signal2D"]["shape"])
+            actual_shape = tuple(int(axis) for axis in streams_conf["signal_2d"]["shape"])
             if actual_shape != expected_signal2d_shape:
                 raise ConfigValidationError(
-                    f"streams.signal2D: shape {actual_shape} does not match expected SHWFS signal2D shape {expected_signal2d_shape}"
+                    f"streams.signal_2d: shape {actual_shape} does not match expected SHWFS signal_2d shape {expected_signal2d_shape}"
                 )
 
 
 def normalize_system_config(conf: Any) -> dict[str, Any]:
-    """Return a normalized copy of a pyRTC system configuration.
+    """Return a normalized copy of a pyrtc system configuration.
 
     The first version keeps normalization intentionally conservative. It only
     injects defaults and copies nested mappings so future layers can rely on a
@@ -573,38 +573,38 @@ def normalize_system_config(conf: Any) -> dict[str, Any]:
     conf.setdefault("streams", {})
     conf.setdefault("resources", {})
 
-    component_classes = manager_conf.get("componentClasses", {}) if isinstance(manager_conf.get("componentClasses"), Mapping) else {}
-    component_files = manager_conf.get("componentFiles", {}) if isinstance(manager_conf.get("componentFiles"), Mapping) else {}
+    component_classes = manager_conf.get("component_classes", {}) if isinstance(manager_conf.get("component_classes"), Mapping) else {}
+    component_files = manager_conf.get("component_files", {}) if isinstance(manager_conf.get("component_files"), Mapping) else {}
     for section_name, section_conf in list(conf.items()):
         if section_name in OPTIONAL_TOP_LEVEL_SECTIONS or not isinstance(section_conf, Mapping):
             continue
         section_conf = dict(section_conf)
-        class_name = section_conf.get("className")
+        class_name = section_conf.get("class_name")
         if not isinstance(class_name, str) or not class_name.strip():
             fallback_class = component_classes.get(section_name)
             if isinstance(fallback_class, str) and fallback_class.strip():
-                section_conf["className"] = fallback_class
+                section_conf["class_name"] = fallback_class
             else:
                 descriptor = get_component_descriptor(section_name)
                 if descriptor is not None:
-                    section_conf["className"] = descriptor.class_path
-        if "classFile" not in section_conf and isinstance(component_files.get(section_name), str):
-            section_conf["classFile"] = component_files.get(section_name)
+                    section_conf["class_name"] = descriptor.class_path
+        if "class_file" not in section_conf and isinstance(component_files.get(section_name), str):
+            section_conf["class_file"] = component_files.get(section_name)
         default_inputs, default_outputs = _default_stream_aliases_for_section(section_name, section_conf)
-        section_conf["inputStreams"] = _normalize_stream_alias_mapping(section_conf.get("inputStreams", {}), defaults=default_inputs)
-        section_conf["outputStreams"] = _normalize_stream_alias_mapping(section_conf.get("outputStreams", {}), defaults=default_outputs)
+        section_conf["input_streams"] = _normalize_stream_alias_mapping(section_conf.get("input_streams", {}), defaults=default_inputs)
+        section_conf["output_streams"] = _normalize_stream_alias_mapping(section_conf.get("output_streams", {}), defaults=default_outputs)
         conf[section_name] = section_conf
     return conf
 
 
 def validate_system_config(conf: Any, *, config_path: str | Path | None = None) -> dict[str, Any]:
-    """Validate a whole pyRTC system config and return its normalized form."""
+    """Validate a whole pyrtc system config and return its normalized form."""
 
     normalized = normalize_system_config(conf)
 
-    # Resolve relative paths (classFile, *File/*Dir fields) against the config
+    # Resolve relative paths (class_file, *File/*Dir fields) against the config
     # file's directory *before* any validation, so component classes referenced
-    # by relative classFile entries resolve regardless of the caller's cwd.
+    # by relative class_file entries resolve regardless of the caller's cwd.
     if config_path is not None:
         config_path = Path(config_path).resolve()
         normalized = _resolve_relative_path_fields(normalized, base_dir=config_path.parent)
@@ -650,13 +650,13 @@ def validate_system_config(conf: Any, *, config_path: str | Path | None = None) 
 
     if config_path is not None:
         normalized.setdefault("metadata", {})
-        normalized["metadata"].setdefault("configPath", str(config_path))
+        normalized["metadata"].setdefault("config_path", str(config_path))
 
     return normalized
 
 
 def read_system_config(file_path: str | Path, *, validate: bool = True) -> dict[str, Any]:
-    """Read a YAML config file and optionally validate it as a pyRTC system."""
+    """Read a YAML config file and optionally validate it as a pyrtc system."""
 
     config_path = Path(file_path)
     conf = read_yaml_file(config_path)

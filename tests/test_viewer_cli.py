@@ -1,12 +1,12 @@
 import numpy as np
 
-from pyRTC.scripts import view
-from pyRTC.scripts import clear_shms, view_launch_all
-from pyRTC.scripts import viewer_core
-from pyRTC.scripts import viewer_helpers
-from pyRTC.scripts.viewer_helpers import StreamConnection
-from pyRTC.scripts.viewer_helpers import format_shape
-from pyRTC.scripts.viewer_core import MosaicViewerWindow
+from pyrtc.scripts import view
+from pyrtc.scripts import clear_shms, view_launch_all
+from pyrtc.scripts import viewer_core
+from pyrtc.scripts import viewer_helpers
+from pyrtc.scripts.viewer_helpers import StreamConnection
+from pyrtc.scripts.viewer_helpers import format_shape
+from pyrtc.scripts.viewer_core import MosaicViewerWindow
 
 
 def test_clear_shms_default(monkeypatch):
@@ -45,7 +45,7 @@ def test_view_launch_all_uses_pyrtc_view_commands():
 
     assert len(spawned) == len(view_launch_all.DEFAULT_VIEW_COMMANDS)
     assert all(cmd[0] == "pyrtc-view" for cmd in spawned)
-    assert spawned[0][1:6] == ["wfs", "signal2D", "wfc2D", "psfShort", "psfLong"]
+    assert spawned[0][1:6] == ["wfs", "signal_2d", "wfc_2d", "psf_short", "psf_long"]
 
 
 def test_view_launch_all_main_invokes_launcher(monkeypatch):
@@ -63,17 +63,17 @@ def test_view_launch_all_main_invokes_launcher(monkeypatch):
 
 
 def test_view_split_targets_and_limits_supports_legacy_vmin_vmax():
-    shms, vmin, vmax = view._split_targets_and_limits(["signal2D", "-1", "1"])
+    shms, vmin, vmax = view._split_targets_and_limits(["signal_2d", "-1", "1"])
 
-    assert shms == ["signal2D"]
+    assert shms == ["signal_2d"]
     assert vmin == -1.0
     assert vmax == 1.0
 
 
 def test_view_split_targets_and_limits_supports_multiple_shms():
-    shms, vmin, vmax = view._split_targets_and_limits(["wfs", "signal2D", "wfc2D"])
+    shms, vmin, vmax = view._split_targets_and_limits(["wfs", "signal_2d", "wfc_2d"])
 
-    assert shms == ["wfs", "signal2D", "wfc2D"]
+    assert shms == ["wfs", "signal_2d", "wfc_2d"]
     assert vmin is None
     assert vmax is None
 
@@ -96,9 +96,9 @@ def test_view_rejects_too_small_explicit_grid():
 
 def test_view_parser_supports_theme_flag():
     parser = view._build_arg_parser()
-    args = parser.parse_args(["wfs", "signal2D", "--geometry", "row", "--theme", "light"])
+    args = parser.parse_args(["wfs", "signal_2d", "--geometry", "row", "--theme", "light"])
 
-    assert args.items == ["wfs", "signal2D"]
+    assert args.items == ["wfs", "signal_2d"]
     assert args.geometry == "row"
     assert args.theme == "light"
 
@@ -137,7 +137,7 @@ class _FakeStream:
 
 def test_stream_connection_keeps_last_fps_during_pause_grace_period():
     connection = StreamConnection.__new__(StreamConnection)
-    connection.name = "signal2D"
+    connection.name = "signal_2d"
     connection.shm = _FakeStream(count=1, write_time=10.0)
     connection.pause_timeout_seconds = 2.0
     connection.current_time_fn = lambda: 11.0
@@ -156,7 +156,7 @@ def test_stream_connection_keeps_last_fps_during_pause_grace_period():
 
 def test_stream_connection_reports_paused_after_timeout_without_new_frame():
     connection = StreamConnection.__new__(StreamConnection)
-    connection.name = "signal2D"
+    connection.name = "signal_2d"
     connection.shm = _FakeStream(count=1, write_time=10.0)
     connection.pause_timeout_seconds = 2.0
     connection.current_time_fn = lambda: 12.5
@@ -187,9 +187,9 @@ def test_read_shm_metadata_reports_stream_shape_and_dtype(monkeypatch):
 
     monkeypatch.setattr(viewer_helpers, "open_stream", _Stream)
 
-    shm, shm_shape, shm_dtype = viewer_helpers.read_shm_metadata("wfc2D")
+    shm, shm_shape, shm_dtype = viewer_helpers.read_shm_metadata("wfc_2d")
 
-    assert shm.name == "wfc2D"
+    assert shm.name == "wfc_2d"
     assert shm_shape == (8, 4)
     assert shm_dtype == np.dtype(np.int32)
 

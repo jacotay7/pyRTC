@@ -1,6 +1,6 @@
-"""Base class for threaded pyRTC runtime components.
+"""Base class for threaded pyrtc runtime components.
 
-Most pyRTC subsystems share the same lifecycle model: validate configuration,
+Most pyrtc subsystems share the same lifecycle model: validate configuration,
 normalize optional GPU settings, spawn one or more worker threads from YAML,
 and expose lightweight start/stop controls. This module provides that shared
 behavior.
@@ -13,18 +13,18 @@ import threading
 import time
 from typing import Any
 
-from pyRTC.logging_utils import ensure_logging_configured, get_logger
-from pyRTC.manager import launchComponent, work
-from pyRTC.streams import normalize_gpu_device
-from pyRTC.utils import setFromConfig, validate_component_config
+from pyrtc.logging_utils import ensure_logging_configured, get_logger
+from pyrtc.manager import launch_component, work
+from pyrtc.streams import normalize_gpu_device
+from pyrtc.utils import set_from_config, validate_component_config
 
 
 logger = get_logger(__name__)
 
 
-class pyRTCComponent:
+class Component:
     """
-    Common threaded component base used throughout pyRTC.
+    Common threaded component base used throughout pyrtc.
 
     The base class standardizes the repeated mechanics shared by the wavefront
     sensor, slopes processor, loop controller, telemetry recorder, and many
@@ -50,7 +50,7 @@ class pyRTCComponent:
         assigned subsequent cores when possible.
     functions : list
         Bound method names to run in worker threads.
-    gpuDevice : str, optional
+    gpu_device : str, optional
         Requested GPU device identifier. When PyTorch is unavailable this is
         normalized back to CPU mode.
 
@@ -84,36 +84,36 @@ class pyRTCComponent:
             self.alive = True
             self.running = False
             self.section_name = conf.get("_sectionName")
-            self.className = conf.get("className")
-            self.classFile = conf.get("classFile")
+            self.class_name = conf.get("class_name")
+            self.class_file = conf.get("class_file")
             self.system_streams = dict(conf.get("_systemStreams", {}))
-            self.affinity = setFromConfig(conf, "affinity", 0)
-            requested_gpu_device = setFromConfig(conf, "gpuDevice", None)
-            self.gpuDevice = normalize_gpu_device(requested_gpu_device, self.__class__.__name__)
+            self.affinity = set_from_config(conf, "affinity", 0)
+            requested_gpu_device = set_from_config(conf, "gpu_device", None)
+            self.gpu_device = normalize_gpu_device(requested_gpu_device, self.__class__.__name__)
             self._stream_inputs = {}
             self._stream_outputs = {}
             self._last_stream_metadata = {}
-            self._input_stream_names = self._normalize_stream_name_map(conf.get("inputStreams", {}), direction="input")
-            self._output_stream_names = self._normalize_stream_name_map(conf.get("outputStreams", {}), direction="output")
+            self._input_stream_names = self._normalize_stream_name_map(conf.get("input_streams", {}), direction="input")
+            self._output_stream_names = self._normalize_stream_name_map(conf.get("output_streams", {}), direction="output")
 
-            functions_to_run = setFromConfig(conf, "functions", [])
-            self.workThreads = []
+            functions_to_run = set_from_config(conf, "functions", [])
+            self.work_threads = []
 
             if isinstance(functions_to_run, list) and len(functions_to_run) > 0:
                 for i, function_name in enumerate(functions_to_run):
-                    threadAffinity = (self.affinity + i) % os.cpu_count()
-                    workThread = threading.Thread(
+                    thread_affinity = (self.affinity + i) % os.cpu_count()
+                    work_thread = threading.Thread(
                         target=work,
-                        args=(self, function_name, threadAffinity),
+                        args=(self, function_name, thread_affinity),
                         daemon=True,
                     )
-                    workThread.start()
-                    self.workThreads.append(workThread)
+                    work_thread.start()
+                    self.work_threads.append(work_thread)
 
             self.logger.info(
-                "Initialized component affinity=%s gpuDevice=%s functions=%s",
+                "Initialized component affinity=%s gpu_device=%s functions=%s",
                 self.affinity,
-                self.gpuDevice,
+                self.gpu_device,
                 functions_to_run,
             )
         except Exception:
@@ -195,7 +195,7 @@ class pyRTCComponent:
             return self._stream_inputs[stream_name]
         if stream_name in self._stream_outputs:
             return self._stream_outputs[stream_name]
-        conventional_name = f"{stream_name}Shm"
+        conventional_name = f"{stream_name}_shm"
         if hasattr(self, conventional_name):
             return getattr(self, conventional_name)
         raise KeyError(stream_name)
@@ -276,7 +276,7 @@ class pyRTCComponent:
     def describe(cls):
         """Return the nearest built-in component descriptor for this class."""
 
-        from pyRTC.component_descriptors import describe_component_class
+        from pyrtc.component_descriptors import describe_component_class
 
         return describe_component_class(cls)
 
@@ -321,4 +321,4 @@ class pyRTCComponent:
 
 if __name__ == "__main__":
 
-    launchComponent(pyRTCComponent, "component", start = True)
+    launch_component(Component, "component", start = True)

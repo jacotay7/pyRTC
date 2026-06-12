@@ -1,4 +1,4 @@
-"""General utility helpers shared across pyRTC.
+"""General utility helpers shared across pyrtc.
 
 The utilities in this module cover several small but widely used concerns:
 configuration validation, file-path helpers, timing helpers, dtype encoding,
@@ -22,7 +22,7 @@ import time
 import logging
 from typing import Any, Iterable, Mapping, Optional
 
-from pyRTC.logging_utils import get_logger
+from pyrtc.logging_utils import get_logger
 
 
 logger = get_logger(__name__)
@@ -40,7 +40,7 @@ NP_DATA_TYPES = [
 
 
 class ConfigValidationError(ValueError):
-    """Raised when a component configuration does not meet pyRTC expectations."""
+    """Raised when a component configuration does not meet pyrtc expectations."""
     pass
 
 
@@ -66,16 +66,16 @@ def validate_wfs_config(conf: Any) -> None:
 
     _validate_optional_numeric(conf, "width", component, minimum=1)
     _validate_optional_numeric(conf, "height", component, minimum=1)
-    _validate_optional_numeric(conf, "darkCount", component, minimum=0)
-    _validate_optional_numeric(conf, "downsampleFactor", component, minimum=0)
-    _validate_optional_numeric(conf, "rotationAngle", component)
+    _validate_optional_numeric(conf, "dark_count", component, minimum=0)
+    _validate_optional_numeric(conf, "downsample_factor", component, minimum=0)
+    _validate_optional_numeric(conf, "rotation_angle", component)
 
 
 def validate_wfc_config(conf: Any) -> None:
     component = "wfc"
     conf = _require_mapping(conf, component)
 
-    required = ["name", "numActuators", "numModes"]
+    required = ["name", "num_actuators", "num_modes"]
     missing = [key for key in required if key not in conf]
     if missing:
         missing_str = ", ".join(missing)
@@ -84,40 +84,40 @@ def validate_wfc_config(conf: Any) -> None:
     if not isinstance(conf["name"], str) or not conf["name"].strip():
         raise ConfigValidationError(f"{component}: 'name' must be a non-empty string")
 
-    if not isinstance(conf["numActuators"], int) or conf["numActuators"] <= 0:
-        raise ConfigValidationError(f"{component}: 'numActuators' must be a positive int, got {conf['numActuators']}")
+    if not isinstance(conf["num_actuators"], int) or conf["num_actuators"] <= 0:
+        raise ConfigValidationError(f"{component}: 'num_actuators' must be a positive int, got {conf['num_actuators']}")
 
-    if not isinstance(conf["numModes"], int) or conf["numModes"] <= 0:
-        raise ConfigValidationError(f"{component}: 'numModes' must be a positive int, got {conf['numModes']}")
+    if not isinstance(conf["num_modes"], int) or conf["num_modes"] <= 0:
+        raise ConfigValidationError(f"{component}: 'num_modes' must be a positive int, got {conf['num_modes']}")
 
-    _validate_optional_numeric(conf, "floatingInfluenceRadius", component, minimum=0)
-    _validate_optional_numeric(conf, "frameDelay", component, minimum=0)
+    _validate_optional_numeric(conf, "floating_influence_radius", component, minimum=0)
+    _validate_optional_numeric(conf, "frame_delay", component, minimum=0)
 
 
 def validate_loop_config(conf: Any) -> None:
     component = "loop"
     conf = _require_mapping(conf, component)
 
-    _validate_optional_numeric(conf, "numDroppedModes", component, minimum=0)
+    _validate_optional_numeric(conf, "num_dropped_modes", component, minimum=0)
     _validate_optional_numeric(conf, "conditioning", component, minimum=1)
     _validate_optional_numeric(conf, "gain", component)
-    _validate_optional_numeric(conf, "leakyGain", component)
-    _validate_optional_numeric(conf, "hardwareDelay", component, minimum=0)
-    _validate_optional_numeric(conf, "pokeAmp", component, minimum=0)
-    _validate_optional_numeric(conf, "numItersIM", component, minimum=1)
+    _validate_optional_numeric(conf, "leaky_gain", component)
+    _validate_optional_numeric(conf, "hardware_delay", component, minimum=0)
+    _validate_optional_numeric(conf, "poke_amp", component, minimum=0)
+    _validate_optional_numeric(conf, "num_iters_im", component, minimum=1)
     _validate_optional_numeric(conf, "delay", component, minimum=0)
-    _validate_optional_numeric(conf, "pGain", component)
-    _validate_optional_numeric(conf, "iGain", component)
-    _validate_optional_numeric(conf, "dGain", component)
-    _validate_optional_numeric(conf, "derivativeFilter", component)
-    _validate_optional_numeric(conf, "tikhonovReg", component, minimum=0)
+    _validate_optional_numeric(conf, "p_gain", component)
+    _validate_optional_numeric(conf, "i_gain", component)
+    _validate_optional_numeric(conf, "d_gain", component)
+    _validate_optional_numeric(conf, "derivative_filter", component)
+    _validate_optional_numeric(conf, "tikhonov_reg", component, minimum=0)
 
-    if "CMMethod" in conf:
-        value = conf["CMMethod"]
+    if "cm_method" in conf:
+        value = conf["cm_method"]
         if not isinstance(value, str) or value.lower() not in {"svd", "tikhonov"}:
-            raise ConfigValidationError(f"{component}: 'CMMethod' must be one of ['svd', 'tikhonov']")
+            raise ConfigValidationError(f"{component}: 'cm_method' must be one of ['svd', 'tikhonov']")
 
-    for key in ["controlLimits", "integralLimits", "absoluteLimits"]:
+    for key in ["control_limits", "integral_limits", "absolute_limits"]:
         if key not in conf:
             continue
         value = conf[key]
@@ -153,7 +153,7 @@ def precise_delay(microseconds):
         pass
 
 # Function to measure execution time
-def measure_execution_time(f, args, numIters=10):
+def measure_execution_time(f, args, num_iters=10):
     """Measure repeated execution-time statistics for a callable.
 
     The return value is tailored to the repository's lightweight performance
@@ -164,14 +164,14 @@ def measure_execution_time(f, args, numIters=10):
     f(*args)
 
     # Measure time
-    exTimes = np.empty(numIters)
-    for i in range(numIters):
+    ex_times = np.empty(num_iters)
+    for i in range(num_iters):
         start_time = time.time()
         f(*args)
         end_time = time.time()
-        exTimes[i] = (end_time - start_time)
+        ex_times[i] = (end_time - start_time)
 
-    sorted_times = np.sort(exTimes)
+    sorted_times = np.sort(ex_times)
 
     def _percentile_from_sorted(sorted_arr, pct):
         if sorted_arr.size == 0:
@@ -224,8 +224,8 @@ def add_to_path(directory):
 
     return
 
-def powerLawOG(numModes, k):
-    return (1- (np.arange(numModes)/numModes)**k)
+def power_law_og(num_modes, k):
+    return (1- (np.arange(num_modes)/num_modes)**k)
 
 
 def append_to_file(filename, data, dtype=np.float32):
@@ -312,7 +312,7 @@ def generate_filepath(base_dir='.', prefix='file', extension='.dat'):
 
     return filepath
 
-def get_tmp_filepath(file_path, uniqueStr = 'tmp'):
+def get_tmp_filepath(file_path, unique_str = 'tmp'):
     """
     Append '_tmp' to the filename part of the given file path, before the file extension.
 
@@ -326,7 +326,7 @@ def get_tmp_filepath(file_path, uniqueStr = 'tmp'):
     file_name, file_ext = os.path.splitext(filename)
 
     # Add '_tmp' to the filename
-    new_filename = f"{file_name}_{uniqueStr}{file_ext}"
+    new_filename = f"{file_name}_{unique_str}{file_ext}"
 
     # Construct the new full path
     new_file_path = os.path.join(dir_path, new_filename)
@@ -480,7 +480,7 @@ def set_affinity(affinity):
 
 
 
-def setFromConfig(conf, name, default):
+def set_from_config(conf, name, default):
     """Return a config value or a typed default.
 
     When a default is provided, this helper asserts that any override found in
@@ -492,7 +492,7 @@ def setFromConfig(conf, name, default):
     else:
         val = default
 
-    debugStr = f"There is a type mismatch between the default value for config variable {name} and the given value: {type(val).__name__} != {type(default).__name__}"
+    debug_str = f"There is a type mismatch between the default value for config variable {name} and the given value: {type(val).__name__} != {type(default).__name__}"
 
     if default is not None:
         if isinstance(default, float) and isinstance(val, (int, float, np.integer, np.floating)) and not isinstance(val, bool):
@@ -500,16 +500,16 @@ def setFromConfig(conf, name, default):
         if isinstance(default, int) and isinstance(val, (int, float, np.integer, np.floating)) and not isinstance(val, bool):
             if float(val).is_integer():
                 return int(val)
-        assert isinstance(val, type(default)), debugStr
+        assert isinstance(val, type(default)), debug_str
 
     return val
 
-def signal2D(signal, layout):
-    curSignal2D = np.zeros(layout.shape)
+def signal_2d(signal, layout):
+    cur_signal_2d = np.zeros(layout.shape)
     slopemask = layout[:,:layout.shape[1]//2]
-    curSignal2D[:,:layout.shape[1]//2][slopemask] = signal[:signal.size//2]
-    curSignal2D[:,layout.shape[1]//2:][slopemask] = signal[signal.size//2:]
-    return curSignal2D
+    cur_signal_2d[:,:layout.shape[1]//2][slopemask] = signal[:signal.size//2]
+    cur_signal_2d[:,layout.shape[1]//2:][slopemask] = signal[signal.size//2:]
+    return cur_signal_2d
 
 def dtype_to_float(dtype):
     """

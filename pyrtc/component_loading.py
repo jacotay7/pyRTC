@@ -1,8 +1,8 @@
 """Resolution of component classes from config names and file paths.
 
 Both the config validator and the runtime manager accept components either as
-importable dotted names (``pyRTC.Loop.Loop``), bare registry names
-(``SyntheticSHWFS``), or an explicit ``classFile`` path. This module is the
+importable dotted names (``pyrtc.loop.Loop``), bare registry names
+(``SyntheticSHWFS``), or an explicit ``class_file`` path. This module is the
 single implementation of that lookup so every caller resolves to the *same*
 class object — exec'ing duplicate copies of a module produces distinct class
 objects that break descriptor lookups and ``isinstance`` checks.
@@ -15,13 +15,13 @@ import importlib.util
 import inspect
 from pathlib import Path
 
-from pyRTC.logging_utils import get_logger
+from pyrtc.logging_utils import get_logger
 
 logger = get_logger(__name__)
 
 
 def canonical_pyrtc_module_name(module_path: Path) -> str | None:
-    """Map a file inside the pyRTC package back to its canonical module name."""
+    """Map a file inside the pyrtc package back to its canonical module name."""
 
     package_root = Path(__file__).resolve().parent
     try:
@@ -30,14 +30,14 @@ def canonical_pyrtc_module_name(module_path: Path) -> str | None:
         return None
     if module_path.suffix != ".py":
         return None
-    return ".".join(("pyRTC", *relative.with_suffix("").parts))
+    return ".".join(("pyrtc", *relative.with_suffix("").parts))
 
 
 def import_symbol_from_file(file_path: str, attr_name: str):
     """Load ``attr_name`` from a Python file, preferring canonical modules.
 
-    When the file belongs to the pyRTC package itself (configs commonly point
-    ``classFile`` at e.g. ``pyRTC/Loop.py``), the canonical module is imported
+    When the file belongs to the pyrtc package itself (configs commonly point
+    ``class_file`` at e.g. ``pyrtc/loop.py``), the canonical module is imported
     instead of exec'ing a second copy.
     """
 
@@ -63,20 +63,20 @@ def import_symbol_from_file(file_path: str, attr_name: str):
 
 
 def import_symbol(path_or_name: str):
-    """Resolve a dotted import path or a bare pyRTC component name to an object."""
+    """Resolve a dotted import path or a bare pyrtc component name to an object."""
 
     if "." in path_or_name:
         module_name, attr_name = path_or_name.rsplit(".", 1)
         module = importlib.import_module(module_name)
         return getattr(module, attr_name)
 
-    for module_name in ("pyRTC.hardware", "pyRTC"):
+    for module_name in ("pyrtc.hardware", "pyrtc"):
         try:
             module = importlib.import_module(module_name)
             attr = getattr(module, path_or_name, None)
             if attr is None:
                 continue
-            # Importing pyRTC.hardware.<X> as a module binds it on the
+            # Importing pyrtc.hardware.<X> as a module binds it on the
             # package, shadowing same-named lazy class re-exports. Never
             # return a module where a component class is expected; if the
             # shadowing module defines a class of the same name, use that.
@@ -92,7 +92,7 @@ def import_symbol(path_or_name: str):
 
 
 def resolve_class_symbol(class_name: str, class_file: str | None = None):
-    """Resolve a component class from config ``className`` / ``classFile``."""
+    """Resolve a component class from config ``class_name`` / ``class_file``."""
 
     if class_file:
         module_path = Path(class_file).expanduser()

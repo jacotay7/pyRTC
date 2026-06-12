@@ -1,4 +1,4 @@
-"""Latency measurement helpers for pyRTC shared-memory streams.
+"""Latency measurement helpers for pyrtc shared-memory streams.
 
 The helpers in this module stay in the control plane. They attach to existing
 shared-memory streams, sample timestamp metadata, and summarize latency and
@@ -16,16 +16,16 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 
-def open_stream(shmName, gpuDevice=None):
+def open_stream(shm_name, gpu_device=None):
     """Attach to an existing SHM stream.
 
     The import lives here so tests can monkeypatch this module directly without
-    creating an import cycle with ``pyRTC.Pipeline`` at module import time.
+    creating an import cycle with ``pyrtc.pipeline`` at module import time.
     """
 
-    from pyRTC.streams import open_stream as _open_stream
+    from pyrtc.streams import open_stream as _open_stream
 
-    return _open_stream(shmName, gpuDevice=gpuDevice)
+    return _open_stream(shm_name, gpu_device=gpu_device)
 
 
 def _wait_for_new_write(stream, poll_interval_seconds: float = 1e-5):

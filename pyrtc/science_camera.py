@@ -1,6 +1,6 @@
 """Science-camera abstractions and common image-quality telemetry.
 
-This module defines the base class used by pyRTC science-camera adapters. It
+This module defines the base class used by pyrtc science-camera adapters. It
 handles the shared-memory products that downstream tools expect, including short
 and long exposure PSFs, Strehl ratio estimates, and tip-tilt telemetry, while
 leaving camera-specific acquisition details to hardware subclasses.
@@ -9,16 +9,16 @@ leaving camera-specific acquisition details to hardware subclasses.
 import matplotlib.pyplot as plt
 import numpy as np
 
-from pyRTC.logging_utils import ensure_logging_configured, get_logger
-from pyRTC.streams import create_stream
-from pyRTC.manager import launchComponent
-from pyRTC.pyRTCComponent import pyRTCComponent
-from pyRTC.utils import centroid, clean_image_for_strehl, setFromConfig
+from pyrtc.logging_utils import ensure_logging_configured, get_logger
+from pyrtc.streams import create_stream
+from pyrtc.manager import launch_component
+from pyrtc.component import Component
+from pyrtc.utils import centroid, clean_image_for_strehl, set_from_config
 
 
 logger = get_logger(__name__)
 
-class ScienceCamera(pyRTCComponent):
+class ScienceCamera(Component):
     """
     Base class for cameras that produce science images and image-quality metrics.
 
@@ -26,7 +26,7 @@ class ScienceCamera(pyRTCComponent):
     real and synthetic science-camera backends: SHM publication, dark/model PSF
     handling, long-exposure accumulation, and simple Strehl/tip-tilt telemetry.
     Subclasses are expected to implement the device-facing acquisition logic and
-    then call the parent methods so the standard pyRTC products stay updated.
+    then call the parent methods so the standard pyrtc products stay updated.
 
     Config
     ------
@@ -36,60 +36,60 @@ class ScienceCamera(pyRTCComponent):
         Width of the image. Required.
     height : int
         Height of the image. Required.
-    darkCount : int
+    dark_count : int
         Number of dark frames to average. Required.
     integration : int
         Integration length. Required.
-    darkFile : str, optional
+    dark_file : str, optional
         File to save the dark frames. Default is "".
-    modelFile : str, optional
+    model_file : str, optional
         File to save the model PSF. Default is "".
 
     Attributes
     ----------
     name : str
         Name of the camera.
-    imageShape : tuple
+    image_shape : tuple
         Shape of the image.
-    imageRawDType : type
+    image_raw_dtype : type
         Data type of the raw image.
-    imageDType : type
+    image_dtype : type
         Data type of the image.
-    psfLongDtype : type
+    psf_long_dtype : type
         Data type of the long exposure PSF.
-    psfShort : pyshmem.SharedMemory
+    psf_short : pyshmem.SharedMemory
         Shared memory object for the short exposure PSF.
-    psfLong : pyshmem.SharedMemory
+    psf_long : pyshmem.SharedMemory
         Shared memory object for the long exposure PSF.
-    strehlShm : pyshmem.SharedMemory
+    strehl_shm : pyshmem.SharedMemory
         Shared memory object for the Strehl ratio.
-    tipTiltShm : pyshmem.SharedMemory
+    tip_tilt_shm : pyshmem.SharedMemory
         Shared memory object for the tip-tilt.
     data : numpy.ndarray
         Data array for the image.
     dark : numpy.ndarray
         Dark frame.
-    darkCount : int
+    dark_count : int
         Number of dark frames to average.
-    darkFile : str
+    dark_file : str
         File to save the dark frames.
     model : numpy.ndarray
         Model PSF.
-    modelFile : str
+    model_file : str
         File to save the model PSF.
     strehl_ratio : float
         Strehl ratio.
     peak_dist : float
         Peak distance.
-    integrationLength : int
+    integration_length : int
         Integration length.
-    roiWidth : int
+    roi_width : int
         Width of the region of interest.
-    roiHeight : int
+    roi_height : int
         Height of the region of interest.
-    roiLeft : int
+    roi_left : int
         Left coordinate of the region of interest.
-    roiTop : int
+    roi_top : int
         Top coordinate of the region of interest.
     exposure : int
         Exposure time.
@@ -97,12 +97,12 @@ class ScienceCamera(pyRTCComponent):
         Binning factor.
     gain : int
         Gain setting.
-    bitDepth : int
+    bit_depth : int
         Bit depth setting.
     """
     def __init__(self, conf) -> None:
         try:
-            output_streams = conf.get("outputStreams", {}) if isinstance(conf.get("outputStreams"), dict) else {}
+            output_streams = conf.get("output_streams", {}) if isinstance(conf.get("output_streams"), dict) else {}
 
             def _output_name(stream_name: str) -> str:
                 value = output_streams.get(stream_name, stream_name)
@@ -113,45 +113,45 @@ class ScienceCamera(pyRTCComponent):
             ensure_logging_configured(app_name="pyrtc", component_name=self.__class__.__name__)
             self.logger = get_logger(f"{self.__class__.__module__}.{self.__class__.__name__}")
             self.name = conf["name"]
-            self.imageShape = (conf["width"], conf["height"])
-            self.imageRawDType = np.uint16
-            self.imageDType = np.int32
-            self.psfLongDtype = np.float64
+            self.image_shape = (conf["width"], conf["height"])
+            self.image_raw_dtype = np.uint16
+            self.image_dtype = np.int32
+            self.psf_long_dtype = np.float64
 
-            self.psfShort = create_stream(_output_name("psfShort"), self.imageShape, self.imageDType)
-            self.psfLong = create_stream(_output_name("psfLong"), self.imageShape, self.psfLongDtype)
-            self.strehlShm = create_stream(_output_name("strehl"), (1,), float)
-            self.tipTiltShm = create_stream(_output_name("tiptilt"), (1,), float)
+            self.psf_short = create_stream(_output_name("psf_short"), self.image_shape, self.image_dtype)
+            self.psf_long = create_stream(_output_name("psf_long"), self.image_shape, self.psf_long_dtype)
+            self.strehl_shm = create_stream(_output_name("strehl"), (1,), float)
+            self.tip_tilt_shm = create_stream(_output_name("tiptilt"), (1,), float)
 
-            self.data = np.zeros(self.imageShape, dtype=self.imageRawDType)
-            self.dark = np.zeros(self.imageShape, dtype=self.imageDType)
-            self.darkCount = conf["darkCount"]
-            self.darkFile = setFromConfig(conf, "darkFile", "")
-            self.model = np.zeros(self.imageShape, dtype=self.psfLongDtype)
-            self.modelFile = setFromConfig(conf, "modelFile", "")
+            self.data = np.zeros(self.image_shape, dtype=self.image_raw_dtype)
+            self.dark = np.zeros(self.image_shape, dtype=self.image_dtype)
+            self.dark_count = conf["dark_count"]
+            self.dark_file = set_from_config(conf, "dark_file", "")
+            self.model = np.zeros(self.image_shape, dtype=self.psf_long_dtype)
+            self.model_file = set_from_config(conf, "model_file", "")
             self.strehl_ratio = 0
             self.peak_dist = 0
 
-            self.loadDark()
-            self.loadModelPSF()
+            self.load_dark()
+            self.load_model_psf()
 
-            self.integrationLength = conf["integration"]
+            self.integration_length = conf["integration"]
             super().__init__(conf)
-            self.register_output_stream("psfShort", self.psfShort)
-            self.register_output_stream("psfLong", self.psfLong)
-            self.register_output_stream("strehl", self.strehlShm)
-            self.register_output_stream("tiptilt", self.tipTiltShm)
+            self.register_output_stream("psf_short", self.psf_short)
+            self.register_output_stream("psf_long", self.psf_long)
+            self.register_output_stream("strehl", self.strehl_shm)
+            self.register_output_stream("tiptilt", self.tip_tilt_shm)
             self.logger.info(
                 "Initialized science camera name=%s image_shape=%s integration=%s",
                 self.name,
-                self.imageShape,
-                self.integrationLength,
+                self.image_shape,
+                self.integration_length,
             )
         except Exception:
             logger.exception("Failed to initialize science camera")
             raise
     
-    def setRoi(self, roi):
+    def set_roi(self, roi):
         """
         Set the region of interest (ROI).
 
@@ -161,17 +161,17 @@ class ScienceCamera(pyRTCComponent):
             Tuple containing (width, height, left, top) of the ROI.
         """
         try:
-            self.roiWidth = roi[0]
-            self.roiHeight = roi[1]
-            self.roiLeft = roi[2]
-            self.roiTop = roi[3]
+            self.roi_width = roi[0]
+            self.roi_height = roi[1]
+            self.roi_left = roi[2]
+            self.roi_top = roi[3]
             self.logger.info("Set ROI width=%s height=%s left=%s top=%s", *roi)
         except Exception:
             logger.exception("Failed to set ROI from %s", roi)
             raise
         return
 
-    def setExposure(self, exposure):
+    def set_exposure(self, exposure):
         """
         Set the exposure time.
 
@@ -188,7 +188,7 @@ class ScienceCamera(pyRTCComponent):
             raise
         return
     
-    def setBinning(self, binning):
+    def set_binning(self, binning):
         """
         Set the binning factor.
 
@@ -205,7 +205,7 @@ class ScienceCamera(pyRTCComponent):
             raise
         return
     
-    def setGain(self, gain):
+    def set_gain(self, gain):
         """
         Set the gain.
 
@@ -222,7 +222,7 @@ class ScienceCamera(pyRTCComponent):
             raise
         return
     
-    def setGamma(self, gamma):
+    def set_gamma(self, gamma):
         """
         Set the gamma.
 
@@ -239,37 +239,37 @@ class ScienceCamera(pyRTCComponent):
             raise
         return
     
-    def setBitDepth(self, bitDepth):
+    def set_bit_depth(self, bit_depth):
         """
         Set the bit depth.
 
         Parameters
         ----------
-        bitDepth : int
+        bit_depth : int
             Bit depth to set.
         """
         try:
-            self.bitDepth = bitDepth
-            self.logger.info("Set bit depth to %s", bitDepth)
+            self.bit_depth = bit_depth
+            self.logger.info("Set bit depth to %s", bit_depth)
         except Exception:
-            logger.exception("Failed to set bit depth to %s", bitDepth)
+            logger.exception("Failed to set bit depth to %s", bit_depth)
             raise
         return
     
-    def setIntegrationLength(self, integrationLength):
+    def set_integration_length(self, integration_length):
         """
         Set the integration length.
 
         Parameters
         ----------
-        integrationLength : int
+        integration_length : int
             Integration length to set.
         """
         try:
-            self.integrationLength = integrationLength
-            self.logger.info("Set integration length to %s", integrationLength)
+            self.integration_length = integration_length
+            self.logger.info("Set integration length to %s", integration_length)
         except Exception:
-            logger.exception("Failed to set integration length to %s", integrationLength)
+            logger.exception("Failed to set integration length to %s", integration_length)
             raise
         return
     
@@ -277,17 +277,17 @@ class ScienceCamera(pyRTCComponent):
         """
         Perform a single exposure.
         """
-        self.write_stream("psfShort", self.data.astype(self.imageDType) - self.dark)
+        self.write_stream("psf_short", self.data.astype(self.image_dtype) - self.dark)
         return
 
     def integrate(self):
         """
-        Perform multiple exposures and integrate the results. Number of frames set by integrationLength.
+        Perform multiple exposures and integrate the results. Number of frames set by integration_length.
         """
         x = np.zeros(self.data.shape)
-        for i in range(self.integrationLength):
+        for i in range(self.integration_length):
             x += self.read().astype(x.dtype)
-        self.write_stream("psfLong", x/self.integrationLength)
+        self.write_stream("psf_long", x/self.integration_length)
         return 
 
     def read(self, block = True):
@@ -300,10 +300,10 @@ class ScienceCamera(pyRTCComponent):
             Current short exposure PSF.
         """
         if block:
-            return self.read_stream("psfShort")
-        return self.read_stream("psfShort", block=False)
+            return self.read_stream("psf_short")
+        return self.read_stream("psf_short", block=False)
     
-    def readLong(self):
+    def read_long(self):
         """
         Read the current long exposure PSF.
 
@@ -312,30 +312,30 @@ class ScienceCamera(pyRTCComponent):
         numpy.ndarray
             Current long exposure PSF.
         """
-        return self.read_stream("psfLong")
+        return self.read_stream("psf_long")
     
-    def takeDark(self):
+    def take_dark(self):
         """
         Take dark frames and average them to create a dark frame. 
-        Number of exposures to average set by darkCount parameter.
+        Number of exposures to average set by dark_count parameter.
         """
         try:
-            if self.darkCount < 1:
-                raise ValueError("darkCount must be at least 1 to acquire a dark frame")
-            self.logger.info("Taking science camera dark frame using %s exposures", self.darkCount)
-            self.setDark(np.zeros_like(self.dark))
-            dark = np.zeros(self.imageShape, dtype=np.float64)
-            for _ in range(self.darkCount):
+            if self.dark_count < 1:
+                raise ValueError("dark_count must be at least 1 to acquire a dark frame")
+            self.logger.info("Taking science camera dark frame using %s exposures", self.dark_count)
+            self.set_dark(np.zeros_like(self.dark))
+            dark = np.zeros(self.image_shape, dtype=np.float64)
+            for _ in range(self.dark_count):
                 dark += self.read().astype(np.float64)
-            dark /= self.darkCount
-            self.setDark(dark)
+            dark /= self.dark_count
+            self.set_dark(dark)
             self.logger.info("Completed science camera dark frame acquisition")
         except Exception:
             logger.exception("Failed to acquire science camera dark frame")
             raise
         return 
 
-    def setDark(self, dark):
+    def set_dark(self, dark):
         """
         Set the dark frame.
 
@@ -345,47 +345,47 @@ class ScienceCamera(pyRTCComponent):
             Dark frame to set.
         """
         try:
-            self.dark = dark.astype(self.imageDType)
+            self.dark = dark.astype(self.image_dtype)
             self.logger.info("Updated science camera dark frame")
         except Exception:
             logger.exception("Failed to update science camera dark frame")
             raise
         return
     
-    def saveDark(self,filename=''):
+    def save_dark(self,filename=''):
         """
         Save the dark frame to a file.
 
         Parameters
         ----------
         filename : str, optional
-            File to save the dark frame to. If not specified, uses the configured darkFile.
+            File to save the dark frame to. If not specified, uses the configured dark_file.
         """
         try:
             if filename == '':
-                filename = self.darkFile
+                filename = self.dark_file
             if filename == '':
                 raise ValueError("No dark frame filename provided")
             np.save(filename, self.dark)
             self.logger.info("Saved science camera dark frame to %s", filename)
         except Exception:
-            logger.exception("Failed to save science camera dark frame to %s", filename or self.darkFile)
+            logger.exception("Failed to save science camera dark frame to %s", filename or self.dark_file)
             raise
         return
     
-    def loadDark(self,filename=''):
+    def load_dark(self,filename=''):
         """
         Load the dark frame from a file.
 
         Parameters
         ----------
         filename : str, optional
-            File to load the dark frame from. If not specified, uses the configured darkFile.
+            File to load the dark frame from. If not specified, uses the configured dark_file.
         """
         #If no file given, first try dark file
         try:
             if filename == '':
-                filename = self.darkFile
+                filename = self.dark_file
             if filename == '':
                 self.dark = np.zeros_like(self.dark)
                 logger.info("No science camera dark frame file configured; using zeros")
@@ -393,23 +393,23 @@ class ScienceCamera(pyRTCComponent):
                 self.dark = np.load(filename)
                 self.logger.info("Loaded science camera dark frame from %s", filename)
         except Exception:
-            logger.exception("Failed to load science camera dark frame from %s", filename or self.darkFile)
+            logger.exception("Failed to load science camera dark frame from %s", filename or self.dark_file)
             raise
         return
     
-    def takeModelPSF(self):
+    def take_model_psf(self):
         """
         Capture the current long exposure PSF as the model PSF.
         """
         try:
-            self.model = self.readLong()
+            self.model = self.read_long()
             self.logger.info("Captured model PSF from current long-exposure image")
         except Exception:
             logger.exception("Failed to capture model PSF")
             raise
         return
 
-    def setModelPSF(self, model):
+    def set_model_psf(self, model):
         """
         Set the model PSF.
 
@@ -419,47 +419,47 @@ class ScienceCamera(pyRTCComponent):
             Model PSF to set.
         """
         try:
-            self.model = model.astype(self.psfLongDtype)
+            self.model = model.astype(self.psf_long_dtype)
             self.logger.info("Updated model PSF")
         except Exception:
             logger.exception("Failed to update model PSF")
             raise
         return
     
-    def saveModelPSF(self,filename=''):
+    def save_model_psf(self,filename=''):
         """
         Save the model PSF to a file.
 
         Parameters
         ----------
         filename : str, optional
-            File to save the model PSF to. If not specified, uses the configured modelFile.
+            File to save the model PSF to. If not specified, uses the configured model_file.
         """
         try:
             if filename == '':
-                filename = self.modelFile
+                filename = self.model_file
             if filename == '':
                 raise ValueError("No model PSF filename provided")
             np.save(filename, self.model)
             self.logger.info("Saved model PSF to %s", filename)
         except Exception:
-            logger.exception("Failed to save model PSF to %s", filename or self.modelFile)
+            logger.exception("Failed to save model PSF to %s", filename or self.model_file)
             raise
         return
     
-    def loadModelPSF(self,filename=''):
+    def load_model_psf(self,filename=''):
         """
         Load the model PSF from a file.
 
         Parameters
         ----------
         filename : str, optional
-            File to load the model PSF from. If not specified, uses the configured modelFile.
+            File to load the model PSF from. If not specified, uses the configured model_file.
         """
         #If no file given, first try dark file
         try:
             if filename == '':
-                filename = self.modelFile
+                filename = self.model_file
             if filename == '':
                 self.model = np.zeros_like(self.model)
                 logger.info("No model PSF file configured; using zeros")
@@ -467,13 +467,13 @@ class ScienceCamera(pyRTCComponent):
                 self.model = np.load(filename)
                 self.logger.info("Loaded model PSF from %s", filename)
         except Exception:
-            logger.exception("Failed to load model PSF from %s", filename or self.modelFile)
+            logger.exception("Failed to load model PSF from %s", filename or self.model_file)
             raise
         return
 
-    def computeStrehl(self, median_filter_size = 1, gaussian_sigma = 0):
+    def compute_strehl(self, median_filter_size = 1, gaussian_sigma = 0):
         """
-        Compute the rough Strehl ratio and tip tilt offset. These values are reference to the modelPSF.
+        Compute the rough Strehl ratio and tip tilt offset. These values are reference to the model_psf.
         If your model PSF is taken empirically, then the Strehl ratio is not absolute, and should only be
         used as a relative measurement for focal plane feedback.
 
@@ -494,7 +494,7 @@ class ScienceCamera(pyRTCComponent):
                                        median_filter_size = median_filter_size, 
                                        gaussian_sigma = gaussian_sigma)
 
-        current = clean_image_for_strehl(self.readLong(), 
+        current = clean_image_for_strehl(self.read_long(), 
                                          median_filter_size = median_filter_size, 
                                          gaussian_sigma = gaussian_sigma)
 
@@ -523,4 +523,4 @@ class ScienceCamera(pyRTCComponent):
 
 if __name__ == "__main__":
 
-    launchComponent(ScienceCamera, "psf", start = True)
+    launch_component(ScienceCamera, "psf", start = True)

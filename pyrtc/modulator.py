@@ -8,14 +8,14 @@ shutdown, restarts, and position changes.
 
 from abc import ABC, abstractmethod
 
-from pyRTC.logging_utils import get_logger
-from pyRTC.pyRTCComponent import pyRTCComponent
-from pyRTC.utils import setFromConfig
+from pyrtc.logging_utils import get_logger
+from pyrtc.component import Component
+from pyrtc.utils import set_from_config
 
 
 logger = get_logger(__name__)
 
-class Modulator(pyRTCComponent, ABC):
+class Modulator(Component, ABC):
     """
     Common lifecycle and positioning interface for modulator devices.
 
@@ -23,13 +23,13 @@ class Modulator(pyRTCComponent, ABC):
     hardware controller or simulator. The base class handles configuration and
     logging while subclasses implement the actual move/restart behavior.
 
-    New code should use :meth:`set_position`; :meth:`goTo` is retained as a
+    New code should use :meth:`set_position`; :meth:`go_to` is retained as a
     compatibility alias for older call sites.
     """
     def __init__(self, conf) -> None:
         try:
             super().__init__(conf)
-            self.name = setFromConfig(conf, "name", "modulator")
+            self.name = set_from_config(conf, "name", "modulator")
             self.logger.info("Initialized modulator name=%s", self.name)
         except Exception:
             logger.exception("Failed to initialize modulator")
@@ -52,8 +52,8 @@ class Modulator(pyRTCComponent, ABC):
             self.logger.exception("Failed to stop modulator %s", getattr(self, "name", "unknown"))
             raise
 
-    def goTo(self, position):
-        self.logger.info("goTo called for modulator %s; forwarding to set_position", self.name)
+    def go_to(self, position):
+        self.logger.info("go_to called for modulator %s; forwarding to set_position", self.name)
         return self.set_position(position)
 
     @abstractmethod

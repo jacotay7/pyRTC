@@ -1,10 +1,10 @@
-"""Command-line entrypoint for the pyRTC mosaic viewer."""
+"""Command-line entrypoint for the pyrtc mosaic viewer."""
 
 import argparse
 import sys
 
-from pyRTC.logging_utils import add_logging_cli_args, configure_logging_from_args
-import pyRTC.utils as utils
+from pyrtc.logging_utils import add_logging_cli_args, configure_logging_from_args
+import pyrtc.utils as utils
 
 from . import viewer_helpers as _viewer_helpers
 
@@ -19,13 +19,13 @@ _split_targets_and_limits = _viewer_helpers.split_targets_and_limits
 def _build_arg_parser() -> argparse.ArgumentParser:
     """Build the CLI parser for live SHM viewing."""
 
-    parser = argparse.ArgumentParser(description="View a pyRTC shared-memory stream in real time.")
+    parser = argparse.ArgumentParser(description="View a pyrtc shared-memory stream in real time.")
     parser.add_argument(
         "items",
         nargs="+",
         help=(
             "One or more SHM names to display. For backward compatibility you can still append "
-            "optional vmin and vmax values at the end, for example: pyrtc-view signal2D -1 1"
+            "optional vmin and vmax values at the end, for example: pyrtc-view signal_2d -1 1"
         ),
     )
     parser.add_argument("--fps", type=int, default=30, help="Refresh rate in frames per second")
@@ -63,7 +63,7 @@ def main(argv=None) -> int:
     except ImportError as exc:
         logger.exception("Viewer dependencies are unavailable")
         raise SystemExit(
-            "pyrtc-view requires viewer dependencies. Install with: pip install pyRTC[viewer]"
+            "pyrtc-view requires viewer dependencies. Install with: pip install pyrtc[viewer]"
         ) from exc
 
     try:
@@ -90,7 +90,7 @@ def main(argv=None) -> int:
     except ImportError as exc:
         logger.exception("Viewer dependencies are unavailable")
         raise SystemExit(
-            "pyrtc-view requires viewer dependencies. Install with: pip install pyRTC[viewer]"
+            "pyrtc-view requires viewer dependencies. Install with: pip install pyrtc[viewer]"
         ) from exc
 
 

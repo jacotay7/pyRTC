@@ -1,4 +1,4 @@
-"""Exporter helpers for optional pyRTC interoperability layers."""
+"""Exporter helpers for optional pyrtc interoperability layers."""
 
 from .aotpy_export import (
     AOTPY_OPTIONAL_DEPENDENCY_MESSAGE,

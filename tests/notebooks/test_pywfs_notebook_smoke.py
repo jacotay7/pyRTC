@@ -1,12 +1,12 @@
 import json
 from pathlib import Path
 
-from pyRTC.Loop import Loop
-from pyRTC.ScienceCamera import ScienceCamera
-from pyRTC.SlopesProcess import SlopesProcess
-from pyRTC.WavefrontCorrector import WavefrontCorrector
-from pyRTC.WavefrontSensor import WavefrontSensor
-from pyRTC.utils import read_yaml_file
+from pyrtc.loop import Loop
+from pyrtc.science_camera import ScienceCamera
+from pyrtc.slopes_process import SlopesProcess
+from pyrtc.wavefront_corrector import WavefrontCorrector
+from pyrtc.wavefront_sensor import WavefrontSensor
+from pyrtc.utils import read_yaml_file
 
 
 def test_pywfs_notebook_surrogate_smoke():

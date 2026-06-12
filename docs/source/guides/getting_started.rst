@@ -3,7 +3,7 @@
 Getting Started
 ===============
 
-This guide is the shortest path from installation to a working `pyRTC` session.
+This guide is the shortest path from installation to a working `pyrtc` session.
 
 Package Name
 ------------
@@ -14,18 +14,18 @@ Install the project from PyPI as `pyrtcao`:
 
 	pip install pyrtcao
 
-Import it in Python as `pyRTC`:
+Import it in Python as `pyrtc`:
 
 .. code-block:: python
 
-	import pyRTC
+	import pyrtc
 
 If you are working from a source checkout instead of PyPI:
 
 .. code-block:: bash
 
 	git clone https://github.com/jacotay7/pyRTC.git
-	cd pyRTC
+	cd pyrtc
 	pip install .
 
 Optional extras:
@@ -40,7 +40,7 @@ Optional extras:
 Core Concepts
 -------------
 
-`pyRTC` is organized around adaptive optics components that exchange data through shared memory streams.
+`pyrtc` is organized around adaptive optics components that exchange data through shared memory streams.
 The core objects you will usually work with are:
 
 - `WavefrontSensor`: produces images
@@ -64,7 +64,7 @@ After installation, verify that the public package imports cleanly:
 
 .. code-block:: bash
 
-	python -c "import pyRTC; print(pyRTC.__all__)"
+	python -c "import pyrtc; print(pyrtc.__all__)"
 
 Validate a Config Before Launch
 -------------------------------
@@ -95,7 +95,7 @@ install the optional AOTPy dependency and export the session after capture:
 The exporter only maps the streams actually present in the session. The current
 mapping is conservative: `wfs` becomes detector pixels, `signal` becomes WFS
 measurements when the shape is interpretable, `wfc` becomes command history,
-and `psfShort` or `psfLong` become scoring-camera outputs.
+and `psf_short` or `psf_long` become scoring-camera outputs.
 
 Minimal Component Example
 -------------------------
@@ -104,9 +104,9 @@ The base component class starts configured functions in worker threads. A minima
 
 .. code-block:: python
 
-	from pyRTC.pyRTCComponent import pyRTCComponent
+	from pyrtc.component import Component
 
-	component = pyRTCComponent(
+	component = Component(
 		 {
 			  "affinity": 0,
 			  "functions": [],
@@ -124,32 +124,32 @@ Configuration is supplied as nested dictionaries or YAML files. A typical AO set
 
 	loop:
 	  gain: 0.1
-	  numDroppedModes: 0
+	  num_dropped_modes: 0
 	  functions:
-		 - standardIntegrator
+		 - standard_integrator
 
 	wfs:
 	  name: OOPAOWFS
 	  width: 28
 	  height: 28
-	  darkCount: 1000
+	  dark_count: 1000
 	  functions:
 		 - expose
 
 	slopes:
 	  type: PYWFS
-	  signalType: slopes
+	  signal_type: slopes
 	  functions:
-		 - computeSignal
+		 - compute_signal
 
 	wfc:
 	  name: OOPAOWFC
-	  numActuators: 100
-	  numModes: 80
+	  num_actuators: 100
+	  num_modes: 80
 	  functions:
-		 - sendToHardware
+		 - send_to_hardware
 
-Required keys depend on the component. For example, wavefront-corrector configs require `name`, `numActuators`, and `numModes`.
+Required keys depend on the component. For example, wavefront-corrector configs require `name`, `num_actuators`, and `num_modes`.
 
 Suggested First Run
 -------------------
@@ -186,7 +186,7 @@ The performance benchmark entry point is also available after installation:
 Logging
 -------
 
-The main CLI tools and example entry points use the shared `pyRTC` logger.
+The main CLI tools and example entry points use the shared `pyrtc` logger.
 By default they log at `INFO` level to the console with timestamps.
 
 Useful one-off overrides:
@@ -219,7 +219,7 @@ When you use `hard-RTC`, child processes inherit the logging environment automat
 Troubleshooting
 ---------------
 
-- If GPU mode is configured but PyTorch is unavailable, `pyRTC` falls back to CPU mode for supported paths.
+- If GPU mode is configured but PyTorch is unavailable, `pyrtc` falls back to CPU mode for supported paths.
 - If viewer commands fail, install the viewer extra: `pip install pyrtcao[viewer]`
 - If a component fails at startup, check the YAML keys first; several components validate required config fields eagerly.
 - If a multi-process run is hard to diagnose, set `PYRTC_LOG_DIR=./logs` before launching so each process writes a separate file.

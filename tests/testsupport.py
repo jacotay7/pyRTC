@@ -54,11 +54,11 @@ except Exception:
 class DummySHM:
     """In-memory stand-in mimicking the pyshmem.SharedMemory API."""
 
-    def __init__(self, name, shape, dtype, gpuDevice=None):
+    def __init__(self, name, shape, dtype, gpu_device=None):
         self.name = name
         self.shape = tuple(shape)
         self.dtype = _np().dtype(dtype)
-        self.gpuDevice = gpuDevice
+        self.gpu_device = gpu_device
         self.arr = _np().zeros(self.shape, dtype=self.dtype)
         self._count = 0
         self._write_time = 0.0

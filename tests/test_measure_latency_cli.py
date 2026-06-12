@@ -1,8 +1,8 @@
 import numpy as np
 import pytest
 
-from pyRTC import latency
-from pyRTC.scripts import measure_latency
+from pyrtc import latency
+from pyrtc.scripts import measure_latency
 
 
 def test_compute_latency_applies_frame_shift():
@@ -34,7 +34,7 @@ def test_count_aligned_latency_removes_startup_count_offset():
 
 
 def test_measure_stream_path_latency_uses_shared_event_history(monkeypatch):
-    def _fake_open(name, gpuDevice=None):
+    def _fake_open(name, gpu_device=None):
         return object()
 
     def _fake_collect(streams, samples, **kwargs):
@@ -85,7 +85,7 @@ def test_collect_timestamps_reads_metadata(monkeypatch):
         def write_time(self):
             return self._events[max(self._index, 0)][1]
 
-    import pyRTC.latency as latency_helpers
+    import pyrtc.latency as latency_helpers
 
     monkeypatch.setattr(
         latency_helpers,
@@ -120,7 +120,7 @@ def test_main_no_show(monkeypatch, tmp_path):
         def write_time(self):
             return self._count * 1e-3
 
-    monkeypatch.setattr(latency, "open_stream", lambda name, gpuDevice=None: FakeShm())
+    monkeypatch.setattr(latency, "open_stream", lambda name, gpu_device=None: FakeShm())
     monkeypatch.setattr(measure_latency, "plot_latency_histogram", lambda *args, **kwargs: None)
 
     def _fake_savefig(path):
@@ -134,8 +134,8 @@ def test_main_no_show(monkeypatch, tmp_path):
     out = tmp_path / "lat.pdf"
     code = measure_latency.main(
         [
-            "wfsRaw",
-            "wfc2D",
+            "wfs_raw",
+            "wfc_2d",
             "--samples",
             "20",
             "--no-progress",

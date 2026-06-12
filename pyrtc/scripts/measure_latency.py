@@ -1,15 +1,15 @@
-"""Latency-measurement CLI for pyRTC shared-memory streams."""
+"""Latency-measurement CLI for pyrtc shared-memory streams."""
 
 import argparse
 import json
 from pathlib import Path
 import sys
 
-import pyRTC.latency as latency_helpers
+import pyrtc.latency as latency_helpers
 
-from pyRTC.logging_utils import add_logging_cli_args, configure_logging_from_args
-from pyRTC.manager import RTCManager
-from pyRTC.latency import (
+from pyrtc.logging_utils import add_logging_cli_args, configure_logging_from_args
+from pyrtc.manager import RTCManager
+from pyrtc.latency import (
     format_latency_report,
     measure_stream_path_latency,
     plot_latency_histogram,
@@ -20,7 +20,7 @@ def collect_timestamps(streams, samples: int, show_progress: bool = False):
     """Collect timestamp and count samples for one or more streams.
 
     This compatibility wrapper preserves the historical import location under
-    ``pyRTC.scripts.measure_latency`` while delegating the implementation to the
+    ``pyrtc.scripts.measure_latency`` while delegating the implementation to the
     shared latency helper module.
     """
 
@@ -31,7 +31,7 @@ def compute_latency_seconds(source_write_times, target_write_times):
     """Compute latency samples from aligned source and target timestamps.
 
     This compatibility wrapper preserves the historical import location under
-    ``pyRTC.scripts.measure_latency`` while delegating the implementation to the
+    ``pyrtc.scripts.measure_latency`` while delegating the implementation to the
     shared latency helper module.
     """
 
@@ -40,7 +40,7 @@ def compute_latency_seconds(source_write_times, target_write_times):
 
 def _build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Measure latency between pyRTC shared-memory streams."
+        description="Measure latency between pyrtc shared-memory streams."
     )
     parser.add_argument("source_shm", nargs="?", type=str, help="Name of source SHM (earlier in pipeline)")
     parser.add_argument("target_shm", nargs="?", type=str, help="Name of target SHM (later in pipeline)")
@@ -150,7 +150,7 @@ def main(argv=None) -> int:
                 show_progress=not args.no_progress,
                 include_total_samples=True,
             )
-        title = f"pyRTC Latency ({report_payload['source_shm']} -> {report_payload['target_shm']}, tag={args.tag})"
+        title = f"pyrtc Latency ({report_payload['source_shm']} -> {report_payload['target_shm']}, tag={args.tag})"
         plot_latency_histogram(total_latency, title=title, bins=args.bins, xrange=args.xrange)
         if args.output:
             output_path = Path(args.output)

@@ -1,4 +1,4 @@
-"""Qt main window for the pyRTC manager GUI."""
+"""Qt main window for the pyrtc manager GUI."""
 
 from __future__ import annotations
 
@@ -55,7 +55,7 @@ except ImportError as exc:
     class _QtUnavailableBase:
         def __init__(self, *args, **kwargs):
             raise ImportError(
-                "pyrtc-manager-gui requires GUI dependencies. Install with: pip install pyRTC[gui]"
+                "pyrtc-manager-gui requires GUI dependencies. Install with: pip install pyrtc[gui]"
             ) from _GUI_IMPORT_ERROR
 
     QAction = QApplication = QComboBox = QDialog = QDialogButtonBox = QDockWidget = QFileDialog = QFormLayout = QFrame = QGraphicsPathItem = (  # type: ignore[assignment]
@@ -64,8 +64,8 @@ except ImportError as exc:
     QPointF = QRectF = QBrush = QColor = QFont = QKeySequence = QPainter = QPainterPath = QPen = _QtUnavailableBase
     Qt = SimpleNamespace(Horizontal=0, Vertical=0, AlignTop=0, LeftDockWidgetArea=0, BottomDockWidgetArea=0)
 
-from pyRTC.logging_utils import get_logger
-from pyRTC.component_descriptors import list_component_descriptors
+from pyrtc.logging_utils import get_logger
+from pyrtc.component_descriptors import list_component_descriptors
 
 from .manager_adapter import ManagerAdapter
 from .models import GraphEdgeModel, GraphNodeModel, GraphSnapshot
@@ -154,7 +154,7 @@ def _build_log_html(lines: list[str], theme, *, title: str | None = None) -> str
 def _require_gui_backend() -> None:
     if _GUI_IMPORT_ERROR is not None:
         raise ImportError(
-            "pyrtc-manager-gui requires GUI dependencies. Install with: pip install pyRTC[gui]"
+            "pyrtc-manager-gui requires GUI dependencies. Install with: pip install pyrtc[gui]"
         ) from _GUI_IMPORT_ERROR
 
 
@@ -552,10 +552,10 @@ class ComponentSettingsDialog(QDialog):
         form.addRow("sectionName", self.section_input)
 
         self.class_name_input = QLineEdit(class_name)
-        form.addRow("className", self.class_name_input)
+        form.addRow("class_name", self.class_name_input)
 
         self.class_file_input = QLineEdit(class_file or "")
-        form.addRow("classFile", self.class_file_input)
+        form.addRow("class_file", self.class_file_input)
 
         for field_descriptor in descriptor.all_fields:
             editor = QLineEdit("" if field_descriptor.default is None else str(field_descriptor.default))
@@ -624,7 +624,7 @@ class ManagerMainWindow(QMainWindow):
         self._gui_log_handler = _GuiLogHandler()
         get_logger().addHandler(self._gui_log_handler)
 
-        self.setWindowTitle("pyRTC Manager GUI")
+        self.setWindowTitle("pyrtc Manager GUI")
         self.resize(1500, 920)
         self._build_ui()
         self._build_toolbar(mode)
@@ -976,7 +976,7 @@ class ManagerMainWindow(QMainWindow):
         self.refresh_view()
 
     def open_config_dialog(self) -> None:
-        path, _ = QFileDialog.getOpenFileName(self, "Load pyRTC Config", "", "YAML Files (*.yaml *.yml)")
+        path, _ = QFileDialog.getOpenFileName(self, "Load pyrtc Config", "", "YAML Files (*.yaml *.yml)")
         if path:
             self.load_config(path, mode=self.manager_mode)
 
@@ -1003,7 +1003,7 @@ class ManagerMainWindow(QMainWindow):
         self.statusBar().showMessage(f"Saved {path}", 3000)
 
     def save_config_as(self) -> None:
-        path, _ = QFileDialog.getSaveFileName(self, "Save pyRTC Config", self.adapter.config_path or "", "YAML Files (*.yaml *.yml)")
+        path, _ = QFileDialog.getSaveFileName(self, "Save pyrtc Config", self.adapter.config_path or "", "YAML Files (*.yaml *.yml)")
         if not path:
             return
         try:
@@ -1357,12 +1357,12 @@ class ManagerMainWindow(QMainWindow):
         if not ok or not class_path.strip():
             return
         try:
-            from pyRTC.gui.manager_adapter import _import_component_class
+            from pyrtc.gui.manager_adapter import _import_component_class
 
             imported_class = _import_component_class(class_path.strip())
             descriptor = imported_class.describe() if hasattr(imported_class, "describe") else None
             if descriptor is None:
-                from pyRTC.component_descriptors import describe_component_class
+                from pyrtc.component_descriptors import describe_component_class
 
                 descriptor = describe_component_class(imported_class)
         except Exception as exc:
@@ -1382,12 +1382,12 @@ class ManagerMainWindow(QMainWindow):
         if not ok or not class_name.strip():
             return
         try:
-            from pyRTC.gui.manager_adapter import _import_component_class
+            from pyrtc.gui.manager_adapter import _import_component_class
 
             imported_class = _import_component_class(class_name.strip(), file_path)
             descriptor = imported_class.describe() if hasattr(imported_class, "describe") else None
             if descriptor is None:
-                from pyRTC.component_descriptors import describe_component_class
+                from pyrtc.component_descriptors import describe_component_class
 
                 descriptor = describe_component_class(imported_class)
         except Exception as exc:

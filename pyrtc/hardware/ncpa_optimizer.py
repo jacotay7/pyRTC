@@ -13,18 +13,18 @@ import time
 
 import numpy as np
 
-from pyRTC.logging_utils import get_logger
-from pyRTC.Optimizer import Optimizer
-from pyRTC.rpc import Listener
-from pyRTC.streams import open_stream
-from pyRTC.utils import decrease_nice, get_tmp_filepath, read_yaml_file, setFromConfig, set_affinity
+from pyrtc.logging_utils import get_logger
+from pyrtc.optimizer import Optimizer
+from pyrtc.rpc import Listener
+from pyrtc.streams import open_stream
+from pyrtc.utils import decrease_nice, get_tmp_filepath, read_yaml_file, set_from_config, set_affinity
 
 
 logger = get_logger(__name__)
 
 
 def _input_stream_name(conf, stream_name: str) -> str:
-    mapping = conf.get("inputStreams", {}) if isinstance(conf.get("inputStreams"), dict) else {}
+    mapping = conf.get("input_streams", {}) if isinstance(conf.get("input_streams"), dict) else {}
     value = mapping.get(stream_name, stream_name)
     if isinstance(value, dict):
         value = value.get("shm", value.get("name", stream_name))
@@ -44,26 +44,26 @@ class NCPAOptimizer(Optimizer):
         try:
             self.loop = loop
             self.slopes = slopes
-            self.wfcShm = open_stream(_input_stream_name(conf, "wfc"))
-            self.wfcDims = tuple(self.wfcShm.shape)
-            self.wfcDtype = np.dtype(self.wfcShm.dtype)
-            self.strehlShm = open_stream(_input_stream_name(conf, "strehl"))
-            self.startMode = setFromConfig(conf, "startMode", 0)
-            self.endMode = setFromConfig(conf, "endMode", 20)
-            self.correctionMag = setFromConfig(conf, "correctionMag", 2e-3)
-            self.numReads = setFromConfig(conf, "numReads", 5)
-            self.isCL = False
-            self.origRefSlopes = None
-            self.validSubAps = None
+            self.wfc_shm = open_stream(_input_stream_name(conf, "wfc"))
+            self.wfc_dims = tuple(self.wfc_shm.shape)
+            self.wfc_dtype = np.dtype(self.wfc_shm.dtype)
+            self.strehl_shm = open_stream(_input_stream_name(conf, "strehl"))
+            self.start_mode = set_from_config(conf, "start_mode", 0)
+            self.end_mode = set_from_config(conf, "end_mode", 20)
+            self.correction_mag = set_from_config(conf, "correction_mag", 2e-3)
+            self.num_reads = set_from_config(conf, "num_reads", 5)
+            self.is_cl = False
+            self.orig_ref_slopes = None
+            self.valid_sub_aps = None
             self.IM = None
 
             super().__init__(conf)
             self.logger.info(
-                "Initialized NCPA optimizer startMode=%s endMode=%s correctionMag=%s numReads=%s",
-                self.startMode,
-                self.endMode,
-                self.correctionMag,
-                self.numReads,
+                "Initialized NCPA optimizer start_mode=%s end_mode=%s correction_mag=%s num_reads=%s",
+                self.start_mode,
+                self.end_mode,
+                self.correction_mag,
+                self.num_reads,
             )
         except Exception:
             logger.exception("Failed to initialize NCPA optimizer")
@@ -71,11 +71,11 @@ class NCPAOptimizer(Optimizer):
 
     def objective(self, trial):
         try:
-            self.applyTrial(trial)
+            self.apply_trial(trial)
 
-            result = np.empty(self.numReads)
-            for i in range(self.numReads):
-                result[i] = self.strehlShm.read_new()
+            result = np.empty(self.num_reads)
+            for i in range(self.num_reads):
+                result[i] = self.strehl_shm.read_new()
             score = np.mean(result)
             self.logger.info("Evaluated NCPA trial score=%s", score)
             return score
@@ -83,51 +83,51 @@ class NCPAOptimizer(Optimizer):
             self.logger.exception("Failed while evaluating NCPA trial")
             raise
     
-    def applyTrial(self, trial):
+    def apply_trial(self, trial):
         try:
-            modalCoefs = np.zeros(self.wfcDims, dtype=self.wfcDtype)
-            for i in range(self.startMode, self.endMode):
-                modalCoefs[i] = np.float32(trial.suggest_float(f'{i}', -self.correctionMag, self.correctionMag))
-            if self.isCL:
-                refSlopesAdjust = np.zeros_like(self.origRefSlopes)
-                refSlopesAdjust[self.validSubAps] = self.IM @ modalCoefs
-                refSlopes = self.origRefSlopes + refSlopesAdjust
-                np.save(self.newRefSlopesFile, refSlopes)
-                self.slopes.setProperty("refSlopesFile", self.newRefSlopesFile)
-                self.slopes.run("loadRefSlopes")
-                self.slopes.setProperty("refSlopesFile", self.refSlopesFile)
+            modal_coefs = np.zeros(self.wfc_dims, dtype=self.wfc_dtype)
+            for i in range(self.start_mode, self.end_mode):
+                modal_coefs[i] = np.float32(trial.suggest_float(f'{i}', -self.correction_mag, self.correction_mag))
+            if self.is_cl:
+                ref_slopes_adjust = np.zeros_like(self.orig_ref_slopes)
+                ref_slopes_adjust[self.valid_sub_aps] = self.IM @ modal_coefs
+                ref_slopes = self.orig_ref_slopes + ref_slopes_adjust
+                np.save(self.new_ref_slopes_file, ref_slopes)
+                self.slopes.set_property("ref_slopes_file", self.new_ref_slopes_file)
+                self.slopes.run("load_ref_slopes")
+                self.slopes.set_property("ref_slopes_file", self.ref_slopes_file)
                 self.logger.info("Applied NCPA trial in closed-loop mode")
             else:
-                self.wfcShm.write(modalCoefs)
+                self.wfc_shm.write(modal_coefs)
                 self.logger.info("Applied NCPA trial in open-loop mode")
         except Exception:
             self.logger.exception("Failed to apply NCPA trial")
             raise
-        return super().applyTrial(trial)
+        return super().apply_trial(trial)
 
-    def applyOptimum(self, overwrite=False):
+    def apply_optimum(self, overwrite=False):
         try:
-            super().applyOptimum()
-            modalCoefs = np.zeros(self.wfcDims, dtype=self.wfcDtype)
+            super().apply_optimum()
+            modal_coefs = np.zeros(self.wfc_dims, dtype=self.wfc_dtype)
             for k in self.study.best_params.keys():
-                modalCoefs[int(k)] = self.study.best_params[k]
+                modal_coefs[int(k)] = self.study.best_params[k]
 
-            if self.isCL:
-                refSlopesAdjust = np.zeros_like(self.origRefSlopes)
-                refSlopesAdjust[self.validSubAps] = self.IM @ modalCoefs
-                refSlopes = self.origRefSlopes + refSlopesAdjust
+            if self.is_cl:
+                ref_slopes_adjust = np.zeros_like(self.orig_ref_slopes)
+                ref_slopes_adjust[self.valid_sub_aps] = self.IM @ modal_coefs
+                ref_slopes = self.orig_ref_slopes + ref_slopes_adjust
                 if overwrite:
-                    np.save(self.refSlopesFile, refSlopes)
-                    self.slopes.setProperty("refSlopesFile", self.refSlopesFile)
+                    np.save(self.ref_slopes_file, ref_slopes)
+                    self.slopes.set_property("ref_slopes_file", self.ref_slopes_file)
                 else:
-                    np.save(self.newRefSlopesFile, refSlopes)
-                    self.slopes.setProperty("refSlopesFile", self.newRefSlopesFile)
+                    np.save(self.new_ref_slopes_file, ref_slopes)
+                    self.slopes.set_property("ref_slopes_file", self.new_ref_slopes_file)
 
-                self.slopes.run("loadRefSlopes")
-                self.slopes.setProperty("refSlopesFile", self.refSlopesFile)
+                self.slopes.run("load_ref_slopes")
+                self.slopes.set_property("ref_slopes_file", self.ref_slopes_file)
                 self.logger.info("Applied optimum NCPA correction in closed-loop mode overwrite=%s", overwrite)
             else:
-                self.wfcShm.write(modalCoefs)
+                self.wfc_shm.write(modal_coefs)
                 self.logger.info("Applied optimum NCPA correction in open-loop mode")
         except Exception:
             self.logger.exception("Failed to apply optimum NCPA correction")
@@ -137,18 +137,18 @@ class NCPAOptimizer(Optimizer):
     
     def optimize(self):
         try:
-            self.refSlopesFile = self.slopes.getProperty("refSlopesFile")
-            self.isCL = self.loop.getProperty("running")
-            if self.isCL:
-                self.validSubAps = np.load(self.slopes.getProperty("validSubApsFile"))
-                self.IM = np.load(self.loop.getProperty("IMFile"))
+            self.ref_slopes_file = self.slopes.get_property("ref_slopes_file")
+            self.is_cl = self.loop.get_property("running")
+            if self.is_cl:
+                self.valid_sub_aps = np.load(self.slopes.get_property("valid_sub_aps_file"))
+                self.IM = np.load(self.loop.get_property("im_file"))
 
-                self.origRefSlopes = np.load(self.refSlopesFile)
-                self.newRefSlopesFile = get_tmp_filepath(self.refSlopesFile)
+                self.orig_ref_slopes = np.load(self.ref_slopes_file)
+                self.new_ref_slopes_file = get_tmp_filepath(self.ref_slopes_file)
 
-            self.logger.info("Starting NCPA optimization closed_loop=%s", self.isCL)
+            self.logger.info("Starting NCPA optimization closed_loop=%s", self.is_cl)
             super().optimize()
-            self.slopes.setProperty("refSlopesFile", self.refSlopesFile)
+            self.slopes.set_property("ref_slopes_file", self.ref_slopes_file)
             self.logger.info("Completed NCPA optimization")
         except Exception:
             self.logger.exception("Failed during NCPA optimization")

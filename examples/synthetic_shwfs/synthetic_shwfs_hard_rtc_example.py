@@ -4,7 +4,7 @@ This is the hard-RTC companion to ``synthetic_shwfs_soft_rtc_example.py``.
 It uses the same YAML file, but switches behavior at the manager call with
 ``RTCManager.from_config_file(..., mode="hard")``. In hard mode,
 ``manager.get_component(...)`` returns a control proxy, so parameters are read
-and written with ``getProperty`` and ``setProperty`` and methods are called via
+and written with ``get_property`` and ``set_property`` and methods are called via
 ``run``.
 """
 
@@ -22,9 +22,9 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 
-from pyRTC import Telemetry
-from pyRTC.Pipeline import RTCManager, clear_shms, open_stream
-from pyRTC.logging_utils import add_logging_cli_args, configure_logging_from_args, get_logger
+from pyrtc import Telemetry
+from pyrtc.pipeline import RTCManager, clear_shms, open_stream
+from pyrtc.logging_utils import add_logging_cli_args, configure_logging_from_args, get_logger
 from examples.synthetic_shwfs.aotpy_helpers import export_synthetic_session_to_aotpy
 
 
@@ -32,13 +32,13 @@ logger = get_logger("examples.synthetic_shwfs.hard")
 CONFIG_PATH = REPO_ROOT / "examples" / "synthetic_shwfs" / "config.yaml"
 DEFAULT_STREAMS = [
     "wfs",
-    "wfsRaw",
+    "wfs_raw",
     "wfc",
-    "wfc2D",
+    "wfc_2d",
     "signal",
-    "signal2D",
-    "psfShort",
-    "psfLong",
+    "signal_2d",
+    "psf_short",
+    "psf_long",
     "strehl",
     "tiptilt",
 ]
@@ -57,7 +57,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--no-clear-shms",
         action="store_true",
-        help="Leave existing pyRTC shared-memory streams in place.",
+        help="Leave existing pyrtc shared-memory streams in place.",
     )
     parser.add_argument(
         "--no-calibration",
@@ -82,26 +82,26 @@ def ensure_synthetic_interaction_matrix(config: dict) -> Path:
     integrator actually close the loop and converge.
     """
 
-    from pyRTC.hardware.SyntheticSystems import (
+    from pyrtc.hardware.synthetic_systems import (
         _default_wfc_layout,
         build_synthetic_shwfs_response_matrix,
     )
 
     wfs_conf = config["wfs"]
     slopes_conf = config["slopes"]
-    output_path = Path(config["loop"]["IMFile"])
-    num_modes = int(config["wfc"]["numModes"])
+    output_path = Path(config["loop"]["im_file"])
+    num_modes = int(config["wfc"]["num_modes"])
 
     image_width = int(wfs_conf["width"])
     image_height = int(wfs_conf["height"])
-    downsample = int(wfs_conf.get("downsampleFactor", 0))
+    downsample = int(wfs_conf.get("downsample_factor", 0))
     if downsample > 0:
         image_width //= downsample
         image_height //= downsample
 
-    subap_spacing = int(slopes_conf["subApSpacing"])
+    subap_spacing = int(slopes_conf["sub_ap_spacing"])
     num_regions = min(image_width, image_height) // subap_spacing
-    layout = _default_wfc_layout(int(config["wfc"]["numActuators"]))
+    layout = _default_wfc_layout(int(config["wfc"]["num_actuators"]))
     interaction_matrix = build_synthetic_shwfs_response_matrix(num_regions, num_modes, layout)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -152,7 +152,7 @@ def main(argv=None) -> int:
     logger.info("Config: %s", CONFIG_PATH)
     logger.info("Manager call: RTCManager.from_config_file(CONFIG_PATH, mode='hard')")
     logger.info("Interaction matrix: %s", im_path)
-    logger.info("Viewer: pyrtc-view wfs signal2D psfShort psfLong --geometry 2x2")
+    logger.info("Viewer: pyrtc-view wfs signal_2d psf_short psf_long --geometry 2x2")
 
     # Step 4: start the full stack in child processes.
     manager.start()
@@ -162,8 +162,8 @@ def main(argv=None) -> int:
         loop = manager.get_component("loop")
         wfc = manager.get_component("wfc")
 
-        starting_gain = loop.getProperty("gain")
-        logger.info("Hard mode proxy read: loop.getProperty('gain') -> %s", starting_gain)
+        starting_gain = loop.get_property("gain")
+        logger.info("Hard mode proxy read: loop.get_property('gain') -> %s", starting_gain)
 
         # Methods are invoked remotely with run(...).
         wfc.run("flatten")
@@ -174,26 +174,26 @@ def main(argv=None) -> int:
         if args.no_calibration:
             logger.info("Skipping IM calibration (--no-calibration)")
         else:
-            logger.info("Calibrating IM remotely: loop.run('computeIM') — takes a few seconds")
+            logger.info("Calibrating IM remotely: loop.run('compute_im') — takes a few seconds")
             loop.run("stop")
             loop.run("flatten")
             calibration_start = time.perf_counter()
-            # computeIM runs much longer than the default RPC timeout, so
+            # compute_im runs much longer than the default RPC timeout, so
             # this call carries its own per-call timeout.
-            loop.run("computeIM", timeout=120.0)
+            loop.run("compute_im", timeout=120.0)
             logger.info(
                 "Calibration finished in %.1fs; closing the loop",
                 time.perf_counter() - calibration_start,
             )
             loop.run("start")
 
-        logger.info("Hard mode proxy write: loop.setProperty('gain', 0.30)")
-        loop.setProperty("gain", 0.30)
-        logger.info("Remote loop gain is now %s", loop.getProperty("gain"))
+        logger.info("Hard mode proxy write: loop.set_property('gain', 0.30)")
+        loop.set_property("gain", 0.30)
+        logger.info("Remote loop gain is now %s", loop.get_property("gain"))
 
         # Telemetry works the same way in hard mode because it only reads the
         # published streams and saves them for offline use.
-        telem = Telemetry({"dataDir": str(REPO_ROOT / "examples" / "synthetic_shwfs" / "telemetry")})
+        telem = Telemetry({"data_dir": str(REPO_ROOT / "examples" / "synthetic_shwfs" / "telemetry")})
         telem.save(["wfs", "wfc"], 10)
         telemetry_data = telem.read_last_save()
         logger.info(

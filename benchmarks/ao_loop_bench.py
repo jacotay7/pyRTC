@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-"""Synthetic closed-loop benchmark suite for pyRTC AO pipelines.
+"""Synthetic closed-loop benchmark suite for pyrtc AO pipelines.
 
 This module measures end-to-end loop iterations for representative pyramid and
 Shack-Hartmann synthetic systems on CPU and, when available, GPU. The output is
@@ -16,10 +16,10 @@ from typing import Any, Callable
 import numpy as np
 
 from benchmarks.core_compute_bench import collect_system_info
-from pyRTC.logging_utils import add_logging_cli_args, configure_logging_from_args, get_logger
-from pyRTC.Loop import leakyIntegratorNumba
-from pyRTC.Pipeline import gpu_torch_available
-from pyRTC.SlopesProcess import computeSlopesPYWFSOptimNumba, computeSlopesPYWFSTorch, computeSlopesSHWFSOptimNumba
+from pyrtc.logging_utils import add_logging_cli_args, configure_logging_from_args, get_logger
+from pyrtc.loop import leaky_integrator_numba
+from pyrtc.pipeline import gpu_torch_available
+from pyrtc.slopes_process import compute_slopes_pywfs_optim_numba, compute_slopes_pywfs_torch, compute_slopes_shwfs_optim_numba
 
 
 logger = get_logger(__name__)
@@ -197,7 +197,7 @@ def _build_pywfs_cpu_step(grid_size: int) -> Callable[[], None]:
         image[2 * num_pixels : 3 * num_pixels] = flux * (1.0 - sx + sy)
         image[3 * num_pixels : 4 * num_pixels] = flux * (1.0 - sx - sy)
 
-        measured_slopes = computeSlopesPYWFSOptimNumba(
+        measured_slopes = compute_slopes_pywfs_optim_numba(
             image,
             p1_mask,
             p2_mask,
@@ -213,7 +213,7 @@ def _build_pywfs_cpu_step(grid_size: int) -> Callable[[], None]:
             slopes,
             ref_slopes,
         )
-        leakyIntegratorNumba(measured_slopes, reconstruction, correction, correction_buffer, leak, num_modes - 1)
+        leaky_integrator_numba(measured_slopes, reconstruction, correction, correction_buffer, leak, num_modes - 1)
         np.clip(correction_buffer, -1.0, 1.0, out=correction)
 
     return step
@@ -250,7 +250,7 @@ def _build_shwfs_cpu_step(grid_size: int) -> Callable[[], None]:
         image[1::2, 0::2] = flux * (1.0 - sx + sy)
         image[1::2, 1::2] = flux * (1.0 + sx + sy)
 
-        measured = computeSlopesSHWFSOptimNumba(
+        measured = compute_slopes_shwfs_optim_numba(
             image,
             slopes_2d,
             ref_2d,
@@ -261,7 +261,7 @@ def _build_shwfs_cpu_step(grid_size: int) -> Callable[[], None]:
             0,
             2,
         ).reshape(signal_size)
-        leakyIntegratorNumba(measured, reconstruction, correction, correction_buffer, leak, num_modes - 1)
+        leaky_integrator_numba(measured, reconstruction, correction, correction_buffer, leak, num_modes - 1)
         np.clip(correction_buffer, -1.0, 1.0, out=correction)
 
     return step
@@ -340,7 +340,7 @@ def _build_pywfs_gpu_step(grid_size: int) -> tuple[Callable[[], None], Callable[
         image[2 * num_pixels : 3 * num_pixels] = flux * (1.0 - sx + sy)
         image[3 * num_pixels : 4 * num_pixels] = flux * (1.0 - sx - sy)
 
-        measured = computeSlopesPYWFSTorch(
+        measured = compute_slopes_pywfs_torch(
             image,
             p1_mask_t,
             p2_mask_t,

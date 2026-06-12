@@ -1,6 +1,6 @@
-﻿pyRTC.streams
+﻿pyrtc.streams
 =============
 
-.. automodule:: pyRTC.streams
+.. automodule:: pyrtc.streams
    :members:
    :undoc-members:
