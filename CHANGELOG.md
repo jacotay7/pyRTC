@@ -6,6 +6,13 @@ All notable changes to `pyrtcao` will be documented in this file.
 
 ### Fixed
 
+- **Integrator kernel wrote past the correction array** (#38).
+	`leaky_integrator_numba` iterated `num_active_modes + 1` modes, so with no
+	dropped modes (the default) every `standard_integrator`/`leaky_integrator`
+	step wrote one element out of bounds, and with dropped modes the first
+	dropped mode was still driven. It now controls exactly the active modes,
+	zeroes the rest, fills the caller's buffer instead of allocating, and the
+	GPU path has identical semantics.
 - **`manager.latency()` no longer crashes in the synthetic tutorial.**
 	Component classes referenced by `class_file` are now resolved to their
 	canonical modules (`pyrtc.component_loading`, one shared implementation

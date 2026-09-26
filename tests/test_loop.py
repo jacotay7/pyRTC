@@ -1,7 +1,10 @@
+import importlib
+
 import numpy as np
+import pyshmem
+import pytest
 
 from testsupport import private_stream
-import importlib
 
 loop_mod = importlib.import_module("pyrtc.loop")
 
@@ -14,6 +17,7 @@ def test_loop_helper_functions(monkeypatch):
 
     out = loop_mod.leaky_integrator_numba(slopes, cm, old, correction, np.float32(0.1), 1)
     assert out.shape == (2,)
+    assert out is correction
 
     assert np.array_equal(loop_mod.comp_correction(cm, slopes), slopes)
     upd = loop_mod.update_correction(np.array([1.0, 1.0], dtype=np.float32), cm, slopes)
@@ -25,6 +29,55 @@ def test_loop_helper_functions(monkeypatch):
         assert False
     except ImportError:
         assert True
+
+
+def _integrator_case(num_modes=4, num_slopes=6, seed=0):
+    rng = np.random.default_rng(seed)
+    slopes = rng.standard_normal(num_slopes).astype(np.float32)
+    recon = rng.standard_normal((num_modes, num_slopes)).astype(np.float32)
+    old = rng.standard_normal(num_modes).astype(np.float32)
+    return slopes, recon, old
+
+
+@pytest.mark.parametrize("dropped", [0, 1, 3])
+def test_leaky_integrator_controls_only_active_modes(dropped):
+    slopes, recon, old = _integrator_case()
+    num_active = recon.shape[0] - dropped
+    leak = np.float32(0.1)
+    expected = (1 - leak) * old - recon @ slopes
+    expected[num_active:] = 0
+
+    out = loop_mod.leaky_integrator_numba(slopes, recon, old, np.empty_like(old), leak, num_active)
+
+    np.testing.assert_allclose(out, expected, rtol=1e-5, atol=1e-6)
+
+
+def test_leaky_integrator_never_writes_past_the_correction_buffer():
+    slopes, recon, old = _integrator_case()
+    backing = np.full(recon.shape[0] + 1, 123.0, dtype=np.float32)
+    correction = backing[: recon.shape[0]]
+
+    loop_mod.leaky_integrator_numba(slopes, recon, old, correction, np.float32(0), recon.shape[0])
+
+    assert backing[-1] == 123.0
+
+
+@pytest.mark.gpu
+@pytest.mark.skipif(not pyshmem.gpu_available(), reason="CUDA is not available")
+@pytest.mark.parametrize("dropped", [0, 2])
+def test_gpu_integrator_matches_cpu(dropped):
+    import torch
+
+    slopes, recon, old = _integrator_case()
+    num_active = recon.shape[0] - dropped
+    cpu = loop_mod.leaky_integrator_numba(
+        slopes, recon, old, np.empty_like(old), np.float32(0.05), num_active
+    )
+    gpu = loop_mod.leak_integrator_gpu(
+        slopes, torch.as_tensor(recon, device="cuda"), old, 0.05, num_active
+    )
+
+    np.testing.assert_allclose(gpu, cpu, rtol=1e-4, atol=1e-5)
 
 
 def test_loop_methods_without_full_init(tmp_path):
@@ -127,7 +180,7 @@ def test_loop_methods_without_full_init(tmp_path):
 def test_standard_integrator_uses_nonblocking_wfc_read():
     loop = loop_mod.Loop.__new__(loop_mod.Loop)
     loop.g_cm = np.eye(4, dtype=np.float32) * 0.25
-    loop.null_correction = np.zeros(4, dtype=np.float32)
+    loop._correction_buffer = np.zeros(4, dtype=np.float32)
     loop.num_active_modes = 3
 
     sent = {}

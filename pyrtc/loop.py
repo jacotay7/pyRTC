@@ -42,18 +42,17 @@ def leaky_integrator_numba(
     leak: np.float32,
     num_active_modes: int,
 ) -> np.ndarray:
+    """Leaky-integrator update written into ``correction``.
 
-    # Perform the matrix-vector multiplication using np.dot
-    correction = np.dot(reconstruction_matrix, slopes)
-
-    # Apply the leaky integrator formula with an unrolled loop
-    for i in range(num_active_modes + 1):
-        correction[i] = (1 - leak) * old_correction[i] - correction[i]
-
-    # Zero out the rest of the correction vector
-    for i in range(num_active_modes + 1, correction.size):
+    ``correction[:n] = (1 - leak) * old_correction[:n] - R[:n] @ slopes`` for
+    the ``n = num_active_modes`` controlled modes; the remaining (dropped)
+    modes are set to zero. ``correction`` is filled in place and returned.
+    """
+    update = np.dot(reconstruction_matrix[:num_active_modes], slopes)
+    for i in range(num_active_modes):
+        correction[i] = (1 - leak) * old_correction[i] - update[i]
+    for i in range(num_active_modes, correction.size):
         correction[i] = 0.0
-
     return correction
 
 
@@ -64,7 +63,7 @@ def leak_integrator_gpu(
     leak: float,
     num_active_modes: int,
 ):
-    """Run the leaky-integrator control update on a CUDA-backed torch matrix."""
+    """GPU counterpart of :func:`leaky_integrator_numba` (same semantics)."""
 
     if not gpu_torch_available():
         raise ImportError(
@@ -73,10 +72,12 @@ def leak_integrator_gpu(
 
     import torch
 
-    slopes_gpu = torch.tensor(slopes, device="cuda")
-    correction_gpu = torch.matmul(reconstruction_matrix, slopes_gpu)
-    correction_gpu[num_active_modes:] = 0
-    return np.subtract((1 - leak) * old_correction, correction_gpu.cpu().numpy())
+    slopes_gpu = torch.as_tensor(slopes, device=reconstruction_matrix.device)
+    update = torch.matmul(reconstruction_matrix[:num_active_modes], slopes_gpu).cpu().numpy()
+    correction = (1 - leak) * np.asarray(old_correction, dtype=update.dtype)
+    correction[:num_active_modes] -= update
+    correction[num_active_modes:] = 0
+    return correction
 
 
 @jit(nopython=True, nogil=True, cache=False, fastmath=True)
@@ -310,6 +311,7 @@ class Loop(Component):
             self.num_active_modes = self.num_modes - self.num_dropped_modes
             self.flat = np.zeros(self.num_modes, dtype=self.wfc_dtype)
             self.null_correction = np.zeros_like(self.flat)
+            self._correction_buffer = np.zeros_like(self.flat)
 
             self.im = np.zeros((self.signal_size, self.num_modes), dtype=self.signal_dtype)
             self.cm = np.zeros((self.num_modes, self.signal_size), dtype=self.signal_dtype)
@@ -897,7 +899,7 @@ class Loop(Component):
             slopes,
             self.g_cm,
             self.read_stream("wfc", block=False, out=self._wfc_buffer).squeeze(),
-            self.null_correction,
+            self._correction_buffer,
             np.float32(0),  # No leak
             self.num_active_modes,
         )
@@ -913,7 +915,7 @@ class Loop(Component):
             slopes,
             self.g_cm,
             self.read_stream("wfc", block=False, out=self._wfc_buffer).squeeze(),
-            self.null_correction,
+            self._correction_buffer,
             np.float32(self.leaky_gain),
             self.num_active_modes,
         )

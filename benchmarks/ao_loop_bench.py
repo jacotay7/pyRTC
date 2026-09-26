@@ -224,7 +224,7 @@ def _build_pywfs_cpu_step(grid_size: int) -> Callable[[], None]:
             ref_slopes,
         )
         leaky_integrator_numba(
-            measured_slopes, reconstruction, correction, correction_buffer, leak, num_modes - 1
+            measured_slopes, reconstruction, correction, correction_buffer, leak, num_modes
         )
         np.clip(correction_buffer, -1.0, 1.0, out=correction)
 
@@ -274,7 +274,7 @@ def _build_shwfs_cpu_step(grid_size: int) -> Callable[[], None]:
             2,
         ).reshape(signal_size)
         leaky_integrator_numba(
-            measured, reconstruction, correction, correction_buffer, leak, num_modes - 1
+            measured, reconstruction, correction, correction_buffer, leak, num_modes
         )
         np.clip(correction_buffer, -1.0, 1.0, out=correction)
 
