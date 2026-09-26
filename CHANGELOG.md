@@ -6,6 +6,12 @@ All notable changes to `pyrtcao` will be documented in this file.
 
 ### Fixed
 
+- **Coverage now measures the whole package** (#47). The gate listed
+	dotted submodules, which left the control core (`loop`, `slopes_process`,
+	`wavefront_sensor`, `manager`) unmeasured and made coverage re-import numpy
+	mid-session (the cause of intermittent `_NoValueType` errors and torch
+	segfaults under `pytest`). The gate is 70% of the whole package, excluding
+	only the display-bound Qt windows.
 - **Strehl estimate is now flux-normalized** (#43). `compute_strehl()`
 	compared raw peaks (`max(current) / max(model)`), so the value scaled with
 	source brightness and exposure time — and the PID/NCPA/hyperparameter
