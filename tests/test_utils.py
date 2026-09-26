@@ -1,5 +1,4 @@
 import io
-import logging
 import os
 import threading
 
@@ -115,20 +114,28 @@ def test_set_affinity_pins_only_the_calling_thread(request_cores):
     assert os.sched_getaffinity(0) == before
 
 
-def test_raise_thread_priority_warns_once_without_permission(monkeypatch, caplog):
+def test_raise_thread_priority_warns_once_without_permission(monkeypatch):
     def _denied(*_args):
         raise PermissionError("not permitted")
+
+    warnings = []
+
+    class _RecordingLogger:
+        def warning(self, message, *args):
+            warnings.append(message % args)
 
     monkeypatch.setattr(utils.sys, "platform", "linux")
     monkeypatch.setattr(utils.os, "setpriority", _denied, raising=False)
     monkeypatch.setattr(utils.os, "PRIO_PROCESS", 0, raising=False)
     monkeypatch.setattr(utils, "_PRIORITY_WARNING_EMITTED", False)
-    with caplog.at_level(logging.WARNING):
-        assert utils.raise_thread_priority() is None
-        assert utils.raise_thread_priority() is None
-    warnings = [r for r in caplog.records if "Could not raise thread priority" in r.message]
+    monkeypatch.setattr(utils, "logger", _RecordingLogger())
+
+    assert utils.raise_thread_priority() is None
+    assert utils.raise_thread_priority() is None
+
     assert len(warnings) == 1
-    assert "sudo" not in warnings[0].message
+    assert "Could not raise thread priority" in warnings[0]
+    assert "sudo" not in warnings[0]
 
 
 def test_decrease_nice_accepts_legacy_pid_argument(monkeypatch):
