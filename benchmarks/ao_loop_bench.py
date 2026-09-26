@@ -18,7 +18,7 @@ import numpy as np
 from benchmarks.core_compute_bench import collect_system_info
 from pyrtc.logging_utils import add_logging_cli_args, configure_logging_from_args, get_logger
 from pyrtc.loop import leaky_integrator_numba
-from pyrtc.pipeline import gpu_torch_available
+from pyrtc.streams import gpu_torch_available
 from pyrtc.slopes_process import (
     compute_slopes_pywfs_optim_numba,
     compute_slopes_pywfs_torch,

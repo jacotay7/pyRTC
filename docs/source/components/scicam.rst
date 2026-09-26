@@ -36,7 +36,7 @@ If the science camera is tied to a specific vendor SDK or operational process bo
 
 .. code-block:: python
   
-  from pyrtc.pipeline import HardwareLauncher
+  from pyrtc import HardwareLauncher
 
   config = 'path/to/config.yaml'
   port = 3003

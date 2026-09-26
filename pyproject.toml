@@ -35,7 +35,7 @@ classifiers = [
 ]
 dependencies = [
 	"numpy>=1.26,<2.3",
-	"pyshmem>=1.0.5",
+	"pyshmem>=1.3.2",
 	"matplotlib",
 	"PyYAML",
 	"numba",
@@ -85,7 +85,6 @@ docs = [
 [project.scripts]
 pyrtc-view = "pyrtc.scripts.view:main"
 pyrtc-shm-monitor = "pyrtc.scripts.shm_monitor:main"
-pyrtc-clear-shms = "pyrtc.scripts.clear_shms:main"
 pyrtc-view-launch-all = "pyrtc.scripts.view_launch_all:main"
 pyrtc-measure-latency = "pyrtc.scripts.measure_latency:main"
 pyrtc-validate-config = "pyrtc.scripts.validate_config:main"

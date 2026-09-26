@@ -19,7 +19,7 @@ if str(REPO_ROOT) not in sys.path:
 
 
 from pyrtc.loop import Loop
-from pyrtc.pipeline import clear_shms
+from pyrtc import clear_shms
 from pyrtc.slopes_process import SlopesProcess
 from pyrtc.config_schema import read_system_config
 from pyrtc.hardware.synthetic_systems import (
@@ -52,15 +52,15 @@ def read_yaml_file(file_path):
 
 
 def expected_stream_specs(config: dict) -> dict:
-    from pyrtc.pipeline import expected_output_shm_specs_for_config
+    from pyrtc.streams import expected_output_shm_specs_for_config
 
     return expected_output_shm_specs_for_config(config)
 
 
 def _existing_shm_spec(name: str):
-    from pyrtc.pipeline import _existing_shm_spec as _pipeline_existing_shm_spec
+    from pyrtc.streams import _existing_shm_spec as _streams_existing_shm_spec
 
-    return _pipeline_existing_shm_spec(name)
+    return _streams_existing_shm_spec(name)
 
 
 def clear_named_shms(names):

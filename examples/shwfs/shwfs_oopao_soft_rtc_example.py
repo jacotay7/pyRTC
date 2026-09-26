@@ -14,7 +14,7 @@ if str(REPO_ROOT) not in sys.path:
 
 
 from pyrtc.loop import Loop
-from pyrtc.pipeline import clear_shms
+from pyrtc import clear_shms
 from pyrtc.slopes_process import SlopesProcess
 from pyrtc.logging_utils import add_logging_cli_args, configure_logging_from_args, get_logger
 from pyrtc.utils import read_yaml_file

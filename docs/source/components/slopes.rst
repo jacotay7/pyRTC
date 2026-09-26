@@ -87,7 +87,7 @@ See above for how to launch a soft-RTC equivalent.
 
 .. code-block:: python
 
-  from pyrtc.pipeline import HardwareLauncher
+  from pyrtc import HardwareLauncher
 
   """
   For the Hard-RTC, you will need to set-up a config before hand and store it in a yaml file.

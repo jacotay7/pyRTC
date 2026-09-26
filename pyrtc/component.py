@@ -12,6 +12,7 @@ import os
 import threading
 from typing import Any
 
+from pyrtc.config_runtime import stream_alias_map
 from pyrtc.logging_utils import ensure_logging_configured, get_logger
 from pyrtc.manager import launch_component, work
 from pyrtc.streams import normalize_gpu_device
@@ -142,21 +143,7 @@ class Component:
         return defaults
 
     def _normalize_stream_name_map(self, raw_mapping: Any, *, direction: str) -> dict[str, str]:
-        normalized = self._default_stream_name_map(direction)
-        if not isinstance(raw_mapping, dict):
-            return normalized
-        for semantic_name, value in raw_mapping.items():
-            if not isinstance(semantic_name, str) or not semantic_name.strip():
-                continue
-            if isinstance(value, str):
-                shm_name = value.strip()
-            elif isinstance(value, dict):
-                shm_name = str(value.get("shm", value.get("name", semantic_name))).strip()
-            else:
-                continue
-            if shm_name:
-                normalized[str(semantic_name)] = shm_name
-        return normalized
+        return stream_alias_map(raw_mapping, defaults=self._default_stream_name_map(direction))
 
     def input_stream_name(self, stream_name: str) -> str:
         self._ensure_stream_state()

@@ -12,7 +12,7 @@ import logging
 import numpy as np
 import pyshmem
 
-from pyrtc.config_runtime import sync_runtime_config
+from pyrtc.config_runtime import stream_alias_map, sync_runtime_config
 from pyrtc.logging_utils import get_logger
 
 logger = get_logger(__name__)
@@ -169,7 +169,7 @@ def expected_output_shm_specs_for_config(system_conf: dict) -> dict[str, dict[st
 
     wfs_conf = system_conf.get("wfs")
     if isinstance(wfs_conf, dict):
-        output_aliases = _stream_aliases(wfs_conf, "output_streams")
+        output_aliases = stream_alias_map(wfs_conf.get("output_streams"))
         width = int(wfs_conf.get("width", 1))
         height = int(wfs_conf.get("height", 1))
         downsample = int(wfs_conf.get("downsample_factor", 0) or 0)
@@ -184,7 +184,7 @@ def expected_output_shm_specs_for_config(system_conf: dict) -> dict[str, dict[st
 
     slopes_conf = system_conf.get("slopes")
     if isinstance(slopes_conf, dict) and isinstance(wfs_conf, dict):
-        output_aliases = _stream_aliases(slopes_conf, "output_streams")
+        output_aliases = stream_alias_map(slopes_conf.get("output_streams"))
         wfs_type = str(slopes_conf.get("type", "SHWFS")).lower()
         if wfs_type == "shwfs":
             downsample = int(wfs_conf.get("downsample_factor", 0) or 0)
@@ -229,7 +229,7 @@ def expected_output_shm_specs_for_config(system_conf: dict) -> dict[str, dict[st
 
     wfc_conf = system_conf.get("wfc")
     if isinstance(wfc_conf, dict):
-        output_aliases = _stream_aliases(wfc_conf, "output_streams")
+        output_aliases = stream_alias_map(wfc_conf.get("output_streams"))
         num_modes = int(wfc_conf.get("num_modes", 1))
         specs[output_aliases.get("wfc", "wfc")] = {"shape": (num_modes,), "dtype": np.float32}
         display_grid_size = int(wfc_conf.get("display_grid_size", 33))
@@ -241,7 +241,7 @@ def expected_output_shm_specs_for_config(system_conf: dict) -> dict[str, dict[st
 
     psf_conf = system_conf.get("psf")
     if isinstance(psf_conf, dict):
-        output_aliases = _stream_aliases(psf_conf, "output_streams")
+        output_aliases = stream_alias_map(psf_conf.get("output_streams"))
         psf_shape = (int(psf_conf.get("width", 1)), int(psf_conf.get("height", 1)))
         specs[output_aliases.get("psf_short", "psf_short")] = {
             "shape": psf_shape,
@@ -286,22 +286,3 @@ def reconcile_expected_output_shms(
     if reused:
         logger.debug("Reused matching SHMs: %s", ", ".join(reused))
     return rebuilt, reused
-
-
-def _stream_aliases(section_conf: dict, mapping_name: str) -> dict[str, str]:
-    raw_mapping = section_conf.get(mapping_name, {})
-    aliases: dict[str, str] = {}
-    if not isinstance(raw_mapping, dict):
-        return aliases
-    for semantic_name, value in raw_mapping.items():
-        if not isinstance(semantic_name, str):
-            continue
-        if isinstance(value, str):
-            shm_name = value.strip()
-        elif isinstance(value, dict):
-            shm_name = str(value.get("shm", value.get("name", semantic_name))).strip()
-        else:
-            continue
-        if shm_name:
-            aliases[semantic_name] = shm_name
-    return aliases

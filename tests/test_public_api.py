@@ -16,7 +16,7 @@ def test_package_root_imports():
 
 
 def test_package_exposes_module_helpers():
-    assert pyrtc.pipeline is not None
+    assert pyrtc.streams is not None
     assert pyrtc.utils is not None
     assert callable(pyrtc.set_from_config)
     assert callable(pyrtc.launch_component)

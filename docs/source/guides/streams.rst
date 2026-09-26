@@ -31,10 +31,29 @@ Producers (components that own an output) call
 
 ``create_stream`` reuses an existing stream when its shape and dtype already
 match (so viewers stay attached across component restarts) and rebuilds it
-otherwise. Each stream natively carries a write counter (``stream.count``)
-and the timestamp of the last completed write (``stream.write_time``); the
-latency tooling in :mod:`pyrtc.latency` is built entirely on those two
-fields.
+otherwise. Observers that must never write (viewers, telemetry, latency
+probes) pass ``readonly=True`` to ``open_stream``.
+
+Publication metadata
+--------------------
+
+Every completed write is a *publication* carrying a write counter
+(``stream.count``), its wall-clock time (``stream.write_time``) and a user
+``frame_id``. ``stream.read_publication()`` returns the payload together with
+the metadata of that same write, which is how telemetry records timestamps.
+
+Inside components, :meth:`pyrtc.component.Component.read_stream` and
+:meth:`~pyrtc.component.Component.write_stream` handle this for you:
+
+- ``read_stream(name)`` *consumes* the stream: it returns the first write newer
+  than the one it returned last time (the first call returns immediately).
+  ``read_stream(name, block=False)`` only peeks and does not consume.
+- Reading a registered input records its ``frame_id``, and ``write_stream``
+  stamps it on the outputs. The wavefront sensor numbers each exposure, so a
+  ``wfc`` command carries the id of the WFS frame it was computed from.
+  :mod:`pyrtc.latency` uses these ids to pair writes across streams exactly,
+  and falls back to aligning write counts for producers that do not stamp
+  frame ids.
 
 GPU streams
 -----------
@@ -46,8 +65,9 @@ CUDA tensor shared across processes, always paired with a CPU mirror:
   arrays — this is what viewers and telemetry use.
 - ``open_stream(name, gpu_device="cuda:N")`` attaches the producer's CUDA
   tensor and reads return ``torch.Tensor`` objects on that device.
-- If CUDA, torch, or the dtype is unsupported (e.g. ``uint16``), stream
-  creation falls back to a CPU stream with a warning rather than failing.
+- If CUDA or torch is unavailable, or the dtype is not in
+  ``pyshmem.GPU_SUPPORTED_DTYPES``, stream creation falls back to a CPU stream
+  with a warning rather than failing.
 
 Inspecting and cleaning up
 --------------------------
@@ -58,10 +78,10 @@ The ``pyshmem`` CLI works on all pyrtc streams:
 
    pyshmem list            # user-visible names of all live streams
    pyshmem unlink wfs      # destroy one stream
-   pyshmem purge           # remove ALL pyshmem segments (incl. CUDA handles)
+   pyshmem purge           # remove ALL pyshmem streams on this machine
 
-pyrtc also ships ``pyrtc-clear-shms`` for clearing the standard stream names
-of a system.
+From Python, :func:`pyrtc.streams.clear_shms` destroys a list of streams and
+ignores names that do not exist.
 
 Platform notes
 --------------

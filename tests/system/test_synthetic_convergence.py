@@ -10,7 +10,7 @@ from pathlib import Path
 
 import numpy as np
 
-from pyrtc.pipeline import RTCManager, clear_shms, open_stream
+from pyrtc import RTCManager, clear_shms, open_stream
 from pyrtc.config_schema import read_system_config
 
 REPO_ROOT = Path(__file__).resolve().parents[2]

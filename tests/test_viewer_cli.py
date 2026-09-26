@@ -1,37 +1,12 @@
 import numpy as np
 
 from pyrtc.scripts import view
-from pyrtc.scripts import clear_shms, view_launch_all
+from pyrtc.scripts import view_launch_all
 from pyrtc.scripts import viewer_core
 from pyrtc.scripts import viewer_helpers
 from pyrtc.scripts.viewer_helpers import StreamConnection
 from pyrtc.scripts.viewer_helpers import format_shape
 from pyrtc.scripts.viewer_core import MosaicViewerWindow
-
-
-def test_clear_shms_default(monkeypatch):
-    called = {}
-
-    def _clear(names):
-        called["names"] = list(names)
-
-    monkeypatch.setattr(clear_shms.streams, "clear_shms", _clear)
-    code = clear_shms.main([])
-
-    assert code == 0
-    assert called["names"] == clear_shms.DEFAULT_SHM_NAMES
-
-
-def test_clear_shms_custom(monkeypatch):
-    called = {}
-
-    def _clear(names):
-        called["names"] = list(names)
-
-    monkeypatch.setattr(clear_shms.streams, "clear_shms", _clear)
-    clear_shms.main(["foo", "bar"])
-
-    assert called["names"] == ["foo", "bar"]
 
 
 def test_view_launch_all_uses_pyrtc_view_commands():

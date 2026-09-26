@@ -2,7 +2,7 @@
 
 All notable changes to `pyrtcao` will be documented in this file.
 
-## 1.1.0 - 2026-06-11
+## 1.1.0 - Unreleased
 
 ### Fixed
 
@@ -39,32 +39,53 @@ All notable changes to `pyrtcao` will be documented in this file.
 
 ### Changed
 
-- **`pyrtc.pipeline` split into focused modules**: `pyrtc.streams` (pyshmem
+- **The import package is now `pyrtc` (was `pyRTC`), with PEP 8 module
+	names**: `pyRTC.Loop` → `pyrtc.loop`, `pyRTC.SlopesProcess` →
+	`pyrtc.slopes_process`, `pyRTC.pyRTCComponent` → `pyrtc.component`
+	(class `Component`), `pyRTC.hardware.SyntheticSystems` →
+	`pyrtc.hardware.synthetic_systems`, and so on. There are no
+	compatibility aliases; update imports and config `class_name` paths.
+- **`pyRTC.Pipeline` split into focused modules**: `pyrtc.streams` (pyshmem
 	stream policy + SHM planning), `pyrtc.rpc` (launcher/listener protocol),
 	`pyrtc.manager` (component runtimes + `RTCManager`), and
-	`pyrtc.component_loading`. `pyrtc.pipeline` remains as a re-export shim
-	for one release.
+	`pyrtc.component_loading`. There is no `pyrtc.pipeline` module; the
+	public names are also exported from the `pyrtc` package root.
+- The `pyrtc-clear-shms` CLI is removed. Streams are pyshmem streams, so
+	use `pyshmem list` / `pyshmem unlink NAME` / `pyshmem purge`, or
+	`pyrtc.streams.clear_shms(names)` from Python.
 
 - **Shared-memory transport replaced by `pyshmem`.** All shared memory in
 	pyrtc is now provided by the external `pyshmem` package (new required
-	dependency `pyshmem>=1.0.5`), using its native API directly. The legacy
+	dependency `pyshmem>=1.3.2`), using its native API directly. The legacy
 	`ImageSHM` class, its `_meta` / `_gpu_handle` companion segments, and
-	`initExistingShm` are gone. `pyrtc.pipeline` now exposes two thin policy
+	`initExistingShm` are gone. `pyrtc.streams` now exposes two thin policy
 	helpers instead: `create_stream(name, shape, dtype, gpu_device=None)`
 	(producer-side create-or-reuse) and `open_stream(name, gpu_device=None)`
 	(consumer-side attach; CPU view by default, CUDA tensor attach with
-	`gpu_device`). `clear_shms` now delegates to `pyshmem.unlink_quiet`.
-- `pyrtcComponent.read_stream`/`write_stream` simplified: `read_stream`
-	takes only `block` and `timeout`; the `SAFE`/`GPU`/`RELEASE_GIL`/
+	`gpu_device`, `readonly=True` for observers). `clear_shms` now
+	delegates to `pyshmem.unlink_quiet`.
+- `Component.read_stream`/`write_stream` simplified: `read_stream` takes
+	only `block`, `timeout`, and `out`; the `SAFE`/`GPU`/`RELEASE_GIL`/
 	`record_consumption` flags are removed (GPU vs CPU payloads are decided
-	by how the stream was opened). Blocking reads wait for a write the
-	component has not yet seen; a component's own writes do not mark the
-	stream seen.
+	by how the stream was opened). A blocking read consumes the stream: it
+	returns the first write newer than the one it returned last time, using
+	pyshmem's level-triggered `read_after_publication`. `block=False` is a
+	peek and no longer consumes, so e.g. reading `wfc` over RPC cannot make
+	the DM worker skip a correction. `out=` is ignored for GPU-attached
+	streams instead of raising.
 - Per-frame lineage metadata (root_time / upstream_write_time /
-	upstream_consume_time) is no longer stored in shared memory. Latency
-	reporting always uses cross-stream `count`/`write_time` event sampling
-	(`pyrtc.latency.collect_stream_event_history`); the `sourceStreams` /
-	`lineageSource` stream-config keys were removed.
+	upstream_consume_time) is replaced by pyshmem's publication `frame_id`.
+	The wavefront sensor numbers each exposure and every component stamps
+	its outputs with the `frame_id` of the input it consumed, so
+	`pyrtc.latency` pairs source and target writes exactly (segments report
+	`alignment: "frame_id"`) and falls back to count alignment for
+	producers that do not stamp ids. The `sourceStreams` / `lineageSource`
+	stream-config keys and the sequential `collect_timestamps` sampler were
+	removed; `collect_stream_event_history` now also returns frame ids.
+- Telemetry captures each frame with `read_new_publication`, so a frame's
+	timestamp is its own write time rather than a later one. Sessions now
+	also store `frame_ids.npy` (loaded as `frame_ids`) and a `missed_frames`
+	count per stream.
 - GPU streams are created with a CPU mirror, so CPU-only processes
 	(viewers, telemetry) can always read them, and GPU stream sharing now
 	also works in-process (soft-RTC), not just hard-RTC.

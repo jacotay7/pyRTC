@@ -20,7 +20,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 
-from pyrtc.pipeline import RTCManager, clear_shms, open_stream
+from pyrtc import RTCManager, clear_shms, open_stream
 from pyrtc.logging_utils import add_logging_cli_args, configure_logging_from_args, get_logger
 
 

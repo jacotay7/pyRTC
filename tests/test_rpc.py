@@ -1,9 +1,12 @@
 """Tests for the hard-RTC RPC message protocol (pyrtc.rpc)."""
 
+import os
+
 import numpy as np
 import pytest
 
 import pyrtc.rpc as rpc
+from pyrtc.logging_utils import configure_logging
 from pyrtc.rpc import Listener, PROTOCOL_VERSION, _coerce_property_value, HardwareLauncher
 
 
@@ -399,3 +402,60 @@ def test_listener_stops_when_rtc_disconnects():
         assert listener.running is False
     finally:
         listener.RTCsocket.close()
+
+
+def test_hardware_launcher_write_and_read():
+    hl = HardwareLauncher("dummy.py", "c.yaml", 9999)
+    calls = []
+
+    def _write(msg):
+        calls.append(msg)
+
+    def _read():
+        return {"status": "OK", "property": 42}
+
+    hl.running = True
+    hl.write = _write
+    hl.read = _read
+    assert hl.get_property("x") == 42
+    assert calls[0]["type"] == "get"
+
+
+def test_hardware_launcher_inherits_logging_env(monkeypatch, tmp_path):
+    configure_logging(
+        app_name="pyrtc-test-launcher",
+        component_name="parent",
+        level="DEBUG",
+        log_dir=tmp_path,
+        color=False,
+        console=False,
+    )
+
+    captured = {}
+
+    class _DummyProcess:
+        pass
+
+    class _DummySocket:
+        def settimeout(self, timeout):
+            captured["timeout"] = timeout
+
+        def connect(self, address):
+            captured["address"] = address
+
+    def _fake_popen(command, stdin=None, stdout=None, text=None, bufsize=None, env=None):
+        captured["command"] = command
+        captured["env"] = env
+        return _DummyProcess()
+
+    monkeypatch.setattr(rpc, "Popen", _fake_popen)
+    monkeypatch.setattr(rpc.socket, "socket", lambda *args, **kwargs: _DummySocket())
+    monkeypatch.setattr(rpc.time, "sleep", lambda _seconds: None)
+
+    launcher = HardwareLauncher("child.py", "config.yaml", 4567, timeout=1.5)
+    launcher.launch()
+
+    assert captured["command"][0] == os.sys.executable
+    assert captured["address"] == ("127.0.0.1", 4567)
+    assert captured["env"]["PYRTC_LOG_LEVEL"] == "DEBUG"
+    assert os.path.basename(captured["env"]["PYRTC_LOG_DIR"]) == os.path.basename(str(tmp_path))

@@ -51,7 +51,7 @@ from .wavefront_corrector import WavefrontCorrector
 from .wavefront_sensor import WavefrontSensor
 from .component import Component
 from .utils import set_from_config
-from . import pipeline, utils
+from . import streams, utils
 
 __all__ = [
     "clear_shms",
@@ -63,7 +63,7 @@ __all__ = [
     "LatencyStatistics",
     "Modulator",
     "Optimizer",
-    "pipeline",
+    "streams",
     "RTCManager",
     "ScienceCamera",
     "SlopesProcess",

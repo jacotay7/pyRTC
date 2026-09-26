@@ -7,11 +7,9 @@ import pytest
 import yaml
 
 from testsupport import publishing_chain
-from pyrtc.pipeline import (
-    HardComponentRuntime,
-    RTCManager,
-    _socket_read_json,
-    _socket_send_json,
+from pyrtc.manager import HardComponentRuntime, RTCManager
+from pyrtc.rpc import _socket_read_json, _socket_send_json
+from pyrtc.streams import (
     clear_shms,
     create_stream,
     expected_output_shm_specs_for_config,
@@ -886,7 +884,7 @@ def _installed_pyrtc_loop_path() -> Path:
 
 def test_import_symbol_from_file_reuses_canonical_pyrtc_module():
     from pyrtc.loop import Loop
-    from pyrtc.pipeline import _import_symbol_from_file
+    from pyrtc.component_loading import import_symbol_from_file as _import_symbol_from_file
 
     resolved = _import_symbol_from_file(str(_installed_pyrtc_loop_path()), "Loop")
 

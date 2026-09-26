@@ -44,7 +44,7 @@ For hardware-facing or supervisory workflows, the optimizer can also run in a se
 
 .. code-block:: python
   
-  from pyrtc.pipeline import HardwareLauncher
+  from pyrtc import HardwareLauncher
 
   config = 'path/to/config.yaml'
   port = 3006

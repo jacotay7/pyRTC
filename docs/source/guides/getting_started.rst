@@ -82,7 +82,7 @@ For automation or GUI-oriented tooling, JSON output is also available:
 	pyrtc-validate-config examples/synthetic_shwfs/config.yaml --format json
 
 Export Telemetry Sessions to AOTPy
----------------------------------
+----------------------------------
 
 If you want to move a saved telemetry session into the broader AO ecosystem,
 install the optional AOTPy dependency and export the session after capture:
@@ -175,7 +175,7 @@ If you installed the `viewer` extra, the package exposes command-line tools for 
 
 	pyrtc-view wfs
 	pyrtc-shm-monitor
-	pyrtc-clear-shms
+	pyshmem list        # clean up with: pyshmem unlink NAME ...
 
 The performance benchmark entry point is also available after installation:
 

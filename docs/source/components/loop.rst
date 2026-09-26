@@ -45,7 +45,7 @@ The hard-RTC path is appropriate when the loop needs to interact with hardware-f
 
 .. code-block:: python
   
-  from pyrtc.pipeline import HardwareLauncher
+  from pyrtc import HardwareLauncher
 
   config = 'path/to/config.yaml'
   port = 3004

@@ -226,7 +226,7 @@ Viewer and CLI tools:
 ```bash
 pyrtc-view wfs --log-level INFO
 pyrtc-shm-monitor --log-dir logs
-pyrtc-clear-shms --log-level DEBUG
+pyshmem list                # streams are pyshmem streams; unlink/purge them with the pyshmem CLI
 pyrtc-measure-latency signal wfc --log-file latency.log
 ```
 

@@ -25,7 +25,8 @@ Module Index
    rpc
    manager
    component_loading
-   Pipeline
+   latency
+   telemetry
    utils
 
 .. currentmodule:: pyrtc.hardware
@@ -34,7 +35,7 @@ Module Index
    :toctree: generated
    :nosignatures:
 
-   SyntheticSystems
+   synthetic_systems
 
 Notes
 -----

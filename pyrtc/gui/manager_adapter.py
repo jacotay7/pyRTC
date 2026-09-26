@@ -18,6 +18,7 @@ from pyrtc.component_descriptors import (
     list_component_descriptors,
     list_component_sections,
 )
+from pyrtc.config_runtime import stream_alias_map
 from pyrtc.config_schema import read_system_config
 
 from .models import GraphEdgeModel, GraphNodeModel, GraphSnapshot
@@ -178,24 +179,6 @@ def _default_value_for_field(field_descriptor) -> Any:
     return ""
 
 
-def _normalize_stream_alias_map(raw_mapping: Any) -> dict[str, str]:
-    normalized: dict[str, str] = {}
-    if not isinstance(raw_mapping, dict):
-        return normalized
-    for semantic_name, value in raw_mapping.items():
-        if not isinstance(semantic_name, str):
-            continue
-        if isinstance(value, str):
-            shm_name = value.strip()
-        elif isinstance(value, dict):
-            shm_name = str(value.get("shm", value.get("name", semantic_name))).strip()
-        else:
-            continue
-        if shm_name:
-            normalized[semantic_name] = shm_name
-    return normalized
-
-
 def _component_stream_name(
     config: dict[str, Any], section_name: str, direction: str, stream_name: str
 ) -> str:
@@ -203,7 +186,7 @@ def _component_stream_name(
         config.get(section_name, {}) if isinstance(config.get(section_name), dict) else {}
     )
     mapping_name = "input_streams" if direction == "input" else "output_streams"
-    aliases = _normalize_stream_alias_map(section_conf.get(mapping_name, {}))
+    aliases = stream_alias_map(section_conf.get(mapping_name))
     return aliases.get(stream_name, stream_name)
 
 

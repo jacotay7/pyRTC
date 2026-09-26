@@ -22,7 +22,7 @@ if str(REPO_ROOT) not in sys.path:
 
 from pyrtc import Telemetry
 from pyrtc.latency import format_latency_report
-from pyrtc.pipeline import RTCManager, clear_shms, open_stream
+from pyrtc import RTCManager, clear_shms, open_stream
 from pyrtc.logging_utils import add_logging_cli_args, configure_logging_from_args, get_logger
 from examples.synthetic_shwfs.aotpy_helpers import export_synthetic_session_to_aotpy
 

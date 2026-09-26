@@ -527,12 +527,7 @@ def _normalize_manager_mode(mode: str | None) -> str | None:
 
 
 class RTCManager:
-    """Validate, launch, stop, and inspect a pyrtc system as one unit.
-
-    The implementation intentionally lives in ``pyrtc.pipeline`` because this
-    orchestration layer is an extension of the existing shared-memory and
-    launcher runtime rather than a separate subsystem.
-    """
+    """Validate, launch, stop, and inspect a pyrtc system as one unit."""
 
     def __init__(
         self,

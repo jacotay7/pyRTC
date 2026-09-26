@@ -60,3 +60,5 @@ session_*
 examples/aotpy/output/*
 
 CLAUDE.md
+# Sphinx autosummary output (regenerated on every docs build)
+docs/source/generated/

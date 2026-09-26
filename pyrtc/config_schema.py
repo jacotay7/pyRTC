@@ -13,6 +13,7 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any, Mapping
 
+from pyrtc.config_runtime import stream_alias_map
 from pyrtc.component_descriptors import (
     describe_component_class,
     get_component_descriptor,
@@ -69,26 +70,6 @@ def _default_stream_aliases_for_section(
             stream.name: stream.name for stream in descriptor.output_streams if stream.name != "*"
         }
     return input_aliases, output_aliases
-
-
-def _normalize_stream_alias_mapping(
-    raw_mapping: Any, *, defaults: Mapping[str, str]
-) -> dict[str, str]:
-    normalized = dict(defaults)
-    if not isinstance(raw_mapping, Mapping):
-        return normalized
-    for semantic_name, value in raw_mapping.items():
-        if not isinstance(semantic_name, str) or not semantic_name.strip():
-            continue
-        if isinstance(value, str):
-            shm_name = value.strip()
-        elif isinstance(value, Mapping):
-            shm_name = str(value.get("shm", value.get("name", semantic_name))).strip()
-        else:
-            continue
-        if shm_name:
-            normalized[str(semantic_name)] = shm_name
-    return normalized
 
 
 def _is_relative_path_string(value: Any) -> bool:
@@ -693,10 +674,10 @@ def normalize_system_config(conf: Any) -> dict[str, Any]:
         default_inputs, default_outputs = _default_stream_aliases_for_section(
             section_name, section_conf
         )
-        section_conf["input_streams"] = _normalize_stream_alias_mapping(
+        section_conf["input_streams"] = stream_alias_map(
             section_conf.get("input_streams", {}), defaults=default_inputs
         )
-        section_conf["output_streams"] = _normalize_stream_alias_mapping(
+        section_conf["output_streams"] = stream_alias_map(
             section_conf.get("output_streams", {}), defaults=default_outputs
         )
         conf[section_name] = section_conf

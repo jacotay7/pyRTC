@@ -31,7 +31,7 @@ def test_expected_stream_specs_match_example_config():
 
 
 def test_synthetic_wfc_default_layout_matches_expected_shape():
-    from pyrtc.pipeline import clear_shms
+    from pyrtc.streams import clear_shms
     from pyrtc.hardware.synthetic_systems import SyntheticWFC
 
     config = _load_example_module().read_yaml_file(

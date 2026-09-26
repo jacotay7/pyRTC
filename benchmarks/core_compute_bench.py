@@ -21,7 +21,7 @@ from typing import Any, Callable, Dict
 import numpy as np
 
 from pyrtc.loop import leak_integrator_gpu, leaky_integrator_numba
-from pyrtc.pipeline import gpu_torch_available
+from pyrtc.streams import gpu_torch_available
 from pyrtc.logging_utils import add_logging_cli_args, configure_logging_from_args, get_logger
 from pyrtc.slopes_process import (
     compute_slopes_pywfs_optim_numba,

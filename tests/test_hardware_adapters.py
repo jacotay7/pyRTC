@@ -909,7 +909,7 @@ def test_specula_interface_requires_optional_dependency(monkeypatch):
 
 
 def test_expected_output_specs_sync_specula_pywfs_geometry():
-    pipeline = importlib.import_module("pyrtc.pipeline")
+    streams = importlib.import_module("pyrtc.streams")
 
     system_conf = {
         "specula": {
@@ -953,7 +953,7 @@ def test_expected_output_specs_sync_specula_pywfs_geometry():
         },
     }
 
-    specs = pipeline.expected_output_shm_specs_for_config(system_conf)
+    specs = streams.expected_output_shm_specs_for_config(system_conf)
 
     assert system_conf["wfs"]["width"] == 80
     assert system_conf["wfs"]["height"] == 80
@@ -969,7 +969,7 @@ def test_expected_output_specs_sync_specula_pywfs_geometry():
 
 
 def test_expected_output_specs_sync_specula_shwfs_geometry():
-    pipeline = importlib.import_module("pyrtc.pipeline")
+    streams = importlib.import_module("pyrtc.streams")
 
     system_conf = {
         "specula": {
@@ -1010,7 +1010,7 @@ def test_expected_output_specs_sync_specula_shwfs_geometry():
         },
     }
 
-    specs = pipeline.expected_output_shm_specs_for_config(system_conf)
+    specs = streams.expected_output_shm_specs_for_config(system_conf)
 
     assert system_conf["wfs"]["width"] == 80
     assert system_conf["wfs"]["height"] == 80
