@@ -640,7 +640,7 @@ def raise_thread_priority(realtime_priority: int = 0):
     description of what was applied, or ``None`` if nothing was.
     """
     global _PRIORITY_WARNING_EMITTED
-    if not sys.platform.startswith("linux"):
+    if not sys.platform.startswith("linux") or not hasattr(os, "setpriority"):
         return None
     try:
         if realtime_priority and int(realtime_priority) > 0:

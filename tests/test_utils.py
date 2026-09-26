@@ -121,6 +121,7 @@ def test_raise_thread_priority_warns_once_without_permission(monkeypatch, caplog
 
     monkeypatch.setattr(utils.sys, "platform", "linux")
     monkeypatch.setattr(utils.os, "setpriority", _denied, raising=False)
+    monkeypatch.setattr(utils.os, "PRIO_PROCESS", 0, raising=False)
     monkeypatch.setattr(utils, "_PRIORITY_WARNING_EMITTED", False)
     with caplog.at_level(logging.WARNING):
         assert utils.raise_thread_priority() is None
