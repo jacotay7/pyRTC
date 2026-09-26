@@ -133,8 +133,9 @@ ruff check . && ruff format --check .    # lint, as in CI
   Rerun with `--no-cov`.
 - Components can be built with `__new__` in tests, so `Component` methods call
   `_ensure_stream_state()` before touching stream state.
-- `IMPROVEMENT_PLAN.md` is a historical status tracker from the pyshmem
-  migration. Check the code before trusting its status notes.
+- Tests force the non-GUI `Agg` matplotlib backend (`tests/conftest.py`).
+  Without it, a figure shown on a headless Windows runner aborts the run with
+  a tkinter `KeyboardInterrupt`.
 - Windows frees named shared memory when the last handle closes, so streams do
   not outlive their producer there. Treat Windows as soft-RTC only.
 
@@ -145,3 +146,6 @@ ruff check . && ruff format --check .    # lint, as in CI
 - Fix pyshmem issues at the source (in the pyshmem repository), not with
   workarounds here.
 - Keep this file current and machine-independent (see the top of this file).
+- Do not commit planning, status-tracker, or scratch notes (such as an
+  `IMPROVEMENT_PLAN.md`). Durable guidance belongs in this file, and
+  user-facing changes belong in `CHANGELOG.md`.
