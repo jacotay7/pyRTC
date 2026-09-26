@@ -262,7 +262,7 @@ class WavefrontSensor(Component):
             self.register_output_stream("wfs_raw", self.image_raw)
             self.register_output_stream("wfs", self.image)
 
-            self.data = np.zeros(self.image_shape, dtype=self.image_raw_dtype)
+            self.data = np.zeros(self.image_raw_shape, dtype=self.image_raw_dtype)
             self.dark = np.zeros(self.image_raw_shape, dtype=self.image_dtype)
 
             self.load_dark()
@@ -416,17 +416,21 @@ class WavefrontSensor(Component):
     def take_dark(self) -> None:
         """
         Captures and sets the dark frame.
+
+        Averages ``dark_count`` raw frames (``wfs_raw``), because the dark is
+        subtracted from the raw frame before downsampling and rotation. The
+        first frame read is discarded since it may predate this call.
         """
         try:
             if self.dark_count < 1:
                 raise ValueError("dark_count must be at least 1 to acquire a dark frame")
             self.logger.info("Taking dark frame using %s exposures", self.dark_count)
-            self.set_dark(np.zeros_like(self.dark))
-            dark = np.zeros(self.image_shape, dtype=np.float64)
+            self.read_stream("wfs_raw")
+            dark = np.zeros(self.image_raw_shape, dtype=np.float64)
             for _ in range(self.dark_count):
-                dark += self.read().astype(np.float64)
+                dark += self.read_stream("wfs_raw").astype(np.float64)
             dark /= self.dark_count
-            self.set_dark(dark)
+            self.set_dark(np.rint(dark))
             self.logger.info("Completed dark frame acquisition")
         except Exception:
             self.logger.exception("Failed to acquire dark frame")

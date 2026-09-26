@@ -91,7 +91,8 @@ def test_science_camera_default_files_plot_and_error_paths(monkeypatch, tmp_path
     cam.take_model_psf()
     assert np.array_equal(cam.model, np.ones((4, 4), dtype=np.float64) * 5)
 
-    frames = [np.ones((4, 4), dtype=np.int32) * 2, np.ones((4, 4), dtype=np.int32) * 4]
+    # The first frame (possibly subtracted with the old dark) is discarded.
+    frames = [np.full((4, 4), value, dtype=np.int32) for value in (100, 2, 4)]
     cam.read = lambda block=True: frames.pop(0)
     cam.take_dark()
     assert np.all(cam.dark == 3)

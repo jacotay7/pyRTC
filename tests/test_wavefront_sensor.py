@@ -1,5 +1,9 @@
-import numpy as np
 import importlib
+import threading
+import time
+
+import numpy as np
+import pytest
 
 wfs_mod = importlib.import_module("pyrtc.wavefront_sensor")
 
@@ -47,16 +51,43 @@ def test_wavefront_sensor_basic(monkeypatch, tmp_path):
     wfs.load_dark(str(dark_file))
     assert np.all(wfs.dark == 1)
 
-    # dark-taking path
-    frames = [np.ones((8, 8), dtype=np.int32) * 2, np.ones((8, 8), dtype=np.int32) * 4]
-
-    def fake_read(block=True):
-        return frames.pop(0)
-
-    wfs.read = fake_read
+    # dark-taking path: the first raw frame is discarded, then two averaged.
+    frames = [np.full((8, 8), value, dtype=np.uint16) for value in (100, 2, 5)]
+    wfs.read_stream = lambda name, **_kwargs: frames.pop(0)
     wfs.take_dark()
-    assert np.all(wfs.dark == 3)
+    assert np.all(wfs.dark == 4)  # rint(3.5)
+    del wfs.read_stream
 
     wfs.read = lambda block=False: np.ones((8, 8), dtype=np.int32)
     rot = wfs.rotate_image(10.0)
     assert rot.shape == (8, 8)
+
+
+@pytest.mark.parametrize("extra", [{"downsample_factor": 2}, {"rotation_angle": 30.0}])
+def test_take_dark_matches_the_raw_frame_it_is_subtracted_from(monkeypatch, extra):
+    from testsupport import private_stream
+
+    monkeypatch.setattr(wfs_mod, "create_stream", private_stream)
+    conf = {"name": "w", "width": 8, "height": 8, "dark_count": 3, "functions": [], **extra}
+    wfs = wfs_mod.WavefrontSensor(conf)
+    wfs.data = np.full((8, 8), 7, dtype=np.uint16)
+
+    stop = threading.Event()
+
+    def _camera():
+        while not stop.is_set():
+            wfs.expose()
+            time.sleep(1e-3)
+
+    camera = threading.Thread(target=_camera, daemon=True)
+    camera.start()
+    try:
+        wfs.take_dark()
+    finally:
+        stop.set()
+        camera.join()
+
+    assert wfs.dark.shape == (8, 8)
+    assert np.all(wfs.dark == 7)
+    wfs.expose()  # must not fail to broadcast
+    assert np.all(wfs.read(block=False) == 0)
