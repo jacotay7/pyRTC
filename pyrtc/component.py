@@ -45,9 +45,13 @@ class Component:
 
     Config Parameters
     -----------------
-    affinity : int
-        Base CPU affinity for the component. Additional worker functions are
-        assigned subsequent cores when possible.
+    affinity : int, optional
+        Base CPU core for the component. When set, each worker function thread
+        is pinned to its own core (``affinity + i``) on Linux; when unset,
+        threads are not pinned.
+    realtime_priority : int, optional
+        When > 0, worker threads run under ``SCHED_FIFO`` at this priority
+        (Linux, needs ``CAP_SYS_NICE``). Default 0 lowers the nice value only.
     functions : list
         Bound method names to run in worker threads.
     gpu_device : str, optional
@@ -88,7 +92,8 @@ class Component:
             self.class_name = conf.get("class_name")
             self.class_file = conf.get("class_file")
             self.system_streams = dict(conf.get("_systemStreams", {}))
-            self.affinity = set_from_config(conf, "affinity", 0)
+            self.affinity = conf.get("affinity")
+            self.realtime_priority = set_from_config(conf, "realtime_priority", 0)
             requested_gpu_device = set_from_config(conf, "gpu_device", None)
             self.gpu_device = normalize_gpu_device(requested_gpu_device, self.__class__.__name__)
             self._stream_inputs = {}
@@ -107,7 +112,9 @@ class Component:
 
             if isinstance(functions_to_run, list) and len(functions_to_run) > 0:
                 for i, function_name in enumerate(functions_to_run):
-                    thread_affinity = (self.affinity + i) % os.cpu_count()
+                    thread_affinity = (
+                        None if self.affinity is None else (int(self.affinity) + i) % os.cpu_count()
+                    )
                     work_thread = threading.Thread(
                         target=work,
                         args=(self, function_name, thread_affinity),

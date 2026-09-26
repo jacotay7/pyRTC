@@ -22,7 +22,7 @@ from pyrtc.component import Component
 from pyrtc.science_camera import ScienceCamera
 from pyrtc.wavefront_corrector import WavefrontCorrector
 from pyrtc.wavefront_sensor import WavefrontSensor
-from pyrtc.utils import decrease_nice, read_yaml_file, set_from_config, set_affinity
+from pyrtc.utils import read_yaml_file, set_from_config, set_affinity_and_priority
 
 from OOPAO.Atmosphere import Atmosphere
 from OOPAO.DeformableMirror import DeformableMirror
@@ -647,8 +647,7 @@ if __name__ == "__main__":
     conf = read_yaml_file(args.config)
 
     pid = os.getpid()
-    set_affinity((conf["wfs"]["affinity"]) % os.cpu_count())
-    decrease_nice(pid)
+    set_affinity_and_priority("main", conf["wfs"]["affinity"])
 
     param = read_yaml_file(args.param_file) if args.param_file else None
 

@@ -14,12 +14,10 @@ import select
 import os
 from astropy.io import fits
 import numpy as np
-import psutil
 from scipy.ndimage import median_filter, gaussian_filter
 import socket
 from datetime import datetime
 import time
-import logging
 from typing import Any, Iterable, Mapping, Optional
 
 from pyrtc.logging_utils import get_logger
@@ -508,18 +506,26 @@ def gaussian_2d_grid(i, j, sigma, grid_size):
 
 
 def set_affinity(affinity):
-    # Unsupported by MacOS
-    if isinstance(affinity, int) or isinstance(affinity, float):
-        affinity = [
-            int(affinity),
-        ]
-    elif isinstance(affinity, np.ndarray):
-        affinity = list(affinity)
+    """Pin the calling thread to the given CPU core(s).
+
+    Uses ``os.sched_setaffinity(0, ...)``, which on Linux applies to the
+    calling thread only, so each component worker can own its core. Core
+    indices wrap modulo the CPU count. Returns the applied core list, or -1
+    when the argument is invalid or the platform has no thread affinity
+    (macOS, Windows).
+    """
+    if isinstance(affinity, (int, float, np.integer)):
+        cores = [int(affinity)]
+    elif isinstance(affinity, (list, tuple, np.ndarray)):
+        cores = [int(core) for core in affinity]
     else:
         return -1
-    if sys.platform != "darwin":
-        psutil.Process(os.getpid()).cpu_affinity(affinity)
-    return
+    if not cores or not hasattr(os, "sched_setaffinity"):
+        return -1
+    cpu_count = os.cpu_count() or 1
+    cores = sorted({core % cpu_count for core in cores})
+    os.sched_setaffinity(0, cores)
+    return cores
 
 
 def set_from_config(conf, name, default):
@@ -622,26 +628,55 @@ def bind_socket(host, start_port, max_attempts=5):
     return -1
 
 
-def decrease_nice():
-    # Unsupported by MacOS or Windows
-    if sys.platform != "darwin" and sys.platform != "win32":
-        try:
-            p = psutil.Process(os.getpid())
-            p.nice(-20)  # Unix uses a numeric value (lower means higher priority)
-        except Exception:
-            logging.log(
-                level=logging.WARNING,
-                msg="Unable to adjust nice level.\
-                         Give your user sudo privledges without passowrd to use this feature.",
+_PRIORITY_WARNING_EMITTED = False
+
+
+def raise_thread_priority(realtime_priority: int = 0):
+    """Raise the calling thread's scheduling priority (Linux only).
+
+    With ``realtime_priority > 0`` the thread is moved to ``SCHED_FIFO`` at
+    that priority; otherwise its nice value is lowered to -20. Both need
+    ``CAP_SYS_NICE`` or suitable ``rtprio``/``nice`` limits. Returns a short
+    description of what was applied, or ``None`` if nothing was.
+    """
+    global _PRIORITY_WARNING_EMITTED
+    if not sys.platform.startswith("linux") or not hasattr(os, "setpriority"):
+        return None
+    try:
+        if realtime_priority and int(realtime_priority) > 0:
+            priority = int(realtime_priority)
+            os.sched_setscheduler(0, os.SCHED_FIFO, os.sched_param(priority))
+            return f"SCHED_FIFO priority {priority}"
+        os.setpriority(os.PRIO_PROCESS, 0, -20)
+        return "nice -20"
+    except OSError as exc:
+        if not _PRIORITY_WARNING_EMITTED:
+            _PRIORITY_WARNING_EMITTED = True
+            logger.warning(
+                "Could not raise thread priority (%s); running at normal priority. "
+                "Grant the interpreter CAP_SYS_NICE (setcap cap_sys_nice+ep) or raise "
+                "the rtprio/nice limits in /etc/security/limits.conf.",
+                exc,
             )
-    return
+        return None
 
 
-# Set CPU affinity and priority for a thread
-def set_affinity_and_priority(thread_id, cpu_cores):
-    set_affinity(cpu_cores)
-    decrease_nice()
-    logger.info("Thread %s: priority set to REALTIME", thread_id)
+def decrease_nice(*_ignored):
+    """Deprecated: use :func:`raise_thread_priority`."""
+    return raise_thread_priority()
+
+
+def set_affinity_and_priority(thread_id, cpu_cores, realtime_priority: int = 0):
+    """Pin the calling thread and raise its priority, logging what applied."""
+    cores = set_affinity(cpu_cores)
+    priority = raise_thread_priority(realtime_priority)
+    logger.info(
+        "Thread %s: affinity=%s priority=%s",
+        thread_id,
+        "unchanged" if cores == -1 else cores,
+        priority or "normal",
+    )
+    return cores, priority
 
 
 def read_yaml_file(file_path):

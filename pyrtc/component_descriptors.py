@@ -254,7 +254,17 @@ BUILTIN_COMPONENT_DESCRIPTORS: tuple[ComponentDescriptor, ...] = (
                 "functions", "list[str]", "Worker methods started in component threads.", default=[]
             ),
             ConfigFieldDescriptor(
-                "affinity", "int", "Base CPU affinity for the component.", default=0
+                "affinity",
+                "int | None",
+                "Base CPU core; worker threads are pinned to consecutive cores when set.",
+                default=None,
+            ),
+            ConfigFieldDescriptor(
+                "realtime_priority",
+                "int",
+                "SCHED_FIFO priority for worker threads (Linux; 0 keeps normal scheduling).",
+                default=0,
+                minimum=0,
             ),
             ConfigFieldDescriptor(
                 "gpu_device", "str | None", "Optional GPU device identifier.", default=None
@@ -356,7 +366,17 @@ BUILTIN_COMPONENT_DESCRIPTORS: tuple[ComponentDescriptor, ...] = (
                 "functions", "list[str]", "Worker methods started in component threads.", default=[]
             ),
             ConfigFieldDescriptor(
-                "affinity", "int", "Base CPU affinity for the component.", default=0
+                "affinity",
+                "int | None",
+                "Base CPU core; worker threads are pinned to consecutive cores when set.",
+                default=None,
+            ),
+            ConfigFieldDescriptor(
+                "realtime_priority",
+                "int",
+                "SCHED_FIFO priority for worker threads (Linux; 0 keeps normal scheduling).",
+                default=0,
+                minimum=0,
             ),
             ConfigFieldDescriptor(
                 "gpu_device", "str | None", "Optional GPU device identifier.", default=None
@@ -477,7 +497,17 @@ BUILTIN_COMPONENT_DESCRIPTORS: tuple[ComponentDescriptor, ...] = (
                 "functions", "list[str]", "Worker methods started in component threads.", default=[]
             ),
             ConfigFieldDescriptor(
-                "affinity", "int", "Base CPU affinity for the component.", default=0
+                "affinity",
+                "int | None",
+                "Base CPU core; worker threads are pinned to consecutive cores when set.",
+                default=None,
+            ),
+            ConfigFieldDescriptor(
+                "realtime_priority",
+                "int",
+                "SCHED_FIFO priority for worker threads (Linux; 0 keeps normal scheduling).",
+                default=0,
+                minimum=0,
             ),
             ConfigFieldDescriptor(
                 "gpu_device", "str | None", "Optional GPU device identifier.", default=None
@@ -559,7 +589,17 @@ BUILTIN_COMPONENT_DESCRIPTORS: tuple[ComponentDescriptor, ...] = (
                 "functions", "list[str]", "Worker methods started in component threads.", default=[]
             ),
             ConfigFieldDescriptor(
-                "affinity", "int", "Base CPU affinity for the component.", default=0
+                "affinity",
+                "int | None",
+                "Base CPU core; worker threads are pinned to consecutive cores when set.",
+                default=None,
+            ),
+            ConfigFieldDescriptor(
+                "realtime_priority",
+                "int",
+                "SCHED_FIFO priority for worker threads (Linux; 0 keeps normal scheduling).",
+                default=0,
+                minimum=0,
             ),
             ConfigFieldDescriptor(
                 "gpu_device", "str | None", "Optional GPU device identifier.", default=None
@@ -632,7 +672,17 @@ BUILTIN_COMPONENT_DESCRIPTORS: tuple[ComponentDescriptor, ...] = (
                 "functions", "list[str]", "Worker methods started in component threads.", default=[]
             ),
             ConfigFieldDescriptor(
-                "affinity", "int", "Base CPU affinity for the component.", default=0
+                "affinity",
+                "int | None",
+                "Base CPU core; worker threads are pinned to consecutive cores when set.",
+                default=None,
+            ),
+            ConfigFieldDescriptor(
+                "realtime_priority",
+                "int",
+                "SCHED_FIFO priority for worker threads (Linux; 0 keeps normal scheduling).",
+                default=0,
+                minimum=0,
             ),
             ConfigFieldDescriptor(
                 "gpu_device", "str | None", "Optional GPU device identifier.", default=None
@@ -690,7 +740,17 @@ BUILTIN_COMPONENT_DESCRIPTORS: tuple[ComponentDescriptor, ...] = (
                 "functions", "list[str]", "Worker methods started in component threads.", default=[]
             ),
             ConfigFieldDescriptor(
-                "affinity", "int", "Base CPU affinity for the component.", default=0
+                "affinity",
+                "int | None",
+                "Base CPU core; worker threads are pinned to consecutive cores when set.",
+                default=None,
+            ),
+            ConfigFieldDescriptor(
+                "realtime_priority",
+                "int",
+                "SCHED_FIFO priority for worker threads (Linux; 0 keeps normal scheduling).",
+                default=0,
+                minimum=0,
             ),
             ConfigFieldDescriptor(
                 "gpu_device", "str | None", "Optional GPU device identifier.", default=None

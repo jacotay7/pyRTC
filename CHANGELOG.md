@@ -6,6 +6,19 @@ All notable changes to `pyrtcao` will be documented in this file.
 
 ### Fixed
 
+- **CPU affinity and real-time priority now work** (#44). The configured
+	`affinity` was never applied (worker threads passed a list, which
+	`set_affinity` ignored), and it would have pinned the whole process.
+	Worker threads are now pinned individually with `os.sched_setaffinity`
+	(Linux) when `affinity` is set; unset means unpinned. A new
+	`realtime_priority` option runs workers under `SCHED_FIFO`. The priority
+	warning is logged once, points to `CAP_SYS_NICE`/limits instead of
+	passwordless sudo, and the log reports what was actually applied. The
+	hard-RTC entry points of the optimizers and simulator interfaces no longer
+	crash calling `decrease_nice(pid)`.
+- Requires `pyshmem>=1.3.4`, which fixes a deadlock when garbage collection
+	finalized a stream handle while pyshmem was setting up another stream's
+	lock (seen as a two-minute stall in the test suite).
 - **Multi-stream telemetry now covers one time window** (#42).
 	`Telemetry.save()` captured all frames of one stream before starting the
 	next, so a `wfs` + `signal` + `wfc` session held three unrelated time

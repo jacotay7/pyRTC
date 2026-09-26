@@ -1,7 +1,9 @@
-import os
 import io
+import os
+import threading
 
 import numpy as np
+import pytest
 from astropy.io import fits
 
 import pyrtc.utils as utils
@@ -91,6 +93,54 @@ def test_image_cleanup_and_gaussian_grid():
 
 def test_set_affinity_invalid_type():
     assert utils.set_affinity("bad") == -1
+
+
+@pytest.mark.skipif(not hasattr(os, "sched_setaffinity"), reason="Linux thread affinity")
+@pytest.mark.parametrize("request_cores", [0, [0], np.array([0])])
+def test_set_affinity_pins_only_the_calling_thread(request_cores):
+    before = os.sched_getaffinity(0)
+    seen = {}
+
+    def _worker():
+        seen["applied"] = utils.set_affinity(request_cores)
+        seen["affinity"] = os.sched_getaffinity(0)
+
+    thread = threading.Thread(target=_worker)
+    thread.start()
+    thread.join()
+
+    assert seen["applied"] == [0]
+    assert seen["affinity"] == {0}
+    assert os.sched_getaffinity(0) == before
+
+
+def test_raise_thread_priority_warns_once_without_permission(monkeypatch):
+    def _denied(*_args):
+        raise PermissionError("not permitted")
+
+    warnings = []
+
+    class _RecordingLogger:
+        def warning(self, message, *args):
+            warnings.append(message % args)
+
+    monkeypatch.setattr(utils.sys, "platform", "linux")
+    monkeypatch.setattr(utils.os, "setpriority", _denied, raising=False)
+    monkeypatch.setattr(utils.os, "PRIO_PROCESS", 0, raising=False)
+    monkeypatch.setattr(utils, "_PRIORITY_WARNING_EMITTED", False)
+    monkeypatch.setattr(utils, "logger", _RecordingLogger())
+
+    assert utils.raise_thread_priority() is None
+    assert utils.raise_thread_priority() is None
+
+    assert len(warnings) == 1
+    assert "Could not raise thread priority" in warnings[0]
+    assert "sudo" not in warnings[0]
+
+
+def test_decrease_nice_accepts_legacy_pid_argument(monkeypatch):
+    monkeypatch.setattr(utils, "raise_thread_priority", lambda realtime_priority=0: "nice -20")
+    assert utils.decrease_nice(os.getpid()) == "nice -20"
 
 
 def test_set_from_config_and_signal2d():

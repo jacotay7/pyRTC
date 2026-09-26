@@ -18,11 +18,10 @@ from pyrtc.optimizer import Optimizer
 from pyrtc.rpc import Listener
 from pyrtc.streams import open_stream
 from pyrtc.utils import (
-    decrease_nice,
     get_tmp_filepath,
     read_yaml_file,
     set_from_config,
-    set_affinity,
+    set_affinity_and_priority,
 )
 
 
@@ -185,8 +184,7 @@ if __name__ == "__main__":
     conf = read_yaml_file(args.config)["optimizer"]
 
     pid = os.getpid()
-    set_affinity((conf["affinity"]) % os.cpu_count())
-    decrease_nice(pid)
+    set_affinity_and_priority("main", conf["affinity"])
 
     component = NCPAOptimizer(conf=conf)
     component.start()
