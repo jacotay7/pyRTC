@@ -19,6 +19,25 @@ from pyrtc.utils import centroid, clean_image_for_strehl, set_from_config
 logger = get_logger(__name__)
 
 
+def estimate_strehl(image, model) -> float:
+    """Estimate the Strehl ratio of ``image`` relative to ``model``.
+
+    Each PSF is normalized by its total flux before comparing peaks, so the
+    estimate does not depend on source brightness or exposure time. Returns
+    ``0.0`` when either PSF has no positive flux.
+    """
+    image = np.asarray(image, dtype=np.float64)
+    model = np.asarray(model, dtype=np.float64)
+    image_flux = float(np.sum(image))
+    model_flux = float(np.sum(model))
+    if image_flux <= 0 or model_flux <= 0:
+        return 0.0
+    model_peak = float(np.max(model)) / model_flux
+    if model_peak <= 0:
+        return 0.0
+    return (float(np.max(image)) / image_flux) / model_peak
+
+
 class ScienceCamera(Component):
     """
     Base class for cameras that produce science images and image-quality metrics.
@@ -514,7 +533,7 @@ class ScienceCamera(Component):
             self.read_long(), median_filter_size=median_filter_size, gaussian_sigma=gaussian_sigma
         )
 
-        self.strehl_ratio = np.max(current) / np.max(model)
+        self.strehl_ratio = estimate_strehl(current, model)
         self.peak_dist = np.linalg.norm(centroid(current) - centroid(self.model))
 
         self.write_stream("strehl", np.array([self.strehl_ratio], dtype=float))
