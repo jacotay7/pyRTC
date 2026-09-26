@@ -97,6 +97,14 @@ All notable changes to `pyrtcao` will be documented in this file.
 
 ### Changed
 
+- **GPU PYWFS slopes no longer re-upload masks every frame** (#64).
+	`SlopesProcess.compute_signal()` copied the four pupil masks, the slopes
+	buffer and the reference slopes to the GPU on every frame. They are now
+	cached on the device (as pixel-index tensors) and rebuilt only when the
+	pupils or reference slopes change, roughly halving the per-frame time of
+	the GPU path. The GPU path also accepts a CPU-backed `wfs` stream (NumPy
+	frames are copied to `gpu_device`), and writes the device tensor directly
+	when the `signal` stream is GPU-backed.
 - **The hard-RTC listener only exposes public names** (#48).
 	`Listener` answered `get`/`set`/`run` for any attribute of the hardware
 	object, including private (`_x`) and dunder (`__class__`, `__dict__`)
