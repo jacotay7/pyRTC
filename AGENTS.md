@@ -133,9 +133,12 @@ ruff check . && ruff format --check .    # lint, as in CI
   Rerun with `--no-cov`.
 - Components can be built with `__new__` in tests, so `Component` methods call
   `_ensure_stream_state()` before touching stream state.
-- Tests force the non-GUI `Agg` matplotlib backend (`tests/conftest.py`).
-  Without it, a figure shown on a headless Windows runner aborts the run with
-  a tkinter `KeyboardInterrupt`.
+- A `KeyboardInterrupt` at a random point in a Windows test run was pyshmem
+  (< 1.3.3) probing process liveness with `os.kill(pid, 0)`, which on Windows
+  sends Ctrl+C to the console group. It is fixed in pyshmem 1.3.3. If the
+  symptom returns, look for signal-0 probes before blaming the test.
+- Tests force the non-GUI `Agg` matplotlib backend (`tests/conftest.py`)
+  because some library code still calls `plt.show()` (#34).
 - Windows frees named shared memory when the last handle closes, so streams do
   not outlive their producer there. Treat Windows as soft-RTC only.
 

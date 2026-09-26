@@ -17,6 +17,9 @@ All notable changes to `pyrtcao` will be documented in this file.
 	instead of loading an identity placeholder: residual RMS drops 0.99 → 0.01
 	and Strehl reaches ~0.97 in both soft and hard modes. A closed-loop
 	convergence regression test runs in `tests/system/`.
+- Windows runs no longer die with a random `KeyboardInterrupt`: pyshmem
+	< 1.3.3 probed process liveness with `os.kill(pid, 0)`, which sends Ctrl+C
+	on Windows. pyrtc now requires `pyshmem>=1.3.3`.
 - Hard-RTC child listeners now stop cleanly when the RTC closes the control
 	socket instead of crashing with `BrokenPipeError`.
 
@@ -56,7 +59,7 @@ All notable changes to `pyrtcao` will be documented in this file.
 
 - **Shared-memory transport replaced by `pyshmem`.** All shared memory in
 	pyrtc is now provided by the external `pyshmem` package (new required
-	dependency `pyshmem>=1.3.2`), using its native API directly. The legacy
+	dependency `pyshmem>=1.3.3`), using its native API directly. The legacy
 	`ImageSHM` class, its `_meta` / `_gpu_handle` companion segments, and
 	`initExistingShm` are gone. `pyrtc.streams` now exposes two thin policy
 	helpers instead: `create_stream(name, shape, dtype, gpu_device=None)`
