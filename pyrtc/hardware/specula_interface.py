@@ -632,12 +632,26 @@ class SPECULASystemContext:
             self.prop.inputs["atmo_layer_list"].set(self.atmo.outputs["layer_list"])
             self._refresh_propagation_setup()
             self.atmosphere_enabled = True
+            self._invalidate_propagation()
 
     def remove_atmosphere(self) -> None:
         with self._lock:
             self.prop.inputs["atmo_layer_list"].set([])
             self._refresh_propagation_setup()
             self.atmosphere_enabled = False
+            self._invalidate_propagation()
+
+    def _invalidate_propagation(self) -> None:
+        """Force the optical chain to re-run on the next captured frame.
+
+        SPECULA objects only trigger when one of their inputs carries a fresh
+        ``generation_time``. With the atmosphere removed and a static DM, no
+        input of the propagation changes after a topology switch, so without
+        this the WFS would keep re-emitting the last (turbulent) frame until
+        the next DM command happened to refresh the propagation.
+        """
+
+        self.pupilstop.generation_time = self.scheduled_time_t()
 
     def set_signal_value(self, signal_name: str, value: Any) -> None:
         with self._lock:
@@ -679,42 +693,45 @@ class SPECULASystemContext:
 
     def capture_wfs(self) -> np.ndarray:
         with self._lock:
-            time_t = self.scheduled_time_t()
-            self._seed_generation_times(time_t)
-
-            if self.atmosphere_enabled:
-                self._advance(self.atmo, time_t)
-            self._advance(self.dm, time_t)
-            self._advance(self.prop, time_t)
-            self._advance(self.pyramid, time_t)
-            self._advance(self.detector, time_t)
-            if self.psf is not None:
-                self._advance(self.psf, time_t)
-                self._refresh_psf_cache()
-
-            self.current_time_t = time_t
-            self.step_index += 1
-
+            self._step_locked()
             return np.asarray(
                 self._bindings.cpu_array(self.detector.outputs["out_pixels"].pixels),
                 dtype=np.uint16,
             )
+
+    def _step_locked(self) -> None:
+        """Advance the whole optical chain by one simulation step.
+
+        The WFS and PSF branches share the DM and propagation objects, and
+        SPECULA only re-triggers an object when an input is newer than its
+        last run. Every step must therefore advance both branches together:
+        advancing the propagation for the PSF alone would consume the refresh
+        and leave the WFS detector without a frame (all zeros) until the next
+        DM command.
+        """
+
+        time_t = self.scheduled_time_t()
+        self._seed_generation_times(time_t)
+
+        if self.atmosphere_enabled:
+            self._advance(self.atmo, time_t)
+        self._advance(self.dm, time_t)
+        self._advance(self.prop, time_t)
+        self._advance(self.pyramid, time_t)
+        self._advance(self.detector, time_t)
+        if self.psf is not None:
+            self._advance(self.psf, time_t)
+            self._refresh_psf_cache()
+
+        self.current_time_t = time_t
+        self.step_index += 1
 
     def capture_psf(self) -> tuple[np.ndarray, np.ndarray, float, float]:
         with self._lock:
             if self.psf is None:
                 raise RuntimeError("SPECULA PSF camera is not configured")
             if self._cached_psf_frame is None:
-                time_t = self.scheduled_time_t()
-                self._seed_generation_times(time_t)
-                if self.atmosphere_enabled:
-                    self._advance(self.atmo, time_t)
-                self._advance(self.dm, time_t)
-                self._advance(self.prop, time_t)
-                self._advance(self.psf, time_t)
-                self.current_time_t = time_t
-                self.step_index += 1
-                self._refresh_psf_cache()
+                self._step_locked()
 
             return (
                 np.array(self._cached_psf_frame, copy=True),
@@ -1325,6 +1342,12 @@ class SPECULAInterface(Component):
             self.system_conf = dict(conf)
             sync_specula_pywfs_config(self.system_conf, param=param)
             resource_conf = {"param": param} if param is not None else {}
+            # Honour the provider section's ``use_atmosphere`` switch (default
+            # on, as before) so ``specula.use_atmosphere: false`` works when
+            # the bridge is built directly from a system config.
+            provider_conf = _mapping_or_none(conf.get("specula")) or {}
+            use_atmosphere = bool(provider_conf.get("use_atmosphere", True))
+            resource_conf["use_atmosphere"] = use_atmosphere
             self.context = SPECULASystemContext(
                 resource_conf,
                 self.system_conf,
@@ -1342,7 +1365,7 @@ class SPECULAInterface(Component):
                 wind_direction=wind_direction,
                 command=command,
             )
-            self._useAtmosphere = True
+            self._useAtmosphere = use_atmosphere
             self.wfc_section = "wfc"
             self.wfs_interface = SPECULAWFSensor(self.system_conf["wfs"], self.context)
             self.dm_interface = SPECULAWFCorrector(self.system_conf["wfc"], self.context)

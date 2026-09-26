@@ -14,7 +14,7 @@ loop:
   num_iters_im: 10
   conditioning: 10
   affinity: 2
-  method: push-pull
+  im_method: push-pull
   class_name: Loop
   input_streams:
     signal: signal

@@ -93,4 +93,8 @@ Notes
 - These are soft-RTC examples because the simulator-backed components share in-process optical state.
 - The OOPAO path uses OOPAO's real `ShackHartmann` class.
 - The SPECULA path uses SPECULA's real `SH` processing object.
+- The SPECULA example calibrates with the atmosphere removed: it waits until a DM poke
+  reaches the slopes, takes reference slopes on the flat DM, then measures the push-pull IM.
+  With ``specula.use_atmosphere: false`` (the default config) the loop then converges to zero
+  residual; set it to ``true`` to close the loop on turbulence.
 - If you want the simplest zero-dependency onboarding path, stay with :doc:`synthetic_shwfs`.

@@ -142,6 +142,14 @@ ruff check . && ruff format --check .    # lint, as in CI
   symptom returns, look for signal-0 probes before blaming the test.
 - Tests force the non-GUI `Agg` matplotlib backend (`tests/conftest.py`)
   because some library code still calls `plt.show()` (#34).
+- SPECULA processing objects only run when an input has a fresh
+  `generation_time`. In `specula_interface.py`, anything that changes the
+  optical setup without a new DM command (atmosphere on/off) must refresh an
+  input, and every step must advance the WFS and PSF branches together, or
+  the WFS silently repeats a stale (or blank) frame.
+- The loop's IM method key is `im_method`; `method:` is silently ignored.
+  Calibrate only once the pipeline is live (worker kernels JIT-compile on
+  first use, so the first DM command can take about a second to land).
 - Windows frees named shared memory when the last handle closes, so streams do
   not outlive their producer there. Treat Windows as soft-RTC only.
 - `import OOPAO` fails with `ValueError: attempt to get argmin of an empty

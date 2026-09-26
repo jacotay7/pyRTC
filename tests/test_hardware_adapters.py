@@ -1198,6 +1198,28 @@ def test_specula_standalone_bridge_exposes_frames_and_updates_dm(monkeypatch):
     assert dm.M2C.shape == (dm.num_actuators, dm.num_modes)
 
 
+def test_specula_standalone_bridge_honours_use_atmosphere(monkeypatch):
+    _install_fake_specula(monkeypatch)
+
+    sys.modules.pop("pyrtc.hardware.specula_interface", None)
+    module = importlib.import_module("pyrtc.hardware.specula_interface")
+
+    default_sim = module.SPECULAInterface(_specula_conf(), param=_specula_param())
+    assert default_sim.use_atmosphere is True
+    assert default_sim.context.atmosphere_enabled is True
+
+    conf = {**_specula_conf(), "specula": {"use_atmosphere": False}}
+    sim = module.SPECULAInterface(conf, param=_specula_param())
+    assert sim.use_atmosphere is False
+    assert sim.context.atmosphere_enabled is False
+
+    # Toggling the atmosphere must refresh a propagation input so the next
+    # frame is re-propagated instead of repeating the stale one (#39).
+    sim.context.step_index = 7
+    sim.add_atmosphere()
+    assert sim.context.pupilstop.generation_time == sim.context.scheduled_time_t()
+
+
 def test_oopao_interface_builds_from_param_dict_and_keeps_source_overrides(monkeypatch):
     module, _, _, _, _, _ = _install_fake_oopao(monkeypatch)
 
