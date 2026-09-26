@@ -7,9 +7,9 @@ sci_mod = importlib.import_module("pyrtc.science_camera")
 
 
 def test_science_camera_core(monkeypatch, tmp_path):
-    from testsupport import DummySHM
+    from testsupport import private_stream
 
-    monkeypatch.setattr(sci_mod, "create_stream", DummySHM)
+    monkeypatch.setattr(sci_mod, "create_stream", private_stream)
 
     conf = {
         "name": "psf",
@@ -58,9 +58,9 @@ def test_science_camera_core(monkeypatch, tmp_path):
 
 
 def test_science_camera_default_files_plot_and_error_paths(monkeypatch, tmp_path):
-    from testsupport import DummySHM
+    from testsupport import private_stream
 
-    monkeypatch.setattr(sci_mod, "create_stream", DummySHM)
+    monkeypatch.setattr(sci_mod, "create_stream", private_stream)
 
     conf = {
         "name": "psf",
@@ -98,9 +98,9 @@ def test_science_camera_default_files_plot_and_error_paths(monkeypatch, tmp_path
 
 
 def test_science_camera_setter_and_load_error_paths(monkeypatch):
-    from testsupport import DummySHM
+    from testsupport import private_stream
 
-    monkeypatch.setattr(sci_mod, "create_stream", DummySHM)
+    monkeypatch.setattr(sci_mod, "create_stream", private_stream)
     cam = sci_mod.ScienceCamera(
         {
             "name": "psf",

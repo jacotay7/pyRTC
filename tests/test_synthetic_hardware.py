@@ -2,7 +2,7 @@ import importlib
 
 import numpy as np
 
-from testsupport import DummySHM
+from testsupport import private_stream
 
 
 synthetic_mod = importlib.import_module("pyrtc.hardware.synthetic_systems")
@@ -14,7 +14,7 @@ def test_synthetic_shwfs_generates_frame_and_responds_to_correction(monkeypatch)
     streams = {}
 
     def _make_stream(name, shape, dtype, gpu_device=None):
-        stream = DummySHM(name, shape, dtype, gpu_device=gpu_device)
+        stream = private_stream(name, shape, dtype, gpu_device=gpu_device)
         streams[name] = stream
         return stream
 
@@ -25,7 +25,7 @@ def test_synthetic_shwfs_generates_frame_and_responds_to_correction(monkeypatch)
     monkeypatch.setattr(science_mod, "create_stream", _make_stream)
     monkeypatch.setattr(synthetic_mod, "open_stream", _open_existing)
 
-    streams["wfc"] = DummySHM("wfc", (32,), np.float32)
+    streams["wfc"] = private_stream("wfc", (32,), np.float32)
 
     sensor = synthetic_mod.SyntheticSHWFS(
         {
@@ -59,7 +59,7 @@ def test_synthetic_science_camera_updates_strehl_from_signal(monkeypatch):
     streams = {}
 
     def _make_stream(name, shape, dtype, gpu_device=None):
-        stream = DummySHM(name, shape, dtype, gpu_device=gpu_device)
+        stream = private_stream(name, shape, dtype, gpu_device=gpu_device)
         streams[name] = stream
         return stream
 
@@ -70,7 +70,7 @@ def test_synthetic_science_camera_updates_strehl_from_signal(monkeypatch):
     monkeypatch.setattr(science_mod, "create_stream", _make_stream)
     monkeypatch.setattr(synthetic_mod, "open_stream", _open_existing)
 
-    streams["signal"] = DummySHM("signal", (32,), np.float32)
+    streams["signal"] = private_stream("signal", (32,), np.float32)
     camera = synthetic_mod.SyntheticScienceCamera(
         {
             "name": "synthetic-psf",

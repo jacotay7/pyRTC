@@ -67,7 +67,7 @@ def read_shm_metadata(shm_name):
         Stream handle, resolved shape tuple, and resolved numpy dtype.
     """
 
-    shm = open_stream(shm_name)
+    shm = open_stream(shm_name, readonly=True)
     return shm, tuple(shm.shape), np.dtype(shm.dtype)
 
 

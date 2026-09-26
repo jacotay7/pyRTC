@@ -68,7 +68,7 @@ class _Slopes:
 
 def test_pid_optimizer_apply_trial_and_optimum(monkeypatch):
     module = importlib.import_module("pyrtc.hardware.pid_optimizer")
-    monkeypatch.setattr(module, "open_stream", lambda name: _Stream())
+    monkeypatch.setattr(module, "open_stream", lambda name, **kw: _Stream())
 
     loop = _Loop()
     optimizer = module.PIDOptimizer({"num_steps": 2, "functions": []}, loop)
@@ -87,7 +87,7 @@ def test_pid_optimizer_apply_trial_and_optimum(monkeypatch):
 
 def test_loop_optimizer_apply_trial_and_optimum(monkeypatch):
     module = importlib.import_module("pyrtc.hardware.loop_hyperparams_optimizer")
-    monkeypatch.setattr(module, "open_stream", lambda name: _Stream())
+    monkeypatch.setattr(module, "open_stream", lambda name, **kw: _Stream())
 
     loop = _Loop()
     optimizer = module.LoopOptimizer({"num_steps": 2, "functions": []}, loop)
@@ -106,7 +106,7 @@ def test_ncpa_optimizer_apply_trial_open_loop(monkeypatch):
     module = importlib.import_module("pyrtc.hardware.ncpa_optimizer")
     wfc_stream = _Stream(shape=(6,), dtype=np.float32)
 
-    def _open(name):
+    def _open(name, **kw):
         if name == "wfc":
             return wfc_stream
         return _Stream(0.8)

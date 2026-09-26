@@ -48,7 +48,7 @@ def main(argv=None) -> int:
     )
 
     shm_name = args.shm
-    shm = open_stream(shm_name)
+    shm = open_stream(shm_name, readonly=True)
     logger.info(
         "Monitoring SHM %s interval=%s window_size=%s max_size=%s",
         shm_name,

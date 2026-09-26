@@ -16,27 +16,16 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 
-def open_stream(shm_name, gpu_device=None):
-    """Attach to an existing SHM stream.
+def open_stream(shm_name):
+    """Attach a read-only observer handle to an existing SHM stream.
 
     The import lives here so tests can monkeypatch this module directly without
-    creating an import cycle with ``pyrtc.pipeline`` at module import time.
+    an import cycle through ``pyrtc.streams`` at module import time.
     """
 
     from pyrtc.streams import open_stream as _open_stream
 
-    return _open_stream(shm_name, gpu_device=gpu_device)
-
-
-def _wait_for_new_write(stream, poll_interval_seconds: float = 1e-5):
-    """Block until the stream's write counter advances, then return it."""
-
-    baseline = int(stream.count)
-    while True:
-        current = int(stream.count)
-        if current != baseline:
-            return current
-        time.sleep(poll_interval_seconds)
+    return _open_stream(shm_name, readonly=True)
 
 
 def _safe_mean(values) -> float:
@@ -160,11 +149,13 @@ class LatencySegment:
     count_delta_max: float
     statistics: LatencyStatistics
     processing_statistics: LatencyStatistics | None = None
+    alignment: str = "count"
 
     def to_dict(self) -> dict[str, Any]:
         payload = {
             "source_shm": self.source_shm,
             "target_shm": self.target_shm,
+            "alignment": self.alignment,
             "frame_shift": self.frame_shift,
             "count_offset": self.count_offset,
             "count_delta_min": self.count_delta_min,
@@ -198,37 +189,6 @@ class LatencyReport:
         }
 
 
-def collect_timestamps(streams, samples: int, show_progress: bool = False):
-    """Collect timestamp and counter samples for one or more SHM streams."""
-
-    stream_items = list(streams.items())
-    if not stream_items:
-        raise ValueError("At least one stream is required for latency sampling")
-
-    counts = {stream_name: np.empty(samples, dtype=np.float64) for stream_name, _ in stream_items}
-    write_times = {
-        stream_name: np.empty(samples, dtype=np.float64) for stream_name, _ in stream_items
-    }
-
-    if show_progress:
-        try:
-            import tqdm
-
-            iterator = tqdm.trange(samples)
-        except ImportError:
-            iterator = range(samples)
-    else:
-        iterator = range(samples)
-
-    for index in iterator:
-        for stream_name, stream in stream_items:
-            _wait_for_new_write(stream)
-            counts[stream_name][index] = stream.count
-            write_times[stream_name][index] = stream.write_time
-
-    return counts, write_times
-
-
 def collect_stream_event_history(
     streams,
     samples: int,
@@ -239,10 +199,9 @@ def collect_stream_event_history(
 ):
     """Collect per-stream write events over one shared wall-clock window.
 
-    Unlike ``collect_timestamps``, this sampler does not block on each stream in
-    sequence. It polls the write counters of all requested streams and records
-    each new write event as it appears, which preserves cross-stream timing
-    much better for asynchronous pipelines.
+    The sampler polls the write counters of all requested streams and records
+    each new write event (count, write time, and frame id) as it appears, which
+    preserves cross-stream timing for asynchronous pipelines.
     """
 
     stream_items = list(streams.items())
@@ -255,6 +214,7 @@ def collect_stream_event_history(
     write_times = {
         stream_name: np.empty(samples, dtype=np.float64) for stream_name, _ in stream_items
     }
+    frame_ids = {stream_name: np.zeros(samples, dtype=np.uint64) for stream_name, _ in stream_items}
     collected = {stream_name: 0 for stream_name, _ in stream_items}
     last_seen_count = {stream_name: int(stream.count) for stream_name, stream in stream_items}
 
@@ -278,10 +238,15 @@ def collect_stream_event_history(
                 current_count = int(stream.count)
                 if current_count == last_seen_count[stream_name]:
                     continue
+                write_time, frame_id = _event_metadata(stream, current_count)
+                if write_time is None:
+                    # Another write landed mid-sample; take it on the next pass.
+                    continue
                 last_seen_count[stream_name] = current_count
                 index = collected[stream_name]
                 counts[stream_name][index] = current_count
-                write_times[stream_name][index] = float(stream.write_time)
+                write_times[stream_name][index] = write_time
+                frame_ids[stream_name][index] = frame_id
                 collected[stream_name] = index + 1
                 progressed = True
                 if progress_bar is not None:
@@ -300,7 +265,56 @@ def collect_stream_event_history(
         if progress_bar is not None:
             progress_bar.close()
 
-    return counts, write_times
+    return counts, write_times, frame_ids
+
+
+def _event_metadata(stream, count: int):
+    """Return ``(write_time, frame_id)`` of publication ``count``.
+
+    Returns ``(None, None)`` when a newer write replaced it while sampling, so
+    a timestamp is never paired with another publication's frame id.
+    """
+
+    write_time = float(stream.write_time)
+    frame_id = int(stream.frame_id)
+    if int(stream.count) != count:
+        return None, None
+    return write_time, frame_id
+
+
+def compute_frame_matched_latency_seconds(
+    source_frame_ids: np.ndarray,
+    source_write_times: np.ndarray,
+    target_frame_ids: np.ndarray,
+    target_write_times: np.ndarray,
+) -> np.ndarray | None:
+    """Match target writes to the source write that carried the same frame id.
+
+    Components stamp each output with the ``frame_id`` of the input frame it
+    was computed from, so this pairing is exact. Returns ``None`` when either
+    stream carries no frame ids (``0``), e.g. a producer that does not
+    propagate them; callers then fall back to count alignment.
+    """
+
+    source_ids = np.asarray(source_frame_ids, dtype=np.uint64).reshape(-1)
+    target_ids = np.asarray(target_frame_ids, dtype=np.uint64).reshape(-1)
+    if not source_ids.any() or not target_ids.any():
+        return None
+    source_by_id: dict[int, float] = {}
+    for frame_id, write_time in zip(source_ids, np.asarray(source_write_times).reshape(-1)):
+        # The first write of a frame is when it became available downstream.
+        source_by_id.setdefault(int(frame_id), float(write_time))
+    latencies = []
+    matched_ids = set()
+    for frame_id, write_time in zip(target_ids, np.asarray(target_write_times).reshape(-1)):
+        key = int(frame_id)
+        if key == 0 or key in matched_ids or key not in source_by_id:
+            continue
+        matched_ids.add(key)
+        latencies.append(float(write_time) - source_by_id[key])
+    if not latencies:
+        return None
+    return np.asarray(latencies, dtype=np.float64)
 
 
 def compute_latency_seconds(source_write_times: np.ndarray, target_write_times: np.ndarray):
@@ -405,13 +419,26 @@ def _build_latency_segment(
     source_write_times: np.ndarray,
     target_counts: np.ndarray,
     target_write_times: np.ndarray,
+    source_frame_ids: np.ndarray | None = None,
+    target_frame_ids: np.ndarray | None = None,
 ) -> tuple[LatencySegment, np.ndarray]:
-    latency_seconds, count_offset, residual_count_delta = compute_count_aligned_latency_seconds(
-        source_counts,
-        source_write_times,
-        target_counts,
-        target_write_times,
-    )
+    latency_seconds = None
+    if source_frame_ids is not None and target_frame_ids is not None:
+        latency_seconds = compute_frame_matched_latency_seconds(
+            source_frame_ids, source_write_times, target_frame_ids, target_write_times
+        )
+    if latency_seconds is not None:
+        alignment = "frame_id"
+        count_offset = 0
+        residual_count_delta = np.zeros(1, dtype=np.int64)
+    else:
+        alignment = "count"
+        latency_seconds, count_offset, residual_count_delta = compute_count_aligned_latency_seconds(
+            source_counts,
+            source_write_times,
+            target_counts,
+            target_write_times,
+        )
 
     segment = LatencySegment(
         source_shm=source_shm,
@@ -421,6 +448,7 @@ def _build_latency_segment(
         count_delta_min=_safe_min(residual_count_delta),
         count_delta_max=_safe_max(residual_count_delta),
         statistics=LatencyStatistics.from_samples(latency_seconds),
+        alignment=alignment,
     )
     return segment, np.asarray(latency_seconds, dtype=np.float64)
 
@@ -598,33 +626,36 @@ def measure_stream_path_latency(
     unique_stream_names = list(dict.fromkeys(normalized_path))
     opener = shm_opener or open_stream
     streams = {stream_name: opener(stream_name) for stream_name in unique_stream_names}
-    counts, write_times = collect_stream_event_history(
-        streams,
-        samples=samples,
-        show_progress=show_progress,
-        timeout_seconds=timeout_seconds,
-    )
+    try:
+        counts, write_times, frame_ids = collect_stream_event_history(
+            streams,
+            samples=samples,
+            show_progress=show_progress,
+            timeout_seconds=timeout_seconds,
+        )
+    finally:
+        for stream in streams.values():
+            close = getattr(stream, "close", None)
+            if close is not None:
+                close()
 
-    segments = []
-    for source_name, target_name in zip(normalized_path[:-1], normalized_path[1:]):
-        segment, _ = _build_latency_segment(
+    def _segment(source_name, target_name):
+        return _build_latency_segment(
             source_name,
             target_name,
             counts[source_name],
             write_times[source_name],
             counts[target_name],
             write_times[target_name],
+            frame_ids[source_name],
+            frame_ids[target_name],
         )
-        segments.append(segment)
 
-    total_segment, total_samples = _build_latency_segment(
-        normalized_path[0],
-        normalized_path[-1],
-        counts[normalized_path[0]],
-        write_times[normalized_path[0]],
-        counts[normalized_path[-1]],
-        write_times[normalized_path[-1]],
-    )
+    segments = [
+        _segment(source_name, target_name)[0]
+        for source_name, target_name in zip(normalized_path[:-1], normalized_path[1:])
+    ]
+    total_segment, total_samples = _segment(normalized_path[0], normalized_path[-1])
 
     report = LatencyReport(
         source_shm=normalized_path[0],
@@ -659,9 +690,14 @@ def format_latency_report(report: LatencyReport | Mapping[str, Any]) -> str:
         f"  Min / Max: {_format_seconds(total_stats['min_seconds'])} / {_format_seconds(total_stats['max_seconds'])}",
         f"  P95 / P99 / P99.9: {_format_seconds(total_stats['p95_seconds'])} / {_format_seconds(total_stats['p99_seconds'])} / {_format_seconds(total_stats['p999_seconds'])}",
         f"  Max speed (from full-loop P99): {_format_seconds_with_rate(total_stats['p99_seconds'])}",
-        f"  Count offset: {total.get('count_offset', 0)}",
-        f"  Residual count delta range: {total['count_delta_min']:.0f} to {total['count_delta_max']:.0f}",
     ]
+    if total.get("alignment") == "frame_id":
+        lines.append("  Alignment: exact (frame id)")
+    else:
+        lines.append(f"  Count offset: {total.get('count_offset', 0)}")
+        lines.append(
+            f"  Residual count delta range: {total['count_delta_min']:.0f} to {total['count_delta_max']:.0f}"
+        )
     processing_stats = total.get("processing_statistics")
     if processing_stats is not None:
         lines.append(f"  Processing latency: {_format_seconds(processing_stats['mean_seconds'])}")

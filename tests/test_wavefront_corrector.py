@@ -13,9 +13,9 @@ def test_modal_to_zonal_with_flat():
 
 
 def test_wavefront_corrector_core(monkeypatch, tmp_path):
-    from testsupport import DummySHM
+    from testsupport import private_stream
 
-    monkeypatch.setattr(wfc_mod, "create_stream", DummySHM)
+    monkeypatch.setattr(wfc_mod, "create_stream", private_stream)
 
     conf = {
         "name": "wfc",
@@ -60,9 +60,9 @@ def test_wavefront_corrector_core(monkeypatch, tmp_path):
 
 
 def test_wavefront_corrector_applies_command_cap(monkeypatch):
-    from testsupport import DummySHM
+    from testsupport import private_stream
 
-    monkeypatch.setattr(wfc_mod, "create_stream", DummySHM)
+    monkeypatch.setattr(wfc_mod, "create_stream", private_stream)
 
     conf = {
         "name": "wfc",
@@ -83,9 +83,9 @@ def test_wavefront_corrector_applies_command_cap(monkeypatch):
 
 
 def test_wavefront_corrector_clears_wfc2d_outside_layout(monkeypatch):
-    from testsupport import DummySHM
+    from testsupport import private_stream
 
-    monkeypatch.setattr(wfc_mod, "create_stream", DummySHM)
+    monkeypatch.setattr(wfc_mod, "create_stream", private_stream)
 
     conf = {
         "name": "wfc",

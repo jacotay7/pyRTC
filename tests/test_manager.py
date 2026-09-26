@@ -6,6 +6,7 @@ import numpy as np
 import pytest
 import yaml
 
+from testsupport import publishing_chain
 from pyrtc.pipeline import (
     HardComponentRuntime,
     RTCManager,
@@ -246,68 +247,32 @@ def test_socket_json_helpers_handle_back_to_back_messages():
 def test_manager_latency_infers_loop_path(monkeypatch, tmp_path):
     from pyrtc import latency
 
-    class FakeShm:
-        def __init__(self, time_scale):
-            self._count = 0
-            self._time_scale = time_scale
+    with publishing_chain(["wfs", "signal", "wfc"]) as opener:
+        monkeypatch.setattr(latency, "open_stream", opener)
 
-        @property
-        def count(self):
-            self._count += 1
-            return self._count
+        manager = RTCManager.from_config_file(_write_runtime_synthetic_config(tmp_path))
+        report = manager.latency(samples=8)
 
-        @property
-        def write_time(self):
-            return self._count * self._time_scale
-
-    streams = {
-        "wfs": FakeShm(1.0e-3),
-        "signal": FakeShm(1.4e-3),
-        "wfc": FakeShm(1.8e-3),
-    }
-
-    monkeypatch.setattr(latency, "open_stream", lambda name, gpu_device=None: streams[name])
-
-    manager = RTCManager.from_config_file(_write_runtime_synthetic_config(tmp_path))
-    report = manager.latency(samples=8)
-
-    assert report["stream_path"] == ["wfs", "signal", "wfc"]
-    assert report["inferred_path"] is True
-    assert report["total"]["source_shm"] == "wfs"
-    assert report["total"]["target_shm"] == "wfc"
-    assert len(report["segments"]) == 2
+        assert report["stream_path"] == ["wfs", "signal", "wfc"]
+        assert report["inferred_path"] is True
+        assert report["total"]["source_shm"] == "wfs"
+        assert report["total"]["target_shm"] == "wfc"
+        assert report["total"]["alignment"] == "frame_id"
+        assert len(report["segments"]) == 2
 
 
 def test_manager_latency_uses_explicit_pair_when_requested(monkeypatch, tmp_path):
     from pyrtc import latency
 
-    class FakeShm:
-        def __init__(self, offset):
-            self._count = 0
-            self._offset = offset
+    with publishing_chain(["signal", "wfc"]) as opener:
+        monkeypatch.setattr(latency, "open_stream", opener)
 
-        @property
-        def count(self):
-            self._count += 1
-            return self._count
+        manager = RTCManager.from_config_file(_write_runtime_synthetic_config(tmp_path))
+        report = manager.latency(source_shm="signal", target_shm="wfc", samples=8)
 
-        @property
-        def write_time(self):
-            return self._count * 1.0e-3 + self._offset
-
-    streams = {
-        "signal": FakeShm(2.0e-4),
-        "wfc": FakeShm(5.0e-4),
-    }
-
-    monkeypatch.setattr(latency, "open_stream", lambda name, gpu_device=None: streams[name])
-
-    manager = RTCManager.from_config_file(_write_runtime_synthetic_config(tmp_path))
-    report = manager.latency(source_shm="signal", target_shm="wfc", samples=8)
-
-    assert report["stream_path"] == ["signal", "wfc"]
-    assert report["total"]["source_shm"] == "signal"
-    assert report["total"]["target_shm"] == "wfc"
+        assert report["stream_path"] == ["signal", "wfc"]
+        assert report["total"]["source_shm"] == "signal"
+        assert report["total"]["target_shm"] == "wfc"
 
 
 def test_manager_stop_is_idempotent_for_soft_system():
@@ -931,33 +896,14 @@ def test_import_symbol_from_file_reuses_canonical_pyrtc_module():
 def test_manager_latency_infers_path_for_classfile_components(monkeypatch):
     from pyrtc import latency
 
-    class FakeShm:
-        def __init__(self, time_scale):
-            self._count = 0
-            self._time_scale = time_scale
+    with publishing_chain(["wfs", "signal", "wfc"]) as opener:
+        monkeypatch.setattr(latency, "open_stream", opener)
 
-        @property
-        def count(self):
-            self._count += 1
-            return self._count
+        # Use the real example config: its components are loaded via class_file,
+        # which used to produce duplicate class objects with empty descriptors
+        # and break stream-path inference.
+        manager = RTCManager.from_config_file(SYNTHETIC_CONFIG_PATH)
+        report = manager.latency(samples=8)
 
-        @property
-        def write_time(self):
-            return self._count * self._time_scale
-
-    streams = {
-        "wfs": FakeShm(1.0e-3),
-        "signal": FakeShm(1.4e-3),
-        "wfc": FakeShm(1.8e-3),
-    }
-
-    monkeypatch.setattr(latency, "open_stream", lambda name, gpu_device=None: streams[name])
-
-    # Use the real example config: its components are loaded via class_file,
-    # which used to produce duplicate class objects with empty descriptors
-    # and break stream-path inference.
-    manager = RTCManager.from_config_file(SYNTHETIC_CONFIG_PATH)
-    report = manager.latency(samples=8)
-
-    assert report["stream_path"] == ["wfs", "signal", "wfc"]
-    assert report["inferred_path"] is True
+        assert report["stream_path"] == ["wfs", "signal", "wfc"]
+        assert report["inferred_path"] is True

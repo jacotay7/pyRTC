@@ -155,7 +155,6 @@ def test_set_pupils_registers_pywfs_output_streams(monkeypatch):
     sp._stream_inputs = {}
     sp._stream_outputs = {}
     sp._stream_defaults = {}
-    sp._last_stream_metadata = {}
     sp.system_streams = {}
     sp.section_name = None
 

@@ -31,8 +31,9 @@ def test_create_stream_falls_back_for_unsupported_gpu_dtype(monkeypatch, unique_
     name = unique_name("u16")
     monkeypatch.setattr(streams, "TORCH_AVAILABLE", True)
     monkeypatch.setattr(streams.pyshmem, "gpu_available", lambda: True)
-    # uint16 has no torch equivalent, so the dtype check fires before any
-    # CUDA work happens — safe to exercise without a GPU.
+    # The dtype check fires before any CUDA work happens, so this is safe to
+    # exercise without a GPU.
+    monkeypatch.setattr(streams.pyshmem, "GPU_SUPPORTED_DTYPES", frozenset({np.dtype(np.float32)}))
     shm = create_stream(name, (4,), np.uint16, gpu_device="cuda:0")
     try:
         assert not shm.gpu_enabled

@@ -13,9 +13,9 @@ def test_downsample_and_rotate_helpers():
 
 
 def test_wavefront_sensor_basic(monkeypatch, tmp_path):
-    from testsupport import DummySHM
+    from testsupport import private_stream
 
-    monkeypatch.setattr(wfs_mod, "create_stream", DummySHM)
+    monkeypatch.setattr(wfs_mod, "create_stream", private_stream)
 
     conf = {
         "name": "w",

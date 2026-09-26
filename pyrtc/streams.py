@@ -104,20 +104,21 @@ def create_stream(name, shape, dtype, gpu_device=None):
     return pyshmem.create(name, shape=shape, dtype=dtype, **create_kwargs)
 
 
-def open_stream(name, gpu_device=None):
+def open_stream(name, gpu_device=None, *, readonly=False):
     """Attach to an existing pyshmem stream.
 
     Without ``gpu_device`` the stream is opened CPU-side: GPU-backed streams
     are read through their CPU mirror and reads return NumPy arrays. With
     ``gpu_device`` the producer's CUDA tensor is attached and reads return
     torch tensors; if the attach fails (e.g. the producer exited), the CPU
-    mirror is used instead.
+    mirror is used instead. ``readonly=True`` returns a handle that rejects
+    writes, for observers such as viewers, telemetry, and latency probes.
     """
     gpu_device = normalize_gpu_device(gpu_device, name)
     if gpu_device is None:
-        return pyshmem.open(name, gpu_device=False)
+        return pyshmem.open(name, gpu_device=False, readonly=readonly)
     try:
-        return pyshmem.open(name, gpu_device=gpu_device)
+        return pyshmem.open(name, gpu_device=gpu_device, readonly=readonly)
     except FileNotFoundError:
         raise
     except Exception:
@@ -126,7 +127,7 @@ def open_stream(name, gpu_device=None):
             name,
             gpu_device,
         )
-        return pyshmem.open(name, gpu_device=False)
+        return pyshmem.open(name, gpu_device=False, readonly=readonly)
 
 
 def clear_shms(names):
@@ -137,7 +138,7 @@ def clear_shms(names):
 
 def _existing_shm_spec(name: str):
     try:
-        stream = open_stream(name)
+        stream = open_stream(name, readonly=True)
     except Exception:
         return None
     try:

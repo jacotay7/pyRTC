@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import os
 import threading
-import time
 from typing import Any
 
 from pyrtc.logging_utils import ensure_logging_configured, get_logger
@@ -93,7 +92,8 @@ class Component:
             self.gpu_device = normalize_gpu_device(requested_gpu_device, self.__class__.__name__)
             self._stream_inputs = {}
             self._stream_outputs = {}
-            self._last_stream_metadata = {}
+            self._consumed_counts = {}
+            self.frame_id = None
             self._input_stream_names = self._normalize_stream_name_map(
                 conf.get("input_streams", {}), direction="input"
             )
@@ -181,8 +181,10 @@ class Component:
             self._stream_inputs = {}
         if not hasattr(self, "_stream_outputs"):
             self._stream_outputs = {}
-        if not hasattr(self, "_last_stream_metadata"):
-            self._last_stream_metadata = {}
+        if not hasattr(self, "_consumed_counts"):
+            self._consumed_counts = {}
+        if not hasattr(self, "frame_id"):
+            self.frame_id = None
         if not hasattr(self, "_input_stream_names"):
             self._input_stream_names = {}
         if not hasattr(self, "_output_stream_names"):
@@ -204,17 +206,6 @@ class Component:
         if hasattr(self, conventional_name):
             return getattr(self, conventional_name)
         raise KeyError(stream_name)
-
-    def _read_stream_metadata(self, stream_name: str) -> dict[str, float | int]:
-        """Capture the latest metadata snapshot for a registered stream."""
-
-        self._ensure_stream_state()
-        stream = self._stream_object(stream_name)
-        return {
-            "count": int(stream.count),
-            "write_time": float(stream.write_time),
-            "read_time": time.time(),
-        }
 
     def register_input_stream(self, stream_name: str, shm) -> None:
         """Register a stream that this component reads from."""
@@ -238,34 +229,48 @@ class Component:
         stream_name : str
             Name of the registered stream.
         block : bool, optional
-            When ``True``, wait for a write this component has not yet seen
-            before returning. The first read of a stream returns the current
-            payload immediately.
+            When ``True``, consume the stream: wait for a write newer than the
+            one returned by this component's previous blocking read. The first
+            blocking read returns the current payload immediately. When
+            ``False``, peek at the current payload without consuming it.
         timeout : float, optional
             Maximum seconds to wait for a new write when ``block`` is
             ``True``. ``None`` waits indefinitely.
         out : numpy.ndarray, optional
             Pre-allocated buffer receiving the payload (zero-alloc reads on
             the hot path). Ignored for GPU-attached streams.
+
+        Reading a registered input stream also records its publication
+        ``frame_id`` on :attr:`frame_id`, so the next :meth:`write_stream`
+        carries the frame identity downstream.
         """
 
         self._ensure_stream_state()
         name = str(stream_name)
         stream = self._stream_object(name)
-        last_seen = self._last_stream_metadata.get(name)
-        if block and last_seen is not None and int(stream.count) == int(last_seen["count"]):
-            payload = stream.read_new(timeout=timeout, out=out)
+        if stream.gpu_device is not None:
+            out = None
+        consumed = self._consumed_counts.get(name) if block else None
+        if consumed is None:
+            publication = stream.read_publication(out=out)
         else:
-            payload = stream.read(out=out)
-        self._last_stream_metadata[name] = self._read_stream_metadata(name)
-        return payload
+            # Level-triggered on the last consumed count, so a write published
+            # between two calls is never folded into the wait baseline.
+            publication = stream.read_after_publication(consumed, timeout=timeout, out=out)
+        if block:
+            self._consumed_counts[name] = publication.count
+        if name in self._stream_inputs:
+            self.frame_id = publication.frame_id
+        return publication.payload
 
     def write_stream(self, stream_name: str, arr):
         """Write one registered output stream.
 
-        A component's own writes intentionally do not update its last-seen
-        state, so a following blocking :meth:`read_stream` returns the
-        just-written payload immediately.
+        The write is stamped with :attr:`frame_id` (the frame identity of the
+        most recently read input, or a source component's own frame counter)
+        when one is set. A component's own writes do not count as reads, so a
+        following blocking :meth:`read_stream` returns the just-written
+        payload immediately.
         """
 
         self._ensure_stream_state()
@@ -273,7 +278,7 @@ class Component:
         stream = self._stream_outputs.get(name)
         if stream is None:
             stream = self._stream_object(name)
-        stream.write(arr)
+        stream.write(arr, frame_id=self.frame_id)
 
     @classmethod
     def describe(cls):

@@ -5,8 +5,6 @@ import json
 from pathlib import Path
 import sys
 
-import pyrtc.latency as latency_helpers
-
 from pyrtc.logging_utils import add_logging_cli_args, configure_logging_from_args
 from pyrtc.manager import RTCManager
 from pyrtc.latency import (
@@ -14,28 +12,6 @@ from pyrtc.latency import (
     measure_stream_path_latency,
     plot_latency_histogram,
 )
-
-
-def collect_timestamps(streams, samples: int, show_progress: bool = False):
-    """Collect timestamp and count samples for one or more streams.
-
-    This compatibility wrapper preserves the historical import location under
-    ``pyrtc.scripts.measure_latency`` while delegating the implementation to the
-    shared latency helper module.
-    """
-
-    return latency_helpers.collect_timestamps(streams, samples=samples, show_progress=show_progress)
-
-
-def compute_latency_seconds(source_write_times, target_write_times):
-    """Compute latency samples from aligned source and target timestamps.
-
-    This compatibility wrapper preserves the historical import location under
-    ``pyrtc.scripts.measure_latency`` while delegating the implementation to the
-    shared latency helper module.
-    """
-
-    return latency_helpers.compute_latency_seconds(source_write_times, target_write_times)
 
 
 def _build_arg_parser() -> argparse.ArgumentParser:

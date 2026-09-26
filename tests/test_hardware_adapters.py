@@ -7,10 +7,10 @@ import pytest
 
 
 def test_ximea_wfs_init_and_controls(monkeypatch):
-    from testsupport import DummySHM
+    from testsupport import private_stream
 
     fake_wfs_module = importlib.import_module("pyrtc.wavefront_sensor")
-    monkeypatch.setattr(fake_wfs_module, "create_stream", DummySHM)
+    monkeypatch.setattr(fake_wfs_module, "create_stream", private_stream)
 
     class _Camera:
         def __init__(self):
@@ -78,10 +78,10 @@ def test_ximea_wfs_init_and_controls(monkeypatch):
 
 
 def test_spinnaker_science_camera_init_and_controls(monkeypatch):
-    from testsupport import DummySHM
+    from testsupport import private_stream
 
     fake_science_module = importlib.import_module("pyrtc.science_camera")
-    monkeypatch.setattr(fake_science_module, "create_stream", DummySHM)
+    monkeypatch.setattr(fake_science_module, "create_stream", private_stream)
 
     class _Node:
         def __init__(self):
@@ -181,10 +181,10 @@ def test_spinnaker_science_camera_init_and_controls(monkeypatch):
 
 
 def test_alpao_dm_init_and_layout(monkeypatch, tmp_path):
-    from testsupport import DummySHM
+    from testsupport import private_stream
 
     fake_wfc_module = importlib.import_module("pyrtc.wavefront_corrector")
-    monkeypatch.setattr(fake_wfc_module, "create_stream", DummySHM)
+    monkeypatch.setattr(fake_wfc_module, "create_stream", private_stream)
 
     class _DM:
         def __init__(self, serial):
@@ -305,14 +305,14 @@ def _specula_param():
 
 
 def _install_fake_specula(monkeypatch):
-    from testsupport import DummySHM
+    from testsupport import private_stream
 
     fake_wfs_module = importlib.import_module("pyrtc.wavefront_sensor")
     fake_science_module = importlib.import_module("pyrtc.science_camera")
     fake_wfc_module = importlib.import_module("pyrtc.wavefront_corrector")
-    monkeypatch.setattr(fake_wfs_module, "create_stream", DummySHM)
-    monkeypatch.setattr(fake_science_module, "create_stream", DummySHM)
-    monkeypatch.setattr(fake_wfc_module, "create_stream", DummySHM)
+    monkeypatch.setattr(fake_wfs_module, "create_stream", private_stream)
+    monkeypatch.setattr(fake_science_module, "create_stream", private_stream)
+    monkeypatch.setattr(fake_wfc_module, "create_stream", private_stream)
 
     init_calls = []
 
@@ -680,14 +680,14 @@ def _install_fake_specula(monkeypatch):
 
 
 def _install_fake_oopao(monkeypatch):
-    from testsupport import DummySHM
+    from testsupport import private_stream
 
     fake_wfs_module = importlib.import_module("pyrtc.wavefront_sensor")
     fake_science_module = importlib.import_module("pyrtc.science_camera")
     fake_wfc_module = importlib.import_module("pyrtc.wavefront_corrector")
-    monkeypatch.setattr(fake_wfs_module, "create_stream", DummySHM)
-    monkeypatch.setattr(fake_science_module, "create_stream", DummySHM)
-    monkeypatch.setattr(fake_wfc_module, "create_stream", DummySHM)
+    monkeypatch.setattr(fake_wfs_module, "create_stream", private_stream)
+    monkeypatch.setattr(fake_science_module, "create_stream", private_stream)
+    monkeypatch.setattr(fake_wfc_module, "create_stream", private_stream)
 
     class _FakeSource:
         def __init__(self, optBand="I", magnitude=0, **kwargs):
@@ -1090,7 +1090,7 @@ def test_specula_standalone_bridge_syncs_pywfs_geometry(monkeypatch):
     assert conf["wfc"]["display_grid_size"] == 2
     assert conf["psf"]["width"] == 48
     assert conf["psf"]["height"] == 48
-    assert dm.correction_vector_2d.arr.shape == (2, 2)
+    assert dm.correction_vector_2d.shape == (2, 2)
     assert sim.context.psf.verbose is False
 
     wfs.expose()
@@ -1331,10 +1331,10 @@ def test_oopao_interface_requires_param_or_objects(monkeypatch):
 
 
 def test_oopao_wfs_static_dm_does_not_accumulate_without_atmosphere(monkeypatch):
-    from testsupport import DummySHM
+    from testsupport import private_stream
 
     fake_wfs_module = importlib.import_module("pyrtc.wavefront_sensor")
-    monkeypatch.setattr(fake_wfs_module, "create_stream", DummySHM)
+    monkeypatch.setattr(fake_wfs_module, "create_stream", private_stream)
 
     class _FakeSource:
         def __init__(self):

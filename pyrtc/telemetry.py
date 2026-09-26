@@ -24,7 +24,6 @@ import json
 import os
 import platform
 import socket
-import time
 import uuid
 from datetime import datetime, timezone
 from importlib import metadata as importlib_metadata
@@ -84,16 +83,6 @@ def _session_file(session_path: str | Path) -> Path:
     if path.is_dir():
         return path / "session.json"
     return path
-
-
-def _extract_timestamp(shm) -> float:
-    try:
-        timestamp = float(shm.write_time)
-        if timestamp > 0:
-            return timestamp
-    except Exception:
-        pass
-    return time.time()
 
 
 def _normalize_stream_specs(streams, num_frames, semantic_tags=None, sampling=None) -> list[dict]:
@@ -228,6 +217,10 @@ def load_telemetry_session(session_path: str | Path, *, mmap_mode=None) -> dict:
             "timestamps": np.load(timestamps_path),
             "metadata": stream_metadata,
         }
+        # Sessions recorded before frame ids were captured have no file.
+        if "frame_ids_file" in stream_record:
+            frame_ids_path = (session_dir / stream_record["frame_ids_file"]).resolve()
+            loaded[stream_name]["frame_ids"] = np.load(frame_ids_path)
 
     return loaded
 
@@ -377,7 +370,7 @@ class Telemetry(Component):
             stream_records = []
             last_frames_path = ""
             for spec in specs:
-                shm = open_stream(spec["name"])
+                shm = open_stream(spec["name"], readonly=True)
                 shm_dims = tuple(shm.shape)
                 shm_dtype = np.dtype(shm.dtype)
                 stream_name = spec["name"]
@@ -404,21 +397,34 @@ class Telemetry(Component):
                     shape=(frame_count,),
                 )
 
-                for index in range(frame_count):
-                    frame = np.asarray(shm.read_new(), dtype=dtype)
-                    frames[index] = frame
-                    timestamps[index] = _extract_timestamp(shm)
+                frame_ids = np.empty(frame_count, dtype=np.uint64)
+                missed_frames = 0
+                try:
+                    for index in range(frame_count):
+                        # One publication gives the frame together with its own
+                        # write time and frame id, never a later write's.
+                        publication = shm.read_new_publication()
+                        frames[index] = np.asarray(publication.payload, dtype=dtype)
+                        timestamps[index] = publication.write_time
+                        frame_ids[index] = publication.frame_id
+                        if index > 0:
+                            missed_frames += publication.missed_publications
+                finally:
+                    shm.close()
 
                 frames.flush()
                 timestamps.flush()
                 del frames
                 del timestamps
+                frame_ids_path = stream_dir / "frame_ids.npy"
+                np.save(frame_ids_path, frame_ids)
 
                 stream_metadata = {
                     "name": stream_name,
                     "dtype": dtype.name,
                     "shape": list(frame_shape),
                     "frame_count": frame_count,
+                    "missed_frames": int(missed_frames),
                     "timestamp_unit": "unix_seconds",
                     "sampling": spec["sampling"],
                     "semantic_tags": spec["semantic_tags"],
@@ -434,6 +440,7 @@ class Telemetry(Component):
                     "frame_count": frame_count,
                     "frames_file": str(frames_path.relative_to(session_dir)),
                     "timestamps_file": str(timestamps_path.relative_to(session_dir)),
+                    "frame_ids_file": str(frame_ids_path.relative_to(session_dir)),
                     "metadata_file": str(stream_metadata_path.relative_to(session_dir)),
                     "sampling": spec["sampling"],
                     "semantic_tags": spec["semantic_tags"],

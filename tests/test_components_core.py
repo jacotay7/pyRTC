@@ -1,8 +1,10 @@
 import importlib
 from pathlib import Path
 
+import numpy as np
 import pytest
 
+from testsupport import private_stream
 from pyrtc.modulator import Modulator
 from pyrtc.optimizer import Optimizer
 from pyrtc.component import Component
@@ -36,6 +38,42 @@ def test_pyrtc_component_start_stop():
     assert c.running is True
     c.stop()
     assert c.running is False
+
+
+def _stream_component(input_stream, output_stream):
+    comp = DummyComponent({"functions": []})
+    comp.register_input_stream("x", input_stream)
+    comp.register_output_stream("y", output_stream)
+    return comp
+
+
+def test_read_stream_blocking_reads_consume_and_peeks_do_not():
+    source = private_stream("src", (2,), np.float32)
+    comp = _stream_component(source, private_stream("dst", (2,), np.float32))
+
+    source.write(np.array([1, 1], dtype=np.float32))
+    assert comp.read_stream("x")[0] == 1
+    with pytest.raises(TimeoutError):
+        comp.read_stream("x", timeout=0.05)
+
+    source.write(np.array([2, 2], dtype=np.float32))
+    # A peek sees the new write but must not consume it...
+    assert comp.read_stream("x", block=False)[0] == 2
+    # ...so the next blocking read still returns it without waiting.
+    assert comp.read_stream("x", timeout=0.05)[0] == 2
+
+
+def test_write_stream_propagates_input_frame_id():
+    source = private_stream("src", (2,), np.float32)
+    output = private_stream("dst", (2,), np.float32)
+    comp = _stream_component(source, output)
+
+    source.write(np.zeros(2, dtype=np.float32), frame_id=41)
+    comp.read_stream("x")
+    comp.write_stream("y", np.ones(2, dtype=np.float32))
+
+    assert comp.frame_id == 41
+    assert output.read_publication().frame_id == 41
 
 
 def test_modulator_name_default_and_custom():

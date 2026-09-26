@@ -54,7 +54,7 @@ class NCPAOptimizer(Optimizer):
             self.wfc_shm = open_stream(_input_stream_name(conf, "wfc"))
             self.wfc_dims = tuple(self.wfc_shm.shape)
             self.wfc_dtype = np.dtype(self.wfc_shm.dtype)
-            self.strehl_shm = open_stream(_input_stream_name(conf, "strehl"))
+            self.strehl_shm = open_stream(_input_stream_name(conf, "strehl"), readonly=True)
             self.start_mode = set_from_config(conf, "start_mode", 0)
             self.end_mode = set_from_config(conf, "end_mode", 20)
             self.correction_mag = set_from_config(conf, "correction_mag", 2e-3)

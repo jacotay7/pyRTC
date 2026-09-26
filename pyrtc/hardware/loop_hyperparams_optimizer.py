@@ -44,7 +44,7 @@ class LoopOptimizer(Optimizer):
         try:
             self.loop = loop
 
-            self.strehl_shm = open_stream(_input_stream_name(conf, "strehl"))
+            self.strehl_shm = open_stream(_input_stream_name(conf, "strehl"), readonly=True)
             self.min_gain = set_from_config(conf, "min_gain", 0.3)
             self.max_gain = set_from_config(conf, "max_gain", 0.6)
             self.max_leak = set_from_config(conf, "max_leak", 0.1)

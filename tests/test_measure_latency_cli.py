@@ -3,16 +3,17 @@ import pytest
 
 from pyrtc import latency
 from pyrtc.scripts import measure_latency
+from testsupport import publishing_chain
 
 
 def test_compute_latency_applies_frame_shift():
     source_times = np.array([1.0, 2.0, 3.0, 4.0], dtype=np.float64)
     target_times = np.array([0.2, 1.2, 2.2, 3.2], dtype=np.float64)
 
-    latency, shift = measure_latency.compute_latency_seconds(source_times, target_times)
+    latency_values, shift = latency.compute_latency_seconds(source_times, target_times)
 
     assert shift == 1
-    assert np.allclose(latency, np.array([0.2, 0.2, 0.2], dtype=np.float64))
+    assert np.allclose(latency_values, np.array([0.2, 0.2, 0.2], dtype=np.float64))
 
 
 def test_count_aligned_latency_removes_startup_count_offset():
@@ -34,7 +35,7 @@ def test_count_aligned_latency_removes_startup_count_offset():
 
 
 def test_measure_stream_path_latency_uses_shared_event_history(monkeypatch):
-    def _fake_open(name, gpu_device=None):
+    def _fake_open(name):
         return object()
 
     def _fake_collect(streams, samples, **kwargs):
@@ -49,7 +50,9 @@ def test_measure_stream_path_latency_uses_shared_event_history(monkeypatch):
             "signal": np.array([1.001, 1.006, 1.011, 1.016], dtype=np.float64),
             "wfc": np.array([1.004, 1.009, 1.014, 1.019], dtype=np.float64),
         }
-        return counts, write_times
+        # No producer stamped frame ids, so segments fall back to count alignment.
+        frame_ids = {name: np.zeros(4, dtype=np.uint64) for name in counts}
+        return counts, write_times, frame_ids
 
     monkeypatch.setattr(latency, "collect_stream_event_history", _fake_collect)
 
@@ -65,87 +68,79 @@ def test_measure_stream_path_latency_uses_shared_event_history(monkeypatch):
     assert report.total.statistics.mean_seconds == pytest.approx(0.004)
     assert report.segments[0].statistics.mean_seconds == pytest.approx(0.001)
     assert report.segments[1].statistics.mean_seconds == pytest.approx(0.003)
+    assert report.total.alignment == "count"
 
 
-def test_collect_timestamps_reads_metadata(monkeypatch):
-    class FakeShm:
-        def __init__(self, events):
-            self._events = list(events)
-            self._index = -1
+def test_event_history_records_frame_ids_for_exact_alignment():
+    with publishing_chain(["src", "dst"], step_seconds=2e-3) as opener:
+        streams = {name: opener(name) for name in ("src", "dst")}
+        try:
+            counts, write_times, frame_ids = latency.collect_stream_event_history(
+                streams, samples=6, timeout_seconds=10.0
+            )
+        finally:
+            for stream in streams.values():
+                stream.close()
 
-        def advance(self):
-            self._index = min(self._index + 1, len(self._events) - 1)
-            return self._events[self._index][0]
+    assert np.all(np.diff(counts["src"]) > 0)
+    assert frame_ids["src"].all() and frame_ids["dst"].all()
+    matched = latency.compute_frame_matched_latency_seconds(
+        frame_ids["src"], write_times["src"], frame_ids["dst"], write_times["dst"]
+    )
+    assert matched is not None and matched.size >= 4
+    # dst is written one step after src for every frame.
+    assert np.all(matched > 0)
+    assert np.all(matched < 0.1)
 
-        @property
-        def count(self):
-            return self._events[max(self._index, 0)][0]
 
-        @property
-        def write_time(self):
-            return self._events[max(self._index, 0)][1]
+def test_frame_matched_latency_requires_stamped_frames():
+    zeros = np.zeros(3, dtype=np.uint64)
+    times = np.array([1.0, 2.0, 3.0])
+    assert latency.compute_frame_matched_latency_seconds(zeros, times, zeros, times) is None
 
-    import pyrtc.latency as latency_helpers
 
-    monkeypatch.setattr(
-        latency_helpers,
-        "_wait_for_new_write",
-        lambda stream, poll_interval_seconds=1e-5: stream.advance(),
+def test_frame_matched_latency_pairs_by_frame_not_position():
+    source_ids = np.array([5, 6, 7], dtype=np.uint64)
+    source_times = np.array([1.0, 2.0, 3.0])
+    # The target missed frame 5 and reports frame 6 twice.
+    target_ids = np.array([6, 6, 7], dtype=np.uint64)
+    target_times = np.array([2.25, 2.5, 3.25])
+
+    matched = latency.compute_frame_matched_latency_seconds(
+        source_ids, source_times, target_ids, target_times
     )
 
-    source = FakeShm([(1, 0.10), (2, 0.20), (3, 0.30)])
-    target = FakeShm([(5, 0.15), (6, 0.25), (7, 0.35)])
-
-    counts, write_times = measure_latency.collect_timestamps(
-        {"source": source, "target": target}, samples=3, show_progress=False
-    )
-
-    assert np.array_equal(counts["source"], np.array([1, 2, 3], dtype=np.float64))
-    assert np.array_equal(counts["target"], np.array([5, 6, 7], dtype=np.float64))
-    assert np.allclose(write_times["source"], np.array([0.10, 0.20, 0.30], dtype=np.float64))
-    assert np.allclose(write_times["target"], np.array([0.15, 0.25, 0.35], dtype=np.float64))
+    assert np.allclose(matched, [0.25, 0.25])
 
 
 def test_main_no_show(monkeypatch, tmp_path):
-    class FakeShm:
-        def __init__(self):
-            self._count = 0
+    with publishing_chain(["wfs_raw", "wfc_2d"]) as opener:
+        monkeypatch.setattr(latency, "open_stream", opener)
+        monkeypatch.setattr(measure_latency, "plot_latency_histogram", lambda *args, **kwargs: None)
 
-        @property
-        def count(self):
-            self._count += 1
-            return self._count
+        def _fake_savefig(path):
+            with open(path, "wb") as f:
+                f.write(b"%PDF-FAKE")
 
-        @property
-        def write_time(self):
-            return self._count * 1e-3
+        from matplotlib import pyplot as plt
 
-    monkeypatch.setattr(latency, "open_stream", lambda name, gpu_device=None: FakeShm())
-    monkeypatch.setattr(measure_latency, "plot_latency_histogram", lambda *args, **kwargs: None)
+        monkeypatch.setattr(plt, "savefig", _fake_savefig)
 
-    def _fake_savefig(path):
-        with open(path, "wb") as f:
-            f.write(b"%PDF-FAKE")
+        out = tmp_path / "lat.pdf"
+        code = measure_latency.main(
+            [
+                "wfs_raw",
+                "wfc_2d",
+                "--samples",
+                "20",
+                "--no-progress",
+                "--output",
+                str(out),
+            ]
+        )
 
-    from matplotlib import pyplot as plt
-
-    monkeypatch.setattr(plt, "savefig", _fake_savefig)
-
-    out = tmp_path / "lat.pdf"
-    code = measure_latency.main(
-        [
-            "wfs_raw",
-            "wfc_2d",
-            "--samples",
-            "20",
-            "--no-progress",
-            "--output",
-            str(out),
-        ]
-    )
-
-    assert code == 0
-    assert out.exists()
+        assert code == 0
+        assert out.exists()
 
 
 def test_main_config_json_output(monkeypatch):

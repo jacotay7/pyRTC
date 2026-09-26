@@ -46,8 +46,8 @@ class PIDOptimizer(Optimizer):
             self.loop = loop
 
             self.mode = "strehl"
-            self.strehl_shm = open_stream(_input_stream_name(conf, "strehl"))
-            self.tip_tilt_shm = open_stream(_input_stream_name(conf, "tiptilt"))
+            self.strehl_shm = open_stream(_input_stream_name(conf, "strehl"), readonly=True)
+            self.tip_tilt_shm = open_stream(_input_stream_name(conf, "tiptilt"), readonly=True)
             self.max_p_gain = set_from_config(conf, "max_p_gain", 0.5)
             self.max_i_gain = set_from_config(conf, "max_i_gain", 0.05)
             self.max_d_gain = set_from_config(conf, "max_d_gain", 0.05)

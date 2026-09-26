@@ -1,4 +1,6 @@
 import numpy as np
+
+from testsupport import private_stream
 import importlib
 
 loop_mod = importlib.import_module("pyrtc.loop")
@@ -103,14 +105,7 @@ def test_loop_methods_without_full_init(tmp_path):
     assert hasattr(loop, "_sent")
 
     # send_to_wfc branch with CL DOCRIME
-    class _W:
-        def __init__(self):
-            self.last = None
-
-        def write(self, x):
-            self.last = np.asarray(x)
-
-    loop.wfc_shm = _W()
+    loop.wfc_shm = private_stream("wfc", (4,), np.float32)
     loop.flat = np.zeros(4, dtype=np.float32)
     loop.cl_docrime = True
     loop.poke_amp = 0.1
@@ -135,26 +130,10 @@ def test_standard_integrator_uses_nonblocking_wfc_read():
     loop.null_correction = np.zeros(4, dtype=np.float32)
     loop.num_active_modes = 3
 
-    class _Signal:
-        count = 1
-        write_time = 1.0
-
-        def read(self, out=None):
-            return np.ones(4, dtype=np.float32)
-
-    class _Wfc:
-        count = 1
-        write_time = 1.0
-
-        def read_new(self, timeout=None, out=None):
-            raise AssertionError("standard_integrator should not block on wfc")
-
-        def read(self, out=None):
-            return np.zeros(4, dtype=np.float32)
-
     sent = {}
-    loop.signal_shm = _Signal()
-    loop.wfc_shm = _Wfc()
+    loop.signal_shm = private_stream("signal", (4,), np.float32)
+    loop.wfc_shm = private_stream("wfc", (4,), np.float32)
+    loop.signal_shm.write(np.ones(4, dtype=np.float32))
     loop._signal_buffer = np.empty(4, dtype=np.float32)
     loop._wfc_buffer = np.empty(4, dtype=np.float32)
     loop.send_to_wfc = lambda correction, slopes=None: sent.setdefault(
@@ -165,6 +144,13 @@ def test_standard_integrator_uses_nonblocking_wfc_read():
 
     assert "correction" in sent
     assert np.max(np.abs(sent["correction"])) > 0
+
+    # A second iteration must only wait on the signal: wfc is never rewritten
+    # here, so a blocking wfc read would hang.
+    loop.signal_shm.write(np.ones(4, dtype=np.float32))
+    sent.clear()
+    loop.standard_integrator()
+    assert "correction" in sent
 
 
 def test_loop_compute_cm_zero_matrix_without_failure():

@@ -16,7 +16,7 @@ import numpy as np
 from benchmarks.core_compute_bench import run_core_compute_benchmarks
 
 from pyrtc.logging_utils import add_logging_cli_args, configure_logging_from_args, get_logger
-from pyrtc.scripts.measure_latency import compute_latency_seconds
+from pyrtc.latency import compute_latency_seconds
 from pyrtc.utils import measure_execution_time
 
 

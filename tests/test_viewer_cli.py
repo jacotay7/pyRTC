@@ -183,8 +183,9 @@ def test_format_shape_joins_all_dimensions():
 
 def test_read_shm_metadata_reports_stream_shape_and_dtype(monkeypatch):
     class _Stream:
-        def __init__(self, name):
+        def __init__(self, name, readonly=False):
             self.name = name
+            self.readonly = readonly
             self.shape = (8, 4)
             self.dtype = np.int32
 
@@ -193,6 +194,7 @@ def test_read_shm_metadata_reports_stream_shape_and_dtype(monkeypatch):
     shm, shm_shape, shm_dtype = viewer_helpers.read_shm_metadata("wfc_2d")
 
     assert shm.name == "wfc_2d"
+    assert shm.readonly
     assert shm_shape == (8, 4)
     assert shm_dtype == np.dtype(np.int32)
 

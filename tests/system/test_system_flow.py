@@ -2,7 +2,7 @@ import importlib
 
 import numpy as np
 
-from testsupport import DummySHM
+from testsupport import private_stream
 
 
 loop_mod = importlib.import_module("pyrtc.loop")
@@ -13,7 +13,7 @@ def test_loop_wfc_system_flow_smoke(monkeypatch):
     streams = {}
 
     def _make_stream(name, shape, dtype, gpu_device=None):
-        stream = DummySHM(name, shape, dtype, gpu_device=gpu_device)
+        stream = private_stream(name, shape, dtype, gpu_device=gpu_device)
         streams[name] = stream
         return stream
 
@@ -23,7 +23,7 @@ def test_loop_wfc_system_flow_smoke(monkeypatch):
     monkeypatch.setattr(wfc_mod, "create_stream", _make_stream)
     monkeypatch.setattr(loop_mod, "open_stream", _open_existing)
 
-    streams["signal"] = DummySHM("signal", (4,), np.float32)
+    streams["signal"] = private_stream("signal", (4,), np.float32)
 
     wfc = wfc_mod.WavefrontCorrector(
         {

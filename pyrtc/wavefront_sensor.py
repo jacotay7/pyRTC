@@ -376,9 +376,10 @@ class WavefrontSensor(Component):
         """
         Writes the current image data to shared memory. Both raw, and dark subtracted.
 
-        Parameters
-        ----------
+        Each exposure gets the next frame id, which downstream components
+        propagate so a correction can be traced back to its source frame.
         """
+        self.frame_id = (self.frame_id or 0) + 1
         self.write_stream("wfs_raw", self.data)
         img = self.data.astype(self.image_dtype)
 
