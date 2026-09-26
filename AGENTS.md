@@ -90,7 +90,7 @@ and docs. pyrtc must not reimplement transport features that pyshmem provides.
 
 ```bash
 pip install -e . -r requirements-test.txt
-pytest                                   # full suite with coverage (gate: 80%)
+pytest                                   # full suite with coverage (gate: 70%)
 pytest tests/test_streams.py --no-cov    # a subset; --no-cov avoids the gate failing
 pytest -m "not gpu"                      # skip CUDA tests (they auto-skip without CUDA)
 pytest tests/system tests/notebooks -q --no-cov   # end-to-end runs, as in CI
@@ -98,7 +98,8 @@ ruff check . && ruff format --check .    # lint, as in CI
 ```
 
 - `pytest.ini` adds coverage options to every run. Pass `--no-cov` for partial
-  runs.
+  runs. Coverage measures the whole `pyrtc` package (`.coveragerc`); only the
+  display-bound Qt windows are omitted.
 - `tests/testsupport.py` provides `private_stream` (a real pyshmem stream with a
   unique name, unlinked after each test), `publishing_chain` (a background
   producer stamping frame ids through several streams), and `StaticStream`
@@ -128,9 +129,11 @@ ruff check . && ruff format --check .    # lint, as in CI
   function name. Renaming a benchmarked function without renaming its key makes
   the CI perf gate fail with "Missing baseline metrics". A single p99 over the
   limit is usually noise; rerun before treating it as a regression.
-- If pytest segfaults while importing `torch` with coverage enabled, that is an
-  interaction between pytest-cov and torch in the environment, not a pyrtc bug.
-  Rerun with `--no-cov`.
+- Never pass dotted submodules to coverage (`--cov=pyrtc.utils`). Coverage
+  then imports the package early and numpy is imported a second time, which
+  broke numpy sentinels (`_NoValueType` errors) and segfaulted torch imports
+  mid-run. Use `--cov=pyrtc`; `pytest.ini` turns the "NumPy module was
+  reloaded" warning into an error so this cannot silently return.
 - Components can be built with `__new__` in tests, so `Component` methods call
   `_ensure_stream_state()` before touching stream state.
 - A `KeyboardInterrupt` at a random point in a Windows test run was pyshmem
