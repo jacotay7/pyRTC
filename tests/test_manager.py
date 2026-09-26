@@ -106,8 +106,10 @@ def test_manager_launches_soft_synthetic_system(tmp_path):
 
 def test_manager_start_clears_stale_output_shms(tmp_path):
     clear_shms(DEFAULT_STREAMS)
-    stale_wfc = create_stream("wfc", (1,), np.int8)
-    stale_signal = create_stream("signal", (1,), np.int8)
+    # Leave mismatched segments behind the way an exited run would: no handle
+    # stays open (on Windows the names then vanish, as they would in practice).
+    create_stream("wfc", (1,), np.int8).close()
+    create_stream("signal", (1,), np.int8).close()
     manager = RTCManager.from_config_file(_write_runtime_synthetic_config(tmp_path))
 
     try:
@@ -116,8 +118,6 @@ def test_manager_start_clears_stale_output_shms(tmp_path):
         assert status["state"] == "running"
         assert status["components"]["loop"]["state"] == "running"
     finally:
-        stale_wfc.close()
-        stale_signal.close()
         manager.stop()
         clear_shms(DEFAULT_STREAMS)
 
