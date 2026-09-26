@@ -6,6 +6,12 @@ All notable changes to `pyrtcao` will be documented in this file.
 
 ### Fixed
 
+- **Multi-stream telemetry now covers one time window** (#42).
+	`Telemetry.save()` captured all frames of one stream before starting the
+	next, so a `wfs` + `signal` + `wfc` session held three unrelated time
+	windows that the AOTPy exporter treated as the same loop iterations.
+	Streams are now captured concurrently (one reader thread each, started
+	together); pair frames exactly with the recorded frame ids.
 - **Coverage now measures the whole package** (#47). The gate listed
 	dotted submodules, which left the control core (`loop`, `slopes_process`,
 	`wavefront_sensor`, `manager`) unmeasured and made coverage re-import numpy

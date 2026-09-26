@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from testsupport import StaticStream
+from testsupport import StaticStream, publishing_chain
 
 tele_mod = importlib.import_module("pyrtc.telemetry")
 
@@ -143,3 +143,19 @@ def test_telemetry_error_paths(monkeypatch, tmp_path):
 
     with pytest.raises(ValueError, match="No telemetry save is available"):
         empty_telemetry.read_last_save()
+
+
+def test_multi_stream_capture_covers_one_time_window(monkeypatch, tmp_path):
+    with publishing_chain(["wfs", "signal", "wfc"], step_seconds=2e-3) as opener:
+        monkeypatch.setattr(tele_mod, "open_stream", opener)
+        telemetry = tele_mod.Telemetry({"data_dir": str(tmp_path), "functions": []})
+        session_path = telemetry.save(["wfs", "signal", "wfc"], 15)
+
+    loaded = tele_mod.load_telemetry_session(session_path)
+    windows = [loaded[name]["timestamps"] for name in ("wfs", "signal", "wfc")]
+    # Captured concurrently: every stream's window overlaps every other's.
+    assert max(t.min() for t in windows) < min(t.max() for t in windows)
+    # The chain stamps one frame id per iteration on all three streams, so
+    # concurrent captures share most of their frame ids.
+    ids = [set(loaded[name]["frame_ids"].tolist()) for name in ("wfs", "signal", "wfc")]
+    assert len(ids[0] & ids[1] & ids[2]) >= 10
