@@ -6,7 +6,7 @@ loop:
   num_iters_im: 50
   affinity: 2
   delay: 2
-  method: push-pull
+  im_method: push-pull
   im_file: "/home/whetstone/pyrtc/examples/sharp_lab/calib/IM.npy"
   p_gain: 0.28
   i_gain: 0.066

@@ -6,6 +6,21 @@ All notable changes to `pyrtcao` will be documented in this file.
 
 ### Fixed
 
+- **SPECULA examples now converge** (#39). Several faults combined:
+	a PSF frame captured before the first WFS frame consumed SPECULA's
+	propagation refresh, so the WFS emitted blank frames until the DM first
+	moved; removing the atmosphere left the last turbulent frame on the WFS
+	until the next DM command; the example calibrated the IM while the worker
+	threads were still JIT-compiling (the first ~12 IM columns were zero, the
+	rest smeared into their neighbours), took no reference slopes, and always
+	re-enabled the atmosphere because the standalone bridge ignored
+	`specula.use_atmosphere`. The PyWFS example also poked with 1e-3 nm, below
+	the detector quantization. The bridge now steps both optical branches
+	together, refreshes propagation on atmosphere changes and honours
+	`use_atmosphere`; the examples wait for a DM round trip, take reference
+	slopes, calibrate with the config's `poke_amp`, and leave the atmosphere
+	off when configured. Example configs used `method:`, which `Loop` ignores;
+	they now use `im_method:`.
 - **CPU affinity and real-time priority now work** (#44). The configured
 	`affinity` was never applied (worker threads passed a list, which
 	`set_affinity` ignored), and it would have pinned the whole process.

@@ -56,11 +56,14 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--poke-amp",
         type=float,
-        default=1e-3,
-        help="Poke amplitude used when computing the interaction matrix.",
+        default=None,
+        help="Poke amplitude used when computing the interaction matrix (default: loop.poke_amp from the config).",
     )
     parser.add_argument(
-        "--gain", type=float, default=0.1, help="Loop gain used after IM calibration."
+        "--gain",
+        type=float,
+        default=None,
+        help="Loop gain used after IM calibration (default: loop.gain from the config).",
     )
     parser.add_argument(
         "--skip-im",
@@ -128,25 +131,101 @@ def stop_system(system: dict) -> None:
             logger.exception("Failed while stopping %s", name)
 
 
-def prepare_loop(system: dict, *, gain: float, poke_amp: float, compute_im: bool) -> None:
+def wait_for_dm_round_trip(system: dict, *, timeout: float = 30.0) -> None:
+    """Block until a DM command visibly reaches the measured signal.
+
+    The worker threads JIT-compile their kernels on first use, so right after
+    ``start_system`` the corrector can take around a second to apply its first
+    command. Calibrating during that window records zero or smeared IM
+    columns and the resulting control matrix drives the loop unstable.
+    Poking one mode and waiting for the slopes to move (and to come back when
+    the DM is flattened again) proves the full WFC -> WFS -> slopes path is
+    live before any calibration starts.
+    """
+
+    loop = system["loop"]
+    deadline = time.monotonic() + timeout
+
+    def _read():
+        remaining = max(deadline - time.monotonic(), 0.1)
+        return np.asarray(loop.read_stream("signal", timeout=remaining), dtype=np.float64)
+
+    def _changed(a, b):
+        scale = max(float(np.max(np.abs(a))), float(np.max(np.abs(b))), 1e-6)
+        return float(np.max(np.abs(a - b))) > 1e-3 * scale
+
+    def _wait_until(predicate, what):
+        while time.monotonic() < deadline:
+            signal = _read()
+            if predicate(signal):
+                return signal
+        raise TimeoutError(f"Timed out waiting for the pipeline to {what}")
+
+    def _wait_stable(what):
+        previous = [_read()]
+
+        def _stable(signal):
+            stable = not _changed(signal, previous[0])
+            previous[0] = signal
+            return stable
+
+        return _wait_until(_stable, what)
+
+    loop.flatten()
+    # Frames stamped with a WFS frame id are real measurements; the payload a
+    # stream holds before its producer first runs is not.
+    _wait_until(lambda _signal: bool(loop.frame_id), "deliver its first WFS frame")
+    baseline = _wait_stable("settle on the flat DM")
+    poke = np.zeros(loop.num_modes, dtype=loop.wfc_dtype)
+    poke[0] = loop.poke_amp
+    loop.send_to_wfc(poke)
+    _wait_until(
+        lambda s: _changed(s, baseline),
+        f"respond to a DM poke (is poke_amp={loop.poke_amp} large enough to measure?)",
+    )
+    loop.flatten()
+    _wait_until(lambda s: not _changed(s, baseline), "return to the flat-DM signal")
+
+
+def prepare_loop(
+    system: dict,
+    *,
+    gain: float | None = None,
+    poke_amp: float | None = None,
+    compute_im: bool = True,
+) -> None:
+    """Calibrate the loop on the unaberrated system.
+
+    Calibration always runs with the atmosphere removed and the DM flat. The
+    reference slopes are taken first so the loop regulates to the diffraction-
+    limited spots rather than to the static SH/PyWFS offset, then the IM is
+    measured with push-pull. The atmosphere is restored afterwards only if it
+    was enabled before (``specula.use_atmosphere`` in the config).
+    """
+
     loop = system["loop"]
     sim = system["sim"]
-    dm = system["dm"]
-
-    if compute_im:
-        logger.info("Computing interaction matrix with the atmosphere removed")
-        sim.remove_atmosphere()
-        dm.flatten()
+    slopes = system["slopes"]
+    if poke_amp is not None:
         loop.poke_amp = poke_amp
+    if gain is not None:
+        loop.set_gain(gain)
+    if compute_im:
+        use_atmosphere = sim.use_atmosphere
+        logger.info("Calibrating with the atmosphere removed")
+        sim.remove_atmosphere()
+        wait_for_dm_round_trip(system)
+        logger.info("Taking reference slopes on the flat DM")
+        slopes.take_ref_slopes()
         loop.compute_im()
-        sim.add_atmosphere()
+        loop.flatten()
+        if use_atmosphere:
+            sim.add_atmosphere()
     else:
         logger.info("Skipping IM calibration and using an identity-style fallback")
         loop.im = np.eye(loop.signal_size, loop.num_modes, dtype=loop.signal_dtype)
         loop.compute_cm()
-
-    loop.set_gain(gain)
-    dm.flatten()
+    loop.flatten()
 
 
 def format_status_line(system: dict, elapsed: float) -> str:
