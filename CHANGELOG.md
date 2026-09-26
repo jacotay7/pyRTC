@@ -65,8 +65,20 @@ All notable changes to `pyrtcao` will be documented in this file.
 	on Windows. pyrtc now requires `pyshmem>=1.3.3`.
 - Hard-RTC child listeners now stop cleanly when the RTC closes the control
 	socket instead of crashing with `BrokenPipeError`.
+- **Documentation links point at the live docs** (#68). The PyPI
+	`Documentation` URL and README guide links pointed at a stale Read the
+	Docs project (`pyrtc.readthedocs.io`) whose guide pages return 404; they
+	now use `https://pyrtc-ao.readthedocs.io/en/latest/`. The README no
+	longer references the missing `RELEASE_1_0_PLAN.md` or describes 1.0.0
+	as unreleased, and the clone instructions `cd` into `pyRTC`, not `pyrtc`.
 
 ### Added
+
+- `specula` optional extra (`pip install pyrtcao[specula]`) for the
+	SPECULA-backed examples (#40). The PYWFS and SHWFS example docs and the
+	README now explain how to install each simulator, including the OOPAO
+	recipe: OOPAO is not on PyPI, and a plain `pip install` of it fails on
+	`import OOPAO`, so it must be cloned and put on `PYTHONPATH`.
 
 - Zero-allocation hot-path reads: `read_stream(..., out=buffer)` forwards a
 	pre-allocated buffer (pyshmem >= 1.0.5), used by the SlopesProcess image

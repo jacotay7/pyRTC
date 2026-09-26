@@ -71,14 +71,14 @@ The project is designed for:
 
 ## Release Posture
 
-The repo is being prepared for a `1.0.0` release. The current release policy is conservative:
+`pyrtc` `1.0.0` is released on PyPI as `pyrtcao`. The next version, `1.1.0`, is in development on this repository; see `CHANGELOG.md` for what has changed since `1.0.0`. The release policy is conservative:
 
 - User-facing project name: `pyrtc`
 - PyPI distribution name: `pyrtcao`
 - Python import name: `pyrtc`
 - CLI prefix: `pyrtc-*`
-- Primary supported release surface for `1.0.x`: Linux, Python 3.9-3.13
-- macOS and Windows: smoke-tested in GitHub Actions, but not part of the primary supported deployment story for `1.0.0`
+- Primary supported release surface: Linux, Python 3.9-3.13
+- macOS and Windows: smoke-tested in GitHub Actions, but not part of the primary supported deployment story
 - Windows: soft-RTC only — Windows named shared memory is freed when the last handle closes, so streams do not survive their producer process and hard-RTC restart/reattach flows are unsupported there
 - GPU behavior: benchmark-validated on a Linux CUDA host for synthetic loop workloads, but still target-environment validation required for operational use
 - Hardware integrations: examples and reference implementations, not universal plug-and-play support
@@ -105,6 +105,7 @@ Optional extras:
 pip install pyrtcao[aotpy]
 pip install pyrtcao[docs]
 pip install pyrtcao[gpu]
+pip install pyrtcao[specula]
 pip install pyrtcao[viewer]
 ```
 
@@ -112,7 +113,7 @@ pip install pyrtcao[viewer]
 
 ```bash
 git clone https://github.com/jacotay7/pyRTC.git
-cd pyrtc
+cd pyRTC
 pip install .
 ```
 
@@ -122,8 +123,11 @@ Optional source extras:
 pip install .[aotpy]
 pip install .[docs]
 pip install .[gpu]
+pip install .[specula]
 pip install .[viewer]
 ```
+
+The `specula` extra installs the [SPECULA](https://pypi.org/project/specula/) simulator used by the simulator-backed examples. The OOPAO simulator is not on PyPI and needs a manual install; see [Simulator-Backed Examples](#simulator-backed-examples).
 
 If GPU mode is configured through `gpu_device` but PyTorch is unavailable, supported paths fall back to CPU mode with a warning instead of failing immediately.
 
@@ -182,13 +186,13 @@ Recommended composite viewer command while the demo is running:
 pyrtc-view wfs signal_2d wfc_2d psf_short psf_long --geometry 2x3
 ```
 
-The documentation will live on Read the Docs. Placeholder entry points for now:
+Documentation guides on Read the Docs:
 
-- [Getting Started](https://pyrtc.readthedocs.io/en/latest/guides/getting_started.html)
-- [Architecture Guide](https://pyrtc.readthedocs.io/en/latest/guides/architecture.html)
-- [Developer Guide](https://pyrtc.readthedocs.io/en/latest/guides/developers_guide.html)
-- [Synthetic SHWFS Example](https://pyrtc.readthedocs.io/en/latest/examples/synthetic_shwfs.html)
-- [PYWFS Example](https://pyrtc.readthedocs.io/en/latest/examples/pywfs.html)
+- [Getting Started](https://pyrtc-ao.readthedocs.io/en/latest/guides/getting_started.html)
+- [Architecture Guide](https://pyrtc-ao.readthedocs.io/en/latest/guides/architecture.html)
+- [Developer Guide](https://pyrtc-ao.readthedocs.io/en/latest/guides/developers_guide.html)
+- [Synthetic SHWFS Example](https://pyrtc-ao.readthedocs.io/en/latest/examples/synthetic_shwfs.html)
+- [PYWFS Example](https://pyrtc-ao.readthedocs.io/en/latest/examples/pywfs.html)
 
 ## Architecture Overview
 
@@ -217,7 +221,30 @@ Real AO deployments are hardware-specific. The repo includes two kinds of suppor
 
 These hardware files should be treated as reference implementations and starting points, not as a guarantee that every SDK and device combination will work unchanged.
 
-For no-hardware exploration, start with the synthetic SHWFS example. For a richer simulated optical path, the OOPAO-based example remains available, but it is an external dependency and should be treated as the second example, not the first one.
+For no-hardware exploration, start with the synthetic SHWFS example. For a richer simulated optical path, use the simulator-backed examples below. They need an external simulator, so treat them as the second example, not the first one.
+
+### Simulator-Backed Examples
+
+`examples/pywfs/` (pyramid WFS) and `examples/shwfs/` (Shack-Hartmann WFS) each have an OOPAO and a SPECULA version. Both run in soft-RTC mode only.
+
+SPECULA is on PyPI:
+
+```bash
+pip install pyrtcao[specula]   # or: pip install specula
+python examples/shwfs/shwfs_specula_soft_rtc_example.py --duration 10
+```
+
+OOPAO is not on PyPI. Installing it with `pip install git+https://github.com/cheritier/OOPAO.git` is not enough: `import OOPAO` then fails with `ValueError: attempt to get argmin of an empty sequence`, because OOPAO looks for its own checkout on `sys.path` at import time. Clone it and put the clone on `PYTHONPATH` instead:
+
+```bash
+git clone https://github.com/cheritier/OOPAO.git   # keep the directory name "OOPAO"
+pip install ./OOPAO                                # installs OOPAO's dependencies
+export PYTHONPATH="$PWD/OOPAO:$PYTHONPATH"
+python -c "import OOPAO"                           # check the install
+python examples/pywfs/pywfs_oopao_soft_rtc_example.py --duration 10
+```
+
+The clone directory's path must contain `OOPAO` (case-sensitive) and be writable, since OOPAO writes a small file there on import. See the [PYWFS Example](https://pyrtc-ao.readthedocs.io/en/latest/examples/pywfs.html) docs for details.
 
 ## Tools and Benchmarks
 
@@ -266,16 +293,15 @@ Hard-RTC child processes inherit these settings automatically through the launch
 
 ## Stability and Support Notes
 
-- The package is being prepared for a stable community-facing release, but not every platform or hardware stack is validated equally.
-- Linux is the primary supported environment for `1.0.x`.
+- Not every platform or hardware stack is validated equally.
+- Linux is the primary supported environment.
 - macOS and Windows have smoke workflow coverage, but release validation and deployment guidance remain Linux-first.
 - GPU support is validated in this repo through synthetic CPU/GPU benchmark coverage and should still be checked in the target environment before operational use.
 - Example scripts and hardware adapters are intended to shorten development time, not replace system-specific commissioning.
 
 ## Contributing and Development
 
-Maintainer and contributor workflow guidance is being consolidated into the docs.
-For now, use the Developer Guide placeholder link near the top of this README.
+Maintainer and contributor workflow guidance (local setup, tests, docs builds, and releases) is in the [Developer Guide](https://pyrtc-ao.readthedocs.io/en/latest/guides/developers_guide.html). Coding agents should also read `AGENTS.md` in the repository root.
 
 For release validation from a source checkout, the built-wheel smoke path is automated:
 
@@ -285,7 +311,7 @@ python -m twine check dist/*
 python pyrtc/scripts/validate_dist_install.py --dist-dir dist
 ```
 
-The tracked release plan for the first stable version lives in `RELEASE_1_0_PLAN.md`.
+The steps for publishing a release are in the Developer Guide's [Release Checklist](https://pyrtc-ao.readthedocs.io/en/latest/guides/developers_guide.html#release-checklist).
 
 The GitHub Actions publish workflow lives in `.github/workflows/publish-package.yml`.
 

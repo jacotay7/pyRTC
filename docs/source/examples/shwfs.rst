@@ -22,6 +22,39 @@ The example assets live under `examples/shwfs/`:
 - `shwfs_SPECULA_config.yaml`: pyrtc config for the SPECULA Shack-Hartmann example
 - `shwfs_SPECULA_params.yaml`: SPECULA object-graph parameters for the SPECULA Shack-Hartmann example
 
+Installing the Simulator
+------------------------
+
+The simulator is not installed with pyrtc. Install the backend you want to run: OOPAO for the ``shwfs_oopao_*`` / ``shwfs_OOPAO_*`` files, SPECULA for the ``shwfs_specula_*`` / ``shwfs_SPECULA_*`` files.
+
+OOPAO
+~~~~~
+
+OOPAO is not on PyPI, so it cannot be a pyrtc extra. Installing it straight from GitHub (``pip install git+https://github.com/cheritier/OOPAO.git``) is not enough: ``import OOPAO`` then fails with ``ValueError: attempt to get argmin of an empty sequence``. At import time, ``OOPAO/__init__.py`` looks for an entry containing ``OOPAO`` on ``sys.path`` and writes a small file into it. A plain ``pip install`` puts OOPAO in ``site-packages``, so no such entry exists.
+
+Clone OOPAO and put the clone on ``PYTHONPATH``:
+
+.. code-block:: bash
+
+	git clone https://github.com/cheritier/OOPAO.git   # keep the directory name "OOPAO"
+	pip install ./OOPAO                                # installs OOPAO's dependencies
+	export PYTHONPATH="$PWD/OOPAO:$PYTHONPATH"
+	python -c "import OOPAO"                           # check the install
+
+The clone's path must contain ``OOPAO`` (the match is case-sensitive, so a directory renamed to ``oopao`` fails) and must be writable. ``PYTHONPATH`` takes precedence over ``site-packages``, so the clone is the copy that gets imported. Add the ``export`` line to your shell profile or environment activation script so it persists.
+
+SPECULA
+~~~~~~~
+
+SPECULA is on PyPI and is available as a pyrtc extra:
+
+.. code-block:: bash
+
+	pip install pyrtcao[specula]   # from a source checkout: pip install .[specula]
+	# or install SPECULA on its own: pip install specula
+
+The SPECULA example scripts also add a sibling ``SPECULA`` checkout (next to the pyrtc repository) to ``sys.path`` when one exists, so a local SPECULA development checkout there is used instead of the installed package.
+
 What the Config Shows
 ---------------------
 

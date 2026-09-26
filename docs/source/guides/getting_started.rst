@@ -25,7 +25,7 @@ If you are working from a source checkout instead of PyPI:
 .. code-block:: bash
 
 	git clone https://github.com/jacotay7/pyRTC.git
-	cd pyrtc
+	cd pyRTC
 	pip install .
 
 Optional extras:
@@ -157,7 +157,7 @@ Suggested First Run
 For a practical first run, use the synthetic Shack-Hartmann example described in :doc:`../examples/synthetic_shwfs`.
 That path needs no hardware and no external simulator, but it still exercises the standard `WavefrontSensor -> SlopesProcess -> Loop -> WavefrontCorrector` chain and publishes the same viewer-friendly streams you will use later with real devices.
 
-After that, move to the OOPAO-based path in :doc:`../examples/pywfs` if you want a richer simulated optical model.
+After that, move to the OOPAO-based path in :doc:`../examples/pywfs` if you want a richer simulated optical model. OOPAO is not installed with pyrtc and needs a manual install; that page explains how.
 The script-driven entry point is:
 
 .. code-block:: bash

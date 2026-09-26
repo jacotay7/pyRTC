@@ -23,7 +23,7 @@ Local Setup
 .. code-block:: bash
 
    git clone https://github.com/jacotay7/pyRTC.git
-   cd pyrtc
+   cd pyRTC
    pip install -r requirements-test.txt
    pip install -e .
 
