@@ -1,5 +1,6 @@
 import copy
 import socket
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -104,6 +105,11 @@ def test_manager_launches_soft_synthetic_system(tmp_path):
         clear_shms(DEFAULT_STREAMS)
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="components from earlier tests keep handles open, which pins the "
+    "names on Windows (jacotay7/pyRTC#37)",
+)
 def test_manager_start_clears_stale_output_shms(tmp_path):
     clear_shms(DEFAULT_STREAMS)
     # Leave mismatched segments behind the way an exited run would: no handle
