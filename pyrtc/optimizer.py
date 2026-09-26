@@ -16,7 +16,7 @@ import optuna
 from pyrtc.logging_utils import get_logger
 from pyrtc.rpc import Listener
 from pyrtc.component import Component
-from pyrtc.utils import decrease_nice, read_yaml_file, set_affinity, set_from_config
+from pyrtc.utils import read_yaml_file, set_affinity_and_priority, set_from_config
 
 
 logger = get_logger(__name__)
@@ -177,8 +177,7 @@ if __name__ == "__main__":
     conf = read_yaml_file(args.config)
 
     pid = os.getpid()
-    set_affinity((conf["loop"]["affinity"]) % os.cpu_count())
-    decrease_nice(pid)
+    set_affinity_and_priority("main", conf["loop"]["affinity"])
 
     component = Optimizer(conf=conf)
     component.start()

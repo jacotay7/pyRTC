@@ -32,7 +32,7 @@ logger = get_logger(__name__)
 
 def work(obj, function_name, affinity):
     """Run one component worker function in a loop while the component lives."""
-    set_affinity_and_priority(function_name, [affinity])
+    set_affinity_and_priority(function_name, affinity, getattr(obj, "realtime_priority", 0))
     work_function = getattr(obj, function_name, None)
     while obj.alive:
         if obj.running:
@@ -75,7 +75,11 @@ def launch_component(component, conf_key, start=True):
     system_conf = read_system_config(args.config)
     conf = build_component_runtime_config(system_conf, conf_key)
 
-    set_affinity_and_priority("", set_from_config(conf, "affinity", 0))
+    set_affinity_and_priority(
+        conf_key,
+        conf.get("affinity"),
+        set_from_config(conf, "realtime_priority", 0),
+    )
 
     try:
         obj = component(conf=conf)
