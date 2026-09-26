@@ -51,6 +51,11 @@ def compute_slopes_pywfs_torch(
     The function extracts the four pupil images selected by the provided masks,
     forms differential x/y slope channels, normalizes by the mean total pupil
     flux, and subtracts the stored reference slopes.
+
+    Each ``p*_mask`` may be a boolean mask over the flattened image or an
+    integer index tensor of the selected pixels (row-major order, as
+    ``torch.nonzero`` returns). Index tensors avoid the per-frame
+    boolean-mask compaction and are what ``SlopesProcess`` caches.
     """
 
     if not gpu_torch_available():
@@ -79,14 +84,12 @@ def compute_slopes_pywfs_torch(
     # Compute Y slopes
     slopes[num_pixels_in_pupils:] = (p1 + p3) - (p2 + p4)
 
-    # Normalize slopes only when there is measurable pupil flux.
+    # Normalize slopes only when there is measurable pupil flux. Select on the
+    # device rather than branching on the value, which would force a host sync.
     mean_flux = torch.mean(tmp1 + tmp2)
-    if torch.abs(mean_flux) <= PYWFS_NORMALIZATION_EPS:
-        return torch.zeros_like(slopes)
-    slopes = slopes / mean_flux
-
-    # Subtract reference slopes
-    return slopes - ref_slopes
+    dark = torch.abs(mean_flux) <= float(PYWFS_NORMALIZATION_EPS)
+    normalized = slopes / torch.where(dark, torch.ones_like(mean_flux), mean_flux) - ref_slopes
+    return torch.where(dark, torch.zeros_like(normalized), normalized)
 
 
 """
@@ -753,6 +756,7 @@ class SlopesProcess(Component):
         component_logger = getattr(self, "logger", logger)
         try:
             self.ref_slopes = ref_slopes.astype(self.signal_dtype)
+            self._invalidate_gpu_pywfs_cache(masks=False)
             if self.wfs_type == "pywfs":
                 slopemask = self.valid_sub_aps[:, : self.valid_sub_aps.shape[1] // 2]
                 self.ref_slopes_1d = np.zeros_like(self.signal.read())
@@ -824,6 +828,87 @@ class SlopesProcess(Component):
             raise
         return
 
+    def _invalidate_gpu_pywfs_cache(self, *, masks: bool = True, ref: bool = True) -> None:
+        """Drop cached device copies of the PYWFS masks and/or reference slopes."""
+
+        if masks:
+            self._gpu_pywfs_masks = None
+        if ref:
+            self._gpu_pywfs_ref = None
+
+    def _gpu_pywfs_tensors(self):
+        """Return device-resident PYWFS masks, slopes buffer and reference slopes.
+
+        Uploading the pupil masks and reference slopes every frame dominated the
+        GPU slopes path (#64), so they are uploaded once and rebuilt only when
+        their source arrays change. ``compute_pupils_mask`` and
+        ``set_ref_slopes`` invalidate the cache explicitly; the cache is also
+        keyed on the identity of the source arrays and the device, so a direct
+        reassignment of ``p*mask``, ``slopes_arr_1d`` or ``ref_slopes_1d`` is
+        picked up too. In-place edits of those arrays must go through the
+        setters (or call ``_invalidate_gpu_pywfs_cache``).
+        """
+
+        import torch
+
+        device = self.gpu_device
+        mask_sources = (self.p1mask, self.p2mask, self.p3mask, self.p4mask, self.slopes_arr_1d)
+        masks = getattr(self, "_gpu_pywfs_masks", None)
+        if (
+            masks is None
+            or masks["device"] != device
+            or any(a is not b for a, b in zip(masks["sources"], mask_sources))
+        ):
+            # Integer indices (row-major, same order as boolean masking) avoid a
+            # per-frame mask compaction and its host synchronization.
+            indices = tuple(
+                torch.as_tensor(np.flatnonzero(mask), dtype=torch.long, device=device)
+                for mask in mask_sources[:4]
+            )
+            slopes = torch.as_tensor(self.slopes_arr_1d, dtype=torch.float32, device=device)
+            masks = {
+                "device": device,
+                "sources": mask_sources,
+                "indices": indices,
+                "slopes": slopes,
+            }
+            self._gpu_pywfs_masks = masks
+
+        ref = getattr(self, "_gpu_pywfs_ref", None)
+        if ref is None or ref["device"] != device or ref["source"] is not self.ref_slopes_1d:
+            ref = {
+                "device": device,
+                "source": self.ref_slopes_1d,
+                "tensor": torch.as_tensor(self.ref_slopes_1d, dtype=torch.float32, device=device),
+            }
+            self._gpu_pywfs_ref = ref
+
+        return masks["indices"], masks["slopes"], ref["tensor"]
+
+    def _compute_slopes_pywfs_gpu(self, image):
+        """Run the torch PYWFS kernel on ``gpu_device`` and return a device tensor.
+
+        ``image`` is a torch tensor when the ``wfs`` stream is GPU-backed and a
+        NumPy array when the WFS producer created a CPU stream; the latter is
+        copied to the device here.
+        """
+
+        import torch
+
+        if isinstance(image, np.ndarray):
+            image = torch.as_tensor(image, device=self.gpu_device)
+        (p1, p2, p3, p4), slopes, ref_slopes = self._gpu_pywfs_tensors()
+        return compute_slopes_pywfs_torch(
+            image.reshape(-1),
+            p1_mask=p1,
+            p2_mask=p2,
+            p3_mask=p3,
+            p4_mask=p4,
+            num_pixels_in_pupils=self.num_pixels_in_pupils,
+            slopes=slopes,
+            ref_slopes=ref_slopes,
+        )
+
     def compute_signal(self):
         """
         Compute the signal from the WFS image.
@@ -832,22 +917,7 @@ class SlopesProcess(Component):
         if self.signal_type == "slopes":
             if self.wfs_type == "pywfs":
                 if self.gpu_device is not None and gpu_torch_available():
-                    import torch
-
-                    slope_signal = (
-                        compute_slopes_pywfs_torch(
-                            image.ravel(),
-                            p1_mask=torch.from_numpy(self.p1mask.ravel()).to(self.gpu_device),
-                            p2_mask=torch.from_numpy(self.p2mask.ravel()).to(self.gpu_device),
-                            p3_mask=torch.from_numpy(self.p3mask.ravel()).to(self.gpu_device),
-                            p4_mask=torch.from_numpy(self.p4mask.ravel()).to(self.gpu_device),
-                            num_pixels_in_pupils=self.num_pixels_in_pupils,
-                            slopes=torch.from_numpy(self.slopes_arr_1d).to(self.gpu_device),
-                            ref_slopes=torch.from_numpy(self.ref_slopes_1d).to(self.gpu_device),
-                        )
-                        .cpu()
-                        .numpy()
-                    )
+                    slope_signal = self._compute_slopes_pywfs_gpu(image)
                 else:
                     slope_signal = compute_slopes_pywfs_optim_numba(
                         image=image.ravel(),
@@ -883,8 +953,16 @@ class SlopesProcess(Component):
                 # self.signal_2d.write(slopes*self.valid_sub_aps)
                 # slopes = np.zeros_like(self.ref_slopes)
                 # self.signal.write(self.ref_slopes.flatten()[:np.prod(self.signal_shape)].reshape(self.signal_shape))
+            if isinstance(slope_signal, np.ndarray):
+                signal_host = slope_signal
+            else:
+                # GPU PYWFS result: write the device tensor to a GPU-backed
+                # signal stream, NumPy otherwise; signal_2d is built on the host.
+                signal_host = slope_signal.cpu().numpy()
+                if getattr(self.signal, "gpu_device", None) is None:
+                    slope_signal = signal_host
             self.write_stream("signal", slope_signal)
-            self.write_stream("signal_2d", self.compute_signal_2d(slope_signal))
+            self.write_stream("signal_2d", self.compute_signal_2d(signal_host))
 
         return
 
@@ -985,6 +1063,7 @@ class SlopesProcess(Component):
             self.p2mask = self.pupil_mask == 2
             self.p3mask = self.pupil_mask == 3
             self.p4mask = self.pupil_mask == 4
+            self._invalidate_gpu_pywfs_cache(ref=False)
             component_logger.info("Computed pupil masks for %s pupils", len(self.pupil_locs))
         except Exception:
             component_logger.exception("Failed to compute pupil mask")
