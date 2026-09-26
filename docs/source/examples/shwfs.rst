@@ -8,7 +8,7 @@ This page describes the simulator-backed Shack-Hartmann examples that mirror the
 Purpose
 -------
 
-These examples are the next step after :doc:`synthetic_shwfs` when you want a real optical simulator in the loop while keeping the standard pyRTC control chain.
+These examples are the next step after :doc:`synthetic_shwfs` when you want a real optical simulator in the loop while keeping the standard pyrtc control chain.
 
 Files
 -----
@@ -16,10 +16,10 @@ Files
 The example assets live under `examples/shwfs/`:
 
 - `shwfs_oopao_soft_rtc_example.py`: OOPAO-backed Shack-Hartmann soft-RTC walkthrough
-- `shwfs_OOPAO_config.yaml`: pyRTC config for the OOPAO Shack-Hartmann example
+- `shwfs_OOPAO_config.yaml`: pyrtc config for the OOPAO Shack-Hartmann example
 - `shwfs_OOPAO_params.yaml`: flat OOPAO parameter dictionary for the OOPAO Shack-Hartmann example
 - `shwfs_specula_soft_rtc_example.py`: SPECULA-backed Shack-Hartmann soft-RTC walkthrough
-- `shwfs_SPECULA_config.yaml`: pyRTC config for the SPECULA Shack-Hartmann example
+- `shwfs_SPECULA_config.yaml`: pyrtc config for the SPECULA Shack-Hartmann example
 - `shwfs_SPECULA_params.yaml`: SPECULA object-graph parameters for the SPECULA Shack-Hartmann example
 
 What the Config Shows
@@ -31,14 +31,14 @@ The SHWFS examples switch the slopes section from `PYWFS` to `SHWFS` and define 
 
 	 slopes:
 		 type: SHWFS
-		 signalType: slopes
-		 subApSpacing: 4
-		 subApOffsetX: 0
-		 subApOffsetY: 0
+		 signal_type: slopes
+		 sub_ap_spacing: 4
+		 sub_ap_offset_x: 0
+		 sub_ap_offset_y: 0
 		 functions:
-			 - computeSignal
+			 - compute_signal
 
-That means pyRTC still owns the final slope reduction and loop control, while OOPAO or SPECULA owns the optical image formation.
+That means pyrtc still owns the final slope reduction and loop control, while OOPAO or SPECULA owns the optical image formation.
 
 Running the Examples
 --------------------
@@ -52,7 +52,7 @@ Viewer commands:
 
 .. code-block:: bash
 
-	pyrtc-view wfs signal2D wfc2D psfShort psfLong --geometry 2x3
+	pyrtc-view wfs signal_2d wfc_2d psf_short psf_long --geometry 2x3
 
 Notes
 -----

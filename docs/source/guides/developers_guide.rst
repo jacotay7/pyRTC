@@ -12,7 +12,7 @@ For the stable release line:
 
 - user-facing project name: `pyrtc`
 - PyPI distribution name: `pyrtcao`
-- Python import name: `pyRTC`
+- Python import name: `pyrtc`
 - command-line prefix: `pyrtc-*`
 
 This keeps the public-facing name simple while avoiding a PyPI naming conflict.
@@ -23,7 +23,7 @@ Local Setup
 .. code-block:: bash
 
    git clone https://github.com/jacotay7/pyRTC.git
-   cd pyRTC
+   cd pyrtc
    pip install -r requirements-test.txt
    pip install -e .
 
@@ -43,7 +43,7 @@ Run the main validation commands before opening a pull request or preparing a re
 .. code-block:: bash
 
    pytest -q
-   ruff check pyRTC tests benchmarks
+   ruff check pyrtc tests benchmarks
    python -m build
    python -m twine check dist/*
 
@@ -51,13 +51,13 @@ Validate the built wheel in a clean environment:
 
 .. code-block:: bash
 
-   python -m pyRTC.scripts.validate_dist_install --dist-dir dist
+   python -m pyrtc.scripts.validate_dist_install --dist-dir dist
 
 If you want to keep the validation environment for inspection instead of using a temporary venv:
 
 .. code-block:: bash
 
-   python -m pyRTC.scripts.validate_dist_install --dist-dir dist --venv-dir wheel-test-env
+   python -m pyrtc.scripts.validate_dist_install --dist-dir dist --venv-dir wheel-test-env
 
 Documentation Workflow
 ----------------------
@@ -117,7 +117,7 @@ Compare the current host report against the committed baseline:
 Logging Workflow
 ----------------
 
-The main scripts, benchmark entry points, and hardware launcher paths use the shared `pyRTC` logging helpers.
+The main scripts, benchmark entry points, and hardware launcher paths use the shared `pyrtc` logging helpers.
 
 Default behavior:
 
@@ -189,7 +189,7 @@ Before starting larger work:
 Component Descriptors
 ---------------------
 
-`pyRTC` now exposes machine-readable component descriptors for the built-in core components.
+`pyrtc` now exposes machine-readable component descriptors for the built-in core components.
 These descriptors are intended to support:
 
 - config validation
@@ -201,16 +201,16 @@ Useful entry points from Python are:
 
 .. code-block:: python
 
-   import pyRTC
+   import pyrtc
 
-   catalog = pyRTC.build_descriptor_catalog()
-   loop_descriptor = pyRTC.get_component_descriptor("loop")
-   wfs_descriptor = pyRTC.WavefrontSensor.describe()
-   hardware_delay = loop_descriptor["hardwareDelay"]
+   catalog = pyrtc.build_descriptor_catalog()
+   loop_descriptor = pyrtc.get_component_descriptor("loop")
+   wfs_descriptor = pyrtc.wavefront_sensor.describe()
+   hardware_delay = loop_descriptor["hardware_delay"]
    default_gain = loop_descriptor["gain"]["default"]
 
 In the REPL, descriptors now render as a compact summary rather than a full dataclass dump, and they support dict-like field lookup by config key.
-This means calls such as `pyRTC.Loop.describe()["hardwareDelay"]` and `pyRTC.Loop.describe()["gain"]["default"]` work naturally.
+This means calls such as `pyrtc.loop.describe()["hardware_delay"]` and `pyrtc.loop.describe()["gain"]["default"]` work naturally.
 
 Each descriptor includes:
 
@@ -221,12 +221,12 @@ Each descriptor includes:
 - input and output stream metadata
 - calibration artifact hints
 
-When adding new built-in components, update `pyRTC/component_descriptors.py` and keep the descriptor aligned with the actual config and stream contract.
+When adding new built-in components, update `pyrtc/component_descriptors.py` and keep the descriptor aligned with the actual config and stream contract.
 Future third-party integrations can also register descriptors programmatically without changing manager-specific code:
 
 .. code-block:: python
 
-   pyRTC.register_component_descriptor(custom_descriptor)
+   pyrtc.register_component_descriptor(custom_descriptor)
 
 Descriptor-driven validation is intentionally generic and should be paired with component-specific validation for domain rules that cannot be captured as simple field metadata.
 
@@ -256,7 +256,7 @@ Support Posture
 The most stable public surface for `1.0.x` is:
 
 - installation as `pyrtcao`
-- runtime import as `pyRTC`
+- runtime import as `pyrtc`
 - the core AO component model
 - the documented shared-memory and configuration concepts
 - Linux-based development and deployment workflows
@@ -299,10 +299,10 @@ Before publishing a release candidate:
    .. code-block:: bash
 
       pytest -q
-      ruff check pyRTC tests benchmarks
+      ruff check pyrtc tests benchmarks
       python -m build
       python -m twine check dist/*
-      python -m pyRTC.scripts.validate_dist_install --dist-dir dist
+      python -m pyrtc.scripts.validate_dist_install --dist-dir dist
       cd docs/source && make html
 
 5. Upload to TestPyPI first.

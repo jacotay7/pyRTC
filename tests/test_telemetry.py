@@ -4,22 +4,20 @@ from pathlib import Path
 
 import pytest
 
-tele_mod = importlib.import_module("pyRTC.Telemetry")
+from testsupport import StaticStream
+
+tele_mod = importlib.import_module("pyrtc.telemetry")
 
 
 def test_telemetry_save_and_read(monkeypatch, tmp_path):
-    class _SHM:
-        def __init__(self):
-            self._x = np.array([1.0, 2.0], dtype=np.float32)
-            self.metadata = np.array([0.0, 123.0], dtype=np.float64)
+    monkeypatch.setattr(
+        tele_mod,
+        "open_stream",
+        lambda name, **kw: StaticStream(np.array([1.0, 2.0], dtype=np.float32), 123.0, frame_id=9),
+    )
 
-        def read(self):
-            return self._x
-
-    monkeypatch.setattr(tele_mod, "initExistingShm", lambda name: (_SHM(), [2], np.float32))
-
-    t = tele_mod.Telemetry({"dataDir": str(tmp_path), "functions": []})
-    session_path = t.save("signal", 3, uniqueStr="u")
+    t = tele_mod.Telemetry({"data_dir": str(tmp_path), "functions": []})
+    session_path = t.save("signal", 3, unique_str="u")
     arr = t.read()
     assert arr.shape == (3, 2)
     assert Path(session_path).is_dir()
@@ -28,6 +26,8 @@ def test_telemetry_save_and_read(monkeypatch, tmp_path):
     assert data["signal"]["frames"].shape == (3, 2)
     assert data["signal"]["timestamps"].shape == (3,)
     assert np.all(data["signal"]["timestamps"] == 123.0)
+    assert np.all(data["signal"]["frame_ids"] == 9)
+    assert data["signal"]["metadata"]["missed_frames"] == 0
     assert data["signal"]["metadata"]["dtype"] == "float32"
     assert t.list_sessions() == [str(Path(session_path).resolve())]
 
@@ -41,26 +41,20 @@ def test_telemetry_save_and_read(monkeypatch, tmp_path):
 
 
 def test_telemetry_save_session_supports_multi_stream_grouped_capture(monkeypatch, tmp_path):
-    class _SHM:
-        def __init__(self, data):
-            self._data = np.asarray(data)
-            self.metadata = np.array([0.0, 456.0], dtype=np.float64)
-
-        def read(self):
-            return self._data
-
     streams = {
-        "signal": (_SHM(np.array([1.0, 2.0], dtype=np.float32)), [2], np.float32),
-        "wfc": (_SHM(np.array([[3, 4], [5, 6]], dtype=np.int16)), [2, 2], np.int16),
+        "signal": StaticStream(np.array([1.0, 2.0], dtype=np.float32), 456.0),
+        "wfc": StaticStream(np.array([[3, 4], [5, 6]], dtype=np.int16), 456.0),
     }
-    monkeypatch.setattr(tele_mod, "initExistingShm", lambda name: streams[name])
+    monkeypatch.setattr(tele_mod, "open_stream", lambda name, **kw: streams[name])
 
-    telemetry = tele_mod.Telemetry({"dataDir": str(tmp_path), "functions": [], "streams": ["signal", "wfc"]})
+    telemetry = tele_mod.Telemetry(
+        {"data_dir": str(tmp_path), "functions": [], "streams": ["signal", "wfc"]}
+    )
     session_path = telemetry.save(
         ["signal", "wfc"],
         {"signal": 2, "wfc": 1},
-        uniqueStr="group",
-        semanticTags={"signal": ["signal"], "wfc": ["wfc", "control"]},
+        unique_str="group",
+        semantic_tags={"signal": ["signal"], "wfc": ["wfc", "control"]},
         sampling={"signal": {"mode": "every_frame"}},
         config={"metadata": {"name": "synthetic"}},
         config_path=tmp_path / "config.yaml",
@@ -81,38 +75,40 @@ def test_telemetry_save_session_supports_multi_stream_grouped_capture(monkeypatc
 
 
 def test_telemetry_save_configured_streams_uses_component_config(monkeypatch, tmp_path):
-    class _SHM:
-        def __init__(self):
-            self._data = np.array([7, 8, 9], dtype=np.float32)
-            self.metadata = np.array([0.0, 789.0], dtype=np.float64)
+    monkeypatch.setattr(
+        tele_mod,
+        "open_stream",
+        lambda name, **kw: StaticStream(np.array([7, 8, 9], dtype=np.float32), 789.0),
+    )
+    telemetry = tele_mod.Telemetry(
+        {"data_dir": str(tmp_path), "functions": [], "streams": ["signal"]}
+    )
 
-        def read(self):
-            return self._data
-
-    monkeypatch.setattr(tele_mod, "initExistingShm", lambda name: (_SHM(), [3], np.float32))
-    telemetry = tele_mod.Telemetry({"dataDir": str(tmp_path), "functions": [], "streams": ["signal"]})
-
-    session_path = telemetry.save_configured_streams(2, uniqueStr="cfg")
+    session_path = telemetry.save_configured_streams(2, unique_str="cfg")
     loaded = telemetry.read_last_save()
 
-    assert session_path == telemetry.mostRecentSave
+    assert session_path == telemetry.most_recent_save
     assert loaded["signal"]["frames"].shape == (2, 3)
 
 
 def test_telemetry_error_paths(monkeypatch, tmp_path):
-    telemetry_module = importlib.import_module("pyRTC.Telemetry")
+    telemetry_module = importlib.import_module("pyrtc.telemetry")
 
     def bad_component_init(self, conf):
         raise RuntimeError("telemetry init failed")
 
     with monkeypatch.context() as mp:
-        mp.setattr(telemetry_module.pyRTCComponent, "__init__", bad_component_init)
+        mp.setattr(telemetry_module.Component, "__init__", bad_component_init)
         with pytest.raises(RuntimeError, match="telemetry init failed"):
             telemetry_module.Telemetry({"functions": []})
 
-    t = telemetry_module.Telemetry({"dataDir": str(tmp_path), "functions": []})
+    t = telemetry_module.Telemetry({"data_dir": str(tmp_path), "functions": []})
 
-    monkeypatch.setattr(telemetry_module, "initExistingShm", lambda name: (_ for _ in ()).throw(RuntimeError("missing shm")))
+    monkeypatch.setattr(
+        telemetry_module,
+        "open_stream",
+        lambda name, **kw: (_ for _ in ()).throw(RuntimeError("missing shm")),
+    )
     with pytest.raises(RuntimeError, match="missing shm"):
         t.save("signal", 1)
 
@@ -126,14 +122,11 @@ def test_telemetry_error_paths(monkeypatch, tmp_path):
     with pytest.raises(ValueError, match="Failed to read telemetry manifest"):
         telemetry_module.load_telemetry_manifest(broken_manifest)
 
-    class _SHM:
-        def __init__(self):
-            self.metadata = np.array([0.0, 10.0], dtype=np.float64)
-
-        def read(self):
-            return np.array([1.0, 2.0], dtype=np.float32)
-
-    monkeypatch.setattr(telemetry_module, "initExistingShm", lambda name: (_SHM(), [2], np.float32))
+    monkeypatch.setattr(
+        telemetry_module,
+        "open_stream",
+        lambda name, **kw: StaticStream(np.array([1.0, 2.0], dtype=np.float32), 10.0),
+    )
     session_path = t.save("signal", 1)
     manifest = telemetry_module.load_telemetry_manifest(session_path)
     capture_path = Path(session_path) / manifest["streams"][0]["frames_file"]
@@ -142,7 +135,9 @@ def test_telemetry_error_paths(monkeypatch, tmp_path):
     with pytest.raises(FileNotFoundError, match="Telemetry capture file not found"):
         telemetry_module.load_telemetry_session(session_path)
 
-    empty_telemetry = telemetry_module.Telemetry({"dataDir": str(tmp_path / "empty"), "functions": []})
+    empty_telemetry = telemetry_module.Telemetry(
+        {"data_dir": str(tmp_path / "empty"), "functions": []}
+    )
     with pytest.raises(ValueError, match="no configured streams"):
         empty_telemetry.save_configured_streams(1)
 

@@ -5,16 +5,39 @@ import json
 from pathlib import Path
 from typing import Dict
 
-from pyRTC.logging_utils import add_logging_cli_args, configure_logging_from_args, get_logger
+from pyrtc.logging_utils import add_logging_cli_args, configure_logging_from_args, get_logger
 
 
 logger = get_logger(__name__)
 
 
 def _build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Compare perf smoke report against committed baseline.")
-    parser.add_argument("--current", type=str, default="benchmarks/perf_smoke_report.json", help="Current report path")
-    parser.add_argument("--baseline", type=str, default="benchmarks/perf_smoke_baseline.json", help="Baseline report path")
+    parser = argparse.ArgumentParser(
+        description="Compare perf smoke report against committed baseline."
+    )
+    parser.add_argument(
+        "--current",
+        type=str,
+        default="benchmarks/perf_smoke_report.json",
+        help="Current report path",
+    )
+    parser.add_argument(
+        "--baseline",
+        type=str,
+        default="benchmarks/perf_smoke_baseline.json",
+        help="Baseline report path",
+    )
+    parser.add_argument(
+        "--max-ratio",
+        type=float,
+        default=None,
+        help=(
+            "Fail when any latency metric (mean_s/median_s/p95_s/p99_s) exceeds "
+            "baseline by more than this factor, or any throughput metric "
+            "(p99_hz) falls below baseline divided by it. Omit for a "
+            "presence-only check."
+        ),
+    )
     add_logging_cli_args(parser)
     return parser
 
@@ -138,6 +161,31 @@ def compare_against_baseline(current: Dict, baseline: Dict):
     return missing, comparison
 
 
+def find_ratio_regressions(comparison: Dict, max_ratio: float):
+    """Return comparison entries that regress beyond ``max_ratio``.
+
+    Latency metrics (``*_s``, lower is better) regress when
+    ``current / baseline > max_ratio``; throughput metrics (``*_hz``, higher
+    is better) regress when ``current / baseline < 1 / max_ratio``.
+    """
+
+    if max_ratio <= 1.0:
+        raise ValueError("max_ratio must be greater than 1")
+
+    regressions = {}
+    for key, entry in comparison.items():
+        ratio = entry.get("ratio")
+        if ratio is None:
+            continue
+        if key.endswith("_hz"):
+            if ratio < 1.0 / max_ratio:
+                regressions[key] = entry
+        elif key.endswith("_s"):
+            if ratio > max_ratio:
+                regressions[key] = entry
+    return regressions
+
+
 def main(argv=None) -> int:
     parser = _build_parser()
     args = parser.parse_args(argv)
@@ -166,9 +214,24 @@ def main(argv=None) -> int:
     logger.info("Baseline comparison details:\n%s", json.dumps(comparison, indent=2))
 
     if missing:
-        raise SystemExit(
-            "Missing baseline metrics for comparison:\n" + "\n".join(sorted(missing))
+        raise SystemExit("Missing baseline metrics for comparison:\n" + "\n".join(sorted(missing)))
+
+    if args.max_ratio is not None:
+        regressions = find_ratio_regressions(comparison, args.max_ratio)
+        if regressions:
+            lines = [
+                f"{key}: current={entry['current']:.6g} baseline={entry['baseline']:.6g} ratio={entry['ratio']:.3f}"
+                for key, entry in sorted(regressions.items())
+            ]
+            raise SystemExit(
+                f"Performance regression beyond {args.max_ratio:.2f}x baseline:\n"
+                + "\n".join(lines)
+            )
+        logger.info(
+            "Baseline comparison succeeded: all metrics within %.2fx of baseline.",
+            args.max_ratio,
         )
+        return 0
 
     logger.info("Baseline comparison succeeded: all required metrics found.")
     return 0

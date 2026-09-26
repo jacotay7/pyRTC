@@ -4,11 +4,11 @@ import io
 import numpy as np
 from astropy.io import fits
 
-import pyRTC.utils as utils
+import pyrtc.utils as utils
 
 
 def test_power_law_og_shape():
-    arr = utils.powerLawOG(8, 2)
+    arr = utils.power_law_og(8, 2)
     assert arr.shape == (8,)
     assert arr[0] == 1
 
@@ -47,7 +47,7 @@ def test_generate_and_tmp_filepath(tmp_path):
     p = utils.generate_filepath(str(tmp_path), prefix="abc", extension=".dat")
     assert str(tmp_path) in p
     assert p.endswith(".dat")
-    tmp = utils.get_tmp_filepath("/a/b/c.npy", uniqueStr="u")
+    tmp = utils.get_tmp_filepath("/a/b/c.npy", unique_str="u")
     assert tmp.endswith("c_u.npy")
 
 
@@ -95,21 +95,21 @@ def test_set_affinity_invalid_type():
 
 def test_set_from_config_and_signal2d():
     conf = {"x": 2}
-    assert utils.setFromConfig(conf, "x", 1) == 2
-    assert utils.setFromConfig(conf, "x", 1.0) == 2.0
+    assert utils.set_from_config(conf, "x", 1) == 2
+    assert utils.set_from_config(conf, "x", 1.0) == 2.0
     layout = np.array([[True, False, True, False], [False, True, False, True]])
     signal = np.arange(np.count_nonzero(layout), dtype=float)
-    out = utils.signal2D(signal, layout)
+    out = utils.signal_2d(signal, layout)
     assert out.shape == layout.shape
 
 
 def test_set_from_config_allows_numeric_scalar_coercions_but_not_fractional_ints():
-    assert utils.setFromConfig({"x": 2.0}, "x", 1) == 2
-    assert utils.setFromConfig({"x": np.float32(3.0)}, "x", 1) == 3
-    assert utils.setFromConfig({"x": np.int32(4)}, "x", 1.0) == 4.0
+    assert utils.set_from_config({"x": 2.0}, "x", 1) == 2
+    assert utils.set_from_config({"x": np.float32(3.0)}, "x", 1) == 3
+    assert utils.set_from_config({"x": np.int32(4)}, "x", 1.0) == 4.0
 
     try:
-        utils.setFromConfig({"x": 2.5}, "x", 1)
+        utils.set_from_config({"x": 2.5}, "x", 1)
         assert False
     except AssertionError:
         assert True
@@ -135,7 +135,7 @@ def test_measure_execution_time_and_add_to_path(tmp_path):
     def fn(a):
         calls["n"] += a
 
-    med, iqr, c1, c99 = utils.measure_execution_time(fn, (1,), numIters=3)
+    med, iqr, c1, c99 = utils.measure_execution_time(fn, (1,), num_iters=3)
     assert med >= 0
     assert iqr >= 0
     assert c1 <= c99

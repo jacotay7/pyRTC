@@ -3,7 +3,7 @@
 Telemetry To AOTPy Export
 =========================
 
-`pyRTC` telemetry sessions are now self-describing enough to support an offline
+`pyrtc` telemetry sessions are now self-describing enough to support an offline
 export path into `aotpy`.
 The exporter is intentionally outside the real-time loop and treats the session
 directory as the source of truth.
@@ -11,7 +11,7 @@ directory as the source of truth.
 Install
 -------
 
-The export path is optional and does not affect the base `pyRTC` install:
+The export path is optional and does not affect the base `pyrtc` install:
 
 .. code-block:: bash
 
@@ -24,18 +24,18 @@ One straightforward workflow is:
 
 .. code-block:: python
 
-	from pyRTC.Telemetry import Telemetry
-	from pyRTC.exporters.aotpy_export import export_telemetry_session_to_aotpy
+	from pyrtc.telemetry import Telemetry
+	from pyrtc.exporters.aotpy_export import export_telemetry_session_to_aotpy
 
-	telemetry = Telemetry({"dataDir": "./data", "functions": []})
+	telemetry = Telemetry({"data_dir": "./data", "functions": []})
 	session_path = telemetry.save(
-		["wfs", "signal", "wfc", "psfShort"],
+		["wfs", "signal", "wfc", "psf_short"],
 		200,
 		semanticTags={
 			"wfs": ["wfs"],
 			"signal": ["signal", "slopes"],
 			"wfc": ["wfc", "control"],
-			"psfShort": ["psf", "science"],
+			"psf_short": ["psf", "science"],
 		},
 	)
 	export_telemetry_session_to_aotpy(session_path, "synthetic_session.fits")
@@ -58,18 +58,18 @@ It prioritizes clean provenance over guessing hidden AO structure.
 - `wfs`: exported as WFS detector pixel intensities when present
 - `signal`: exported as WFS measurements when the shape is interpretable
 - `wfc`: exported as the loop command history and associated deformable-mirror command stream
-- `psfShort` and `psfLong`: exported as scoring-camera detector sequences
+- `psf_short` and `psf_long`: exported as scoring-camera detector sequences
 - session metadata, host metadata, config path, and unmapped stream names: preserved as AO-system metadata
 
 Assumptions And Limitations
 ---------------------------
 
 The current version is meant to make synthetic and early integration sessions
-portable, not to claim complete AOT coverage for every `pyRTC` deployment.
+portable, not to claim complete AOT coverage for every `pyrtc` deployment.
 
 - Export only includes streams that were actually captured in the telemetry session.
 - `signal` is interpreted as Shack-Hartmann slopes when the config says `SHWFS` and the flattened signal length is even.
-- `wfc` is treated as the command vector sent through the control path, which in many `pyRTC` systems is modal rather than zonal.
+- `wfc` is treated as the command vector sent through the control path, which in many `pyrtc` systems is modal rather than zonal.
 - Stream metadata that does not map directly into `aotpy` fields is preserved as metadata strings on the exported `AOSystem` or `Image` objects.
 - Uncaptured calibration products such as interaction matrices, darks, flats, or explicit telescope geometry are not invented during export.
 
@@ -81,7 +81,7 @@ writing a file immediately:
 
 .. code-block:: python
 
-	from pyRTC.exporters.aotpy_export import telemetry_session_to_aotpy
+	from pyrtc.exporters.aotpy_export import telemetry_session_to_aotpy
 
 	system = telemetry_session_to_aotpy("data/session_20260309_120000_abcd1234")
 	print(system)

@@ -1,10 +1,18 @@
 from pathlib import Path
 
-from pyRTC import RTCManager
-from pyRTC.config_schema import read_system_config
-from pyRTC.gui.manager_adapter import ManagerAdapter, _coerce_runtime_value, _is_live_runtime_field, _ordered_sections
-from pyRTC.hardware.SyntheticSystems import _default_wfc_layout, build_synthetic_shwfs_response_matrix
-from pyRTC.scripts import manager_gui
+from pyrtc import RTCManager
+from pyrtc.config_schema import read_system_config
+from pyrtc.gui.manager_adapter import (
+    ManagerAdapter,
+    _coerce_runtime_value,
+    _is_live_runtime_field,
+    _ordered_sections,
+)
+from pyrtc.hardware.synthetic_systems import (
+    _default_wfc_layout,
+    build_synthetic_shwfs_response_matrix,
+)
+from pyrtc.scripts import manager_gui
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -13,7 +21,9 @@ SYNTHETIC_CONFIG_PATH = REPO_ROOT / "examples" / "synthetic_shwfs" / "config.yam
 
 def test_manager_gui_parser_supports_mode_theme_and_refresh():
     parser = manager_gui._build_arg_parser()
-    args = parser.parse_args([str(SYNTHETIC_CONFIG_PATH), "--mode", "hard", "--theme", "light", "--refresh-ms", "1500"])
+    args = parser.parse_args(
+        [str(SYNTHETIC_CONFIG_PATH), "--mode", "hard", "--theme", "light", "--refresh-ms", "1500"]
+    )
 
     assert args.config == str(SYNTHETIC_CONFIG_PATH)
     assert args.mode == "hard"
@@ -28,7 +38,9 @@ def test_manager_adapter_builds_graph_snapshot_from_synthetic_config():
     snapshot = adapter.build_graph_snapshot()
 
     section_names = [node.section_name for node in snapshot.nodes]
-    edges = {(edge.source_section, edge.target_section, edge.source_stream) for edge in snapshot.edges}
+    edges = {
+        (edge.source_section, edge.target_section, edge.source_stream) for edge in snapshot.edges
+    }
 
     assert snapshot.config_path == str(SYNTHETIC_CONFIG_PATH.resolve())
     assert {"wfs", "slopes", "loop", "wfc", "psf"}.issubset(section_names)
@@ -96,17 +108,20 @@ def test_manager_adapter_surfaces_runtime_parameter_hooks_and_applies_live_value
         def __init__(self, component):
             self.state = "running"
             self.runtimes = {"specula": _FakeRuntime()}
-            self.config = {"specula": {"className": "fake.Specula"}}
+            self.config = {"specula": {"class_name": "fake.Specula"}}
             self._component = component
 
         def get_component(self, section_name):
             return self._component
 
         def status(self):
-            return {"components": {"specula": {"state": "running", "mode": "soft-rtc"}}, "state": "running"}
+            return {
+                "components": {"specula": {"state": "running", "mode": "soft-rtc"}},
+                "state": "running",
+            }
 
     adapter = ManagerAdapter()
-    adapter.config = {"specula": {"className": "fake.Specula"}}
+    adapter.config = {"specula": {"class_name": "fake.Specula"}}
     adapter.manager = _FakeManager(_FakeComponent())
 
     rows = adapter.get_component_parameters("specula")
@@ -128,10 +143,10 @@ def test_manager_adapter_build_exposes_built_state(tmp_path):
     np_path = tmp_path / "synthetic_identity_im.npy"
     import numpy as np
 
-    layout = _default_wfc_layout(int(config["wfc"]["numActuators"]))
-    response = build_synthetic_shwfs_response_matrix(7, int(config["wfc"]["numModes"]), layout)
+    layout = _default_wfc_layout(int(config["wfc"]["num_actuators"]))
+    response = build_synthetic_shwfs_response_matrix(7, int(config["wfc"]["num_modes"]), layout)
     np.save(np_path, response.astype(np.float32))
-    config["loop"]["IMFile"] = str(np_path)
+    config["loop"]["im_file"] = str(np_path)
     config_path.write_text(__import__("yaml").safe_dump(config, sort_keys=False), encoding="utf-8")
 
     adapter.load_config(str(config_path))
@@ -149,22 +164,22 @@ def test_manager_adapter_prefers_common_viewer_streams():
 
     streams = adapter.suggested_viewer_streams()
 
-    assert streams == ["wfsRaw", "wfs", "signal2D", "wfc2D", "psfShort", "psfLong"]
+    assert streams == ["wfs_raw", "wfs", "signal_2d", "wfc_2d", "psf_short", "psf_long"]
 
 
 def test_runtime_field_policy_keeps_functions_config_only():
     assert _is_live_runtime_field("gain") is True
     assert _is_live_runtime_field("functions") is False
-    assert _is_live_runtime_field("IMFile") is False
+    assert _is_live_runtime_field("im_file") is False
 
 
 def test_manager_adapter_skips_hard_runtime_rpc_for_config_only_fields():
     class _FakeLauncher:
         def __init__(self):
             self.calls = []
-            self.lastError = None
+            self.last_error = None
 
-        def getProperty(self, name):
+        def get_property(self, name):
             self.calls.append(name)
             return -1
 
@@ -180,9 +195,9 @@ def test_manager_adapter_skips_hard_runtime_rpc_for_config_only_fields():
     adapter.manager.runtimes = {"loop": _FakeRuntime()}
     adapter.manager.get_component = lambda section_name: launcher
 
-    value = adapter.get_parameter("loop", "functions", fallback=["standardIntegrator"])
+    value = adapter.get_parameter("loop", "functions", fallback=["standard_integrator"])
 
-    assert value == ["standardIntegrator"]
+    assert value == ["standard_integrator"]
     assert launcher.calls == []
 
 
@@ -226,7 +241,7 @@ def test_manager_adapter_lists_zero_arg_component_functions():
     names = {row["name"] for row in functions}
 
     assert "flatten" in names
-    assert "sendToHardware" not in names
+    assert "send_to_hardware" not in names
     assert "start" not in names
 
 
@@ -269,7 +284,7 @@ def test_manager_adapter_runs_zero_arg_component_function_on_hard_runtime():
     class _FakeLauncher:
         def __init__(self):
             self.calls = []
-            self.lastError = None
+            self.last_error = None
 
         def run(self, function_name):
             self.calls.append(function_name)
@@ -314,13 +329,16 @@ def test_manager_adapter_adds_custom_component_and_connection():
         "science_copy_psf",
         output_component="science_copy",
         input_components=["loop"],
-        component_stream="psfShort",
+        component_stream="psf_short",
     )
 
     assert "science_copy" in adapter.config
-    assert adapter.config["manager"]["componentClasses"]["science_copy"] == "pyRTC.ScienceCamera.ScienceCamera"
-    assert adapter.config["streams"]["science_copy_psf"]["outputComponent"] == "science_copy"
-    assert adapter.config["streams"]["science_copy_psf"]["componentStream"] == "psfShort"
+    assert (
+        adapter.config["manager"]["component_classes"]["science_copy"]
+        == "pyrtc.science_camera.ScienceCamera"
+    )
+    assert adapter.config["streams"]["science_copy_psf"]["output_component"] == "science_copy"
+    assert adapter.config["streams"]["science_copy_psf"]["component_stream"] == "psf_short"
 
 
 def test_manager_adapter_snapshot_includes_custom_stream_connections():
@@ -331,13 +349,15 @@ def test_manager_adapter_snapshot_includes_custom_stream_connections():
         "science_copy_psf",
         output_component="science_copy",
         input_components=["loop"],
-        component_stream="psfShort",
+        component_stream="psf_short",
     )
 
     snapshot = adapter.build_graph_snapshot(runtime_controls_enabled=False)
 
     sections = {node.section_name for node in snapshot.nodes}
-    edges = {(edge.source_section, edge.target_section, edge.source_stream) for edge in snapshot.edges}
+    edges = {
+        (edge.source_section, edge.target_section, edge.source_stream) for edge in snapshot.edges
+    }
 
     assert "science_copy" in sections
     assert ("science_copy", "loop", "science_copy_psf") in edges

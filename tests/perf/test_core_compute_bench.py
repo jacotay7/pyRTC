@@ -8,9 +8,9 @@ REQUIRED_CPU_KERNELS = [
     "wavefront_sensor.downsample_int32_image_jit",
     "wavefront_sensor.rotate_image_jit",
     "wavefront_corrector.ModaltoZonalWithFlat",
-    "loop.leakyIntegratorNumba",
-    "slopes.computeSlopesPYWFSOptimNumba",
-    "slopes.computeSlopesSHWFSOptimNumba",
+    "loop.leaky_integrator_numba",
+    "slopes.compute_slopes_pywfs_optim_numba",
+    "slopes.compute_slopes_shwfs_optim_numba",
 ]
 
 
@@ -77,13 +77,13 @@ def test_core_compute_summary_table_contains_compact_headers():
     report = {
         "profiles": {
             "10x10": {
-                "loop.leakyIntegratorNumba": {"p99_hz": 1000.0, "p99_s": 0.001},
+                "loop.leaky_integrator_numba": {"p99_hz": 1000.0, "p99_s": 0.001},
             }
         },
         "gpu_profiles": {
             "10x10": {
                 "status": {"available": True},
-                "loop.leakIntegratorGPU": {"p99_hz": 2000.0, "p99_s": 0.0005},
+                "loop.leak_integrator_gpu": {"p99_hz": 2000.0, "p99_s": 0.0005},
             }
         },
     }

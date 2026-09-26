@@ -3,12 +3,12 @@
 Architecture Overview
 =====================
 
-This guide describes the current `pyRTC` execution model at a level useful for developers and system integrators preparing a real deployment.
+This guide describes the current `pyrtc` execution model at a level useful for developers and system integrators preparing a real deployment.
 
 System Model
 ------------
 
-`pyRTC` is built around a small set of AO component abstractions that exchange data through shared-memory streams.
+`pyrtc` is built around a small set of AO component abstractions that exchange data through shared-memory streams.
 The main intent is to keep algorithm logic, device-facing logic, and runtime orchestration separable.
 
 The primary components are:
@@ -38,7 +38,7 @@ This is not the only legal layout, but it is the default conceptual model to kee
 Soft-RTC vs Hard-RTC
 --------------------
 
-`pyRTC` currently supports two broad operating styles.
+`pyrtc` currently supports two broad operating styles.
 
 Soft-RTC
 ~~~~~~~~
@@ -91,7 +91,7 @@ Extension Model
 ---------------
 
 Most real deployments will subclass or adapt the core AO components for site-specific hardware.
-The `pyRTC.hardware` package exists to show that pattern.
+The `pyrtc.hardware` package exists to show that pattern.
 
 Treat those hardware files as reference integrations:
 
@@ -112,7 +112,7 @@ For first deployments:
 Observability
 -------------
 
-`pyRTC` now uses a shared logging configuration across the main scripts, launchers, and selected control-plane library paths.
+`pyrtc` now uses a shared logging configuration across the main scripts, launchers, and selected control-plane library paths.
 The design goal is to make startup, orchestration, and operator-visible failures easy to diagnose without adding avoidable overhead to the real-time loop.
 
 The practical consequence is:
