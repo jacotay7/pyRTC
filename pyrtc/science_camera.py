@@ -334,6 +334,8 @@ class ScienceCamera(Component):
                 raise ValueError("dark_count must be at least 1 to acquire a dark frame")
             self.logger.info("Taking science camera dark frame using %s exposures", self.dark_count)
             self.set_dark(np.zeros_like(self.dark))
+            # The next frame may have been dark-subtracted with the old dark.
+            self.read()
             dark = np.zeros(self.image_shape, dtype=np.float64)
             for _ in range(self.dark_count):
                 dark += self.read().astype(np.float64)

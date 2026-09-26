@@ -6,6 +6,12 @@ All notable changes to `pyrtcao` will be documented in this file.
 
 ### Fixed
 
+- **`WavefrontSensor.take_dark()` built the dark at the processed shape**
+	(#41). It averaged the downsampled/rotated `wfs` stream, while `expose()`
+	subtracts the dark from the raw frame, so `downsample_factor` crashed the
+	WFS worker and `rotation_angle` produced a misaligned dark. It now averages
+	`wfs_raw`, rounds instead of truncating, and both WFS and science-camera
+	darks discard the first frame, which may predate the call.
 - **Integrator kernel wrote past the correction array** (#38).
 	`leaky_integrator_numba` iterated `num_active_modes + 1` modes, so with no
 	dropped modes (the default) every `standard_integrator`/`leaky_integrator`
