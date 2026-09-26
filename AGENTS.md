@@ -149,3 +149,9 @@ ruff check . && ruff format --check .    # lint, as in CI
 - Do not commit planning, status-tracker, or scratch notes (such as an
   `IMPROVEMENT_PLAN.md`). Durable guidance belongs in this file, and
   user-facing changes belong in `CHANGELOG.md`.
+- When you work around a minor issue instead of fixing it (out of scope, not
+  worth blocking on), open a GitHub issue in the affected repository if you
+  have credentials: what you hit, where, the workaround, and what the real fix
+  would be. Link the issue from the workaround when it lives in code. If you
+  cannot open an issue, tell the maintainer instead. The goal is to move on
+  without forgetting it.
