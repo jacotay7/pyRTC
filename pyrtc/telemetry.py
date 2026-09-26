@@ -24,6 +24,7 @@ import json
 import os
 import platform
 import socket
+import threading
 import uuid
 from datetime import datetime, timezone
 from importlib import metadata as importlib_metadata
@@ -234,6 +235,125 @@ def list_telemetry_sessions(data_dir: str | Path) -> list[str]:
     return [str(path.resolve().parent) for path in sorted(base_dir.glob("session_*/session.json"))]
 
 
+class _StreamCapture:
+    """Files and reader for one stream of a telemetry session."""
+
+    def __init__(self, spec, stream_dir, shm, unique_str):
+        self.spec = spec
+        self.name = spec["name"]
+        self.frame_count = int(spec["frame_count"])
+        self.stream_dir = stream_dir
+        self.shm = shm
+        self.unique_str = unique_str
+        self.frame_shape = _coerce_shape(tuple(shm.shape))
+        self.dtype = np.dtype(shm.dtype)
+        self.frames_path = stream_dir / "frames.npy"
+        self.timestamps_path = stream_dir / "timestamps.npy"
+        self.frame_ids_path = stream_dir / "frame_ids.npy"
+        self.metadata_path = stream_dir / "metadata.json"
+        self.frames = np.lib.format.open_memmap(
+            self.frames_path,
+            mode="w+",
+            dtype=self.dtype,
+            shape=(self.frame_count, *self.frame_shape),
+        )
+        self.timestamps = np.lib.format.open_memmap(
+            self.timestamps_path, mode="w+", dtype=np.float64, shape=(self.frame_count,)
+        )
+        self.frame_ids = np.empty(self.frame_count, dtype=np.uint64)
+        self.missed_frames = 0
+        self._closed = False
+
+    @classmethod
+    def open(cls, spec, session_dir, unique_str):
+        shm = open_stream(spec["name"], readonly=True)
+        try:
+            stream_dir = session_dir / _sanitize_name(spec["name"])
+            stream_dir.mkdir(parents=True, exist_ok=False)
+            return cls(spec, stream_dir, shm, unique_str)
+        except Exception:
+            shm.close()
+            raise
+
+    def capture(self, start: threading.Barrier) -> None:
+        start.wait()
+        for index in range(self.frame_count):
+            # One publication gives the frame together with its own write
+            # time and frame id, never a later write's.
+            publication = self.shm.read_new_publication()
+            self.frames[index] = np.asarray(publication.payload, dtype=self.dtype)
+            self.timestamps[index] = publication.write_time
+            self.frame_ids[index] = publication.frame_id
+            if index > 0:
+                self.missed_frames += publication.missed_publications
+
+    def close(self) -> None:
+        if not self._closed:
+            self._closed = True
+            self.shm.close()
+
+    def finalize(self, session_dir) -> dict:
+        self.frames.flush()
+        self.timestamps.flush()
+        del self.frames
+        del self.timestamps
+        np.save(self.frame_ids_path, self.frame_ids)
+        stream_metadata = {
+            "name": self.name,
+            "dtype": self.dtype.name,
+            "shape": list(self.frame_shape),
+            "frame_count": self.frame_count,
+            "missed_frames": int(self.missed_frames),
+            "timestamp_unit": "unix_seconds",
+            "sampling": self.spec["sampling"],
+            "semantic_tags": self.spec["semantic_tags"],
+            "capture_label": self.unique_str or None,
+        }
+        with self.metadata_path.open("w", encoding="utf-8") as handle:
+            json.dump(stream_metadata, handle, indent=2, sort_keys=True)
+        return {
+            "name": self.name,
+            "dtype": self.dtype.name,
+            "shape": list(self.frame_shape),
+            "frame_count": self.frame_count,
+            "frames_file": str(self.frames_path.relative_to(session_dir)),
+            "timestamps_file": str(self.timestamps_path.relative_to(session_dir)),
+            "frame_ids_file": str(self.frame_ids_path.relative_to(session_dir)),
+            "metadata_file": str(self.metadata_path.relative_to(session_dir)),
+            "sampling": self.spec["sampling"],
+            "semantic_tags": self.spec["semantic_tags"],
+        }
+
+
+def _capture_concurrently(captures) -> None:
+    """Capture every stream over one shared time window.
+
+    Each stream gets its own reader thread, released together, so a session
+    holding ``wfs``, ``signal`` and ``wfc`` covers the same loop iterations
+    (pair them exactly with the recorded frame ids).
+    """
+    start = threading.Barrier(len(captures))
+    errors = []
+
+    def _run(capture):
+        try:
+            capture.capture(start)
+        except BaseException as exc:  # re-raised in the caller
+            errors.append(exc)
+            start.abort()
+
+    threads = [
+        threading.Thread(target=_run, args=(capture,), name=f"telemetry-{capture.name}")
+        for capture in captures
+    ]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    if errors:
+        raise errors[0]
+
+
 class Telemetry(Component):
     """Capture pyrtc streams into standard NumPy telemetry products.
 
@@ -369,88 +489,21 @@ class Telemetry(Component):
         try:
             stream_records = []
             last_frames_path = ""
-            for spec in specs:
-                shm = open_stream(spec["name"], readonly=True)
-                shm_dims = tuple(shm.shape)
-                shm_dtype = np.dtype(shm.dtype)
-                stream_name = spec["name"]
-                frame_count = int(spec["frame_count"])
-                stream_dir = session_dir / _sanitize_name(stream_name)
-                stream_dir.mkdir(parents=True, exist_ok=False)
+            captures = []
+            try:
+                for spec in specs:
+                    captures.append(_StreamCapture.open(spec, session_dir, unique_str))
+                _capture_concurrently(captures)
+            finally:
+                for capture in captures:
+                    capture.close()
 
-                frames_path = stream_dir / "frames.npy"
-                timestamps_path = stream_dir / "timestamps.npy"
-                stream_metadata_path = stream_dir / "metadata.json"
-                frame_shape = _coerce_shape(shm_dims)
-                dtype = np.dtype(shm_dtype)
-
-                frames = np.lib.format.open_memmap(
-                    frames_path,
-                    mode="w+",
-                    dtype=dtype,
-                    shape=(frame_count, *frame_shape),
-                )
-                timestamps = np.lib.format.open_memmap(
-                    timestamps_path,
-                    mode="w+",
-                    dtype=np.float64,
-                    shape=(frame_count,),
-                )
-
-                frame_ids = np.empty(frame_count, dtype=np.uint64)
-                missed_frames = 0
-                try:
-                    for index in range(frame_count):
-                        # One publication gives the frame together with its own
-                        # write time and frame id, never a later write's.
-                        publication = shm.read_new_publication()
-                        frames[index] = np.asarray(publication.payload, dtype=dtype)
-                        timestamps[index] = publication.write_time
-                        frame_ids[index] = publication.frame_id
-                        if index > 0:
-                            missed_frames += publication.missed_publications
-                finally:
-                    shm.close()
-
-                frames.flush()
-                timestamps.flush()
-                del frames
-                del timestamps
-                frame_ids_path = stream_dir / "frame_ids.npy"
-                np.save(frame_ids_path, frame_ids)
-
-                stream_metadata = {
-                    "name": stream_name,
-                    "dtype": dtype.name,
-                    "shape": list(frame_shape),
-                    "frame_count": frame_count,
-                    "missed_frames": int(missed_frames),
-                    "timestamp_unit": "unix_seconds",
-                    "sampling": spec["sampling"],
-                    "semantic_tags": spec["semantic_tags"],
-                    "capture_label": unique_str or None,
-                }
-                with stream_metadata_path.open("w", encoding="utf-8") as handle:
-                    json.dump(stream_metadata, handle, indent=2, sort_keys=True)
-
-                stream_record = {
-                    "name": stream_name,
-                    "dtype": dtype.name,
-                    "shape": list(frame_shape),
-                    "frame_count": frame_count,
-                    "frames_file": str(frames_path.relative_to(session_dir)),
-                    "timestamps_file": str(timestamps_path.relative_to(session_dir)),
-                    "frame_ids_file": str(frame_ids_path.relative_to(session_dir)),
-                    "metadata_file": str(stream_metadata_path.relative_to(session_dir)),
-                    "sampling": spec["sampling"],
-                    "semantic_tags": spec["semantic_tags"],
-                }
-                stream_records.append(stream_record)
-
-                last_frames_path = str(frames_path)
+            for capture in captures:
+                stream_records.append(capture.finalize(session_dir))
+                last_frames_path = str(capture.frames_path)
                 self.all_files.append(last_frames_path)
-                self.dtypes.append(dtype)
-                self.dims.append(list(frame_shape))
+                self.dtypes.append(capture.dtype)
+                self.dims.append(list(capture.frame_shape))
 
             session_manifest = self._session_manifest(
                 session_id=session_id,
