@@ -144,6 +144,13 @@ ruff check . && ruff format --check .    # lint, as in CI
   because some library code still calls `plt.show()` (#34).
 - Windows frees named shared memory when the last handle closes, so streams do
   not outlive their producer there. Treat Windows as soft-RTC only.
+- `import OOPAO` fails with `ValueError: attempt to get argmin of an empty
+  sequence` when OOPAO was installed with plain `pip install` (it is not on
+  PyPI). `OOPAO/__init__.py` picks the shortest `sys.path` entry containing
+  `OOPAO` (case-sensitive) and writes `precision_oopao.npy` into it, so it only
+  imports from a writable clone whose path contains `OOPAO` and that is on
+  `PYTHONPATH`. OOPAO therefore cannot be a pyrtc extra; the recipe is in
+  `docs/source/examples/pywfs.rst`. SPECULA is on PyPI (`specula` extra).
 
 ## Maintainer guidance
 

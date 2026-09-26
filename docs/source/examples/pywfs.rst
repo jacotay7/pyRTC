@@ -10,7 +10,7 @@ Purpose
 
 The PYWFS example is the richer simulator-backed path for users who already want more optical realism than the synthetic SHWFS quick start described in :doc:`synthetic_shwfs`.
 
-The example uses the OOPAO simulator to stand in for AO hardware and demonstrates the expected configuration shape for:
+The example uses the OOPAO or SPECULA simulator to stand in for AO hardware and demonstrates the expected configuration shape for:
 
 - a wavefront sensor
 - a slopes processor
@@ -27,6 +27,42 @@ The main example assets live under `examples/pywfs/`:
 - `pywfs_example_OOPAO.ipynb`: notebook walkthrough of the same setup
 - `pywfs_OOPAO_config.yaml`: example configuration
 - `pywfs_OOPAO_params.yaml`: OOPAO object-construction parameters for the telescope, sources, atmosphere, DM, and WFS
+- `pywfs_specula_soft_rtc_example.py`: SPECULA-backed version of the same pyramid-WFS walkthrough
+- `pywfs_SPECULA_config.yaml`: pyrtc config for the SPECULA example
+- `pywfs_SPECULA_params.yaml`: SPECULA object-graph parameters for the SPECULA example
+
+Installing the Simulator
+------------------------
+
+The simulator is not installed with pyrtc. Install the backend you want to run: OOPAO for the ``*_oopao_*`` / ``*OOPAO*`` files, SPECULA for the ``*_specula_*`` / ``*SPECULA*`` files. The same instructions apply to the Shack-Hartmann examples in :doc:`shwfs`.
+
+Installing OOPAO
+~~~~~~~~~~~~~~~~
+
+OOPAO is not on PyPI, so it cannot be a pyrtc extra. Installing it straight from GitHub (``pip install git+https://github.com/cheritier/OOPAO.git``) is not enough: ``import OOPAO`` then fails with ``ValueError: attempt to get argmin of an empty sequence``. At import time, ``OOPAO/__init__.py`` looks for an entry containing ``OOPAO`` on ``sys.path`` and writes a small file into it. A plain ``pip install`` puts OOPAO in ``site-packages``, so no such entry exists.
+
+Clone OOPAO and put the clone on ``PYTHONPATH``:
+
+.. code-block:: bash
+
+	git clone https://github.com/cheritier/OOPAO.git   # keep the directory name "OOPAO"
+	pip install ./OOPAO                                # installs OOPAO's dependencies
+	export PYTHONPATH="$PWD/OOPAO:$PYTHONPATH"
+	python -c "import OOPAO"                           # check the install
+
+The clone's path must contain ``OOPAO`` (the match is case-sensitive, so a directory renamed to ``oopao`` fails) and must be writable. ``PYTHONPATH`` takes precedence over ``site-packages``, so the clone is the copy that gets imported. Add the ``export`` line to your shell profile or environment activation script so it persists.
+
+Installing SPECULA
+~~~~~~~~~~~~~~~~~~
+
+SPECULA is on PyPI and is available as a pyrtc extra:
+
+.. code-block:: bash
+
+	pip install pyrtcao[specula]   # from a source checkout: pip install .[specula]
+	# or install SPECULA on its own: pip install specula
+
+The SPECULA example scripts also add a sibling ``SPECULA`` checkout (next to the pyrtc repository) to ``sys.path`` when one exists, so a local SPECULA development checkout there is used instead of the installed package.
 
 What the Config Shows
 ---------------------
@@ -95,7 +131,13 @@ By default the script:
 - computes a quick interaction matrix with the atmosphere removed
 - closes the loop for the requested duration
 
-Useful variants:
+The SPECULA version runs the same way:
+
+.. code-block:: bash
+
+	python examples/pywfs/pywfs_specula_soft_rtc_example.py --duration 10
+
+Useful variants of the OOPAO script:
 
 .. code-block:: bash
 
@@ -128,7 +170,7 @@ Viewer commands:
 Notes and Limitations
 ---------------------
 
-- This example depends on OOPAO and is not the zero-dependency first run.
+- This example depends on OOPAO or SPECULA (see `Installing the Simulator`_) and is not the zero-dependency first run.
 - It is best suited to Linux-based development environments.
 - The script path is better for repeatable setup; the notebook path is better for step-by-step debugging and inspection.
 - Treat it as the reference simulation path, not as a drop-in hardware deployment recipe.
