@@ -161,3 +161,25 @@ def test_science_camera_setter_and_load_error_paths(monkeypatch):
         cam.load_dark("missing-dark.npy")
     with pytest.raises(RuntimeError, match="load failed"):
         cam.load_model_psf("missing-model.npy")
+
+
+def _gaussian_psf(sigma, size=33):
+    y, x = np.indices((size, size)) - size // 2
+    return np.exp(-(x**2 + y**2) / (2 * sigma**2))
+
+
+@pytest.mark.parametrize("flux_scale", [0.01, 1.0, 250.0])
+def test_estimate_strehl_is_independent_of_flux(flux_scale):
+    model = _gaussian_psf(1.5)
+    aberrated = _gaussian_psf(3.0)
+    reference = sci_mod.estimate_strehl(aberrated, model)
+
+    assert 0 < reference < 1
+    assert np.isclose(sci_mod.estimate_strehl(flux_scale * aberrated, model), reference)
+    assert np.isclose(sci_mod.estimate_strehl(model * flux_scale, model), 1.0)
+
+
+def test_estimate_strehl_without_flux_is_zero():
+    model = _gaussian_psf(1.5)
+    assert sci_mod.estimate_strehl(np.zeros_like(model), model) == 0.0
+    assert sci_mod.estimate_strehl(model, np.zeros_like(model)) == 0.0

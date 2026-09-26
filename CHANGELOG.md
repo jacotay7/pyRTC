@@ -6,6 +6,11 @@ All notable changes to `pyrtcao` will be documented in this file.
 
 ### Fixed
 
+- **Strehl estimate is now flux-normalized** (#43). `compute_strehl()`
+	compared raw peaks (`max(current) / max(model)`), so the value scaled with
+	source brightness and exposure time — and the PID/NCPA/hyperparameter
+	optimizers use it as their objective. It now compares peak-to-total-flux
+	ratios (`pyrtc.science_camera.estimate_strehl`).
 - **`WavefrontSensor.take_dark()` built the dark at the processed shape**
 	(#41). It averaged the downsampled/rotated `wfs` stream, while `expose()`
 	subtracts the dark from the raw frame, so `downsample_factor` crashed the
