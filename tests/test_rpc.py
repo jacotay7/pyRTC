@@ -19,6 +19,7 @@ class _Hardware:
         self.modes = [1, 2]
         self.calls = []
         self.unset = None
+        self._secret = "hidden"
 
     def start(self):
         self.calls.append("start")
@@ -35,6 +36,9 @@ class _Hardware:
 
     def opaque(self):
         return object()
+
+    def _private_helper(self):
+        self.calls.append("private")
 
     def boom(self):
         raise RuntimeError("hardware fault")
@@ -155,6 +159,95 @@ def test_unknown_type_and_missing_type_are_rejected():
     )
     assert listener.handle_request({"protocol": PROTOCOL_VERSION})["status"] == "BAD"
     assert listener.handle_request("not a dict")["status"] == "BAD"
+
+
+@pytest.mark.parametrize("name", ["_secret", "__class__", "__dict__", "__init__", "_"])
+def test_get_rejects_private_and_dunder_names(name):
+    listener = _listener()
+    reply = listener.handle_request({"type": "get", "property": name, "protocol": PROTOCOL_VERSION})
+    assert reply["status"] == "BAD"
+    assert "private" in reply["error"]
+    assert "property" not in reply
+
+
+@pytest.mark.parametrize("name", ["_secret", "__class__", "__dict__"])
+def test_set_rejects_private_and_dunder_names(name):
+    hardware = _Hardware()
+    original_class = hardware.__class__
+    listener = _listener(hardware)
+    reply = listener.handle_request(
+        {"type": "set", "property": name, "value": "x", "protocol": PROTOCOL_VERSION}
+    )
+    assert reply["status"] == "BAD"
+    assert "private" in reply["error"]
+    assert hardware._secret == "hidden"
+    assert hardware.__class__ is original_class
+
+
+@pytest.mark.parametrize("name", ["_private_helper", "__del__", "__init__", "__class__"])
+def test_run_rejects_private_and_dunder_names(name):
+    hardware = _Hardware()
+    listener = _listener(hardware)
+    reply = listener.handle_request({"type": "run", "function": name, "protocol": PROTOCOL_VERSION})
+    assert reply["status"] == "BAD"
+    assert "private" in reply["error"]
+    assert hardware.calls == []
+
+
+@pytest.mark.parametrize(
+    "request_type,key", [("get", "property"), ("set", "property"), ("run", "function")]
+)
+@pytest.mark.parametrize("name", [None, "", 5, ["gain"]])
+def test_non_string_names_are_rejected(request_type, key, name):
+    listener = _listener()
+    reply = listener.handle_request(
+        {"type": request_type, key: name, "value": 1, "protocol": PROTOCOL_VERSION}
+    )
+    assert reply["status"] == "BAD"
+    assert "non-empty string" in reply["error"]
+
+
+def test_run_rejects_non_callable_attribute():
+    listener = _listener()
+    reply = listener.handle_request(
+        {"type": "run", "function": "gain", "protocol": PROTOCOL_VERSION}
+    )
+    assert reply["status"] == "BAD"
+    assert "not callable" in reply["error"]
+
+
+def test_set_refuses_to_overwrite_methods():
+    hardware = _Hardware()
+    listener = _listener(hardware)
+    reply = listener.handle_request(
+        {"type": "set", "property": "start", "value": "x", "protocol": PROTOCOL_VERSION}
+    )
+    assert reply["status"] == "BAD"
+    assert "method" in reply["error"]
+    assert callable(hardware.start)
+
+
+def test_launcher_surfaces_private_name_rejection():
+    hardware = _Hardware()
+    listener = _listener(hardware)
+    launcher = HardwareLauncher("dummy.py", "c.yaml", 9999)
+    launcher.running = True
+    launcher.write = lambda message: setattr(launcher, "_pending", listener.handle_request(message))
+    launcher.read = lambda: launcher._pending
+
+    assert launcher.get_property("__dict__") == -1
+    assert "private" in launcher.last_error
+    assert launcher.set_property("_secret", "leak") == -1
+    assert "private" in launcher.last_error
+    assert launcher.run("__del__") == -1
+    assert "private" in launcher.last_error
+    assert hardware.calls == []
+
+    # Public access still works and clears the error.
+    assert launcher.get_property("gain") == 0.1
+    assert launcher.last_error is None
+    assert launcher.run("start") == 1
+    assert hardware.calls == ["start"]
 
 
 def test_shutdown_stops_listener():

@@ -85,6 +85,14 @@ All notable changes to `pyrtcao` will be documented in this file.
 
 ### Changed
 
+- **The hard-RTC listener only exposes public names** (#48).
+	`Listener` answered `get`/`set`/`run` for any attribute of the hardware
+	object, including private (`_x`) and dunder (`__class__`, `__dict__`)
+	ones, to any local process that reached its port. Names starting with `_`
+	are now rejected with an error reply (surfaced as
+	`HardwareLauncher.last_error`), `run` only calls callables, and `set` no
+	longer overwrites methods. The socket stays localhost-only and
+	unauthenticated; see the `Listener` docstring for the trust model.
 - **The import package is now `pyrtc` (was `pyRTC`), with PEP 8 module
 	names**: `pyRTC.Loop` → `pyrtc.loop`, `pyRTC.SlopesProcess` →
 	`pyrtc.slopes_process`, `pyRTC.pyRTCComponent` → `pyrtc.component`

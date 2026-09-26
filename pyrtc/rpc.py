@@ -87,6 +87,22 @@ def _json_safe(value):
     return None
 
 
+def _public_member_error(kind: str, name) -> str | None:
+    """Return an error string if ``name`` may not be accessed over RPC.
+
+    Only public attribute names are reachable: the name must be a non-empty
+    string that does not start with ``_``. This rejects private (``_x``) and
+    dunder (``__class__``, ``__dict__``, ...) attributes, which would otherwise
+    let a caller walk from the hardware object to arbitrary interpreter state.
+    """
+
+    if not isinstance(name, str) or not name:
+        return f"{kind} name must be a non-empty string, got {name!r}"
+    if name.startswith("_"):
+        return f"{kind} '{name}' is private; only public names are accessible over RPC"
+    return None
+
+
 def _socket_send_json(sock: socket.socket, message: dict) -> None:
     payload = json.dumps(message, separators=(",", ":")) + "\n"
     sock.sendall(payload.encode("utf-8"))
@@ -383,6 +399,14 @@ class Listener:
     It binds a localhost socket, accepts the RTC-side connection, and services a
     narrow JSON RPC surface for property access, method calls, and clean
     shutdown.
+
+    Trust model: the socket is bound to ``127.0.0.1`` only and there is no
+    authentication, so any process on the same host that can reach the port
+    can issue requests. To limit what such a caller can do, ``get``, ``set``
+    and ``run`` only accept public attribute names: names starting with ``_``
+    (private and dunder attributes) are rejected with a ``BAD`` reply, ``run``
+    only calls callables, and ``set`` refuses to overwrite methods. Do not
+    expose the port beyond localhost.
     """
 
     def __init__(self, hardware, port) -> None:
@@ -442,6 +466,10 @@ class Listener:
 
         if request_type == "get":
             property_name = request.get("property")
+            error = _public_member_error("property", property_name)
+            if error is not None:
+                logger.warning("Listener rejected get request: %s", error)
+                return self._bad(error)
             try:
                 value = getattr(self.hardware, property_name)
                 message = dict(self.OKMessage)
@@ -453,8 +481,16 @@ class Listener:
 
         if request_type == "set":
             property_name = request.get("property")
+            error = _public_member_error("property", property_name)
+            if error is not None:
+                logger.warning("Listener rejected set request: %s", error)
+                return self._bad(error)
             try:
                 current = getattr(self.hardware, property_name)
+                if callable(current):
+                    return self._bad(
+                        f"set '{property_name}' failed: it is a method, not a property"
+                    )
                 coerced = _coerce_property_value(current, request["value"])
                 setattr(self.hardware, property_name, coerced)
                 return dict(self.OKMessage)
@@ -464,11 +500,17 @@ class Listener:
 
         if request_type == "run":
             function_name = request.get("function")
+            error = _public_member_error("function", function_name)
+            if error is not None:
+                logger.warning("Listener rejected run request: %s", error)
+                return self._bad(error)
             try:
                 args = request.get("args", [])
                 if not isinstance(args, list):
                     return self._bad("'args' must be a list")
                 function = getattr(self.hardware, function_name)
+                if not callable(function):
+                    return self._bad(f"run '{function_name}' failed: attribute is not callable")
                 result = function(*args)
                 message = dict(self.OKMessage)
                 if result is not None:
