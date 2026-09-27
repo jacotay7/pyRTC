@@ -113,6 +113,16 @@ All notable changes to `pyrtcao` will be documented in this file.
 
 ### Added
 
+- Continuous telemetry recording (#61): `Telemetry.start_ring_buffer(streams,
+	seconds=, frames=)` keeps the newest publications of each stream (payload,
+	`write_time`, `frame_id`, `count`) in a preallocated in-memory ring,
+	`dump_ring_buffer()` writes a consistent snapshot as an ordinary telemetry
+	session (readable by `load_telemetry_session` and the AOTPy exporter), and
+	`stop_ring_buffer()` stops it. Missed publications are counted, readers use
+	read-only handles, and a `telemetry.ring_buffer` config section starts it
+	with the component. Telemetry sessions now also store publication counts
+	(`counts.npy`, loaded as `counts`).
+
 - `specula` optional extra (`pip install pyrtcao[specula]`) for the
 	SPECULA-backed examples (#40). The PYWFS and SHWFS example docs and the
 	README now explain how to install each simulator, including the OOPAO

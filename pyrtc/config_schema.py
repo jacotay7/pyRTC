@@ -331,6 +331,43 @@ def _validate_telemetry_config(conf: Any) -> None:
             raise ConfigValidationError(
                 "telemetry: 'streams' must be a list of non-empty stream names"
             )
+    if conf.get("ring_buffer") is not None:
+        _validate_telemetry_ring_buffer(conf["ring_buffer"])
+
+
+def _validate_telemetry_ring_buffer(ring: Any) -> None:
+    if not isinstance(ring, Mapping):
+        raise ConfigValidationError("telemetry: 'ring_buffer' must be a mapping")
+    known = {"streams", "seconds", "frames", "probe_seconds", "autostart"}
+    unknown = sorted(set(ring) - known)
+    if unknown:
+        raise ConfigValidationError(
+            f"telemetry: unknown 'ring_buffer' key(s): {', '.join(map(str, unknown))}"
+        )
+    streams = ring.get("streams")
+    if streams is not None and (
+        not isinstance(streams, list)
+        or not streams
+        or not all(isinstance(item, str) and item.strip() for item in streams)
+    ):
+        raise ConfigValidationError(
+            "telemetry: 'ring_buffer.streams' must be a non-empty list of stream names"
+        )
+    if ring.get("seconds") is None and ring.get("frames") is None:
+        raise ConfigValidationError("telemetry: 'ring_buffer' needs 'seconds', 'frames', or both")
+    for key in ("seconds", "probe_seconds"):
+        value = ring.get(key)
+        if value is not None and (
+            isinstance(value, bool) or not isinstance(value, (int, float)) or value <= 0
+        ):
+            raise ConfigValidationError(f"telemetry: 'ring_buffer.{key}' must be positive")
+    frames = ring.get("frames")
+    if frames is not None and (
+        isinstance(frames, bool) or not isinstance(frames, int) or frames <= 0
+    ):
+        raise ConfigValidationError("telemetry: 'ring_buffer.frames' must be a positive integer")
+    if "autostart" in ring and not isinstance(ring["autostart"], bool):
+        raise ConfigValidationError("telemetry: 'ring_buffer.autostart' must be a boolean")
 
 
 def _validate_manager_config(conf: Any, *, system_conf: Mapping[str, Any]) -> None:
