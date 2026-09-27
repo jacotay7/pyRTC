@@ -634,6 +634,10 @@ def _install_fake_specula(monkeypatch):
             for index in range(nmodes):
                 self.influence_function[index, index % pixel_count] = 1.0
 
+    # Hide any real SPECULA modules cached by earlier tests (e.g. the system
+    # convergence test) so the interface only ever sees these fakes.
+    for module_name in [m for m in sys.modules if m == "specula" or m.startswith("specula.")]:
+        monkeypatch.delitem(sys.modules, module_name)
     monkeypatch.setitem(sys.modules, "specula", fake_specula)
     monkeypatch.setitem(
         sys.modules, "specula.base_value", types.SimpleNamespace(BaseValue=_BaseValue)
