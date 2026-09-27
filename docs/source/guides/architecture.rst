@@ -109,6 +109,17 @@ For first deployments:
 - add hardware one component at a time
 - keep GPU assumptions optional until validated on the target machine
 
+Thread settings for numeric libraries:
+
+- Importing `pyrtc` does not change `OMP_NUM_THREADS`, `OPENBLAS_NUM_THREADS`,
+  `MKL_NUM_THREADS` and friends. In a soft-RTC, several component threads call
+  BLAS concurrently; set these to `1` in the environment **before** starting
+  Python if multithreaded BLAS oversubscribes your cores.
+- Hard-RTC child processes default to `1` for each of them unless the variable
+  is already set in the launching environment.
+- Pin worker threads with each component's `affinity` (Linux), and use
+  `realtime_priority` for `SCHED_FIFO` scheduling.
+
 Observability
 -------------
 

@@ -551,4 +551,31 @@ def test_hardware_launcher_inherits_logging_env(monkeypatch, tmp_path):
     assert captured["command"][0] == os.sys.executable
     assert captured["address"] == ("127.0.0.1", 4567)
     assert captured["env"]["PYRTC_LOG_LEVEL"] == "DEBUG"
+    # Hard-RTC children default to single-threaded numeric libraries...
+    assert captured["env"]["OPENBLAS_NUM_THREADS"] == "1"
     assert os.path.basename(captured["env"]["PYRTC_LOG_DIR"]) == os.path.basename(str(tmp_path))
+
+
+def test_hardware_launcher_keeps_user_thread_settings(monkeypatch):
+    captured = {}
+
+    class _DummySocket:
+        def settimeout(self, timeout):
+            pass
+
+        def connect(self, address):
+            pass
+
+    def _fake_popen(command, stdin=None, stdout=None, text=None, bufsize=None, env=None):
+        captured["env"] = env
+        return object()
+
+    monkeypatch.setenv("OMP_NUM_THREADS", "4")
+    monkeypatch.setattr(rpc, "Popen", _fake_popen)
+    monkeypatch.setattr(rpc.socket, "socket", lambda *args, **kwargs: _DummySocket())
+    monkeypatch.setattr(rpc.time, "sleep", lambda _seconds: None)
+
+    HardwareLauncher("child.py", "config.yaml", 4568, timeout=1.0).launch()
+
+    # ...but an explicit user choice wins.
+    assert captured["env"]["OMP_NUM_THREADS"] == "4"
