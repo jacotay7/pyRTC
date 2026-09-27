@@ -82,10 +82,8 @@ def test_science_camera_default_files_plot_and_error_paths(monkeypatch, tmp_path
 
     frame = np.arange(16, dtype=np.int32).reshape(4, 4)
     cam.psf_short.write(frame)
-    monkeypatch.setattr(sci_mod.plt, "imshow", lambda *args, **kwargs: None)
-    monkeypatch.setattr(sci_mod.plt, "colorbar", lambda *args, **kwargs: None)
-    monkeypatch.setattr(sci_mod.plt, "show", lambda: None)
-    cam.plot()
+    fig = cam.plot()
+    assert fig.axes, "plot() returns the figure without showing it"
 
     cam.psf_long.write(np.ones((4, 4), dtype=np.float64) * 5)
     cam.take_model_psf()

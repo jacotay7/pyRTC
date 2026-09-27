@@ -44,3 +44,14 @@ def test_importing_pyrtc_does_not_modify_the_environment():
         [sys.executable, "-c", code], capture_output=True, text=True, check=True
     )
     assert json.loads(result.stdout.strip().splitlines()[-1]) == []
+
+
+def test_importing_pyrtc_does_not_import_pyplot():
+    code = (
+        "import sys, pyrtc, pyrtc.loop, pyrtc.latency, pyrtc.slopes_process; "
+        "print('matplotlib.pyplot' in sys.modules)"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", code], capture_output=True, text=True, check=True
+    )
+    assert result.stdout.strip().splitlines()[-1] == "False"

@@ -6,7 +6,6 @@ acceleration. Hardware-specific sensors subclass ``WavefrontSensor`` and reuse
 its SHM publication, dark handling, and optional geometric pre-processing.
 """
 
-import matplotlib.pyplot as plt
 import numpy as np
 from numba import jit, prange
 
@@ -14,7 +13,7 @@ from pyrtc.logging_utils import get_logger
 from pyrtc.manager import launch_component
 from pyrtc.streams import create_stream
 from pyrtc.component import Component
-from pyrtc.utils import set_from_config
+from pyrtc.utils import pyplot, set_from_config
 
 
 logger = get_logger(__name__)
@@ -499,21 +498,23 @@ class WavefrontSensor(Component):
             raise
         return
 
-    def plot(self) -> None:
+    def plot(self):
         """
-        Plots the current image data.
+        Plot the current image data.
+
+        Returns the figure (not shown); call ``plt.show()`` to display it.
         """
         try:
+            plt = pyplot()
             arr = self.read(block=False)
-            plt.figure(figsize=(8, 8))
-            plt.imshow(arr, cmap="inferno", origin="lower")
-            plt.colorbar()
-            plt.show()
+            fig, ax = plt.subplots(figsize=(8, 8))
+            im = ax.imshow(arr, cmap="inferno", origin="lower")
+            fig.colorbar(im, ax=ax)
             self.logger.info("Plotted wavefront sensor image")
+            return fig
         except Exception:
             self.logger.exception("Failed to plot wavefront sensor image")
             raise
-        return
 
     def rotate_image(self, angle_deg: float) -> np.ndarray:
         """

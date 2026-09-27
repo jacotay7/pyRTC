@@ -7,7 +7,6 @@ integrators, and command dispatch all come together here.
 """
 
 import math
-import matplotlib.pyplot as plt
 import numpy as np
 import time
 from typing import Any
@@ -17,7 +16,7 @@ from pyrtc.logging_utils import get_logger
 from pyrtc.manager import launch_component
 from pyrtc.streams import gpu_torch_available, open_stream
 from pyrtc.component import Component
-from pyrtc.utils import add_to_buffer, get_tmp_filepath, set_from_config
+from pyrtc.utils import add_to_buffer, get_tmp_filepath, pyplot, set_from_config
 
 logger = get_logger(__name__)
 
@@ -675,7 +674,7 @@ class Loop(Component):
         self.last_singular_value_fit = fit
 
         if ax is None:
-            fig = plt.figure(figsize=(8, 4.5))
+            fig = pyplot().figure(figsize=(8, 4.5))
             ax = fig.add_axes((0.12, 0.15, 0.83, 0.78))
 
         if singular_values.size == 0 or np.max(singular_values) <= 0:
@@ -1041,10 +1040,12 @@ class Loop(Component):
 
         return
 
-    def plot_im(self, row=None):
-
-        plt.imshow(self.im, cmap="inferno", aspect="auto")
-        plt.show()
+    def plot_im(self):
+        """Plot the interaction matrix. Returns the figure (not shown)."""
+        fig, ax = pyplot().subplots()
+        im = ax.imshow(self.im, cmap="inferno", aspect="auto")
+        fig.colorbar(im, ax=ax)
+        return fig
 
 
 if __name__ == "__main__":

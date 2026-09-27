@@ -6,7 +6,6 @@ helpers for pyramid and Shack-Hartmann processing plus the ``SlopesProcess``
 component that manages calibration data and SHM publication.
 """
 
-import matplotlib.pyplot as plt
 import numpy as np
 from typing import Any
 from numba import jit
@@ -16,6 +15,7 @@ from pyrtc.manager import launch_component
 from pyrtc.streams import clear_shms, create_stream, gpu_torch_available, open_stream
 from pyrtc.component import Component
 from pyrtc.utils import (
+    pyplot,
     compute_fwhm_dark_subtracted_image,
     generate_circular_aperture_mask,
     set_from_config,
@@ -1063,26 +1063,26 @@ class SlopesProcess(Component):
 
     def plot_pupils(self):
         """
-        Plot the pupil mask to see if its right.
-        """
-        # plt.figure(figsize=(10,8))
-        plt.imshow(self.pupil_mask, cmap="inferno", origin="lower", aspect="auto")
-        plt.colorbar()
-        plt.title("Pupil Mask (Value is Pupil Number)")
-        plt.show()
+        Plot the pupil mask and the masked WFS image to check the pupil setup.
 
-        plt.imshow(
+        Returns the figure (not shown); call ``plt.show()`` to display it.
+        """
+        plt = pyplot()
+        fig, (mask_ax, image_ax) = plt.subplots(1, 2, figsize=(12, 5))
+        mask_im = mask_ax.imshow(self.pupil_mask, cmap="inferno", origin="lower", aspect="auto")
+        fig.colorbar(mask_im, ax=mask_ax)
+        mask_ax.set_title("Pupil Mask (Value is Pupil Number)")
+
+        image_im = image_ax.imshow(
             self.pupil_mask * self.read_image(), cmap="inferno", origin="lower", aspect="auto"
         )
         colors = ["g", "b", "orange", "r"]
-        for i in range(len(self.pupil_locs)):
-            px, py = self.pupil_locs[i]
-            plt.axvline(x=px, color=colors[i], alpha=0.6)
-            plt.axhline(y=py, color=colors[i], alpha=0.6)
-        plt.colorbar()
-        plt.title("Pupil Mask * Image ")
-        plt.show()
-        return
+        for i, (px, py) in enumerate(self.pupil_locs):
+            image_ax.axvline(x=px, color=colors[i % len(colors)], alpha=0.6)
+            image_ax.axhline(y=py, color=colors[i % len(colors)], alpha=0.6)
+        fig.colorbar(image_im, ax=image_ax)
+        image_ax.set_title("Pupil Mask * Image")
+        return fig
 
     def compute_signal_2d(self, signal, valid_sub_aps=None):
         """

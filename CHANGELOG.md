@@ -119,6 +119,14 @@ All notable changes to `pyrtcao` will be documented in this file.
 
 ### Changed
 
+- **Plotting helpers return figures instead of showing them** (#34).
+	`Loop.plot_im`, `WavefrontSensor.plot`, `WavefrontCorrector.plot`,
+	`ScienceCamera.plot`, and `SlopesProcess.plot_pupils` build and return a
+	matplotlib `Figure` (display it with `plt.show()` or in a notebook) instead
+	of calling `plt.show()`, and `matplotlib.pyplot` is no longer imported when
+	importing pyrtc, so no GUI backend is selected on import.
+	`ScienceCamera.plot()` no longer blocks waiting for a new frame, and
+	`Loop.plot_im()` drops its unused `row` argument.
 - **GPU PYWFS slopes no longer re-upload masks every frame** (#64).
 	`SlopesProcess.compute_signal()` copied the four pupil masks, the slopes
 	buffer and the reference slopes to the GPU on every frame. They are now
