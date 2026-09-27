@@ -8,6 +8,7 @@ plus the config-driven planning of which output streams a system implies.
 from __future__ import annotations
 
 import logging
+import os
 
 import numpy as np
 import pyshmem
@@ -45,18 +46,56 @@ def normalize_gpu_device(gpu_device, context: str = ""):
     return gpu_device
 
 
-def create_stream(name, shape, dtype, gpu_device=None):
+#: Environment variable that overrides the default of :func:`stream_notify_default`.
+STREAM_NOTIFY_ENV = "PYRTC_STREAM_NOTIFY"
+
+_FALSE_STRINGS = {"0", "false", "no", "off"}
+
+
+def stream_notify_default() -> bool:
+    """Return whether new streams are created with pyshmem ``notify=True``.
+
+    Notify-enabled streams let a writer wake parked consumers through a Linux
+    futex instead of consumers sleeping between polls, which cuts the
+    cross-process (hard-RTC) handoff latency. It is on by default; set the
+    ``PYRTC_STREAM_NOTIFY`` environment variable to ``0`` to create polling
+    streams instead. Because it is an environment variable, the choice also
+    reaches hard-RTC component processes launched from the same shell.
+    """
+    value = os.environ.get(STREAM_NOTIFY_ENV)
+    if value is None:
+        return True
+    return value.strip().lower() not in _FALSE_STRINGS
+
+
+def _stored_notify_flag(stream) -> bool:
+    """Return the notify flag recorded in a stream's metadata."""
+    try:
+        return bool(stream.to_config().get("notify", False))
+    except Exception:
+        return bool(getattr(stream, "notify", False))
+
+
+def create_stream(name, shape, dtype, gpu_device=None, *, notify=None):
     """Create the pyshmem stream backing a component output.
 
-    An existing CPU stream is reused when its shape and dtype already match,
-    so attached readers (viewers, telemetry) keep working across component
-    restarts; on any mismatch the stream is rebuilt. GPU-backed streams are
-    always rebuilt because a previous producer's CUDA tensor cannot be
-    re-exported. GPU streams are created with ``cpu_mirror=True`` so CPU-only
-    processes can always read them.
+    An existing CPU stream is reused when its shape, dtype, and notify flag
+    already match, so attached readers (viewers, telemetry) keep working
+    across component restarts; on any mismatch the stream is rebuilt. That
+    includes a stream left over from a run with the other notify setting (or
+    from a pyrtc version that did not enable notify): the flag is fixed at
+    creation, so the stream is recreated to honour the requested setting.
+    GPU-backed streams are always rebuilt because a previous producer's CUDA
+    tensor cannot be re-exported. GPU streams are created with
+    ``cpu_mirror=True`` so CPU-only processes can always read them.
+
+    ``notify`` defaults to :func:`stream_notify_default` (on unless
+    ``PYRTC_STREAM_NOTIFY=0``). On platforms without a futex pyshmem keeps
+    the flag but consumers poll as before.
     """
     shape = tuple(int(axis) for axis in shape)
     dtype = np.dtype(dtype)
+    notify = stream_notify_default() if notify is None else bool(notify)
     gpu_device = normalize_gpu_device(gpu_device, name)
     if gpu_device is not None and not pyshmem.gpu_available():
         logger.warning(
@@ -73,9 +112,9 @@ def create_stream(name, shape, dtype, gpu_device=None):
         )
         gpu_device = None
 
-    create_kwargs = {}
+    create_kwargs = {"notify": notify}
     if gpu_device is not None:
-        create_kwargs = {"gpu_device": gpu_device, "cpu_mirror": True}
+        create_kwargs.update(gpu_device=gpu_device, cpu_mirror=True)
 
     try:
         return pyshmem.create(name, shape=shape, dtype=dtype, **create_kwargs)
@@ -93,6 +132,7 @@ def create_stream(name, shape, dtype, gpu_device=None):
                 not existing.gpu_enabled
                 and tuple(existing.shape) == shape
                 and existing.dtype == dtype
+                and _stored_notify_flag(existing) == notify
             )
             if matches:
                 logger.debug("Reusing existing stream %s", name)

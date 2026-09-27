@@ -29,6 +29,31 @@ def open_stream(shm_name):
     return _open_stream(shm_name, readonly=True)
 
 
+def _close_observer(stream, *, timeout_seconds: float = 0.5) -> None:
+    """Close an observer handle, waiting out a writer that holds the lock.
+
+    pyshmem shares one lock state per stream name within a process and
+    refuses ``close()`` while another thread owns that lock. In a soft RTC the
+    producing component runs in this process, so closing the observer can
+    race a write in progress; retry briefly instead of failing the whole
+    measurement. (Workaround for a pyshmem limitation: a handle that never
+    took the lock should be closable regardless of other handles.)
+    """
+
+    close = getattr(stream, "close", None)
+    if close is None:
+        return
+    deadline = time.monotonic() + timeout_seconds
+    while True:
+        try:
+            close()
+            return
+        except RuntimeError:
+            if time.monotonic() >= deadline:
+                raise
+            time.sleep(1e-4)
+
+
 def _safe_mean(values) -> float:
     arr = np.asarray(values, dtype=np.float64).reshape(-1)
     if arr.size == 0:
@@ -637,9 +662,7 @@ def measure_stream_path_latency(
         )
     finally:
         for stream in streams.values():
-            close = getattr(stream, "close", None)
-            if close is not None:
-                close()
+            _close_observer(stream)
 
     def _segment(source_name, target_name):
         return _build_latency_segment(

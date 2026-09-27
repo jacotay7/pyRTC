@@ -263,3 +263,29 @@ class _FakeManager:
             },
             "segments": [],
         }
+
+
+class _BusyCloseStream:
+    """Stream handle whose close() fails while a writer holds the lock."""
+
+    def __init__(self, failures):
+        self.failures = failures
+        self.closed = False
+
+    def close(self):
+        if self.failures > 0:
+            self.failures -= 1
+            raise RuntimeError("cannot close shared memory while another thread owns its lock")
+        self.closed = True
+
+
+def test_close_observer_waits_out_a_writer_holding_the_lock():
+    stream = _BusyCloseStream(failures=3)
+    latency._close_observer(stream)
+    assert stream.closed
+
+
+def test_close_observer_gives_up_after_timeout():
+    stream = _BusyCloseStream(failures=10**9)
+    with pytest.raises(RuntimeError):
+        latency._close_observer(stream, timeout_seconds=0.01)

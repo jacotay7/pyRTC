@@ -83,6 +83,11 @@ and docs. pyrtc must not reimplement transport features that pyshmem provides.
   `read_after` / `wait_for_count` with a known count instead.
 - `out=` buffers only work for CPU handles. `read_stream` drops `out` for
   GPU-attached handles.
+- `create_stream` makes notify-enabled streams (`pyshmem.create(...,
+  notify=True)`): writers wake parked `read_after_publication` consumers via a
+  futex. `PYRTC_STREAM_NOTIFY=0` (inherited by hard-RTC children) or
+  `create_stream(..., notify=False)` opts out. An existing stream whose notify
+  flag differs is rebuilt, not reused.
 - Inspect or clean up streams with the `pyshmem` CLI (`pyshmem list`,
   `pyshmem unlink NAME`, `pyshmem purge`).
 - If pyshmem is missing something or behaves wrongly, fix it in pyshmem,
@@ -110,6 +115,11 @@ ruff check . && ruff format --check .    # lint, as in CI
   hand-written fakes.
 - The closed-loop regression `tests/system/test_synthetic_convergence.py` is
   the best end-to-end check that stream semantics still work.
+- `benchmarks/pipeline_latency_bench.py` measures the running synthetic
+  system's WFS -> DM latency (`manager.latency`) in soft and hard mode with
+  notify on/off; `benchmarks/stream_handoff_bench.py` measures one stream
+  handoff. Both use private stream-name prefixes, so they are safe to run
+  next to other systems. They are not part of the CI perf gate.
 - Perf gate, as in CI:
   `python benchmarks/perf_smoke.py --output perf.json` then
   `python benchmarks/check_perf_baseline.py --current perf.json --baseline benchmarks/perf_smoke_baseline.json --max-ratio 5.0`.
@@ -168,6 +178,14 @@ ruff check . && ruff format --check .    # lint, as in CI
   imports from a writable clone whose path contains `OOPAO` and that is on
   `PYTHONPATH`. OOPAO therefore cannot be a pyrtc extra; the recipe is in
   `docs/source/examples/pywfs.rst`. SPECULA is on PyPI (`specula` extra).
+
+- pyshmem shares one lock state per stream name inside a process and refuses
+  `close()` on *any* handle while another thread holds that lock. In a soft
+  RTC an observer handle (latency probe, viewer) can therefore fail to close
+  mid-write; `pyrtc.latency._close_observer` retries briefly. The real fix
+  belongs in pyshmem (a handle that never took the lock should close).
+- Latency and handoff numbers on a shared host swing by 2x or more with load;
+  compare notify on/off with interleaved `--repeats`, never single runs.
 
 ## Maintainer guidance
 

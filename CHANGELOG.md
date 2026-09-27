@@ -6,6 +6,12 @@ All notable changes to `pyrtcao` will be documented in this file.
 
 ### Fixed
 
+- **`manager.latency()` no longer fails at random in soft-RTC mode.**
+	Closing the observer handles raised `cannot close shared memory while
+	another thread owns its lock` when a component thread was mid-write
+	(pyshmem shares lock state per stream name within a process). The close
+	now waits briefly for the write to finish. `RTCManager.latency()` also
+	accepts `timeout_seconds`.
 - **Unsupported slopes types and unknown config keys are reported** (#45).
 	Any `slopes.signal_type` other than `slopes` passed validation, and
 	`SlopesProcess.compute_signal()` then never wrote the `signal` stream, so
@@ -113,6 +119,17 @@ All notable changes to `pyrtcao` will be documented in this file.
 
 ### Added
 
+- **End-to-end pipeline latency benchmark** (#62).
+	`benchmarks/pipeline_latency_bench.py` launches the synthetic SHWFS system
+	through `RTCManager` in soft and hard mode, with stream notify on and off,
+	and writes the frame-id aligned WFS -> DM latency (mean/p50/p99/jitter,
+	total and per segment, median over interleaved `--repeats`) to JSON. The
+	README Performance section now shows these pipeline numbers next to the
+	kernel-compute table and labels which is which: the kernel harness reports
+	~13 us per iteration, while the running pipeline takes ~150-300 us.
+	`benchmarks/stream_handoff_bench.py` measures a single stream handoff
+	between threads or processes. Both use private stream names; neither is
+	in the CI perf gate.
 - **Modal bases from aobasis** (#53). A `basis:` section on the wavefront
 	corrector builds `M2C` at start-up with
 	[aobasis](https://github.com/jacotay7/aobasis) (now a core dependency;
@@ -175,6 +192,18 @@ All notable changes to `pyrtcao` will be documented in this file.
 
 ### Changed
 
+- **Streams wake their consumers instead of being polled** (#63).
+	`create_stream` now creates pyshmem streams with `notify=True`, so a write
+	wakes consumers blocked in `read_stream` through a Linux futex instead of
+	each consumer sleeping and re-checking. In the synthetic SHWFS pipeline
+	this lowered hard-RTC WFS -> DM latency from 199 to 153 us mean at 200 Hz
+	(183 to 154 us at 1 kHz); soft-RTC changed within noise. A single
+	cross-process handoff at 5 kHz went from 40 to 15 us (write to wake-up,
+	median). Each write costs about 5 us more for the wake system call. Set
+	`PYRTC_STREAM_NOTIFY=0` (hard-RTC children inherit it) or pass
+	`create_stream(..., notify=False)` to keep polling streams. An existing
+	stream with the other notify setting, such as one left by an older pyrtc,
+	is rebuilt instead of reused.
 - **NumPy is no longer capped below 2.3; Python 3.14 is supported** (#49).
 	The `numpy>=1.26,<2.3` requirement is now `numpy>=1.26`; numba already
 	limits NumPy to versions it supports. pyrtc is tested with NumPy 2.5,
