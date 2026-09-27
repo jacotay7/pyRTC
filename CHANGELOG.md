@@ -119,6 +119,15 @@ All notable changes to `pyrtcao` will be documented in this file.
 
 ### Changed
 
+- **NumPy is no longer capped below 2.3; Python 3.14 is supported** (#49).
+	The `numpy>=1.26,<2.3` requirement is now `numpy>=1.26`; numba already
+	limits NumPy to versions it supports. pyrtc is tested with NumPy 2.5,
+	numba 0.67 and SciPy 1.18, and CI now also runs on Python 3.14. A
+	Dependabot configuration opens weekly update PRs for the Python
+	dependencies and the GitHub Actions used by CI.
+- **CI actions moved off Node 20** (#36). Workflows now use
+	`actions/checkout@v7`, `actions/setup-python@v7`,
+	`actions/upload-artifact@v7` and `actions/download-artifact@v8`.
 - **Plotting helpers return figures instead of showing them** (#34).
 	`Loop.plot_im`, `WavefrontSensor.plot`, `WavefrontCorrector.plot`,
 	`ScienceCamera.plot`, and `SlopesProcess.plot_pupils` build and return a
