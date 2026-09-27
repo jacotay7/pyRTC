@@ -77,7 +77,7 @@ The project is designed for:
 - PyPI distribution name: `pyrtcao`
 - Python import name: `pyrtc`
 - CLI prefix: `pyrtc-*`
-- Primary supported release surface: Linux, Python 3.9-3.13
+- Primary supported release surface: Linux, Python 3.9-3.14
 - macOS and Windows: smoke-tested in GitHub Actions, but not part of the primary supported deployment story
 - Windows: soft-RTC only — Windows named shared memory is freed when the last handle closes, so streams do not survive their producer process and hard-RTC restart/reattach flows are unsupported there
 - GPU behavior: benchmark-validated on a Linux CUDA host for synthetic loop workloads, but still target-environment validation required for operational use
