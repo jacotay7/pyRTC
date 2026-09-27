@@ -24,9 +24,14 @@ from pyrtc.loop import leak_integrator_gpu, leaky_integrator_numba
 from pyrtc.streams import gpu_torch_available
 from pyrtc.logging_utils import add_logging_cli_args, configure_logging_from_args, get_logger
 from pyrtc.slopes_process import (
+    build_shwfs_correlation_templates_numba,
+    build_shwfs_wcog_weights_numba,
     compute_slopes_pywfs_optim_numba,
     compute_slopes_pywfs_torch,
+    compute_slopes_shwfs_correlation_numba,
     compute_slopes_shwfs_optim_numba,
+    compute_slopes_shwfs_wcog_numba,
+    shwfs_subaperture_coords,
 )
 from pyrtc.wavefront_corrector import ModaltoZonalWithFlat
 from pyrtc.wavefront_sensor import downsample_int32_image_jit, rotate_image_jit
@@ -42,7 +47,15 @@ CORE_KERNEL_LABELS = {
     "loop.leaky_integrator_numba": "Loop integrator",
     "slopes.compute_slopes_pywfs_optim_numba": "PYWFS slopes",
     "slopes.compute_slopes_shwfs_optim_numba": "SHWFS slopes",
+    "slopes.compute_slopes_shwfs_wcog_numba": "SHWFS WCoG slopes",
+    "slopes.compute_slopes_shwfs_correlation_numba": "SHWFS correlation slopes",
 }
+
+# Sub-aperture geometry for the WCoG / correlation benchmarks. The CoG profile
+# keeps its historical 2x2-pixel sub-apertures; correlation needs a template
+# plus a search window, so these use a more representative size.
+SHWFS_CENTROIDER_INT_N = 8
+SHWFS_CORRELATION_RADIUS = 2
 
 
 def _format_stats(stats: dict[str, float] | None) -> str:
@@ -341,6 +354,96 @@ def _bench_slopes_shwfs_numba(
     )
 
 
+def _shwfs_centroider_inputs(num_regions: int, int_n: int):
+    rng = np.random.RandomState(7)
+    side = num_regions * int_n
+    coords = shwfs_subaperture_coords(int_n)
+    yy, xx = np.meshgrid(coords, coords, indexing="ij")
+    spot = np.exp(-(xx**2 + yy**2) / (2.0 * 1.2**2)) * 3000.0
+    reference = np.tile(spot, (num_regions, num_regions)).astype(np.float32)
+    image = (reference + rng.rand(side, side) * 30.0).astype(np.float32)
+    slopes = np.zeros((2 * num_regions, num_regions), dtype=np.float32)
+    unaberrated = np.zeros_like(slopes)
+    return image, reference, coords, slopes, unaberrated
+
+
+def _bench_slopes_shwfs_wcog_numba(
+    iterations: int, warmup: int, num_regions: int, int_n: int
+) -> Dict[str, float]:
+    image, _, coords, slopes, unaberrated = _shwfs_centroider_inputs(num_regions, int_n)
+    centers = np.zeros_like(slopes)
+    sigma = (int_n / 2.0) / 2.3548
+    weights_x = np.empty((num_regions, num_regions, int_n), dtype=np.float32)
+    weights_y = np.empty_like(weights_x)
+    build_shwfs_wcog_weights_numba(
+        coords, centers, np.float32(1.0 / (2.0 * sigma * sigma)), weights_x, weights_y
+    )
+
+    return _time_kernel(
+        lambda: compute_slopes_shwfs_wcog_numba(
+            image,
+            slopes,
+            unaberrated,
+            np.float32(1.0),
+            np.float32(int_n),
+            coords,
+            0,
+            0,
+            int_n,
+            centers,
+            weights_x,
+            weights_y,
+            np.float32(1.0),
+        ),
+        iterations=iterations,
+        warmup=warmup,
+    )
+
+
+def _bench_slopes_shwfs_correlation_numba(
+    iterations: int, warmup: int, num_regions: int, int_n: int, radius: int
+) -> Dict[str, float]:
+    image, reference, _, slopes, unaberrated = _shwfs_centroider_inputs(num_regions, int_n)
+    core = int_n - 2 * radius
+    templates = np.zeros((num_regions, num_regions, core, core), dtype=np.float32)
+    template_flux = np.zeros((num_regions, num_regions), dtype=np.float32)
+    build_shwfs_correlation_templates_numba(
+        reference,
+        np.float32(1.0),
+        np.float32(int_n),
+        0,
+        0,
+        int_n,
+        radius,
+        templates,
+        template_flux,
+    )
+    ref_positions = np.zeros_like(slopes)
+    window = np.empty((int_n, int_n), dtype=np.float32)
+    scores = np.empty((2 * radius + 1, 2 * radius + 1), dtype=np.float64)
+
+    return _time_kernel(
+        lambda: compute_slopes_shwfs_correlation_numba(
+            image,
+            slopes,
+            unaberrated,
+            np.float32(1.0),
+            np.float32(int_n),
+            0,
+            0,
+            int_n,
+            templates,
+            template_flux,
+            ref_positions,
+            radius,
+            window,
+            scores,
+        ),
+        iterations=iterations,
+        warmup=warmup,
+    )
+
+
 def _bench_gpu_kernels(
     iterations: int, warmup: int, signal_size: int, num_modes: int, pixels_per_pupil: int
 ) -> Dict[str, Dict[str, float]]:
@@ -425,6 +528,12 @@ def _run_profile_benchmarks(grid_size: int, iterations: int, warmup: int):
         ),
         "slopes.compute_slopes_shwfs_optim_numba": _bench_slopes_shwfs_numba(
             iterations, warmup, num_regions, spacing, int_n
+        ),
+        "slopes.compute_slopes_shwfs_wcog_numba": _bench_slopes_shwfs_wcog_numba(
+            iterations, warmup, num_regions, SHWFS_CENTROIDER_INT_N
+        ),
+        "slopes.compute_slopes_shwfs_correlation_numba": _bench_slopes_shwfs_correlation_numba(
+            iterations, warmup, num_regions, SHWFS_CENTROIDER_INT_N, SHWFS_CORRELATION_RADIUS
         ),
     }
 

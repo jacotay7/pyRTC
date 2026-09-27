@@ -245,6 +245,28 @@ def _validate_component_class_and_streams(
                 )
 
 
+SHWFS_CENTROIDERS = ("cog", "wcog", "correlation")
+
+
+def _validate_shwfs_centroider_config(conf: Mapping[str, Any], component: str) -> None:
+    centroider = conf.get("centroider", "cog")
+    if not isinstance(centroider, str) or centroider.lower() not in SHWFS_CENTROIDERS:
+        raise ConfigValidationError(
+            f"{component}: 'centroider' must be one of {', '.join(SHWFS_CENTROIDERS)}, "
+            f"got {centroider!r}"
+        )
+    _validate_optional_numeric(conf, "wcog_fwhm", component)
+    if "wcog_fwhm" in conf and conf["wcog_fwhm"] <= 0:
+        raise ConfigValidationError(f"{component}: 'wcog_fwhm' must be > 0")
+    _validate_optional_numeric(conf, "wcog_spot_fwhm", component, minimum=0.0)
+    if "correlation_search_radius" in conf:
+        _coerce_int(
+            conf["correlation_search_radius"], component, "correlation_search_radius", minimum=1
+        )
+    if "reference_image_file" in conf and not isinstance(conf["reference_image_file"], str):
+        raise ConfigValidationError(f"{component}: 'reference_image_file' must be a string")
+
+
 def _validate_slopes_config(conf: Any) -> None:
     component = "slopes"
     conf = _require_mapping(conf, component)
@@ -278,6 +300,7 @@ def _validate_slopes_config(conf: Any) -> None:
         _validate_optional_numeric(conf, "sub_ap_spacing", component, minimum=1.0)
         _coerce_int(conf["sub_ap_offset_x"], component, "sub_ap_offset_x", minimum=0)
         _coerce_int(conf["sub_ap_offset_y"], component, "sub_ap_offset_y", minimum=0)
+        _validate_shwfs_centroider_config(conf, component)
 
     if slopes_type == "pywfs" and "pupils" in conf:
         pupils = conf["pupils"]

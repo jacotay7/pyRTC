@@ -11,6 +11,8 @@ REQUIRED_CPU_KERNELS = [
     "loop.leaky_integrator_numba",
     "slopes.compute_slopes_pywfs_optim_numba",
     "slopes.compute_slopes_shwfs_optim_numba",
+    "slopes.compute_slopes_shwfs_wcog_numba",
+    "slopes.compute_slopes_shwfs_correlation_numba",
 ]
 
 

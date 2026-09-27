@@ -149,6 +149,26 @@ def unlink_private_streams():
         pyshmem.unlink_quiet(_PRIVATE_STREAMS.pop().name)
 
 
+@pytest.fixture(autouse=True)
+def pyrtc_logs_propagate():
+    """Let pytest's ``caplog`` see pyrtc log records in every test.
+
+    ``configure_logging`` (run once, by whichever test first builds a
+    component) sets ``propagate = False`` on the ``pyrtc`` logger so CLI
+    output isn't duplicated. That silently disabled ``caplog`` for all later
+    tests, making log assertions depend on test order.
+    """
+    import logging
+
+    from pyrtc.logging_utils import ensure_logging_configured
+
+    pyrtc_logger = ensure_logging_configured()
+    previous = pyrtc_logger.propagate
+    pyrtc_logger.propagate = True
+    yield
+    logging.getLogger("pyrtc").propagate = previous
+
+
 @pytest.fixture
 def unique_name():
     def _make(prefix="test_shm"):

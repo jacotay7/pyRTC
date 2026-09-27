@@ -143,6 +143,18 @@ All notable changes to `pyrtcao` will be documented in this file.
 - Coverage gate extended to `pyrtc.streams`, `pyrtc.rpc`,
 	`pyrtc.component_loading`, and `pyrtc.latency`.
 - Streams guide in the documentation (`guides/streams`).
+- **SHWFS centroiding algorithms** (#59). The slopes `centroider` option
+	selects `cog` (thresholded centre of gravity, the default and previous
+	behaviour), `wcog` (Gaussian-weighted CoG, FWHM `wcog_fwhm`, optional gain
+	correction from `wcog_spot_fwhm`) or `correlation` (square-difference
+	correlation against a per-sub-aperture reference template within
+	`correlation_search_radius`, with 2D quadratic sub-pixel refinement) for
+	extended sources. The reference image comes from `take_reference_image()`,
+	`set_reference_image()` or `reference_image_file`; WCoG centres its weights
+	on the reference spots when one is set. All methods share the contrast
+	threshold and publish 0 for sub-apertures without flux. The new Numba
+	kernels preallocate their buffers and are part of the core compute
+	benchmark and perf smoke baseline.
 
 ### Changed
 
