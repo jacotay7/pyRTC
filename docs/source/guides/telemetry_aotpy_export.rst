@@ -49,6 +49,68 @@ The equivalent CLI is:
 If the output path is omitted, the CLI writes a sibling FITS file named after
 the session directory.
 
+Continuous Recording (Ring Buffer)
+----------------------------------
+
+``save()`` captures the *next* N frames. To capture what *just* happened (a
+loop divergence, a saturation event), keep recording into a bounded
+in-memory ring buffer and dump it when the event occurs:
+
+.. code-block:: python
+
+	telemetry = Telemetry({"data_dir": "./data", "functions": []})
+	telemetry.start_ring_buffer(["wfs", "signal", "wfc"], seconds=10)
+	...
+	session_path = telemetry.dump_ring_buffer("divergence", semantic_tags={...})
+	telemetry.stop_ring_buffer()
+
+A dump writes an ordinary telemetry session (same ``session.json``,
+``frames.npy``, ``timestamps.npy`` and ``frame_ids.npy`` layout as
+``save()``), so ``load_telemetry_session`` and the AOTPy exporter above work
+on it unchanged. Behaviour:
+
+- One reader thread per stream records every publication its read-only
+  handle sees: payload, ``write_time``, ``frame_id`` and publication
+  ``count`` (saved as ``counts.npy``; ``save()`` now records it too).
+  Readers never block the RTC producers.
+- Memory is bounded and allocated once at start: ``frames`` publications per
+  stream (``frames * frame_nbytes``). With ``seconds`` alone, each stream's
+  capacity is estimated by measuring its publication rate for
+  ``probe_seconds`` (default 1 s) and adding 50% headroom; a stream that is
+  idle during the probe raises and must be given ``frames=``. If a stream
+  later publishes faster than measured, the ring holds less than ``seconds``.
+  Pass ``frames`` (optionally with ``seconds``) for a fixed footprint.
+- With ``seconds``, a dump keeps only publications written in the last
+  ``seconds`` before the dump; ``dump_ring_buffer(seconds=...)`` overrides
+  the window per dump.
+- A dump locks every stream's ring together while copying it, so it is one
+  consistent cut across streams with no torn frames, ordered oldest first.
+  Recording continues afterwards; publications skipped during the copy are
+  counted as missed.
+- Publications a reader could not keep up with are detected from gaps in
+  ``count``. Each stream's ``missed_frames`` metadata counts the gaps inside
+  the dumped window, and ``metadata["ring_buffer"]`` records the capacity,
+  window, totals recorded and missed since start, and any reader error.
+- ``ring_buffer_status()`` reports capacity, fill, recorded and missed per
+  stream. ``stop_ring_buffer()`` joins the readers, closes their handles and
+  frees the memory; dump first if you need the contents.
+
+The ring buffer can also start with the component, from the ``telemetry``
+config section. ``start()`` starts it (unless ``autostart: false``) and
+``stop()`` stops it:
+
+.. code-block:: yaml
+
+	telemetry:
+	  data_dir: ./data
+	  streams: [wfs, signal, wfc]
+	  ring_buffer:
+	    seconds: 10        # time window kept in dumps
+	    frames: 20000      # capacity per stream; omit to estimate from rate
+	    # streams: [wfc]   # defaults to telemetry.streams
+	    # probe_seconds: 1.0
+	    # autostart: true
+
 Current Mapping
 ---------------
 

@@ -9,7 +9,11 @@ import pytest
 from pyrtc import Telemetry
 from pyrtc.exporters import aotpy_export
 from pyrtc.scripts import export_aotpy as export_aotpy_cli
-from testsupport import StaticStream
+import time
+
+import pyshmem
+
+from testsupport import StaticStream, private_stream
 
 
 pytestmark = pytest.mark.skipif(
@@ -76,6 +80,53 @@ def test_telemetry_session_to_aotpy_maps_synthetic_streams(monkeypatch, tmp_path
     assert len(system.wavefront_correctors) == 1
     assert len(system.loops) == 1
     assert len(system.scoring_cameras) == 2
+    assert system.wavefront_sensors[0].measurements.data.shape == (2, 2, 2)
+    assert system.loops[0].commands.data.shape == (2, 2)
+
+
+def test_ring_buffer_dump_exports_to_aotpy(monkeypatch, tmp_path):
+    telemetry_module = importlib.import_module("pyrtc.telemetry")
+    streams = {
+        "wfs": private_stream("rb_wfs", (4, 4), np.int32),
+        "signal": private_stream("rb_sig", (4,), np.float32),
+        "wfc": private_stream("rb_wfc", (2,), np.float32),
+    }
+    monkeypatch.setattr(aotpy_export, "_import_aotpy", lambda: aotpy)
+    monkeypatch.setattr(
+        telemetry_module,
+        "open_stream",
+        lambda name, **kw: pyshmem.open(streams[name].name, readonly=True),
+    )
+    telemetry = Telemetry({"data_dir": str(tmp_path), "functions": []})
+    names = ["wfs", "signal", "wfc"]
+    try:
+        telemetry.start_ring_buffer(names, frames=2)
+        for frame_id in range(1, 4):
+            for name in names:
+                shm = streams[name]
+                shm.write(np.full(shm.shape, frame_id, dtype=shm.dtype), frame_id=frame_id)
+            deadline = time.monotonic() + 5.0
+            while any(s["recorded"] < frame_id for s in telemetry.ring_buffer_status().values()):
+                assert time.monotonic() < deadline
+                time.sleep(1e-3)
+        session_path = telemetry.dump_ring_buffer(
+            semantic_tags={
+                "wfs": ["wfs"],
+                "signal": ["signal", "slopes"],
+                "wfc": ["wfc", "control"],
+            },
+            config={
+                "metadata": {"name": "Ring Export"},
+                "slopes": {"type": "SHWFS", "signal_type": "slopes"},
+                "wfc": {"num_modes": 2},
+                "loop": {"gain": 0.35},
+            },
+        )
+    finally:
+        telemetry.stop_ring_buffer()
+
+    system = aotpy_export.telemetry_session_to_aotpy(session_path)
+    assert system.name == "Ring Export"
     assert system.wavefront_sensors[0].measurements.data.shape == (2, 2, 2)
     assert system.loops[0].commands.data.shape == (2, 2)
 

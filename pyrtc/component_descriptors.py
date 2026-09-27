@@ -773,8 +773,16 @@ BUILTIN_COMPONENT_DESCRIPTORS: tuple[ComponentDescriptor, ...] = (
             ConfigFieldDescriptor(
                 "streams",
                 "list[str]",
-                "Stream names captured by default when save() is called without a list.",
+                "Default streams for save_configured_streams() and the ring buffer.",
                 default=[],
+            ),
+            ConfigFieldDescriptor(
+                "ring_buffer",
+                "dict | None",
+                "Continuous recording: {streams, seconds, frames, probe_seconds, autostart}; "
+                "started with the component and dumped with dump_ring_buffer().",
+                default=None,
+                allow_none=True,
             ),
             ConfigFieldDescriptor(
                 "functions", "list[str]", "Worker methods started in component threads.", default=[]
