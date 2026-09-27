@@ -1468,3 +1468,116 @@ def test_oopao_wfs_static_dm_does_not_accumulate_without_atmosphere(monkeypatch)
 
     assert np.array_equal(first, second)
     assert np.all(first == 8)
+
+
+def _oopao_param():
+    return {
+        "resolution": 40,
+        "diameter": 8,
+        "samplingTime": 0.001,
+        "r0": 0.3,
+        "L0": 30,
+        "fractionalR0": [1.0],
+        "windSpeed": [10],
+        "windDirection": [0],
+        "altitude": [0],
+        "nSubap": 1,
+        "mechCoupling": 0.45,
+        "modulation": 5,
+        "lightRatio": 0.1,
+        "n_pix_separation": 4,
+        "psfCentering": False,
+        "postProcessing": "slopesMaps",
+    }
+
+
+def test_oopao_wfc_defaults_to_identity_without_basis(monkeypatch):
+    module, _, _, _, _, _ = _install_fake_oopao(monkeypatch)
+
+    sim = module.OOPAOInterface(_oopao_conf(), param=_oopao_param())
+    _wfs, dm, _psf = sim.get_hardware()
+
+    assert dm.m2c_source == "identity"
+    np.testing.assert_allclose(dm.M2C, np.eye(4))
+
+
+def test_oopao_wfc_builds_basis_from_valid_actuator_layout(monkeypatch):
+    from pyrtc.modal_basis import build_m2c, parse_basis_config
+
+    module, _, _, _, _, _ = _install_fake_oopao(monkeypatch)
+    conf = _oopao_conf()
+    conf["wfc"].update({"num_modes": 2, "basis": {"type": "zernike", "pupil_diameter": 8.0}})
+
+    sim = module.OOPAOInterface(conf, param=_oopao_param())
+    _wfs, dm, _psf = sim.get_hardware()
+
+    assert dm.m2c_source == "basis"
+    expected = build_m2c(
+        parse_basis_config({"type": "zernike", "pupil_diameter": 8.0}),
+        num_modes=2,
+        layout=np.ones((2, 2), dtype=bool),
+    )
+    np.testing.assert_allclose(dm.M2C, expected, atol=1e-6)
+
+
+def test_oopao_wfc_prefers_dm_coordinates_and_telescope_diameter(monkeypatch):
+    module, FakeTelescope, _, _, FakeDM, _ = _install_fake_oopao(monkeypatch)
+    # OOPAO stores valid-actuator coordinates in metres, row-major like validAct.
+    coordinates = np.array([[-2.0, -2.0], [2.0, -2.0], [-2.0, 2.0], [2.0, 2.0]])
+    monkeypatch.setattr(FakeDM, "coordinates", coordinates, raising=False)
+    monkeypatch.setattr(FakeTelescope, "D", 8.0, raising=False)
+    conf = _oopao_conf()
+    conf["wfc"].update({"num_modes": 2, "basis": {"type": "zernike", "normalize": "none"}})
+
+    sim = module.OOPAOInterface(conf, param=_oopao_param())
+    _wfs, dm, _psf = sim.get_hardware()
+
+    # Tip on those coordinates with the (fake) telescope's 8 m pupil: x / 4 m.
+    np.testing.assert_allclose(dm.M2C[:, 0], coordinates[:, 0] / 4.0, atol=1e-6)
+
+
+def test_specula_wfc_uses_aobasis_when_wfc_basis_is_set(monkeypatch):
+    _install_fake_specula(monkeypatch)
+
+    sys.modules.pop("pyrtc.hardware.specula_interface", None)
+    module = importlib.import_module("pyrtc.hardware.specula_interface")
+
+    conf = {
+        "wfs": {"name": "wfs", "width": 1, "height": 1, "dark_count": 1, "functions": []},
+        "slopes": {"type": "PYWFS", "signal_type": "slopes"},
+        "wfc": {
+            "name": "wfc",
+            "num_actuators": 25,
+            "num_modes": 4,
+            "functions": [],
+            "basis": {"type": "kl"},
+        },
+    }
+    param = _specula_param()
+    param["dm"].update({"geom": "square", "circ_geom": False, "n_act": 5, "obsratio": 0.0})
+
+    sim = module.SPECULAInterface(conf, param=param)
+    _wfs, dm, _psf = sim.get_hardware()
+
+    support = module._square_actuator_support_mask(5, 0.0).reshape(-1)
+    assert dm.m2c_source == "basis"
+    assert dm.M2C.shape == (25, 4)
+    assert np.all(dm.M2C[~support] == 0.0)
+    assert np.linalg.matrix_rank(dm.M2C[support]) == 4
+    np.testing.assert_allclose(np.abs(dm.M2C).max(axis=0), 1.0, rtol=1e-6)
+
+
+def test_specula_zonal_actuator_positions_match_geometry():
+    module = importlib.import_module("pyrtc.hardware.specula_interface")
+
+    square = module._zonal_actuator_positions("square", 3, npixels=11, pixel_pitch=0.1)
+    # Corners of the pixel grid, 0.5 m from the centre, row-major (x fastest).
+    np.testing.assert_allclose(square[0], [-0.5, -0.5])
+    np.testing.assert_allclose(square[2], [0.5, -0.5])
+    np.testing.assert_allclose(square[4], [0.0, 0.0])
+
+    circular = module._zonal_actuator_positions("circular", 5, npixels=11, pixel_pitch=0.1)
+    layout, _rows, _cols = module._circular_zonal_display_mapping(5, 0.0)
+    assert circular.shape == (int(layout.sum()), 2)
+    np.testing.assert_allclose(circular[0], [0.0, 0.0], atol=1e-12)
+    np.testing.assert_allclose(np.max(np.linalg.norm(circular, axis=1)), 0.5)

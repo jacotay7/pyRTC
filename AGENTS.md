@@ -45,6 +45,9 @@ aliases.
   `pyrtc/config_runtime.py` (runtime config hooks, `stream_alias_map`),
   `pyrtc/component_descriptors.py` (declared config fields and streams per
   component class).
+- `pyrtc/modal_basis.py` — modal bases (`M2C`) for wavefront correctors,
+  built with the external [aobasis](https://github.com/jacotay7/aobasis)
+  package from a `basis:` config section and the actuator geometry.
 - `pyrtc/latency.py` — stream latency measurement. `pyrtc/exporters/` — AOTPy
   export of telemetry sessions.
 - `pyrtc/hardware/` — reference adapters (cameras, DMs, simulators, synthetic
@@ -172,6 +175,9 @@ ruff check . && ruff format --check .    # lint, as in CI
   make pyrtc simpler, so use pyshmem features rather than duplicating them.
 - Fix pyshmem issues at the source (in the pyshmem repository), not with
   workarounds here.
+- All modal bases (KL, Zernike, Fourier, zonal, Hadamard) come from aobasis
+  (same maintainer) through `pyrtc.modal_basis`; do not add per-backend basis
+  code. Fix basis-generation bugs in aobasis and raise the `aobasis>=` floor.
 - Keep this file current and machine-independent (see the top of this file).
 - Do not commit planning, status-tracker, or scratch notes (such as an
   `IMPROVEMENT_PLAN.md`). Durable guidance belongs in this file, and

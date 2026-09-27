@@ -174,7 +174,7 @@ def _default_value_for_field(field_descriptor) -> Any:
         return False
     if field_descriptor.field_type in {"list[str]", "list[float]"}:
         return []
-    if field_descriptor.field_type == "str | None":
+    if field_descriptor.field_type in {"str | None", "dict | None"}:
         return None
     return ""
 
@@ -233,6 +233,16 @@ def _coerce_runtime_value(raw_value: Any, field_type: str) -> Any:
     if field_type == "str | None":
         text = str(raw_value)
         return None if text == "" else text
+    if field_type == "dict | None":
+        if isinstance(raw_value, dict):
+            return dict(raw_value)
+        text = str(raw_value).strip()
+        if not text:
+            return None
+        parsed = yaml.safe_load(text)
+        if parsed is not None and not isinstance(parsed, dict):
+            raise ValueError("Mapping fields must parse to a dict")
+        return parsed
     if field_type == "dict[str,str]":
         if isinstance(raw_value, dict):
             return {str(key): str(value) for key, value in raw_value.items()}

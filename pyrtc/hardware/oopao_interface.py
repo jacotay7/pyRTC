@@ -167,8 +167,40 @@ class OOPAOWFCorrector(WavefrontCorrector):
         layout = np.asarray(self.dm.validAct).reshape(grid_size, grid_size).astype(bool)
         self.set_layout(layout)
 
+        # The actuator count is final only now, so load the M2C here (an
+        # ``m2c_file`` or a ``basis:`` section; identity otherwise).
+        self._oopao_geometry_ready = True
+        self.read_m2c()
+
     def read_m2c(self, filename=""):
-        self.set_m2c(None)
+        """Load the M2C once the OOPAO actuator geometry is known.
+
+        Before that (inside ``WavefrontCorrector.__init__``) the configured
+        ``num_actuators`` may still be the full grid rather than the valid
+        actuators, so the identity is used as a placeholder. Afterwards the
+        usual precedence applies: ``m2c_file``, then ``basis``, then identity.
+        A ``basis`` without ``pupil_diameter`` uses the telescope diameter.
+        """
+
+        if not getattr(self, "_oopao_geometry_ready", False):
+            self.set_m2c(None)
+            return
+        if self.basis_conf is not None:
+            diameter = getattr(self.tel, "D", None)
+            if isinstance(diameter, (int, float)) and diameter > 0:
+                self.basis_conf = self.basis_conf.with_defaults(pupil_diameter=float(diameter))
+        super().read_m2c(filename)
+
+    def basis_actuator_positions(self):
+        """Return the OOPAO DM's valid-actuator coordinates in metres, if exposed."""
+
+        coordinates = getattr(self.dm, "coordinates", None)
+        if coordinates is None:
+            return None
+        coordinates = np.asarray(coordinates, dtype=np.float64)
+        if coordinates.shape != (self.num_actuators, 2):
+            return None
+        return coordinates
 
     def send_to_hardware(self):
 

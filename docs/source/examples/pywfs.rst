@@ -115,6 +115,24 @@ You can either:
 
 In practice that means you can usually copy the same flat parameter dictionary you already use in OOPAO, then only split the two source entries into `ngs_*` and `science_*` keys so the WFS and PSF paths can use different source definitions.
 
+Modal Basis
+-----------
+
+By default the OOPAO script loads OOPAO's own KL basis into the DM (``--no-kl-basis``
+keeps the identity), and the SPECULA example uses the Zernike basis from the ``basis``
+block of its SPECULA parameter file. Either backend can instead build the basis with
+aobasis, like any other corrector, by adding a ``basis`` section to the ``wfc`` config:
+
+.. code-block:: yaml
+
+	wfc:
+	  num_modes: 80
+	  basis:
+	    type: kl   # pupil_diameter defaults to the simulated telescope diameter
+
+For OOPAO, run the script with ``--no-kl-basis`` so the OOPAO KL basis does not replace
+it. See :doc:`../components/wfc` for all keys.
+
 Running the Example
 -------------------
 
