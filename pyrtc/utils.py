@@ -113,6 +113,14 @@ def validate_wfc_config(conf: Any) -> None:
     _validate_optional_numeric(conf, "floating_influence_radius", component, minimum=0)
     _validate_optional_numeric(conf, "frame_delay", component, minimum=0)
 
+    if conf.get("basis") is not None:
+        from pyrtc.modal_basis import parse_basis_config
+
+        try:
+            parse_basis_config(conf["basis"], num_modes=conf["num_modes"])
+        except ValueError as exc:
+            raise ConfigValidationError(f"{component}: {exc}") from exc
+
 
 def validate_loop_config(conf: Any) -> None:
     component = "loop"

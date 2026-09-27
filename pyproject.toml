@@ -37,6 +37,7 @@ classifiers = [
 dependencies = [
 	"numpy>=1.26",
 	"pyshmem>=1.3.4",
+	"aobasis>=1.0.2",
 	"matplotlib",
 	"PyYAML",
 	"numba",

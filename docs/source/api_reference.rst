@@ -25,6 +25,7 @@ Module Index
    rpc
    manager
    component_loading
+   modal_basis
    latency
    telemetry
    utils

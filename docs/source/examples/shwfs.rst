@@ -97,4 +97,8 @@ Notes
   reaches the slopes, takes reference slopes on the flat DM, then measures the push-pull IM.
   With ``specula.use_atmosphere: false`` (the default config) the loop then converges to zero
   residual; set it to ``true`` to close the loop on turbulence.
+- The DM basis comes from the SPECULA parameter file (SPECULA example) or OOPAO's identity;
+  add a ``basis`` section to ``wfc`` to build it with aobasis instead (see
+  :doc:`../components/wfc`). With ``basis: {type: kl}`` the SPECULA SHWFS example
+  converges like the default Zernike basis.
 - If you want the simplest zero-dependency onboarding path, stay with :doc:`synthetic_shwfs`.

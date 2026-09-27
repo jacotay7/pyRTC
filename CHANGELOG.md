@@ -113,6 +113,23 @@ All notable changes to `pyrtcao` will be documented in this file.
 
 ### Added
 
+- **Modal bases from aobasis** (#53). A `basis:` section on the wavefront
+	corrector builds `M2C` at start-up with
+	[aobasis](https://github.com/jacotay7/aobasis) (now a core dependency;
+	it needs only numpy, scipy and matplotlib) from the actuator geometry:
+	`type: kl | zernike | fourier | zonal | zonal_fast | hadamard`, plus
+	`pupil_diameter`, `r0`/`L0` (KL), `ignore_piston`, `normalize`
+	(`peak` by default, so `poke_amp` bounds the actuator stroke),
+	`orthonormalize`, `positions_file` and `min_distance` (zonal-fast).
+	Positions come from the 2D `layout` mask (pupil-centred, outer rows and
+	columns on the pupil edge) unless the adapter knows better: OOPAO uses
+	`dm.coordinates` and the telescope diameter, SPECULA its zonal actuator
+	positions and `pixel_pupil * pixel_pitch`. `m2c_file` still takes
+	precedence; without either the identity is used as before, and the
+	SPECULA examples keep their SPECULA-native Zernike basis unless
+	`wfc.basis` is set. New `pyrtc.modal_basis` module,
+	`WavefrontCorrector.build_basis_m2c()` and `m2c_source`. The OOPAO and
+	SPECULA correctors now also honour `m2c_file` (they used to ignore it).
 - Continuous telemetry recording (#61): `Telemetry.start_ring_buffer(streams,
 	seconds=, frames=)` keeps the newest publications of each stream (payload,
 	`write_time`, `frame_id`, `count`) in a preallocated in-memory ring,

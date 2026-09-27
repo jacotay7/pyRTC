@@ -10,6 +10,7 @@ import time
 
 import numpy as np
 
+from pyrtc.modal_basis import default_actuator_layout
 from pyrtc.streams import open_stream
 from pyrtc.science_camera import ScienceCamera
 from pyrtc.wavefront_corrector import WavefrontCorrector
@@ -367,7 +368,9 @@ class SyntheticWFC(WavefrontCorrector):
     The base ``WavefrontCorrector`` implementation already provides the behavior
     needed for a software-only control loop: it reads the modal correction
     stream, applies the M2C mapping, and publishes the optional 2D layout view.
-    This subclass exists so configs can refer to a concrete synthetic adapter by
+    A ``basis:`` section builds the M2C with aobasis on the synthetic layout
+    (the synthetic sensor works in modal space, so the basis does not change
+    the simulated optics). This subclass exists so configs can refer to a concrete synthetic adapter by
     name without implying vendor hardware.
     """
 
@@ -398,18 +401,4 @@ class SyntheticWFC(WavefrontCorrector):
 def _default_wfc_layout(num_actuators: int) -> np.ndarray:
     """Return a centered, approximately circular boolean layout for synthetic DMs."""
 
-    if num_actuators < 1:
-        raise ValueError("num_actuators must be positive")
-
-    side = int(np.ceil(np.sqrt(float(num_actuators))))
-    if side % 2 == 0:
-        side += 1
-
-    yy, xx = np.indices((side, side), dtype=np.float32)
-    center = 0.5 * (side - 1)
-    distances = (xx - center) ** 2 + (yy - center) ** 2
-    selected = np.argsort(distances, axis=None)[:num_actuators]
-
-    layout = np.zeros((side, side), dtype=bool)
-    layout.flat[selected] = True
-    return layout
+    return default_actuator_layout(num_actuators)

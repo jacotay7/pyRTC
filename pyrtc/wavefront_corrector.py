@@ -13,6 +13,7 @@ from pyrtc.logging_utils import get_logger
 from pyrtc.manager import launch_component
 from pyrtc.streams import create_stream
 from pyrtc.component import Component
+from pyrtc.modal_basis import BasisConfig, build_m2c, default_actuator_layout, parse_basis_config
 from pyrtc.utils import gaussian_2d_grid, pyplot, set_from_config
 
 logger = get_logger(__name__)
@@ -49,7 +50,14 @@ class WavefrontCorrector(Component):
     affinity : str
         Affinity setting.
     m2c_file : str
-        Path to the mode-to-command file.
+        Path to the mode-to-command file (``.npy`` or ``.dat``). Takes
+        precedence over ``basis``.
+    basis : dict, optional
+        Build ``M2C`` with aobasis from the actuator geometry, e.g.
+        ``{type: kl, pupil_diameter: 8.0, r0: 0.16, L0: 30.0}``. Types are
+        ``kl``, ``zernike``, ``fourier``, ``zonal``, ``zonal_fast`` and
+        ``hadamard``; see :mod:`pyrtc.modal_basis`. Ignored when
+        ``m2c_file`` is set. Without either, ``M2C`` is the identity.
     floating_influence_radius : int, optional
         Radius for floating influence. Default is 1.
     frame_delay : int, optional
@@ -118,6 +126,9 @@ class WavefrontCorrector(Component):
             self.num_actuators = conf["num_actuators"]
             self.num_modes = conf["num_modes"]
             self.m2c_file = set_from_config(conf, "m2c_file", "")
+            self.basis_conf = parse_basis_config(conf.get("basis"), num_modes=self.num_modes)
+            self.m2c_source = "identity"
+            self._basis_layout = None
 
             self.correction_vector = create_stream(
                 self.output_stream_name("wfc"),
@@ -234,6 +245,13 @@ class WavefrontCorrector(Component):
                 self.index_map = np.zeros(self.layout.shape, dtype=int)
                 self.index_map[self.layout > 0] = np.arange(np.sum(self.layout)).astype(int) + 1
                 self.logger.info("Configured 2D correction layout shape=%s", self.layout.shape)
+                if (
+                    getattr(self, "m2c_source", None) == "basis"
+                    and not self.basis_conf.positions_file
+                    and self.basis_actuator_positions() is None
+                ):
+                    # The basis was built before the real layout was known.
+                    self.build_basis_m2c()
             else:
                 self.logger.info("Cleared 2D correction layout")
         except Exception:
@@ -278,7 +296,9 @@ class WavefrontCorrector(Component):
                     inlfluence_map[inlfluence_map < np.max(inlfluence_map) / 10] = 0
                     self.float_matrix[act] = inlfluence_map[self.layout > 0]
 
+                m2c_source = getattr(self, "m2c_source", "custom")
                 self.set_m2c(self.M2C)
+                self.m2c_source = m2c_source
                 self.logger.info("Deactivated actuators %s", actuators)
             else:
                 logger.warning("No layout set for DM")
@@ -328,6 +348,8 @@ class WavefrontCorrector(Component):
                 self.M2C = M2C
 
             self.M2C = self.M2C.astype(self.flat.dtype)
+            # Callers that know the origin (file, basis) overwrite this.
+            self.m2c_source = "custom" if isinstance(M2C, np.ndarray) else "identity"
 
             self.f_M2C = self.float_matrix @ self.M2C
 
@@ -365,7 +387,10 @@ class WavefrontCorrector(Component):
 
     def read_m2c(self, filename=""):
         """
-        Read the mode-to-command matrix from a file.
+        Load the mode-to-command matrix.
+
+        Precedence: an explicit ``filename``, then the configured ``m2c_file``,
+        then the configured ``basis`` (built with aobasis), then the identity.
 
         Parameters
         ----------
@@ -382,17 +407,99 @@ class WavefrontCorrector(Component):
                 )
             elif ".npy" in filename:
                 M2C = np.load(filename)
+            elif getattr(self, "basis_conf", None) is not None:
+                self.build_basis_m2c()
+                return
             else:
                 self.set_m2c(None)
-                self.logger.info("No M2C file configured; using identity basis")
+                self.m2c_source = "identity"
+                self.logger.info("No M2C file or basis configured; using identity basis")
                 return
 
             self.set_m2c(M2C)
+            self.m2c_source = "file"
             self.logger.info("Loaded M2C matrix from %s", filename)
         except Exception:
             self.logger.exception("Failed to read M2C matrix from %s", filename or self.m2c_file)
             raise
         return
+
+    def basis_actuator_positions(self):
+        """
+        Return ``(num_actuators, 2)`` actuator positions in metres, or ``None``.
+
+        Adapters that know their physical actuator coordinates override this.
+        ``None`` makes :meth:`build_basis_m2c` derive positions from
+        :attr:`layout` (see :func:`pyrtc.modal_basis.actuator_positions_from_layout`).
+        """
+        return None
+
+    def build_basis_m2c(self, basis=None):
+        """
+        Build ``M2C`` with aobasis from a basis config and apply it.
+
+        Positions come from ``basis.positions_file``, then
+        :meth:`basis_actuator_positions`, then the 2D :attr:`layout`. Without a
+        layout yet, the default circular layout for ``num_actuators`` is used
+        and the basis is rebuilt when :meth:`set_layout` provides the real one.
+
+        Parameters
+        ----------
+        basis : dict or pyrtc.modal_basis.BasisConfig, optional
+            Basis to build. Defaults to the configured ``basis`` section. A
+            new basis given here replaces the configured one.
+
+        Returns
+        -------
+        numpy.ndarray
+            The new ``M2C`` matrix, ``(num_actuators, num_modes)``.
+        """
+        try:
+            if basis is not None:
+                if not isinstance(basis, BasisConfig):
+                    basis = parse_basis_config(basis, num_modes=self.num_modes)
+                self.basis_conf = basis
+                self._basis_layout = None
+            if self.basis_conf is None:
+                raise ValueError("No basis configured")
+
+            positions = None
+            layout = None
+            if not self.basis_conf.positions_file:
+                positions = self.basis_actuator_positions()
+            if positions is None and not self.basis_conf.positions_file:
+                layout = self.layout
+                if not isinstance(layout, np.ndarray) or layout.ndim != 2:
+                    layout = default_actuator_layout(self.num_actuators)
+                if int(np.count_nonzero(layout)) != int(self.num_actuators):
+                    raise ValueError(
+                        f"basis: layout has {int(np.count_nonzero(layout))} active actuators "
+                        f"but num_actuators is {self.num_actuators}"
+                    )
+                cached = getattr(self, "_basis_layout", None)
+                if cached is not None and np.array_equal(layout, cached):
+                    if getattr(self, "m2c_source", None) == "basis":
+                        return self.M2C
+                self._basis_layout = np.array(layout, dtype=bool)
+
+            M2C = build_m2c(
+                self.basis_conf,
+                num_modes=self.num_modes,
+                layout=layout,
+                positions=positions,
+                logger=self.logger,
+            )
+            if M2C.shape[0] != self.num_actuators:
+                raise ValueError(
+                    f"basis: {M2C.shape[0]} actuator positions but num_actuators is "
+                    f"{self.num_actuators}"
+                )
+            self.set_m2c(M2C)
+            self.m2c_source = "basis"
+            return self.M2C
+        except Exception:
+            self.logger.exception("Failed to build M2C from basis config")
+            raise
 
     def send_to_hardware(self):
         """

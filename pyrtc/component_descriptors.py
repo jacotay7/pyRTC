@@ -618,7 +618,20 @@ BUILTIN_COMPONENT_DESCRIPTORS: tuple[ComponentDescriptor, ...] = (
         ),
         optional_fields=(
             ConfigFieldDescriptor(
-                "m2c_file", "str", "Path to the mode-to-command matrix.", default=""
+                "m2c_file",
+                "str",
+                "Path to the mode-to-command matrix. Takes precedence over 'basis'.",
+                default="",
+            ),
+            ConfigFieldDescriptor(
+                "basis",
+                "dict | None",
+                "Modal basis built with aobasis from the actuator geometry: "
+                "{type: kl|zernike|fourier|zonal|zonal_fast|hadamard, n_modes, pupil_diameter, "
+                "normalize, orthonormalize, positions_file, r0, L0, ignore_piston, use_gpu, "
+                "min_distance}. Ignored when 'm2c_file' is set.",
+                default=None,
+                allow_none=True,
             ),
             ConfigFieldDescriptor("flat_file", "str", "Path to the flat shape file.", default=""),
             ConfigFieldDescriptor(
@@ -875,6 +888,8 @@ def _field_type_matches(field_type: str, value: Any) -> bool:
         )
     if field_type == "str | None":
         return value is None or isinstance(value, str)
+    if field_type == "dict | None":
+        return value is None or isinstance(value, Mapping)
     return True
 
 

@@ -26,6 +26,7 @@ from pyrtc.science_camera import ScienceCamera
 from pyrtc.wavefront_corrector import WavefrontCorrector
 from pyrtc.wavefront_sensor import WavefrontSensor
 from pyrtc.component import Component
+from pyrtc.modal_basis import build_m2c, default_actuator_layout, parse_basis_config
 from pyrtc.utils import read_yaml_file, set_from_config, set_affinity_and_priority
 
 
@@ -409,21 +410,7 @@ def _as_mapping(value: Any, *, name: str) -> dict[str, Any]:
 def _default_wfc_layout(num_actuators: int) -> np.ndarray:
     """Return a centered, approximately circular boolean layout for display-only DMs."""
 
-    if num_actuators < 1:
-        raise ValueError("num_actuators must be positive")
-
-    side = int(np.ceil(np.sqrt(float(num_actuators))))
-    if side % 2 == 0:
-        side += 1
-
-    yy, xx = np.indices((side, side), dtype=np.float32)
-    center = 0.5 * (side - 1)
-    distances = (xx - center) ** 2 + (yy - center) ** 2
-    selected = np.argsort(distances, axis=None)[:num_actuators]
-
-    layout = np.zeros((side, side), dtype=bool)
-    layout.flat[selected] = True
-    return layout
+    return default_actuator_layout(num_actuators)
 
 
 def _specula_dm_layout(dm: Any, num_actuators: int) -> np.ndarray:
@@ -502,6 +489,37 @@ def _square_zonal_display_mapping(n_act: int) -> tuple[np.ndarray, np.ndarray, n
     layout = _square_zonal_layout(n_act)
     rows, cols = np.indices(layout.shape, dtype=np.intp)
     return layout, rows.reshape(-1), cols.reshape(-1)
+
+
+def _zonal_actuator_positions(
+    geom: str, n_act: int, npixels: int, pixel_pitch: float, angle_offset: float = 0.0
+) -> np.ndarray:
+    """Return SPECULA zonal actuator ``(x, y)`` positions in metres, pupil-centred.
+
+    Mirrors the actuator placement of ``specula.lib.compute_zonal_ifunc`` for
+    the geometries pyrtc supports (``square`` and ``circular``), in the same
+    order as the rows of the zonal influence functions.
+    """
+
+    center = 0.5 * (npixels - 1)
+    if geom == "square":
+        axis = np.linspace(0.0, npixels - 1, n_act)
+        x, y = np.meshgrid(axis, axis)
+        x, y = x.ravel(), y.ravel()
+    elif geom == "circular":
+        ring_counts = _circular_ring_counts(n_act)
+        n_act_diameter = 2 * len(ring_counts) - 1
+        step = float(npixels - 1) / float(n_act_diameter - 1) if n_act_diameter > 1 else 0.0
+        xs, ys = [], []
+        for ring_index, count in enumerate(ring_counts):
+            for angle_index in range(int(count)):
+                angle = np.deg2rad(360.0 / float(count) * angle_index + float(angle_offset))
+                xs.append(ring_index * step * np.cos(angle) + center)
+                ys.append(ring_index * step * np.sin(angle) + center)
+        x, y = np.asarray(xs), np.asarray(ys)
+    else:
+        raise ValueError(f"no actuator positions for SPECULA geometry {geom!r}")
+    return np.column_stack(((x - center) * pixel_pitch, (y - center) * pixel_pitch))
 
 
 def _square_actuator_support_mask(n_act: int, obsratio: float = 0.0) -> np.ndarray:
@@ -1026,6 +1044,19 @@ class SPECULASystemContext:
 
         wfc_conf = dict(self.system_conf.get("wfc", {}))
         num_modes = int(wfc_conf.get("num_modes", num_actuators))
+        aobasis_conf = parse_basis_config(wfc_conf.get("basis"), num_modes=num_modes)
+        if aobasis_conf is not None:
+            modal_to_command = self._build_aobasis_m2c(
+                aobasis_conf, dm_conf, geom, circ_geom, n_act, num_actuators, num_modes
+            )
+            return (
+                num_actuators,
+                layout.astype(bool),
+                display_rows.astype(np.intp),
+                display_cols.astype(np.intp),
+                modal_to_command,
+            )
+
         basis_conf = _as_mapping(self.param.get("basis"), name="basis")
         basis_type = str(basis_conf.get("type_str", "zernike"))
         basis_kwargs = {
@@ -1062,6 +1093,40 @@ class SPECULASystemContext:
             display_cols.astype(np.intp),
             modal_to_command.astype(np.float32),
         )
+
+    def _build_aobasis_m2c(
+        self, basis, dm_conf, geom, circ_geom, n_act, num_actuators, num_modes
+    ) -> np.ndarray:
+        """Build the modal-to-command matrix with aobasis from a ``wfc.basis`` section.
+
+        Modes are evaluated at the SPECULA actuator positions (metres). For
+        square geometry, actuators outside the circular support get zero rows,
+        as in the SPECULA-native path. ``pupil_diameter`` defaults to
+        ``pixel_pupil * pixel_pitch``.
+        """
+
+        npixels = int(getattr(self.simul_params, "pixel_pupil"))
+        pixel_pitch = float(getattr(self.simul_params, "pixel_pitch", 1.0) or 1.0)
+        effective_geom = "square" if (geom == "square" and not circ_geom) else "circular"
+        positions = _zonal_actuator_positions(
+            effective_geom, n_act, npixels, pixel_pitch, dm_conf.get("angle_offset", 0.0)
+        )
+        if positions.shape[0] != num_actuators:
+            raise ValueError(
+                f"SPECULA {effective_geom} geometry n_act={n_act} gives {positions.shape[0]} "
+                f"actuator positions, but the SPECULA DM built {num_actuators}."
+            )
+        if effective_geom == "square":
+            support = _square_actuator_support_mask(n_act, dm_conf.get("obsratio", 0.0)).reshape(-1)
+        else:
+            support = np.ones(num_actuators, dtype=bool)
+
+        basis = basis.with_defaults(pupil_diameter=npixels * pixel_pitch)
+        modal_to_command = np.zeros((num_actuators, num_modes), dtype=np.float32)
+        modal_to_command[support, :] = build_m2c(
+            basis, num_modes=num_modes, positions=positions[support], logger=logger
+        )
+        return modal_to_command
 
     def _build_propagation(self):
         propagation_conf = self._simul_object_kwargs("propagation")
@@ -1208,9 +1273,23 @@ class SPECULAWFCorrector(WavefrontCorrector):
         self.register_output_stream("wfc_2d", self.correction_vector_2d)
         self.correction_vector_2d_template = np.zeros(self.layout.shape, dtype=np.float32)
         self.write_stream("wfc_2d", self.correction_vector_2d_template)
-        self.set_m2c(self.context.modal_to_command)
         if self.section_name:
             self.context.register_component(self.section_name, self)
+
+    def read_m2c(self, filename=""):
+        """Use ``m2c_file`` when set, else the context's modal-to-command matrix.
+
+        The context builds that matrix from ``wfc.basis`` with aobasis when the
+        section is present, and otherwise from the SPECULA parameter file's
+        ``basis`` (SPECULA modal surfaces fitted onto the zonal influence
+        functions).
+        """
+
+        if filename or self.m2c_file:
+            super().read_m2c(filename)
+            return
+        self.set_m2c(self.context.modal_to_command)
+        self.m2c_source = "basis" if self.basis_conf is not None else "specula"
 
     def send_to_hardware(self):
         super().send_to_hardware()
