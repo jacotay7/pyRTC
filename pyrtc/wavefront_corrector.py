@@ -7,14 +7,13 @@ concrete adapter subclasses.
 """
 
 import numpy as np
-import matplotlib.pyplot as plt
 from numba import jit
 
 from pyrtc.logging_utils import get_logger
 from pyrtc.manager import launch_component
 from pyrtc.streams import create_stream
 from pyrtc.component import Component
-from pyrtc.utils import gaussian_2d_grid, set_from_config
+from pyrtc.utils import gaussian_2d_grid, pyplot, set_from_config
 
 logger = get_logger(__name__)
 
@@ -516,10 +515,12 @@ class WavefrontCorrector(Component):
         """
         Plot the current correction.
 
+        Returns the figure (not shown); call ``plt.show()`` to display it.
+
         Parameters
         ----------
-        remove_flat : bool, optional
-            If True, removes the flat shape from the current correction before plotting. Default is False.
+        add_flat : bool, optional
+            If True, adds the flat shape to the current correction before plotting. Default is False.
         """
         cur_correction = self.read()
         if add_flat:
@@ -531,17 +532,14 @@ class WavefrontCorrector(Component):
         else:
             new_shape = cur_correction
 
+        plt = pyplot()
+        fig, ax = plt.subplots()
         if len(new_shape.shape) == 1:
-            # plt.figure(figsize=(12,5))
-            plt.plot(new_shape)
-            plt.show()
-        elif len(new_shape.shape) == 2:
-            # plt.figure(figsize=(10,8))
-            plt.imshow(new_shape, cmap="inferno", aspect="auto", origin="lower")
-            plt.colorbar()
-            plt.show()
-
-        return
+            ax.plot(new_shape)
+        else:
+            im = ax.imshow(new_shape, cmap="inferno", aspect="auto", origin="lower")
+            fig.colorbar(im, ax=ax)
+        return fig
 
 
 if __name__ == "__main__":

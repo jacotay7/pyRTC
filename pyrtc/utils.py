@@ -505,6 +505,18 @@ def gaussian_2d_grid(i, j, sigma, grid_size):
     return grid
 
 
+def pyplot():
+    """Import and return ``matplotlib.pyplot`` on first use.
+
+    Plotting is optional; importing pyplot selects a (possibly GUI) backend,
+    so pyrtc modules only do it inside plotting helpers. Those helpers return
+    the figure without showing it; call ``plt.show()`` or display it yourself.
+    """
+    import matplotlib.pyplot as plt
+
+    return plt
+
+
 def set_affinity(affinity):
     """Pin the calling thread to the given CPU core(s).
 

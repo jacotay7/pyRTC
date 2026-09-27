@@ -6,14 +6,13 @@ and long exposure PSFs, Strehl ratio estimates, and tip-tilt telemetry, while
 leaving camera-specific acquisition details to hardware subclasses.
 """
 
-import matplotlib.pyplot as plt
 import numpy as np
 
 from pyrtc.logging_utils import ensure_logging_configured, get_logger
 from pyrtc.streams import create_stream
 from pyrtc.manager import launch_component
 from pyrtc.component import Component
-from pyrtc.utils import centroid, clean_image_for_strehl, set_from_config
+from pyrtc.utils import centroid, clean_image_for_strehl, pyplot, set_from_config
 
 
 logger = get_logger(__name__)
@@ -544,17 +543,20 @@ class ScienceCamera(Component):
     def plot(self):
         """
         Plot the current short exposure PSF.
+
+        Returns the figure (not shown); call ``plt.show()`` to display it.
         """
         try:
-            arr = self.read()
-            plt.imshow(arr, cmap="inferno", origin="lower")
-            plt.colorbar()
-            plt.show()
+            plt = pyplot()
+            arr = self.read(block=False)
+            fig, ax = plt.subplots()
+            im = ax.imshow(arr, cmap="inferno", origin="lower")
+            fig.colorbar(im, ax=ax)
             self.logger.info("Plotted science camera image")
+            return fig
         except Exception:
             logger.exception("Failed to plot science camera image")
             raise
-        return
 
 
 if __name__ == "__main__":

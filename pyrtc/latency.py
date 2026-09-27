@@ -12,8 +12,9 @@ from dataclasses import dataclass
 import time
 from typing import Any, Callable, Mapping, Sequence
 
-import matplotlib.pyplot as plt
 import numpy as np
+
+from pyrtc.utils import pyplot
 
 
 def open_stream(shm_name):
@@ -455,9 +456,10 @@ def _build_latency_segment(
 
 def plot_latency_histogram(
     latency_seconds: np.ndarray, *, title: str, bins: int, xrange: Sequence[float]
-) -> plt.Figure:
+):
     """Render a log-scaled histogram that highlights high-percentile latency."""
 
+    plt = pyplot()
     low, high = (float(xrange[0]), float(xrange[1]))
     fig = plt.figure(figsize=(10, 6))
     plt.hist(
