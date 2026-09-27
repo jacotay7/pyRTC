@@ -49,16 +49,37 @@ from pyrtc.streams import STREAM_NOTIFY_ENV, clear_shms  # noqa: E402
 
 logger = get_logger(__name__)
 
-EXAMPLE_DIR = REPO_ROOT / "examples" / "synthetic_shwfs"
-EXAMPLE_CONFIG = EXAMPLE_DIR / "config.yaml"
+EXAMPLE_RELATIVE_DIR = Path("examples") / "synthetic_shwfs"
+
+
+def find_example_dir(example_dir: str | Path | None = None) -> Path:
+    """Locate the synthetic SHWFS example (it ships with the source, not the wheel).
+
+    Checks ``example_dir``, then the source tree this module lives in, then the
+    current directory (e.g. a checkout root with pyrtc installed as a wheel).
+    """
+    candidates = (
+        [Path(example_dir)]
+        if example_dir is not None
+        else [REPO_ROOT / EXAMPLE_RELATIVE_DIR, Path.cwd() / EXAMPLE_RELATIVE_DIR]
+    )
+    for candidate in candidates:
+        if (candidate / "config.yaml").is_file():
+            return candidate.resolve()
+    raise FileNotFoundError(
+        "Could not find examples/synthetic_shwfs/config.yaml; run from a pyRTC source "
+        "checkout or pass --example-dir."
+    )
+
+
 LATENCY_PATH = ("wfs", "signal", "wfc")
 MODES = ("soft", "hard")
 
 
-def _absolute(path_value: str) -> str:
+def _absolute(path_value: str, example_dir: Path) -> str:
     path = Path(path_value)
     if not path.is_absolute():
-        path = (EXAMPLE_DIR / path).resolve()
+        path = (example_dir / path).resolve()
     return str(path)
 
 
@@ -68,6 +89,7 @@ def build_benchmark_config(
     *,
     frame_rate_hz: float | None = None,
     include_psf: bool = True,
+    example_dir: str | Path | None = None,
 ) -> tuple[Path, dict[str, str]]:
     """Write a copy of the synthetic SHWFS config with private stream names.
 
@@ -76,7 +98,8 @@ def build_benchmark_config(
     YAML from ``workdir``), and the loop's interaction matrix is generated.
     Returns the config path and the canonical-to-private stream name map.
     """
-    raw = yaml.safe_load(EXAMPLE_CONFIG.read_text(encoding="utf-8"))
+    example_dir = find_example_dir(example_dir)
+    raw = yaml.safe_load((example_dir / "config.yaml").read_text(encoding="utf-8"))
     config = copy.deepcopy(raw)
     if not include_psf:
         config.pop("psf", None)
@@ -96,7 +119,7 @@ def build_benchmark_config(
             aliases = section.get(direction) or {}
             section[direction] = {key: _private(value) for key, value in aliases.items()}
         if section.get("class_file"):
-            section["class_file"] = _absolute(section["class_file"])
+            section["class_file"] = _absolute(section["class_file"], example_dir)
     # The synthetic WFS and science camera open these streams by their
     # canonical names unless an input alias says otherwise.
     config["wfs"]["input_streams"] = {"wfc": _private("wfc")}
@@ -107,7 +130,9 @@ def build_benchmark_config(
 
     manager_conf = config.setdefault("manager", {})
     files = manager_conf.get("component_files", {})
-    manager_conf["component_files"] = {key: _absolute(value) for key, value in files.items()}
+    manager_conf["component_files"] = {
+        key: _absolute(value, example_dir) for key, value in files.items()
+    }
     config["loop"]["im_file"] = str(workdir / "synthetic_im.npy")
     _write_interaction_matrix(config)
 
@@ -180,6 +205,7 @@ def run_pipeline_latency(
     frame_rate_hz: float | None = None,
     include_psf: bool = True,
     timeout_seconds: float | None = None,
+    example_dir: str | Path | None = None,
 ) -> dict[str, Any]:
     """Launch the synthetic system once and measure its WFS -> DM latency."""
     from pyrtc.manager import RTCManager
@@ -189,7 +215,11 @@ def run_pipeline_latency(
     prefix = f"bench_{uuid.uuid4().hex[:10]}"
     with tempfile.TemporaryDirectory(prefix="pyrtc_pipeline_bench_") as tmp:
         config_path, names = build_benchmark_config(
-            prefix, Path(tmp), frame_rate_hz=frame_rate_hz, include_psf=include_psf
+            prefix,
+            Path(tmp),
+            frame_rate_hz=frame_rate_hz,
+            include_psf=include_psf,
+            example_dir=example_dir,
         )
         path = [names[stream] for stream in LATENCY_PATH]
         manager = None
@@ -244,6 +274,7 @@ def run_pipeline_benchmarks(
     include_psf: bool = True,
     timeout_seconds: float | None = None,
     repeats: int = 1,
+    example_dir: str | Path | None = None,
 ) -> dict[str, Any]:
     """Measure every mode/notify combination ``repeats`` times.
 
@@ -271,13 +302,14 @@ def run_pipeline_benchmarks(
                     frame_rate_hz=frame_rate_hz,
                     include_psf=include_psf,
                     timeout_seconds=timeout_seconds,
+                    example_dir=example_dir,
                 )
                 row["repeat"] = repeat
                 results.append(row)
     return {
         "meta": {
             "benchmark_type": "pipeline_latency",
-            "config": str(EXAMPLE_CONFIG.relative_to(REPO_ROOT)),
+            "config": str(EXAMPLE_RELATIVE_DIR / "config.yaml"),
             "samples": int(samples),
             "settle_seconds": float(settle_seconds),
             "repeats": max(1, int(repeats)),
@@ -377,6 +409,12 @@ def _build_arg_parser() -> argparse.ArgumentParser:
         help="Fail a run that has not collected its samples after this many seconds.",
     )
     parser.add_argument("--output", type=str, default=None)
+    parser.add_argument(
+        "--example-dir",
+        type=str,
+        default=None,
+        help="Path to examples/synthetic_shwfs (defaults to the source checkout).",
+    )
     add_logging_cli_args(parser)
     return parser
 
@@ -395,6 +433,7 @@ def main(argv=None) -> int:
         include_psf=not args.no_psf,
         timeout_seconds=args.timeout,
         repeats=args.repeats,
+        example_dir=args.example_dir,
     )
     print(format_report(report))
     if args.output:
