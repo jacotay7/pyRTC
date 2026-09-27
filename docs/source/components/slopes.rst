@@ -137,6 +137,108 @@ See above for how to launch a soft-RTC equivalent.
   print(slopes.get_property("ref_slopes_file"))
 
 
+SHWFS centroiding
+-----------------
+
+For a Shack-Hartmann sensor the ``centroider`` slopes option selects how each
+sub-aperture is reduced to an x/y spot position (in pixels, relative to the
+sub-aperture centre; reference slopes are subtracted afterwards, exactly as for
+the default). Every method ignores pixels at or below ``image_noise * contrast``
+and publishes 0 for a sub-aperture with no flux above that threshold.
+
+``cog`` (default)
+  Thresholded centre of gravity. Unbiased for a compact spot well inside the
+  sub-aperture, but its noise grows with every pixel that passes the threshold.
+
+``wcog``
+  Gaussian-weighted centre of gravity. Each pixel is multiplied by a Gaussian of
+  FWHM ``wcog_fwhm`` pixels (default: half the sub-aperture) centred on the
+  reference position: the thresholded CoG of the reference image when one is
+  set (see below), otherwise the sub-aperture centre. The weights are built
+  once and rebuilt only when the centres or the FWHM change.
+
+  The weighting shrinks the measured displacement. For a Gaussian spot of FWHM
+  :math:`f_s` and a weight of FWHM :math:`f_w` the measured shift is
+  :math:`g = f_w^2 / (f_w^2 + f_s^2)` of the true one. For Gaussian spots the
+  response stays linear until the spot nears the sub-aperture edge; for other
+  spot shapes (Airy rings, elongated or extended spots) :math:`g` differs and
+  the response becomes non-linear as the spot leaves the weight, while the
+  weighted flux, and so the SNR, falls. By default the gain is **not**
+  corrected: in a closed loop the interaction matrix is measured with the same
+  centroider and absorbs it. Set ``wcog_spot_fwhm`` to the spot FWHM in pixels
+  (include the pixel, :math:`f_s \approx 2.355\sqrt{\sigma^2 + 1/12}`) to
+  multiply by :math:`1/g`, e.g. when the slopes are used in physical units. The
+  correction is exact only for Gaussian spots, so keep ``wcog_fwhm`` larger
+  than the expected spot motion. The payoff is noise: with read noise the WCoG
+  error is several times lower than the thresholded CoG's.
+
+``correlation``
+  Correlation centroiding for extended sources (solar or laser-guide-star
+  wavefront sensing). The reference image supplies one template per
+  sub-aperture: its central ``sub_ap_spacing - 2 * correlation_search_radius``
+  square. For every integer shift within ``+/- correlation_search_radius``
+  pixels (default: a quarter of the sub-aperture) the kernel evaluates the
+  squared difference between the template and the flux-normalised live image;
+  the template always overlaps the live sub-aperture fully, so there is no
+  overlap bias. The minimum is refined with a 2D quadratic fit over its 3x3
+  neighbourhood (Löfdahl 2010, A&A 524, A90), and the shift is added to the
+  reference spot position. Shifts larger than the search window are clamped to
+  its edge. The cost grows with ``(2R + 1)^2 * (n - 2R)^2`` per sub-aperture, so
+  keep the search radius as small as the expected spot motion allows.
+
+The reference image is a dark-subtracted WFS frame with the flat (or
+calibration) wavefront applied. Take it once the pipeline is running, then take
+reference slopes:
+
+.. code-block:: python
+
+  slopes.take_reference_image()   # averages ref_slope_count WFS frames
+  slopes.save_reference_image()   # to reference_image_file
+  slopes.take_ref_slopes()
+
+It can also be loaded at start-up from ``reference_image_file`` or set with
+``set_reference_image(image)``. Templates and reference positions are derived
+lazily and rebuilt when the threshold or search radius changes. Until a
+reference exists the ``correlation`` centroider publishes zero slopes and logs a
+warning once.
+
+.. code-block:: yaml
+
+  slopes:
+    type: SHWFS
+    signal_type: slopes
+    sub_ap_spacing: 16
+    sub_ap_offset_x: 0
+    sub_ap_offset_y: 0
+    centroider: correlation        # cog | wcog | correlation
+    correlation_search_radius: 4
+    reference_image_file: calib/shwfs_reference.npy
+    # wcog_fwhm: 8.0
+    # wcog_spot_fwhm: 3.0
+
+Cost relative to ``cog`` (single core, one frame; ``benchmarks/core_compute_bench.py``
+reports absolute timings as ``slopes.compute_slopes_shwfs_*_numba``):
+
+.. list-table::
+  :header-rows: 1
+
+  * - Geometry
+    - ``cog``
+    - ``wcog``
+    - ``correlation``
+  * - 20x20 sub-apertures, 8 px, R = 2
+    - ~30-60 us
+    - ~1.4x
+    - ~5x
+  * - 20x20 sub-apertures, 16 px, R = 4
+    - ~0.12 ms
+    - ~1.4-2x
+    - ~11-13x
+  * - 60x60 sub-apertures, 8 px, R = 2
+    - ~0.25-0.45 ms
+    - ~1-1.5x
+    - ~3-6x
+
 Parameters
 ----------
 

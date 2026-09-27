@@ -357,6 +357,39 @@ BUILTIN_COMPONENT_DESCRIPTORS: tuple[ComponentDescriptor, ...] = (
             ),
             ConfigFieldDescriptor("contrast", "float", "SHWFS contrast parameter.", default=0.0),
             ConfigFieldDescriptor(
+                "centroider",
+                "str",
+                "SHWFS centroiding algorithm: thresholded CoG, Gaussian-weighted CoG, or correlation.",
+                default="cog",
+                choices=("cog", "wcog", "correlation"),
+            ),
+            ConfigFieldDescriptor(
+                "wcog_fwhm",
+                "float",
+                "FWHM in pixels of the WCoG Gaussian weight (default: half the sub-aperture).",
+                default=None,
+            ),
+            ConfigFieldDescriptor(
+                "wcog_spot_fwhm",
+                "float",
+                "Spot FWHM in pixels for WCoG gain correction; 0 leaves the gain uncorrected.",
+                default=0.0,
+                minimum=0.0,
+            ),
+            ConfigFieldDescriptor(
+                "correlation_search_radius",
+                "int",
+                "Correlation search half-width in pixels (default: a quarter of the sub-aperture).",
+                default=None,
+                minimum=1,
+            ),
+            ConfigFieldDescriptor(
+                "reference_image_file",
+                "str",
+                "Path to the SHWFS reference image used by the wcog and correlation centroiders.",
+                default="",
+            ),
+            ConfigFieldDescriptor(
                 "sub_ap_spacing",
                 "float",
                 "Sub-aperture spacing for SHWFS layouts.",
@@ -429,7 +462,7 @@ BUILTIN_COMPONENT_DESCRIPTORS: tuple[ComponentDescriptor, ...] = (
             ),
         ),
         supports_hard_rtc=True,
-        calibration_artifacts=("valid_sub_aps_file", "ref_slopes_file"),
+        calibration_artifacts=("valid_sub_aps_file", "ref_slopes_file", "reference_image_file"),
     ),
     ComponentDescriptor(
         section_name="loop",

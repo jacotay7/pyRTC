@@ -316,6 +316,337 @@ def compute_slopes_shwfs_optim_numpy(
     return slopes
 
 
+SHWFS_CENTROIDERS = ("cog", "wcog", "correlation")
+FWHM_PER_SIGMA = float(2.0 * np.sqrt(2.0 * np.log(2.0)))
+
+
+def shwfs_subaperture_coords(int_n: int) -> np.ndarray:
+    """Return the 1D pixel coordinates used by every SHWFS centroider.
+
+    Pixel ``k`` of a sub-aperture sits at ``k - int_n // 2``, the same
+    convention as the ``xvals`` grid of the thresholded CoG kernel, so all
+    centroiders report spot positions in the same frame.
+    """
+
+    return (np.arange(int(int_n)) - int(int_n) // 2).astype(np.float32)
+
+
+def wcog_gain_correction(weight_fwhm: float, spot_fwhm: float) -> float:
+    """Return the factor that undoes the WCoG gain loss for a Gaussian spot.
+
+    For a Gaussian spot of standard deviation ``s`` weighted by a Gaussian of
+    standard deviation ``w`` centred on the reference, the weighted CoG
+    measures ``w**2 / (w**2 + s**2)`` of the true displacement. The inverse,
+    ``1 + (spot_fwhm / weight_fwhm) ** 2``, is exact only for Gaussian spots
+    close to the weight centre; returns ``1.0`` when ``spot_fwhm <= 0``.
+    """
+
+    if spot_fwhm <= 0:
+        return 1.0
+    if weight_fwhm <= 0:
+        raise ValueError("weight_fwhm must be > 0")
+    return float(1.0 + (float(spot_fwhm) / float(weight_fwhm)) ** 2)
+
+
+@jit(nopython=True, nogil=True, cache=False)
+def build_shwfs_wcog_weights_numba(
+    coords: np.ndarray,
+    weight_centers: np.ndarray,
+    inv_two_sigma2: np.float32,
+    weights_x: np.ndarray,
+    weights_y: np.ndarray,
+):
+    """Fill the separable WCoG Gaussian weights of every sub-aperture.
+
+    ``weights_x[i, j, n]`` and ``weights_y[i, j, m]`` receive
+    ``exp(-(coords - c)**2 * inv_two_sigma2)`` for the weight centre ``c`` of
+    sub-aperture ``(i, j)`` (x in ``weight_centers[:N]``, y in
+    ``weight_centers[N:]``). The weights only change with the centres or the
+    FWHM, so they are built once rather than per frame.
+    """
+
+    num_regions = weights_x.shape[0]
+    for i in range(num_regions):
+        for j in range(num_regions):
+            cx = weight_centers[i, j]
+            cy = weight_centers[i + num_regions, j]
+            for k in range(coords.shape[0]):
+                dx = coords[k] - cx
+                dy = coords[k] - cy
+                weights_x[i, j, k] = np.exp(-dx * dx * inv_two_sigma2)
+                weights_y[i, j, k] = np.exp(-dy * dy * inv_two_sigma2)
+    return weights_x, weights_y
+
+
+@jit(nopython=True, nogil=True, cache=False)
+def compute_slopes_shwfs_wcog_numba(
+    image: np.ndarray,
+    slopes: np.ndarray,
+    unaberrated_slopes: np.ndarray,
+    threshold: np.float32,
+    spacing: np.float32,
+    coords: np.ndarray,
+    offset_x: int,
+    offset_y: int,
+    int_n: int,
+    weight_centers: np.ndarray,
+    weights_x: np.ndarray,
+    weights_y: np.ndarray,
+    gain: np.float32,
+):
+    """Compute Shack-Hartmann slopes with a Gaussian-weighted CoG.
+
+    Pixels above ``threshold`` are multiplied by the separable Gaussian
+    weights ``weights_x[i, j] x weights_y[i, j]`` (see
+    :func:`build_shwfs_wcog_weights_numba`) centred on ``weight_centers``
+    (pixel offsets in the ``coords`` frame, x in rows ``[:N]`` and y in rows
+    ``[N:]``). The displacement from the weight centre is multiplied by
+    ``gain`` (``1`` leaves the WCoG gain loss uncorrected, see
+    :func:`wcog_gain_correction`) and added back to the centre, so the result
+    is a spot position in the same frame as the thresholded CoG. The
+    reference ``unaberrated_slopes`` are then subtracted.
+
+    Every entry of ``slopes`` is written: sub-apertures without flux above
+    threshold, or falling outside the image, are set to 0.
+    """
+
+    num_regions = unaberrated_slopes.shape[1]
+    for i in range(num_regions):
+        for j in range(num_regions):
+            start_i = int(round(spacing * i)) + offset_y
+            start_j = int(round(spacing * j)) + offset_x
+            slopes[i, j] = 0.0
+            slopes[i + num_regions, j] = 0.0
+            if start_j + int_n > image.shape[1] or start_i + int_n > image.shape[0]:
+                continue
+
+            cx = weight_centers[i, j]
+            cy = weight_centers[i + num_regions, j]
+            norm = 0.0
+            sum_x = 0.0
+            sum_y = 0.0
+            for m in range(int_n):
+                row_norm = 0.0
+                row_x = 0.0
+                for n in range(int_n):
+                    value = np.float32(image[start_i + m, start_j + n])
+                    if value > threshold:
+                        weighted = value * weights_x[i, j, n]
+                        row_norm += weighted
+                        row_x += weighted * coords[n]
+                row_weight = weights_y[i, j, m]
+                norm += row_weight * row_norm
+                sum_x += row_weight * row_x
+                sum_y += row_weight * row_norm * coords[m]
+
+            if norm > 0:
+                slopes[i, j] = cx + gain * (sum_x / norm - cx) - unaberrated_slopes[i, j]
+                slopes[i + num_regions, j] = (
+                    cy + gain * (sum_y / norm - cy) - unaberrated_slopes[i + num_regions, j]
+                )
+
+    return slopes
+
+
+@jit(nopython=True, nogil=True, cache=False)
+def build_shwfs_correlation_templates_numba(
+    reference_image: np.ndarray,
+    threshold: np.float32,
+    spacing: np.float32,
+    offset_x: int,
+    offset_y: int,
+    int_n: int,
+    search_radius: int,
+    templates: np.ndarray,
+    template_flux: np.ndarray,
+):
+    """Fill the per-sub-aperture correlation templates from a reference frame.
+
+    ``templates[i, j]`` receives the thresholded central
+    ``int_n - 2 * search_radius`` square of sub-aperture ``(i, j)`` and
+    ``template_flux[i, j]`` the thresholded flux of the whole sub-aperture
+    (0 for sub-apertures without flux or outside the image).
+    """
+
+    num_regions = template_flux.shape[0]
+    core = int_n - 2 * search_radius
+    for i in range(num_regions):
+        for j in range(num_regions):
+            start_i = int(round(spacing * i)) + offset_y
+            start_j = int(round(spacing * j)) + offset_x
+            template_flux[i, j] = 0.0
+            for a in range(core):
+                for b in range(core):
+                    templates[i, j, a, b] = 0.0
+            if (
+                start_j + int_n > reference_image.shape[1]
+                or start_i + int_n > reference_image.shape[0]
+            ):
+                continue
+            flux = 0.0
+            for m in range(int_n):
+                for n in range(int_n):
+                    value = np.float32(reference_image[start_i + m, start_j + n])
+                    if value > threshold:
+                        flux += value
+                        a = m - search_radius
+                        b = n - search_radius
+                        if 0 <= a < core and 0 <= b < core:
+                            templates[i, j, a, b] = value
+            template_flux[i, j] = flux
+    return templates, template_flux
+
+
+@jit(nopython=True, nogil=True, cache=False)
+def _subpixel_minimum_3x3(scores, best_i, best_j, num_shifts):
+    """Return the sub-pixel ``(dx, dy)`` offset of a score minimum.
+
+    Uses the 2D quadratic interpolation (2QI) of Löfdahl (2010, A&A 524,
+    A90) over the 3x3 neighbourhood, which unlike two 1D parabolas accounts
+    for the cross term of non-separable (extended) scenes. On the edge of the
+    search window, or when the quadratic has no minimum, it falls back to a
+    three-point parabola along each axis that has both neighbours, and to 0
+    otherwise. Offsets are clamped to +/- 1 pixel.
+    """
+
+    s0 = scores[best_i, best_j]
+    has_x = 0 < best_j < num_shifts - 1
+    has_y = 0 < best_i < num_shifts - 1
+    if has_x and has_y:
+        a2 = 0.5 * (scores[best_i, best_j + 1] - scores[best_i, best_j - 1])
+        a3 = 0.5 * (scores[best_i, best_j + 1] - 2.0 * s0 + scores[best_i, best_j - 1])
+        a4 = 0.5 * (scores[best_i + 1, best_j] - scores[best_i - 1, best_j])
+        a5 = 0.5 * (scores[best_i + 1, best_j] - 2.0 * s0 + scores[best_i - 1, best_j])
+        a6 = 0.25 * (
+            scores[best_i + 1, best_j + 1]
+            - scores[best_i + 1, best_j - 1]
+            - scores[best_i - 1, best_j + 1]
+            + scores[best_i - 1, best_j - 1]
+        )
+        det = a6 * a6 - 4.0 * a3 * a5
+        if a3 > 0 and a5 > 0 and det < 0:
+            dx = (2.0 * a2 * a5 - a4 * a6) / det
+            dy = (2.0 * a3 * a4 - a2 * a6) / det
+            return min(1.0, max(-1.0, dx)), min(1.0, max(-1.0, dy))
+    dx = 0.0
+    dy = 0.0
+    if has_x:
+        left = scores[best_i, best_j - 1]
+        right = scores[best_i, best_j + 1]
+        denom = left - 2.0 * s0 + right
+        if denom > 0:
+            dx = min(1.0, max(-1.0, 0.5 * (left - right) / denom))
+    if has_y:
+        up = scores[best_i - 1, best_j]
+        down = scores[best_i + 1, best_j]
+        denom = up - 2.0 * s0 + down
+        if denom > 0:
+            dy = min(1.0, max(-1.0, 0.5 * (up - down) / denom))
+    return dx, dy
+
+
+@jit(nopython=True, nogil=True, cache=False, fastmath=True)
+def compute_slopes_shwfs_correlation_numba(
+    image: np.ndarray,
+    slopes: np.ndarray,
+    unaberrated_slopes: np.ndarray,
+    threshold: np.float32,
+    spacing: np.float32,
+    offset_x: int,
+    offset_y: int,
+    int_n: int,
+    templates: np.ndarray,
+    template_flux: np.ndarray,
+    ref_positions: np.ndarray,
+    search_radius: int,
+    window: np.ndarray,
+    scores: np.ndarray,
+):
+    """Compute Shack-Hartmann slopes by correlating against reference templates.
+
+    For each sub-aperture the thresholded live image is flux-normalised to the
+    template's flux, and the squared-difference function between the
+    template (the central ``int_n - 2 * search_radius`` square of the
+    reference, see :func:`build_shwfs_correlation_templates_numba`) and the
+    live image is evaluated for every integer shift within
+    ``+/- search_radius`` pixels. The template always overlaps the live
+    window fully, so there is no overlap bias. The minimum is refined to
+    sub-pixel precision with a three-point parabola along each axis; a
+    minimum on the edge of the search window is not refined (the shift is
+    clamped to the window).
+
+    The measured shift is added to ``ref_positions`` (the thresholded CoG of
+    the reference frame) so the result is a spot position in the same frame
+    as the CoG centroiders, and ``unaberrated_slopes`` is subtracted.
+
+    ``window`` (``int_n x int_n``) and ``scores``
+    (``(2R+1) x (2R+1)``) are float scratch buffers. Every entry of
+    ``slopes`` is written: sub-apertures without flux above threshold (live or
+    reference), or outside the image, are set to 0.
+    """
+
+    num_regions = unaberrated_slopes.shape[1]
+    num_shifts = 2 * search_radius + 1
+    core = int_n - 2 * search_radius
+    for i in range(num_regions):
+        for j in range(num_regions):
+            start_i = int(round(spacing * i)) + offset_y
+            start_j = int(round(spacing * j)) + offset_x
+            slopes[i, j] = 0.0
+            slopes[i + num_regions, j] = 0.0
+            if start_j + int_n > image.shape[1] or start_i + int_n > image.shape[0]:
+                continue
+            ref_flux = template_flux[i, j]
+            if ref_flux <= 0:
+                continue
+
+            flux = 0.0
+            for m in range(int_n):
+                for n in range(int_n):
+                    value = np.float32(image[start_i + m, start_j + n])
+                    if value > threshold:
+                        window[m, n] = value
+                        flux += value
+                    else:
+                        window[m, n] = 0.0
+            if flux <= 0:
+                continue
+            scale = np.float32(ref_flux / flux)
+            for m in range(int_n):
+                for n in range(int_n):
+                    window[m, n] *= scale
+
+            template = templates[i, j]
+            best = np.inf
+            best_i = search_radius
+            best_j = search_radius
+            for di in range(num_shifts):
+                for dj in range(num_shifts):
+                    score = np.float32(0.0)
+                    for a in range(core):
+                        row = window[di + a]
+                        template_row = template[a]
+                        for b in range(core):
+                            diff = row[dj + b] - template_row[b]
+                            score += diff * diff
+                    scores[di, dj] = score
+                    if score < best:
+                        best = score
+                        best_i = di
+                        best_j = dj
+
+            shift_x, shift_y = _subpixel_minimum_3x3(scores, best_i, best_j, num_shifts)
+            shift_x += best_j - search_radius
+            shift_y += best_i - search_radius
+
+            slopes[i, j] = ref_positions[i, j] + shift_x - unaberrated_slopes[i, j]
+            slopes[i + num_regions, j] = (
+                ref_positions[i + num_regions, j] + shift_y - unaberrated_slopes[i + num_regions, j]
+            )
+
+    return slopes
+
+
 class SlopesProcess(Component):
     """
     A class to handle real-time slope computation for wavefront sensors.
@@ -338,7 +669,24 @@ class SlopesProcess(Component):
     pupils_radius : int, optional
         Radius of the pupils. Required for "PYWFS".
     contrast : float, optional
-        Contrast for "SHWFS". Default is 0.
+        Contrast for "SHWFS". Default is 0. Pixels at or below
+        ``image_noise * contrast`` are ignored by every centroider.
+    centroider : str, optional
+        SHWFS centroiding algorithm: ``"cog"`` (thresholded centre of
+        gravity, default), ``"wcog"`` (Gaussian-weighted CoG) or
+        ``"correlation"`` (correlation against a reference image).
+    wcog_fwhm : float, optional
+        FWHM in pixels of the WCoG Gaussian weight. Default is half the
+        sub-aperture size.
+    wcog_spot_fwhm : float, optional
+        Spot FWHM in pixels used to correct the WCoG gain loss. Default is 0
+        (no correction; the interaction matrix absorbs the gain).
+    correlation_search_radius : int, optional
+        Correlation search half-width in pixels. Default is a quarter of the
+        sub-aperture size (at least 1).
+    reference_image_file : str, optional
+        File holding the SHWFS reference image used by ``"correlation"``
+        (templates) and ``"wcog"`` (weight centres). Default is "".
     sub_ap_spacing : float, optional
         Sub-aperture spacing for "SHWFS".
     sub_ap_offset_x : float, optional
@@ -382,6 +730,11 @@ class SlopesProcess(Component):
         Valid sub-aperture mask.
     shwfs_contrast : float
         Contrast for "SHWFS".
+    centroider : str
+        SHWFS centroiding algorithm.
+    reference_image : numpy.ndarray or None
+        SHWFS reference image for the ``"wcog"`` and ``"correlation"``
+        centroiders.
     sub_ap_spacing : float
         Sub-aperture spacing for "SHWFS".
     num_regions : int
@@ -543,6 +896,7 @@ class SlopesProcess(Component):
                 self._configure_signal_streams(self.signal_shape, self.signal_2d_shape)
 
                 self.ref_slopes = np.zeros(self.signal_2d_shape, dtype=self.signal_dtype)
+                self._configure_shwfs_centroider()
 
             self.load_ref_slopes()
             self.logger.info(
@@ -930,6 +1284,291 @@ class SlopesProcess(Component):
             ref_slopes=ref_slopes,
         )
 
+    def _configure_shwfs_centroider(self) -> None:
+        """Read the SHWFS centroider settings and preallocate its buffers."""
+
+        conf = getattr(self, "conf", None) or {}
+        centroider = set_from_config(conf, "centroider", "cog").lower()
+        if centroider not in SHWFS_CENTROIDERS:
+            raise ValueError(
+                f"slopes: unsupported centroider '{centroider}', expected one of "
+                f"{', '.join(SHWFS_CENTROIDERS)}"
+            )
+        self.centroider = centroider
+        int_n = int(self.region_size)
+        self.wcog_fwhm = set_from_config(conf, "wcog_fwhm", float(int_n) / 2.0)
+        if self.wcog_fwhm <= 0:
+            raise ValueError(f"slopes: 'wcog_fwhm' must be > 0, got {self.wcog_fwhm}")
+        self.wcog_spot_fwhm = set_from_config(conf, "wcog_spot_fwhm", 0.0)
+        if self.wcog_spot_fwhm < 0:
+            raise ValueError(f"slopes: 'wcog_spot_fwhm' must be >= 0, got {self.wcog_spot_fwhm}")
+        self.correlation_search_radius = set_from_config(
+            conf, "correlation_search_radius", max(1, int_n // 4)
+        )
+        self.reference_image_file = set_from_config(conf, "reference_image_file", "")
+
+        self._correlation_radius()
+
+        self._shwfs_coords = shwfs_subaperture_coords(int_n)
+        self._shwfs_slopes = np.zeros(self.ref_slopes.shape, dtype=np.float32)
+        self._shwfs_centre_positions = np.zeros(self.ref_slopes.shape, dtype=np.float32)
+        self._wcog_weights_cache = None
+        self._corr_window = np.empty((int_n, int_n), dtype=np.float32)
+        self._shwfs_products = None
+        self._warned_missing_reference = False
+        self.reference_image = None
+        if self.reference_image_file:
+            self.load_reference_image()
+
+    def _correlation_radius(self) -> int:
+        """Return the validated correlation search radius."""
+
+        int_n = int(self.region_size)
+        radius = int(self.correlation_search_radius)
+        if radius < 1 or int_n - 2 * radius < 2:
+            raise ValueError(
+                "slopes: 'correlation_search_radius' must be >= 1 and leave a template of "
+                f"at least 2 pixels (sub-aperture size {int_n}), got {radius}"
+            )
+        return radius
+
+    def _wcog_weights(self, centers):
+        """Return the per-sub-aperture WCoG weights, rebuilt when centres or FWHM change."""
+
+        fwhm = float(self.wcog_fwhm)
+        if fwhm <= 0:
+            raise ValueError(f"slopes: 'wcog_fwhm' must be > 0, got {fwhm}")
+        cache = self._wcog_weights_cache
+        if cache is not None and cache[0] is centers and cache[1] == fwhm:
+            return cache[2], cache[3]
+        n_reg, int_n = int(self.num_regions), int(self.region_size)
+        weights_x = np.empty((n_reg, n_reg, int_n), dtype=np.float32)
+        weights_y = np.empty_like(weights_x)
+        sigma = fwhm / FWHM_PER_SIGMA
+        build_shwfs_wcog_weights_numba(
+            self._shwfs_coords,
+            centers,
+            np.float32(1.0 / (2.0 * sigma * sigma)),
+            weights_x,
+            weights_y,
+        )
+        self._wcog_weights_cache = (centers, fwhm, weights_x, weights_y)
+        return weights_x, weights_y
+
+    def _shwfs_threshold(self) -> np.float32:
+        return np.float32(self.image_noise * self.shwfs_contrast)
+
+    def _shwfs_reference_products(self, threshold):
+        """Return the products derived from the reference image, or ``None``.
+
+        The tuple ``(reference_image, threshold, radius, ref_positions,
+        templates, template_flux, scores)`` holds the thresholded CoG of each
+        reference spot, the correlation templates and a score buffer sized for
+        ``radius``. It depends on the reference image, the threshold and the
+        search radius, is rebuilt only when one of those changes, and is
+        swapped in as a single object so a concurrent update cannot hand the
+        kernel mismatched buffers.
+        """
+
+        reference_image = self.reference_image
+        if reference_image is None:
+            return None
+        radius = self._correlation_radius()
+        threshold = float(threshold)
+        products = self._shwfs_products
+        if (
+            products is not None
+            and products[0] is reference_image
+            and products[1] == threshold
+            and products[2] == radius
+        ):
+            return products
+
+        int_n = int(self.region_size)
+        n_reg = int(self.num_regions)
+        spacing = np.float32(self.sub_ap_spacing)
+        zeros = np.zeros(self.ref_slopes.shape, dtype=np.float32)
+        ref_positions = compute_slopes_shwfs_optim_numba(
+            reference_image,
+            zeros.copy(),
+            zeros,
+            np.float32(threshold),
+            spacing,
+            np.meshgrid(self._shwfs_coords, self._shwfs_coords)[0],
+            self.offset_x,
+            self.offset_y,
+            int_n,
+        ).astype(np.float32)
+        core = int_n - 2 * radius
+        templates = np.zeros((n_reg, n_reg, core, core), dtype=np.float32)
+        template_flux = np.zeros((n_reg, n_reg), dtype=np.float32)
+        build_shwfs_correlation_templates_numba(
+            reference_image,
+            np.float32(threshold),
+            spacing,
+            self.offset_x,
+            self.offset_y,
+            int_n,
+            radius,
+            templates,
+            template_flux,
+        )
+        scores = np.empty((2 * radius + 1, 2 * radius + 1), dtype=np.float64)
+        products = (
+            reference_image,
+            threshold,
+            radius,
+            ref_positions,
+            templates,
+            template_flux,
+            scores,
+        )
+        self._shwfs_products = products
+        return products
+
+    def set_reference_image(self, reference_image):
+        """
+        Set the SHWFS reference image.
+
+        The ``"correlation"`` centroider cuts one template per sub-aperture
+        from it, and the ``"wcog"`` centroider centres each Gaussian weight on
+        the thresholded CoG of its reference spot. Take (or load) reference
+        slopes afterwards so the residual offsets are removed.
+
+        Parameters
+        ----------
+        reference_image : numpy.ndarray
+            Dark-subtracted WFS frame with the shape of the ``wfs`` stream.
+        """
+        component_logger = getattr(self, "logger", logger)
+        reference_image = np.asarray(reference_image, dtype=np.float32)
+        expected = tuple(getattr(self, "image_shape", reference_image.shape))
+        if reference_image.shape != expected:
+            raise ValueError(
+                f"Reference image shape {reference_image.shape} does not match WFS shape {expected}"
+            )
+        self.reference_image = np.ascontiguousarray(reference_image).copy()
+        self._warned_missing_reference = False
+        self._shwfs_reference_products(self._shwfs_threshold())
+        component_logger.info("Set SHWFS reference image shape=%s", reference_image.shape)
+
+    def take_reference_image(self, count=None):
+        """
+        Average WFS frames into the SHWFS reference image.
+
+        Parameters
+        ----------
+        count : int, optional
+            Number of frames to average. Defaults to ``ref_slope_count``.
+        """
+        count = int(self.ref_slope_count if count is None else count)
+        if count < 1:
+            raise ValueError("count must be at least 1")
+        accum = np.zeros(self.image_shape, dtype=np.float64)
+        for _ in range(count):
+            accum += np.asarray(self.read_image(), dtype=np.float64)
+        self.set_reference_image(accum / count)
+
+    def save_reference_image(self, filename=""):
+        """
+        Save the SHWFS reference image to a file.
+
+        Parameters
+        ----------
+        filename : str, optional
+            Destination. Defaults to the configured ``reference_image_file``.
+        """
+        if filename == "":
+            filename = self.reference_image_file
+        if filename == "":
+            raise ValueError("No reference image filename provided")
+        if self.reference_image is None:
+            raise ValueError("No reference image to save")
+        np.save(filename, self.reference_image)
+        getattr(self, "logger", logger).info("Saved SHWFS reference image to %s", filename)
+
+    def load_reference_image(self, filename=""):
+        """
+        Load the SHWFS reference image from a file.
+
+        Parameters
+        ----------
+        filename : str, optional
+            Source file. Defaults to the configured ``reference_image_file``.
+        """
+        if filename == "":
+            filename = self.reference_image_file
+        if filename == "":
+            raise ValueError("No reference image filename provided")
+        self.set_reference_image(np.load(filename))
+
+    def _compute_slopes_shwfs(self, image):
+        """Run the configured SHWFS centroider and return the 2D slopes array."""
+
+        threshold = self._shwfs_threshold()
+        spacing = np.float32(self.sub_ap_spacing)
+        int_n = int(self.region_size)
+        centroider = getattr(self, "centroider", "cog")
+        if centroider == "cog":
+            return compute_slopes_shwfs_optim_numba(
+                image=image,
+                slopes=np.zeros_like(self.ref_slopes),
+                unaberrated_slopes=self.ref_slopes,
+                threshold=threshold,
+                spacing=spacing,
+                xvals=self.xvals,
+                offset_x=self.offset_x,
+                offset_y=self.offset_y,
+                int_n=int_n,
+            )
+
+        products = self._shwfs_reference_products(threshold)
+        if centroider == "wcog":
+            centers = self._shwfs_centre_positions if products is None else products[3]
+            weights_x, weights_y = self._wcog_weights(centers)
+            return compute_slopes_shwfs_wcog_numba(
+                image,
+                self._shwfs_slopes,
+                self.ref_slopes,
+                threshold,
+                spacing,
+                self._shwfs_coords,
+                self.offset_x,
+                self.offset_y,
+                int_n,
+                centers,
+                weights_x,
+                weights_y,
+                np.float32(wcog_gain_correction(self.wcog_fwhm, self.wcog_spot_fwhm)),
+            )
+
+        if products is None:
+            if not self._warned_missing_reference:
+                getattr(self, "logger", logger).warning(
+                    "Correlation centroider has no reference image; publishing zero slopes "
+                    "until one is set (take_reference_image / reference_image_file)"
+                )
+                self._warned_missing_reference = True
+            self._shwfs_slopes.fill(0.0)
+            return self._shwfs_slopes
+        _, _, radius, ref_positions, templates, template_flux, scores = products
+        return compute_slopes_shwfs_correlation_numba(
+            image,
+            self._shwfs_slopes,
+            self.ref_slopes,
+            threshold,
+            spacing,
+            self.offset_x,
+            self.offset_y,
+            int_n,
+            templates,
+            template_flux,
+            ref_positions,
+            radius,
+            self._corr_window,
+            scores,
+        )
+
     def compute_signal(self):
         """
         Compute the signal from the WFS image.
@@ -958,17 +1597,7 @@ class SlopesProcess(Component):
                     )
 
             elif self.wfs_type == "shwfs":
-                slopes = compute_slopes_shwfs_optim_numba(
-                    image=image,
-                    slopes=np.zeros_like(self.ref_slopes),
-                    unaberrated_slopes=self.ref_slopes,
-                    threshold=self.image_noise * self.shwfs_contrast,
-                    spacing=self.sub_ap_spacing,
-                    xvals=self.xvals,
-                    offset_x=self.offset_x,
-                    offset_y=self.offset_y,
-                    int_n=self.region_size,
-                )
+                slopes = self._compute_slopes_shwfs(image)
                 slope_signal = slopes[self.valid_sub_aps]
                 # self.signal.write(slopes[self.valid_sub_aps])
                 # self.signal_2d.write(slopes*self.valid_sub_aps)
