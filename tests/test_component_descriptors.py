@@ -242,3 +242,24 @@ def test_builtin_classes_read_every_descriptor_known_key():
     assert unknown_config_key_warnings("telemetry", {"streams": ["wfs"]}, Telemetry) == []
     assert unknown_config_key_warnings("slopes", {"contrast": 1.0}, SlopesProcess) == []
     assert "sub_ap_spacing" in known_config_keys(SyntheticSHWFS)
+
+
+def test_file_loaded_copy_of_a_builtin_class_is_still_checked(tmp_path):
+    # A class_file pointing at a pyrtc source outside the installed package
+    # (checkout next to a wheel install) loads a second copy of the class.
+    import importlib.util
+    import inspect
+    import shutil
+
+    from pyrtc.component_descriptors import known_config_keys
+    from pyrtc.loop import Loop
+
+    copy_path = tmp_path / "pyrtc" / "loop.py"
+    copy_path.parent.mkdir()
+    shutil.copy(inspect.getfile(Loop), copy_path)
+    spec = importlib.util.spec_from_file_location("copied_pyrtc_loop", copy_path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    assert module.Loop is not Loop
+    assert known_config_keys(module.Loop) == known_config_keys(Loop)

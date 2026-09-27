@@ -8,7 +8,9 @@ stream contracts, and extension metadata.
 from __future__ import annotations
 
 import difflib
+import inspect
 from dataclasses import asdict, dataclass, field
+from pathlib import Path
 from typing import Any, Mapping, Type
 
 from pyrtc.loop import Loop
@@ -945,6 +947,10 @@ def _find_component_descriptor(component_class: Type[Any]) -> ComponentDescripto
         descriptor = _DESCRIPTORS_BY_CLASS.get(cls)
         if descriptor is not None:
             return descriptor
+        # A file-loaded copy of a built-in class (see _is_same_builtin_class).
+        for builtin_class, builtin_descriptor in _DESCRIPTORS_BY_CLASS.items():
+            if _is_same_builtin_class(cls, builtin_class):
+                return builtin_descriptor
     return None
 
 
@@ -988,6 +994,40 @@ COMMON_COMPONENT_CONFIG_KEYS = frozenset(
 )
 
 
+def _class_source_file(cls: Type[Any]) -> Path | None:
+    """Return the file a class body was defined in, if it can be found."""
+
+    for value in vars(cls).values():
+        function = getattr(value, "__func__", value)
+        code = getattr(function, "__code__", None)
+        if code is not None:
+            return Path(code.co_filename).resolve()
+    try:
+        return Path(inspect.getfile(cls)).resolve()
+    except (TypeError, OSError):
+        return None
+
+
+def _is_same_builtin_class(candidate: Type[Any], builtin: Type[Any]) -> bool:
+    """Return whether ``candidate`` is ``builtin`` or a file-loaded copy of it.
+
+    A config ``class_file`` pointing at a pyrtc source file outside the
+    installed package (e.g. a checkout next to a wheel install) is imported as
+    a separate module, producing a distinct class object with the same code.
+    """
+
+    if candidate is builtin:
+        return True
+    if candidate.__qualname__ != builtin.__qualname__:
+        return False
+    candidate_file = _class_source_file(candidate)
+    if candidate_file is None:
+        return False
+    builtin_parts = builtin.__module__.split(".")
+    builtin_parts[-1] += ".py"
+    return candidate_file.parts[-len(builtin_parts) :] == tuple(builtin_parts)
+
+
 def known_config_keys(component_class: Type[Any]) -> frozenset[str] | None:
     """Return the config keys a component class is known to read.
 
@@ -1008,7 +1048,7 @@ def known_config_keys(component_class: Type[Any]) -> frozenset[str] | None:
         return None
     own_attributes = vars(component_class)
     declares_keys = (
-        component_class is descriptor.component_class
+        _is_same_builtin_class(component_class, descriptor.component_class)
         or "EXTRA_CONFIG_KEYS" in own_attributes
         or "COMPONENT_DESCRIPTOR" in own_attributes
     )
