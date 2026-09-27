@@ -179,11 +179,11 @@ ruff check . && ruff format --check .    # lint, as in CI
   `PYTHONPATH`. OOPAO therefore cannot be a pyrtc extra; the recipe is in
   `docs/source/examples/pywfs.rst`. SPECULA is on PyPI (`specula` extra).
 
-- pyshmem shares one lock state per stream name inside a process and refuses
-  `close()` on *any* handle while another thread holds that lock. In a soft
-  RTC an observer handle (latency probe, viewer) can therefore fail to close
-  mid-write; `pyrtc.latency._close_observer` retries briefly. The real fix
-  belongs in pyshmem (a handle that never took the lock should close).
+- pyshmem shares one lock state per stream name inside a process. Before
+  pyshmem 1.3.5, `close()` on *any* handle failed while another thread held
+  that lock (e.g. a latency observer closing while a soft-RTC producer was
+  mid-write). It was fixed at the source and pyrtc requires
+  `pyshmem>=1.3.5`; don't add retry workarounds for it.
 - Latency and handoff numbers on a shared host swing by 2x or more with load;
   compare notify on/off with interleaved `--repeats`, never single runs.
 

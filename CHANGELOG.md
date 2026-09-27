@@ -9,9 +9,9 @@ All notable changes to `pyrtcao` will be documented in this file.
 - **`manager.latency()` no longer fails at random in soft-RTC mode.**
 	Closing the observer handles raised `cannot close shared memory while
 	another thread owns its lock` when a component thread was mid-write
-	(pyshmem shares lock state per stream name within a process). The close
-	now waits briefly for the write to finish. `RTCManager.latency()` also
-	accepts `timeout_seconds`.
+	(pyshmem shares lock state per stream name within a process). Fixed at the
+	source in pyshmem 1.3.5, now the minimum version. `RTCManager.latency()`
+	also accepts `timeout_seconds`.
 - **Unsupported slopes types and unknown config keys are reported** (#45).
 	Any `slopes.signal_type` other than `slopes` passed validation, and
 	`SlopesProcess.compute_signal()` then never wrote the `signal` stream, so

@@ -105,11 +105,23 @@ def run_handoff(mode: str, notify: bool, *, samples: int, period: float) -> dict
             ready = threading.Event()
             done = threading.Event()
             results: list = []
-            worker = threading.Thread(target=_consume, args=(name, samples, ready, done, results))
+
+            def _consume_recording_errors():
+                try:
+                    _consume(name, samples, ready, done, results)
+                except BaseException as exc:  # surfaced to the caller above
+                    results.append(exc)
+                    done.set()
+
+            worker = threading.Thread(target=_consume_recording_errors)
             worker.start()
             ready.wait(5.0)
             write_costs = _produce(stream, samples, period, done.is_set)
             worker.join(timeout=10.0)
+            if not results:
+                raise RuntimeError("handoff consumer thread produced no results")
+            if isinstance(results[0], BaseException):
+                raise RuntimeError("handoff consumer thread failed") from results[0]
             delays = results[0]
         else:
             ctx = mp.get_context("spawn")

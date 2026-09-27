@@ -265,27 +265,27 @@ class _FakeManager:
         }
 
 
-class _BusyCloseStream:
-    """Stream handle whose close() fails while a writer holds the lock."""
+def test_observer_closes_while_a_writer_thread_holds_the_lock():
+    # pyshmem >= 1.3.5: the lock is shared per name, but closing a handle the
+    # writer is not using must not fail while the writer is mid-write.
+    import threading
 
-    def __init__(self, failures):
-        self.failures = failures
-        self.closed = False
+    from testsupport import private_stream
 
-    def close(self):
-        if self.failures > 0:
-            self.failures -= 1
-            raise RuntimeError("cannot close shared memory while another thread owns its lock")
-        self.closed = True
+    writer = private_stream("lockwrt", (2,), "float32")
+    observer = latency.open_stream(writer.name)
+    holding, release = threading.Event(), threading.Event()
 
+    def _write_under_lock():
+        with writer.locked():
+            holding.set()
+            release.wait(5.0)
 
-def test_close_observer_waits_out_a_writer_holding_the_lock():
-    stream = _BusyCloseStream(failures=3)
-    latency._close_observer(stream)
-    assert stream.closed
-
-
-def test_close_observer_gives_up_after_timeout():
-    stream = _BusyCloseStream(failures=10**9)
-    with pytest.raises(RuntimeError):
-        latency._close_observer(stream, timeout_seconds=0.01)
+    worker = threading.Thread(target=_write_under_lock, daemon=True)
+    worker.start()
+    assert holding.wait(5.0)
+    try:
+        observer.close()
+    finally:
+        release.set()
+        worker.join(5.0)
