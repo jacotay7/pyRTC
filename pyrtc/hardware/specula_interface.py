@@ -1161,6 +1161,9 @@ def _unwrap_specula_context(resource):
 class SPECULAWFSensor(WavefrontSensor):
     """Wavefront-sensor wrapper around a SPECULA pyramid plus detector chain."""
 
+    # Reads no config keys beyond the base component's.
+    EXTRA_CONFIG_KEYS = ()
+
     def __init__(self, wfs_conf, context) -> None:
         self.context = _unwrap_specula_context(context)
         super().__init__(wfs_conf)
@@ -1180,6 +1183,9 @@ class SPECULAWFSensor(WavefrontSensor):
 
 class SPECULAWFCorrector(WavefrontCorrector):
     """Wavefront-corrector wrapper that pushes pyrtc commands into SPECULA."""
+
+    # Reads no config keys beyond the base component's.
+    EXTRA_CONFIG_KEYS = ()
 
     def __init__(self, corrector_conf, context) -> None:
         self.context = _unwrap_specula_context(context)
@@ -1219,6 +1225,9 @@ class SPECULAWFCorrector(WavefrontCorrector):
 
 class SPECULAScienceCamera(ScienceCamera):
     """Science-camera wrapper backed by SPECULA's PSF processing object."""
+
+    # Reads no config keys beyond the base component's.
+    EXTRA_CONFIG_KEYS = ()
 
     def __init__(self, science_conf, context) -> None:
         self.context = _unwrap_specula_context(context)

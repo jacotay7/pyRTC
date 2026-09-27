@@ -27,6 +27,17 @@ class SpinnakerScienceCamera(ScienceCamera):
     numpy arrays expected by downstream pyrtc consumers.
     """
 
+    EXTRA_CONFIG_KEYS = (
+        "index",
+        "bit_depth",
+        "binning",
+        "exposure",
+        "left",
+        "top",
+        "gain",
+        "gamma",
+    )
+
     def __init__(self, conf):
         try:
             super().__init__(conf)

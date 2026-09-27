@@ -230,6 +230,21 @@ Future third-party integrations can also register descriptors programmatically w
 
 Descriptor-driven validation is intentionally generic and should be paired with component-specific validation for domain rules that cannot be captured as simple field metadata.
 
+Unknown config keys
+~~~~~~~~~~~~~~~~~~~
+
+`pyrtc-validate-config` and component construction warn (without failing) about config keys that the component class does not read, such as ``method:`` where the loop reads ``im_method``.
+The known keys are the common runtime keys (``class_name``, ``class_file``, ``name``, ``functions``, ``affinity``, ``realtime_priority``, ``gpu_device``, ``input_streams``, ``output_streams``, ``resource``), the descriptor fields, and any ``EXTRA_CONFIG_KEYS`` declared along the class hierarchy. Keys starting with ``_`` are private runtime keys and are never reported.
+
+A subclass of a built-in component that reads keys of its own declares them, which also opts it into the check:
+
+.. code-block:: python
+
+   class MyCamera(pyrtc.WavefrontSensor):
+       EXTRA_CONFIG_KEYS = ("serial", "exposure")
+
+A subclass that declares neither ``EXTRA_CONFIG_KEYS`` nor its own ``COMPONENT_DESCRIPTOR`` is not checked, because its extra keys are unknown.
+
 When opening a pull request:
 
 - state the motivation clearly

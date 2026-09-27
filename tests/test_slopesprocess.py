@@ -356,3 +356,37 @@ def test_gpu_pywfs_device_cache_rebuilds_on_change():
         np.testing.assert_array_equal(idx.numpy(), np.flatnonzero(mask))
     signal, _ = _run_compute_signal(sp, image)
     np.testing.assert_allclose(signal, _numba_reference(sp, image), rtol=1e-5, atol=1e-6)
+
+
+@pytest.mark.parametrize(
+    "conf, message",
+    [
+        ({"type": "SHWFS", "signal_type": "phase"}, "signal_type"),
+        ({"type": "SHWFS"}, "signal_type"),
+        ({"type": "curvature", "signal_type": "slopes"}, "type"),
+    ],
+)
+def test_slopes_process_rejects_unsupported_types_before_starting(conf, message):
+    # Raised before Component.__init__, so no worker thread or stream is created.
+    with pytest.raises(ValueError, match=f"unsupported {message}"):
+        slopes_mod.SlopesProcess({**conf, "functions": ["compute_signal"]})
+
+
+def test_slopes_process_normalizes_type_case():
+    assert slopes_mod.SlopesProcess.normalize_signal_types(
+        {"type": "ShWfS", "signal_type": "SLOPES"}
+    ) == (
+        "shwfs",
+        "slopes",
+    )
+
+
+def test_compute_signal_raises_for_unsupported_signal_type():
+    sp = slopes_mod.SlopesProcess.__new__(slopes_mod.SlopesProcess)
+    sp.signal_type = "phase"
+    sp.wfs_type = "shwfs"
+    sp._image_buffer = None
+    sp.read_stream = lambda *args, **kwargs: np.zeros((4, 4), dtype=np.float32)
+
+    with pytest.raises(ValueError, match="unsupported signal_type"):
+        sp.compute_signal()

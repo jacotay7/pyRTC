@@ -93,7 +93,6 @@ wfc:
   floating_influence_radius: 1
   affinity: 5
   command_cap: 0.8
-  hardware_delay: 0.001 #seconds
   # gpu_device: 0
   frame_delay: 0
   class_name: ALPAODM

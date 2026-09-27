@@ -6,6 +6,23 @@ All notable changes to `pyrtcao` will be documented in this file.
 
 ### Fixed
 
+- **Unsupported slopes types and unknown config keys are reported** (#45).
+	Any `slopes.signal_type` other than `slopes` passed validation, and
+	`SlopesProcess.compute_signal()` then never wrote the `signal` stream, so
+	the loop blocked forever. `signal_type` (`slopes`) and `type` (`SHWFS`,
+	`PYWFS`) are now checked case-insensitively by the config schema, the
+	descriptor (`ConfigFieldDescriptor` gained `case_sensitive`), and
+	`SlopesProcess.__init__`, which raises before starting worker threads.
+	Config keys a component does not read (such as `method:` for the loop's
+	`im_method`) now produce warnings in `pyrtc-validate-config` (text and
+	JSON) and in the component log at construction. Private `_` keys and the
+	common runtime keys are never reported. Subclasses of built-in components
+	declare the keys they read with `EXTRA_CONFIG_KEYS`, which opts them into
+	the check; undeclared subclasses are not checked. The in-repo hardware
+	adapters declare theirs. The wfc descriptor now lists `command_cap` and
+	`display_grid_size`, and the telemetry descriptor lists `streams`. The
+	OOPAO, SPECULA and SHARP-lab example configs no longer set `wfc.hardware_delay`
+	(a loop key the corrector ignores) or the OOPAO `psf.index`.
 - **Importing pyrtc no longer changes the process environment** (#46).
 	`loop`, `slopes_process`, `wavefront_corrector` and the ALPAO adapter set
 	`OMP_NUM_THREADS`, `OPENBLAS_NUM_THREADS`, etc. to 1 at import time,

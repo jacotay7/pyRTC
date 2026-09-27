@@ -323,9 +323,10 @@ class SlopesProcess(Component):
     Config
     ------
     type : str
-        Type of the WFS ("PYWFS" or "SHWFS").
+        Type of the WFS ("PYWFS" or "SHWFS", case-insensitive).
     signal_type : str
-        Type of signal ("slopes").
+        Type of signal. Only "slopes" (case-insensitive) is supported; any
+        other value raises ``ValueError`` at construction.
     image_noise : float, optional
         Image noise. Default is 0.0.
     central_obscuration_ratio : float, optional
@@ -429,8 +430,37 @@ class SlopesProcess(Component):
         Mask for pupil 4.
     """
 
+    SUPPORTED_WFS_TYPES = ("SHWFS", "PYWFS")
+    SUPPORTED_SIGNAL_TYPES = ("slopes",)
+
+    @classmethod
+    def normalize_signal_types(cls, conf) -> tuple[str, str]:
+        """Return the lower-cased ``(type, signal_type)`` of a slopes config.
+
+        Raises ``ValueError`` for missing or unsupported values, so a bad
+        config fails at construction instead of leaving ``compute_signal``
+        silently publishing nothing.
+        """
+
+        normalized = []
+        for key, supported in (
+            ("type", cls.SUPPORTED_WFS_TYPES),
+            ("signal_type", cls.SUPPORTED_SIGNAL_TYPES),
+        ):
+            value = conf.get(key) if hasattr(conf, "get") else None
+            lowered = value.strip().lower() if isinstance(value, str) else None
+            if lowered not in {choice.lower() for choice in supported}:
+                raise ValueError(
+                    f"slopes: unsupported {key} {value!r}; supported values are "
+                    f"{', '.join(supported)} (case-insensitive)"
+                )
+            normalized.append(lowered)
+        return normalized[0], normalized[1]
+
     def __init__(self, conf) -> None:
         try:
+            # Validate before Component.__init__ starts the worker threads.
+            wfs_type, signal_type = self.normalize_signal_types(conf)
             super().__init__(conf)
             self.conf = conf
             self.name = "Slopes"
@@ -448,8 +478,8 @@ class SlopesProcess(Component):
                 self.conf, "central_obscuration_ratio", 0.0
             )
 
-            self.wfs_type = self.conf["type"].lower()
-            self.signal_type = self.conf["signal_type"]
+            self.wfs_type = wfs_type
+            self.signal_type = signal_type
             self.valid_sub_aps = None
             self.valid_sub_aps_file = set_from_config(self.conf, "valid_sub_aps_file", "")
 
@@ -954,6 +984,8 @@ class SlopesProcess(Component):
                     slope_signal = signal_host
             self.write_stream("signal", slope_signal)
             self.write_stream("signal_2d", self.compute_signal_2d(signal_host))
+        else:
+            raise ValueError(f"slopes: unsupported signal_type {self.signal_type!r}")
 
         return
 

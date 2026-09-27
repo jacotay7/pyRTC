@@ -75,6 +75,10 @@ Before starting a system, validate the full YAML file:
 
 	pyrtc-validate-config examples/synthetic_shwfs/config.yaml
 
+Keys that a component does not read (often a typo, such as ``method`` for the
+loop's ``im_method``) are reported as warnings after the summary; the config is
+still valid.
+
 For automation or GUI-oriented tooling, JSON output is also available:
 
 .. code-block:: bash

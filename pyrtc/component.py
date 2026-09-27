@@ -85,6 +85,7 @@ class Component:
 
         try:
             validate_component_config(conf, [cls.__name__ for cls in self.__class__.mro()])
+            self._warn_unknown_config_keys(conf)
 
             self.alive = True
             self.running = False
@@ -134,6 +135,19 @@ class Component:
             raise
 
         return
+
+    def _warn_unknown_config_keys(self, conf) -> None:
+        """Log a warning for each config key this component class does not read.
+
+        Subclasses that read keys of their own list them in
+        ``EXTRA_CONFIG_KEYS``; see
+        :func:`pyrtc.component_descriptors.known_config_keys`.
+        """
+
+        from pyrtc.component_descriptors import unknown_config_key_warnings
+
+        for message in unknown_config_key_warnings(conf.get("_sectionName"), conf, self.__class__):
+            self.logger.warning(message)
 
     def _default_stream_name_map(self, direction: str) -> dict[str, str]:
         defaults: dict[str, str] = {}

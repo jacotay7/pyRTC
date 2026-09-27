@@ -3,8 +3,15 @@ import json
 from pathlib import Path
 
 import pytest
+import yaml
 
-from pyrtc.config_schema import read_system_config, validate_system_config
+import logging
+
+from pyrtc.config_schema import (
+    collect_config_warnings,
+    read_system_config,
+    validate_system_config,
+)
 from pyrtc.scripts import validate_config as validate_config_cli
 from pyrtc.utils import (
     ConfigValidationError,
@@ -322,3 +329,108 @@ def test_validate_config_cli_json_failure(capsys, tmp_path):
     assert code == 1
     assert payload["valid"] is False
     assert "wfc" in payload["error"]
+
+
+@pytest.mark.parametrize("signal_type", ["phase", "Slopes2", "intensity"])
+def test_validate_system_config_rejects_unsupported_signal_type(signal_type):
+    conf = read_system_config(SYNTHETIC_CONFIG_PATH, validate=False)
+    conf["slopes"]["signal_type"] = signal_type
+
+    with pytest.raises(ConfigValidationError, match="signal_type"):
+        validate_system_config(conf, config_path=SYNTHETIC_CONFIG_PATH)
+
+
+def test_validate_system_config_accepts_slopes_types_case_insensitively():
+    conf = read_system_config(SYNTHETIC_CONFIG_PATH, validate=False)
+    conf["slopes"]["type"] = "shwfs"
+    conf["slopes"]["signal_type"] = "SLOPES"
+
+    validate_system_config(conf, config_path=SYNTHETIC_CONFIG_PATH)
+
+
+def test_synthetic_example_has_no_config_warnings():
+    normalized = read_system_config(SYNTHETIC_CONFIG_PATH)
+
+    assert collect_config_warnings(normalized) == []
+
+
+def test_collect_config_warnings_reports_unknown_keys():
+    conf = read_system_config(SYNTHETIC_CONFIG_PATH, validate=False)
+    conf["loop"]["method"] = "push-pull"
+    conf["loop"]["_private"] = 1
+    conf["wfs"]["frame_rate"] = 10.0  # SyntheticSHWFS reads frame_rate_hz
+
+    normalized = validate_system_config(conf, config_path=SYNTHETIC_CONFIG_PATH)
+    warnings = collect_config_warnings(normalized)
+
+    assert warnings == [
+        "wfs: unknown config key 'frame_rate' is ignored by SyntheticSHWFS"
+        " (did you mean 'frame_rate_hz'?)",
+        "loop: unknown config key 'method' is ignored by Loop (did you mean 'im_method'?)",
+    ]
+
+
+def _write_config_with_loop_typo(tmp_path):
+    conf = read_system_config(SYNTHETIC_CONFIG_PATH, validate=False)
+    conf["loop"]["method"] = "push-pull"
+    for section in ("wfs", "slopes", "loop", "wfc", "psf"):
+        conf[section].pop("class_file", None)
+    conf["manager"].pop("component_files", None)
+    conf["loop"].pop("im_file", None)
+    config_path = tmp_path / "typo.yaml"
+    config_path.write_text(yaml.safe_dump(conf), encoding="utf-8")
+    return config_path
+
+
+def test_validate_config_cli_prints_unknown_key_warnings(capsys, tmp_path):
+    config_path = _write_config_with_loop_typo(tmp_path)
+
+    code = validate_config_cli.main([str(config_path)])
+    captured = capsys.readouterr()
+
+    assert code == 0
+    assert "Config valid" in captured.out
+    assert "Warning: loop: unknown config key 'method'" in captured.out
+
+
+def test_validate_config_cli_json_includes_warnings(capsys, tmp_path):
+    config_path = _write_config_with_loop_typo(tmp_path)
+
+    code = validate_config_cli.main([str(config_path), "--format", "json"])
+    payload = json.loads(capsys.readouterr().out)
+
+    assert code == 0
+    assert payload["valid"] is True
+    assert payload["warnings"] == [
+        "loop: unknown config key 'method' is ignored by Loop (did you mean 'im_method'?)"
+    ]
+
+
+def test_component_construction_logs_unknown_config_keys(tmp_path):
+    from pyrtc.telemetry import Telemetry
+
+    records = []
+
+    class _Collect(logging.Handler):
+        def emit(self, record):
+            records.append(record)
+
+    logger = logging.getLogger("pyrtc.telemetry.Telemetry")
+    handler = _Collect(level=logging.WARNING)
+    logger.addHandler(handler)
+    try:
+        Telemetry(
+            {
+                "_sectionName": "telemetry",
+                "data_dir": str(tmp_path),
+                "stream": ["wfs"],
+                "class_name": "Telemetry",
+            }
+        )
+    finally:
+        logger.removeHandler(handler)
+
+    messages = [record.getMessage() for record in records if record.levelno == logging.WARNING]
+    assert messages == [
+        "telemetry: unknown config key 'stream' is ignored by Telemetry (did you mean 'streams'?)"
+    ]

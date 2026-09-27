@@ -88,7 +88,6 @@ See above for how to launch a soft-RTC equivalent.
     m2c_file: "./examples/sharp_lab/calib/m2c_kl.npy" 
     affinity: 5
     command_cap: 0.8
-    hardware_delay: 0.001 #seconds
     frame_delay: 0
     functions:
     - send_to_hardware

@@ -7,7 +7,10 @@ stream contracts, and extension metadata.
 
 from __future__ import annotations
 
+import difflib
+import inspect
 from dataclasses import asdict, dataclass, field
+from pathlib import Path
 from typing import Any, Mapping, Type
 
 from pyrtc.loop import Loop
@@ -30,6 +33,18 @@ class ConfigFieldDescriptor:
     minimum: int | float | None = None
     choices: tuple[str, ...] = ()
     allow_none: bool = False
+    case_sensitive: bool = True
+
+    def matches_choice(self, value: Any) -> bool:
+        """Return whether ``value`` is one of :attr:`choices` (always true without choices)."""
+
+        if not self.choices:
+            return True
+        if not isinstance(value, str):
+            return False
+        if self.case_sensitive:
+            return value in self.choices
+        return value.lower() in {choice.lower() for choice in self.choices}
 
     def to_dict(self) -> dict[str, Any]:
         payload = asdict(self)
@@ -53,6 +68,8 @@ class ConfigFieldDescriptor:
             parts.append(f"  minimum: {self.minimum!r}")
         if self.choices:
             parts.append(f"  choices: {', '.join(self.choices)}")
+            if not self.case_sensitive:
+                parts.append("  case_sensitive: False")
         if self.allow_none:
             parts.append("  allow_none: True")
         parts.append(f"  description: {self.description}")
@@ -300,15 +317,18 @@ BUILTIN_COMPONENT_DESCRIPTORS: tuple[ComponentDescriptor, ...] = (
             ConfigFieldDescriptor(
                 "type",
                 "str",
-                "Wavefront-sensor reduction mode such as SHWFS or PYWFS.",
+                "Wavefront-sensor reduction mode (SHWFS or PYWFS, case-insensitive).",
                 required=True,
-                choices=("SHWFS", "PYWFS"),
+                choices=SlopesProcess.SUPPORTED_WFS_TYPES,
+                case_sensitive=False,
             ),
             ConfigFieldDescriptor(
                 "signal_type",
                 "str",
-                "Signal representation produced by the reducer.",
+                "Signal representation produced by the reducer (only 'slopes' is supported).",
                 required=True,
+                choices=SlopesProcess.SUPPORTED_SIGNAL_TYPES,
+                case_sensitive=False,
             ),
         ),
         optional_fields=(
@@ -586,6 +606,20 @@ BUILTIN_COMPONENT_DESCRIPTORS: tuple[ComponentDescriptor, ...] = (
                 "save_file", "str", "Path used when saving a zonal shape.", default="wfc_shape.npy"
             ),
             ConfigFieldDescriptor(
+                "command_cap",
+                "float | None",
+                "Symmetric clip applied to zonal actuator commands; unset disables clipping.",
+                default=None,
+                minimum=0.0,
+            ),
+            ConfigFieldDescriptor(
+                "display_grid_size",
+                "int",
+                "Side length of the square wfc_2d visualization stream.",
+                default=33,
+                minimum=0,
+            ),
+            ConfigFieldDescriptor(
                 "functions", "list[str]", "Worker methods started in component threads.", default=[]
             ),
             ConfigFieldDescriptor(
@@ -735,6 +769,12 @@ BUILTIN_COMPONENT_DESCRIPTORS: tuple[ComponentDescriptor, ...] = (
                 "str",
                 "Base directory used for telemetry capture files.",
                 default="./data/",
+            ),
+            ConfigFieldDescriptor(
+                "streams",
+                "list[str]",
+                "Stream names captured by default when save() is called without a list.",
+                default=[],
             ),
             ConfigFieldDescriptor(
                 "functions", "list[str]", "Worker methods started in component threads.", default=[]
@@ -888,22 +928,16 @@ def validate_config_with_descriptor(section_name: str, conf: Mapping[str, Any]) 
             raise ValueError(
                 f"{section_name}: '{key}' must be >= {field_descriptor.minimum}, got {value}"
             )
-        if (
-            field_descriptor.choices
-            and isinstance(value, str)
-            and value not in field_descriptor.choices
-        ):
+        if isinstance(value, str) and not field_descriptor.matches_choice(value):
+            qualifier = "" if field_descriptor.case_sensitive else " (case-insensitive)"
             raise ValueError(
-                f"{section_name}: '{key}' must be one of {field_descriptor.choices}, got {value}"
+                f"{section_name}: '{key}' must be one of {field_descriptor.choices}"
+                f"{qualifier}, got {value!r}"
             )
 
 
-def describe_component_class(component_class: Type[Any]) -> ComponentDescriptor:
-    """Return the nearest built-in descriptor for a component class.
-
-    Subclasses inherit the descriptor of the nearest built-in base class so the
-    core metadata remains available for synthetic and hardware adapters.
-    """
+def _find_component_descriptor(component_class: Type[Any]) -> ComponentDescriptor | None:
+    """Return the declared or nearest registered descriptor, or ``None``."""
 
     descriptor = getattr(component_class, "COMPONENT_DESCRIPTOR", None)
     if isinstance(descriptor, ComponentDescriptor):
@@ -913,6 +947,23 @@ def describe_component_class(component_class: Type[Any]) -> ComponentDescriptor:
         descriptor = _DESCRIPTORS_BY_CLASS.get(cls)
         if descriptor is not None:
             return descriptor
+        # A file-loaded copy of a built-in class (see _is_same_builtin_class).
+        for builtin_class, builtin_descriptor in _DESCRIPTORS_BY_CLASS.items():
+            if _is_same_builtin_class(cls, builtin_class):
+                return builtin_descriptor
+    return None
+
+
+def describe_component_class(component_class: Type[Any]) -> ComponentDescriptor:
+    """Return the nearest built-in descriptor for a component class.
+
+    Subclasses inherit the descriptor of the nearest built-in base class so the
+    core metadata remains available for synthetic and hardware adapters.
+    """
+
+    descriptor = _find_component_descriptor(component_class)
+    if descriptor is not None:
+        return descriptor
 
     return ComponentDescriptor(
         section_name=component_class.__name__.lower(),
@@ -921,3 +972,119 @@ def describe_component_class(component_class: Type[Any]) -> ComponentDescriptor:
         description=(component_class.__doc__ or "").strip(),
         supports_hard_rtc=False,
     )
+
+
+# Keys every component section may carry regardless of its descriptor: class
+# loading, worker threads and scheduling, stream aliases, and resource binding
+# (read by ``Component``, the manager, and stream planning). ``name`` is used
+# by the manager as a class-target fallback and by most components for display.
+COMMON_COMPONENT_CONFIG_KEYS = frozenset(
+    {
+        "class_name",
+        "class_file",
+        "name",
+        "functions",
+        "affinity",
+        "realtime_priority",
+        "gpu_device",
+        "input_streams",
+        "output_streams",
+        "resource",
+    }
+)
+
+
+def _class_source_file(cls: Type[Any]) -> Path | None:
+    """Return the file a class body was defined in, if it can be found."""
+
+    for value in vars(cls).values():
+        function = getattr(value, "__func__", value)
+        code = getattr(function, "__code__", None)
+        if code is not None:
+            return Path(code.co_filename).resolve()
+    try:
+        return Path(inspect.getfile(cls)).resolve()
+    except (TypeError, OSError):
+        return None
+
+
+def _is_same_builtin_class(candidate: Type[Any], builtin: Type[Any]) -> bool:
+    """Return whether ``candidate`` is ``builtin`` or a file-loaded copy of it.
+
+    A config ``class_file`` pointing at a pyrtc source file outside the
+    installed package (e.g. a checkout next to a wheel install) is imported as
+    a separate module, producing a distinct class object with the same code.
+    """
+
+    if candidate is builtin:
+        return True
+    if candidate.__qualname__ != builtin.__qualname__:
+        return False
+    candidate_file = _class_source_file(candidate)
+    if candidate_file is None:
+        return False
+    builtin_parts = builtin.__module__.split(".")
+    builtin_parts[-1] += ".py"
+    return candidate_file.parts[-len(builtin_parts) :] == tuple(builtin_parts)
+
+
+def known_config_keys(component_class: Type[Any]) -> frozenset[str] | None:
+    """Return the config keys a component class is known to read.
+
+    The known keys are :data:`COMMON_COMPONENT_CONFIG_KEYS`, the fields of the
+    class's descriptor, and every ``EXTRA_CONFIG_KEYS`` tuple declared along
+    its MRO. Subclasses that read keys of their own declare them with
+    ``EXTRA_CONFIG_KEYS = ("serial", ...)`` (or a full ``COMPONENT_DESCRIPTOR``).
+
+    Returns ``None`` when the key set is not known, so unknown-key checks are
+    skipped: the class has no descriptor, or it is a subclass of a built-in
+    component that declares neither ``EXTRA_CONFIG_KEYS`` nor
+    ``COMPONENT_DESCRIPTOR`` in its own body (its extra keys are unknown, and
+    warning about them would only produce false positives).
+    """
+
+    descriptor = _find_component_descriptor(component_class)
+    if descriptor is None:
+        return None
+    own_attributes = vars(component_class)
+    declares_keys = (
+        _is_same_builtin_class(component_class, descriptor.component_class)
+        or "EXTRA_CONFIG_KEYS" in own_attributes
+        or "COMPONENT_DESCRIPTOR" in own_attributes
+    )
+    if not declares_keys:
+        return None
+
+    keys = set(COMMON_COMPONENT_CONFIG_KEYS)
+    keys.update(field_descriptor.name for field_descriptor in descriptor.all_fields)
+    for cls in component_class.mro():
+        keys.update(vars(cls).get("EXTRA_CONFIG_KEYS", ()))
+    return frozenset(keys)
+
+
+def unknown_config_key_warnings(
+    section_name: str | None, conf: Mapping[str, Any], component_class: Type[Any]
+) -> list[str]:
+    """Return one warning per config key that ``component_class`` does not read.
+
+    Keys starting with ``_`` are private runtime keys (``_sectionName``,
+    ``_systemStreams``, ...) and are never reported. See
+    :func:`known_config_keys` for how the known key set is built and when the
+    check is skipped.
+    """
+
+    known = known_config_keys(component_class)
+    if known is None or not isinstance(conf, Mapping):
+        return []
+    label = section_name or describe_component_class(component_class).section_name
+    warnings = []
+    for key in conf:
+        key = str(key)
+        if key.startswith("_") or key in known:
+            continue
+        message = f"{label}: unknown config key '{key}' is ignored by {component_class.__name__}"
+        suggestion = difflib.get_close_matches(key, sorted(known), n=1)
+        if suggestion:
+            message += f" (did you mean '{suggestion[0]}'?)"
+        warnings.append(message)
+    return warnings
