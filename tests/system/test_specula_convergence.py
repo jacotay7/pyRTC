@@ -94,11 +94,19 @@ def test_specula_loop_converges_after_calibration(example, tmp_path, monkeypatch
         time.sleep(0.2)
         aberrated_rms = _mean_signal_rms(loop)
 
-        loop.start()
-        time.sleep(3.0)
-        closed_rms = _mean_signal_rms(loop)
-        dm_rms = float(np.sqrt(np.mean(np.square(dm.current_shape))))
         aberration_dm_rms = float(np.sqrt(np.mean(np.square(dm.M2C @ aberration))))
+        loop.start()
+        # Poll instead of sampling once after a fixed time: on a loaded machine
+        # the loop iterates more slowly, so give it a generous deadline.
+        deadline = time.monotonic() + 20.0
+        time.sleep(1.0)
+        while True:
+            closed_rms = _mean_signal_rms(loop)
+            dm_rms = float(np.sqrt(np.mean(np.square(dm.current_shape))))
+            converged = closed_rms < 0.05 * aberrated_rms and dm_rms < 0.1 * aberration_dm_rms
+            if converged or time.monotonic() > deadline:
+                break
+            time.sleep(0.5)
         loop.stop()
     finally:
         module.stop_system(system)
@@ -108,7 +116,8 @@ def test_specula_loop_converges_after_calibration(example, tmp_path, monkeypatch
     assert calibrated_rms < 0.05 * aberrated_rms
     assert aberrated_rms > 0.0
     # Empirically the loop reaches < 1e-3 of the aberrated residual within a
-    # few seconds; 0.05x leaves room for slow CI machines.
+    # few seconds; the thresholds and the 20 s deadline leave room for slow or
+    # loaded machines.
     assert closed_rms < 0.05 * aberrated_rms, (
         f"{example}: closed-loop residual {closed_rms:.4g} did not converge "
         f"from aberrated residual {aberrated_rms:.4g}"
