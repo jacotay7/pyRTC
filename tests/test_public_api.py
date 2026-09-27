@@ -1,3 +1,7 @@
+import json
+import subprocess
+import sys
+
 import pyrtc
 
 
@@ -27,3 +31,16 @@ def test_package_exposes_module_helpers():
     assert callable(pyrtc.list_component_descriptors)
     assert callable(pyrtc.register_component_descriptor)
     assert callable(pyrtc.validate_config_with_descriptor)
+
+
+def test_importing_pyrtc_does_not_modify_the_environment():
+    code = (
+        "import os, json; before = dict(os.environ); "
+        "import pyrtc, pyrtc.loop, pyrtc.slopes_process, pyrtc.wavefront_corrector; "
+        "print(json.dumps(sorted(k for k in set(before) | set(os.environ) "
+        "if before.get(k) != os.environ.get(k))))"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", code], capture_output=True, text=True, check=True
+    )
+    assert json.loads(result.stdout.strip().splitlines()[-1]) == []

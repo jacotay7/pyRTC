@@ -6,6 +6,13 @@ All notable changes to `pyrtcao` will be documented in this file.
 
 ### Fixed
 
+- **Importing pyrtc no longer changes the process environment** (#46).
+	`loop`, `slopes_process`, `wavefront_corrector` and the ALPAO adapter set
+	`OMP_NUM_THREADS`, `OPENBLAS_NUM_THREADS`, etc. to 1 at import time,
+	silently making the user's whole process single-threaded (and doing nothing
+	if numpy was already imported). Hard-RTC children still default to 1 via
+	the launcher environment unless the user set a value; soft-RTC users can set
+	the variables themselves (see the architecture guide).
 - **SPECULA examples now converge** (#39). Several faults combined:
 	a PSF frame captured before the first WFS frame consumed SPECULA's
 	propagation refresh, so the WFS emitted blank frames until the DM first

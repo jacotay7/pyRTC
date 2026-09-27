@@ -126,6 +126,15 @@ def _socket_read_json(sock: socket.socket, buffer: str) -> tuple[dict, str]:
     return json.loads(line), buffer
 
 
+_SINGLE_THREAD_ENV = (
+    "OMP_NUM_THREADS",
+    "OPENBLAS_NUM_THREADS",
+    "MKL_NUM_THREADS",
+    "VECLIB_MAXIMUM_THREADS",
+    "NUMEXPR_NUM_THREADS",
+)
+
+
 class HardwareLauncher:
     """Launch and supervise a hardware-side child process.
 
@@ -180,6 +189,11 @@ class HardwareLauncher:
         if not self.running:
             logger.info("Launching process %s", self.hardware_file)
             child_env = os.environ.copy()
+            # Hard-RTC children run one component each; keep their numeric
+            # libraries single-threaded unless the user chose otherwise, so
+            # workers don't oversubscribe cores (see the performance docs).
+            for variable in _SINGLE_THREAD_ENV:
+                child_env.setdefault(variable, "1")
             pythonpath_root = self._discover_pythonpath_root(self.hardware_file)
             if pythonpath_root is not None:
                 existing_pythonpath = child_env.get("PYTHONPATH", "")

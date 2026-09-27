@@ -6,16 +6,6 @@ and optional 2D layout views, while leaving hardware transport details to the
 concrete adapter subclasses.
 """
 
-import os
-
-os.environ["OMP_NUM_THREADS"] = "1"
-os.environ["OPENBLAS_NUM_THREADS"] = "1"
-os.environ["MKL_NUM_THREADS"] = "1"
-os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
-os.environ["NUMEXPR_NUM_THREADS"] = "1"
-os.environ["NUMBA_NUM_THREADS"] = "1"
-os.environ["TBB_NUM_THREADS"] = "1"
-
 import numpy as np
 import matplotlib.pyplot as plt
 from numba import jit

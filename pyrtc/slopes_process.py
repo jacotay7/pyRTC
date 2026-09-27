@@ -6,15 +6,6 @@ helpers for pyramid and Shack-Hartmann processing plus the ``SlopesProcess``
 component that manages calibration data and SHM publication.
 """
 
-import os
-
-os.environ["OMP_NUM_THREADS"] = "1"
-os.environ["OPENBLAS_NUM_THREADS"] = "1"
-os.environ["MKL_NUM_THREADS"] = "1"
-os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
-os.environ["NUMEXPR_NUM_THREADS"] = "1"
-os.environ["NUMBA_NUM_THREADS"] = "1"
-
 import matplotlib.pyplot as plt
 import numpy as np
 from typing import Any
