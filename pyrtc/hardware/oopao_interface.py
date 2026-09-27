@@ -64,6 +64,9 @@ class OOPAOWFSensor(WavefrontSensor):
     resulting detector frame through the standard pyrtc ``WavefrontSensor`` API.
     """
 
+    # Reads no config keys beyond the base component's.
+    EXTRA_CONFIG_KEYS = ()
+
     def __init__(self, wfs_conf, context) -> None:
         self.context = _unwrap_oopao_context(context)
         self.tel = self.context.tel
@@ -112,6 +115,9 @@ class OOPAOWFCorrector(WavefrontCorrector):
     coefficient array so the simulated optical train responds to control-loop
     updates exactly where a physical mirror would in a deployed system.
     """
+
+    # Reads no config keys beyond the base component's.
+    EXTRA_CONFIG_KEYS = ()
 
     def __init__(self, corrector_conf, context) -> None:
         self.context = _unwrap_oopao_context(context)
@@ -183,6 +189,9 @@ class OOPAOScienceCamera(ScienceCamera):
     science camera. It is intentionally simulation-facing and does not attempt
     to hide OOPAO-specific PSF generation details.
     """
+
+    # Reads no config keys beyond the base component's.
+    EXTRA_CONFIG_KEYS = ()
 
     def __init__(self, science_conf, context) -> None:
         self.context = _unwrap_oopao_context(context)

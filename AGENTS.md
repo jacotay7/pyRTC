@@ -134,6 +134,11 @@ ruff check . && ruff format --check .    # lint, as in CI
   broke numpy sentinels (`_NoValueType` errors) and segfaulted torch imports
   mid-run. Use `--cov=pyrtc`; `pytest.ini` turns the "NumPy module was
   reloaded" warning into an error so this cannot silently return.
+- Unknown-key warnings only cover classes whose keys are declared: built-in
+  components, and subclasses that set `EXTRA_CONFIG_KEYS` (or their own
+  `COMPONENT_DESCRIPTOR`) in their class body. When an adapter starts reading
+  a new config key, add it to `EXTRA_CONFIG_KEYS` (or to the descriptor for a
+  built-in), or configs using it will warn.
 - Components can be built with `__new__` in tests, so `Component` methods call
   `_ensure_stream_state()` before touching stream state.
 - A `KeyboardInterrupt` at a random point in a Windows test run was pyshmem
@@ -147,7 +152,8 @@ ruff check . && ruff format --check .    # lint, as in CI
   optical setup without a new DM command (atmosphere on/off) must refresh an
   input, and every step must advance the WFS and PSF branches together, or
   the WFS silently repeats a stale (or blank) frame.
-- The loop's IM method key is `im_method`; `method:` is silently ignored.
+- The loop's IM method key is `im_method`; `method:` is ignored (it only
+  produces an unknown-key warning).
   Calibrate only once the pipeline is live (worker kernels JIT-compile on
   first use, so the first DM command can take about a second to land).
 - Windows frees named shared memory when the last handle closes, so streams do

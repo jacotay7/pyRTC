@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 
-from pyrtc.config_schema import read_system_config
+from pyrtc.config_schema import collect_config_warnings, read_system_config
 from pyrtc.utils import ConfigValidationError
 
 
@@ -22,7 +22,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _success_payload(config_path: str, normalized_conf: dict) -> dict:
+def _success_payload(config_path: str, normalized_conf: dict, warnings: list[str]) -> dict:
     components = [
         section
         for section in ("wfs", "slopes", "loop", "wfc", "psf", "telemetry")
@@ -33,6 +33,7 @@ def _success_payload(config_path: str, normalized_conf: dict) -> dict:
         "config": config_path,
         "mode": normalized_conf["manager"].get("mode", "soft-rtc"),
         "components": components,
+        "warnings": list(warnings),
     }
 
 
@@ -59,7 +60,9 @@ def main(argv=None) -> int:
             print(payload["error"])
         return 1
 
-    payload = _success_payload(args.config, normalized_conf)
+    payload = _success_payload(
+        args.config, normalized_conf, collect_config_warnings(normalized_conf)
+    )
     if args.output_format == "json":
         print(json.dumps(payload, indent=2, sort_keys=True))
     else:
@@ -67,6 +70,8 @@ def main(argv=None) -> int:
         print(f"Config valid: {args.config}")
         print(f"Mode: {payload['mode']}")
         print(f"Components: {components}")
+        for warning in payload["warnings"]:
+            print(f"Warning: {warning}")
     return 0
 
 

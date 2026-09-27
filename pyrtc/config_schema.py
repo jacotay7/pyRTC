@@ -18,8 +18,10 @@ from pyrtc.component_descriptors import (
     describe_component_class,
     get_component_descriptor,
     list_component_sections,
+    unknown_config_key_warnings,
     validate_config_with_descriptor,
 )
+from pyrtc.slopes_process import SlopesProcess
 from pyrtc.utils import (
     ConfigValidationError,
     read_yaml_file,
@@ -257,13 +259,13 @@ def _validate_slopes_config(conf: Any) -> None:
     slopes_type = conf["type"]
     if not isinstance(slopes_type, str) or not slopes_type.strip():
         raise ConfigValidationError(f"{component}: 'type' must be a non-empty string")
-    slopes_type = slopes_type.lower()
-    if slopes_type not in {"shwfs", "pywfs"}:
-        raise ConfigValidationError(f"{component}: unsupported type '{conf['type']}'")
-
     signal_type = conf["signal_type"]
     if not isinstance(signal_type, str) or not signal_type.strip():
         raise ConfigValidationError(f"{component}: 'signal_type' must be a non-empty string")
+    try:
+        slopes_type, _ = SlopesProcess.normalize_signal_types(conf)
+    except ValueError as exc:
+        raise ConfigValidationError(str(exc)) from exc
 
     _validate_optional_numeric(conf, "image_noise", component, minimum=0.0)
     _validate_optional_numeric(conf, "central_obscuration_ratio", component, minimum=0.0)
@@ -740,6 +742,36 @@ def validate_system_config(conf: Any, *, config_path: str | Path | None = None) 
         normalized["metadata"].setdefault("config_path", str(config_path))
 
     return normalized
+
+
+def collect_config_warnings(conf: Mapping[str, Any]) -> list[str]:
+    """Return non-fatal warnings for a validated, normalized system config.
+
+    Currently this reports config keys that the resolved component class does
+    not read (typos such as ``method`` for the loop's ``im_method``). Unknown
+    keys are warnings, not errors, because subclasses may read keys of their
+    own; see :func:`pyrtc.component_descriptors.known_config_keys` for how a
+    subclass declares them. Sections whose class cannot be resolved are skipped.
+    """
+
+    warnings: list[str] = []
+    for section_name, section_conf in conf.items():
+        if section_name in OPTIONAL_TOP_LEVEL_SECTIONS or not isinstance(section_conf, Mapping):
+            continue
+        class_name = section_conf.get("class_name")
+        if not isinstance(class_name, str) or not class_name.strip():
+            continue
+        class_file = section_conf.get("class_file")
+        try:
+            component_class = _resolve_class_symbol(
+                class_name, class_file if isinstance(class_file, str) else None
+            )
+        except Exception:
+            continue
+        if not isinstance(component_class, type):
+            continue
+        warnings.extend(unknown_config_key_warnings(section_name, section_conf, component_class))
+    return warnings
 
 
 def read_system_config(file_path: str | Path, *, validate: bool = True) -> dict[str, Any]:

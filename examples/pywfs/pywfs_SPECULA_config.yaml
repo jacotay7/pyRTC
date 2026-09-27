@@ -62,7 +62,6 @@ wfc:
   save_file: specula_flat.npy
   m2c_file: ''
   affinity: 3
-  hardware_delay: 0.001
   frame_delay: 0
   class_name: pyrtc.hardware.specula_interface.SPECULAWFCorrector
   resource: specula

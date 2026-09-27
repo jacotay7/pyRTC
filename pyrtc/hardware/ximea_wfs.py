@@ -26,6 +26,16 @@ class XIMEAWFS(WavefrontSensor):
     remain in the normal pyrtc processing components.
     """
 
+    EXTRA_CONFIG_KEYS = (
+        "serial",
+        "bit_depth",
+        "binning",
+        "exposure",
+        "left",
+        "top",
+        "gain",
+    )
+
     def __init__(self, conf):
         try:
             super().__init__(conf)

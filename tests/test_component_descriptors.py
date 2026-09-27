@@ -6,9 +6,11 @@ from pyrtc.component_descriptors import (
     build_descriptor_catalog,
     describe_component_class,
     get_component_descriptor,
+    known_config_keys,
     list_component_descriptors,
     list_component_sections,
     register_component_descriptor,
+    unknown_config_key_warnings,
     unregister_component_descriptor,
     validate_config_with_descriptor,
 )
@@ -155,3 +157,88 @@ def test_register_custom_descriptor_supports_future_extensions():
         validate_config_with_descriptor("custom_component", {"name": "example"})
     finally:
         unregister_component_descriptor("custom_component")
+
+
+def test_slopes_descriptor_restricts_signal_type_and_type_case_insensitively():
+    validate_config_with_descriptor("slopes", {"type": "shwfs", "signal_type": "SLOPES"})
+    with pytest.raises(ValueError, match="signal_type"):
+        validate_config_with_descriptor("slopes", {"type": "SHWFS", "signal_type": "phase"})
+    with pytest.raises(ValueError, match="'type'"):
+        validate_config_with_descriptor("slopes", {"type": "CURVATURE", "signal_type": "slopes"})
+
+
+def test_case_sensitive_choices_still_match_exactly():
+    field_descriptor = ConfigFieldDescriptor("mode", "str", "Mode.", choices=("fast",))
+
+    assert field_descriptor.matches_choice("fast")
+    assert not field_descriptor.matches_choice("FAST")
+    assert field_descriptor.to_dict()["case_sensitive"] is True
+
+
+def test_unknown_config_keys_warn_with_suggestion():
+    warnings = unknown_config_key_warnings(
+        "loop", {"gain": 0.1, "method": "push-pull", "class_name": "Loop"}, Loop
+    )
+
+    assert warnings == [
+        "loop: unknown config key 'method' is ignored by Loop (did you mean 'im_method'?)"
+    ]
+
+
+def test_unknown_config_keys_skip_private_and_common_runtime_keys():
+    conf = {
+        "_sectionName": "loop",
+        "_systemStreams": {},
+        "_systemConfig": {},
+        "class_name": "Loop",
+        "class_file": "loop.py",
+        "name": "loop",
+        "functions": ["standard_integrator"],
+        "affinity": 1,
+        "realtime_priority": 0,
+        "gpu_device": None,
+        "input_streams": {"signal": "signal"},
+        "output_streams": {"wfc": "wfc"},
+        "resource": "sim",
+        "im_method": "push-pull",
+    }
+
+    assert unknown_config_key_warnings("loop", conf, Loop) == []
+
+
+def test_undeclared_subclass_is_not_checked_for_unknown_keys():
+    class CustomLoop(Loop):
+        pass
+
+    assert known_config_keys(CustomLoop) is None
+    assert unknown_config_key_warnings("loop", {"my_key": 1}, CustomLoop) == []
+
+
+def test_subclass_extra_config_keys_extend_known_keys_along_mro():
+    class BaseCamera(WavefrontSensor):
+        EXTRA_CONFIG_KEYS = ("serial",)
+
+    class Camera(BaseCamera):
+        EXTRA_CONFIG_KEYS = ("exposure",)
+
+    keys = known_config_keys(Camera)
+    assert {"serial", "exposure", "width", "class_name"} <= keys
+    assert unknown_config_key_warnings(
+        "wfs", {"serial": "x", "exposure": 10, "exposur": 5}, Camera
+    ) == ["wfs: unknown config key 'exposur' is ignored by Camera (did you mean 'exposure'?)"]
+
+
+def test_components_without_descriptor_are_not_checked():
+    class Standalone:
+        pass
+
+    assert known_config_keys(Standalone) is None
+    assert unknown_config_key_warnings("thing", {"anything": 1}, Standalone) == []
+
+
+def test_builtin_classes_read_every_descriptor_known_key():
+    # Keys that built-in components read must not be reported as unknown.
+    assert unknown_config_key_warnings("wfc", {"command_cap": 0.8}, WavefrontCorrector) == []
+    assert unknown_config_key_warnings("telemetry", {"streams": ["wfs"]}, Telemetry) == []
+    assert unknown_config_key_warnings("slopes", {"contrast": 1.0}, SlopesProcess) == []
+    assert "sub_ap_spacing" in known_config_keys(SyntheticSHWFS)

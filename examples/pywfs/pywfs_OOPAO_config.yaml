@@ -61,7 +61,6 @@ wfc:
   m2c_file: ''
   affinity: 3
   command_cap: 0.8
-  hardware_delay: 0.001
   frame_delay: 0
   class_name: pyrtc.hardware.oopao_interface.OOPAOWFCorrector
   resource: oopao
@@ -75,7 +74,6 @@ wfc:
   class_file: ../../pyrtc/hardware/oopao_interface.py
 psf:
   name: OOPAOPSF
-  index: 0
   width: 200
   height: 200
   dark_count: 10

@@ -90,6 +90,24 @@ class SyntheticSHWFS(WavefrontSensor):
     ``SlopesProcess`` SHWFS pipeline.
     """
 
+    EXTRA_CONFIG_KEYS = (
+        "frame_rate_hz",
+        "background_level",
+        "spot_flux",
+        "spot_sigma_px",
+        "read_noise",
+        "disturbance_amplitude",
+        "disturbance_frequency_hz",
+        "disturbance_drift_hz",
+        "max_spot_motion_px",
+        "slope_to_pixel_gain",
+        "sub_ap_spacing",
+        "sub_ap_offset_x",
+        "sub_ap_offset_y",
+        "seed",
+        "num_modes",
+    )
+
     def __init__(self, conf):
         super().__init__(conf)
 
@@ -254,6 +272,17 @@ class SyntheticScienceCamera(ScienceCamera):
     signal norm falls.
     """
 
+    EXTRA_CONFIG_KEYS = (
+        "frame_rate_hz",
+        "background_level",
+        "peak_flux",
+        "base_sigma_px",
+        "residual_blur_gain",
+        "tip_tilt_gain",
+        "read_noise",
+        "seed",
+    )
+
     def __init__(self, conf):
         super().__init__(conf)
 
@@ -341,6 +370,9 @@ class SyntheticWFC(WavefrontCorrector):
     This subclass exists so configs can refer to a concrete synthetic adapter by
     name without implying vendor hardware.
     """
+
+    # Reads no config keys beyond the base component's.
+    EXTRA_CONFIG_KEYS = ()
 
     def __init__(self, conf):
         super().__init__(conf)

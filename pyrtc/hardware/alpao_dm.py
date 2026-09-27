@@ -49,6 +49,8 @@ class ALPAODM(WavefrontCorrector):
     the device on teardown.
     """
 
+    EXTRA_CONFIG_KEYS = ("serial", "floating_actuators_file")
+
     def __init__(self, conf) -> None:
         try:
             super().__init__(conf)
