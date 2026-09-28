@@ -116,6 +116,28 @@ All notable changes to `pyrtcao` will be documented in this file.
 	now use `https://pyrtc-ao.readthedocs.io/en/latest/`. The README no
 	longer references the missing `RELEASE_1_0_PLAN.md` or describes 1.0.0
 	as unreleased, and the clone instructions `cd` into `pyRTC`, not `pyrtc`.
+- **`take_ref_slopes()` no longer races the worker thread** (#89, #90).
+	It averaged `compute_signal_2d()` results, which is the shared
+	`cur_signal_2d` buffer the `compute_signal` thread rewrites every frame,
+	and its first frame could still carry the old reference. It now averages
+	private snapshots of the `signal` stream published after the reference
+	was reset. GPU-backed signal streams (torch tensors) work too: that path
+	failed with `AttributeError`, and a GPU PYWFS `SlopesProcess` could not
+	even be constructed (the reference buffers were sized from a CUDA tensor).
+	`compute_signal_2d()` gained an `out=` argument and honours an explicit
+	`valid_sub_aps` (it used to return `-1`).
+- **`set_pupils()` works on a running PYWFS slopes process** (#91). The
+	pupil pixel count, the numba work buffers (`p1`..`p4`, `tmp1`, `tmp2`),
+	`slopes_arr_1d` and `ref_slopes_1d` were only allocated in `__init__`, so
+	changing the pupil radius broke both the CPU and the GPU path. They are now
+	rebuilt by `set_pupils()`, which holds off the worker (a lock taken per
+	frame, not while waiting for the WFS image) until the masks, buffers,
+	reference slopes and signal streams are all swapped. Reference slopes of
+	the old shape are reset to zero with a warning. The GPU device cache is
+	rebuilt from the new buffers. Overlapping pupils, which would make the
+	unchecked numba kernel write past its buffers, now raise `ValueError`.
+	`set_ref_slopes()` also builds the new 1-D reference before swapping it in
+	instead of zeroing and refilling the live array.
 
 ### Added
 
@@ -246,6 +268,15 @@ All notable changes to `pyrtcao` will be documented in this file.
 	the GPU path. The GPU path also accepts a CPU-backed `wfs` stream (NumPy
 	frames are copied to `gpu_device`), and writes the device tensor directly
 	when the `signal` stream is GPU-backed.
+- **SHWFS CoG slopes no longer allocate per frame** (#103). The `cog` kernel
+	copied the whole image to float32 every frame and `compute_signal()`
+	allocated a fresh slopes array; the kernel now converts pixels as it reads
+	them and writes every entry (no-flux and out-of-image sub-apertures still
+	read 0), so the slopes buffer is reused. The valid-sub-aperture gather for
+	all SHWFS centroiders also reuses a buffer. Results are bit-identical. On a
+	480x480 frame (60x60 sub-apertures of 8 pixels) about 950 kB of per-frame
+	temporaries (the image copy and two slopes arrays) are gone; kernel time is
+	unchanged to ~10% faster.
 - **The hard-RTC listener only exposes public names** (#48).
 	`Listener` answered `get`/`set`/`run` for any attribute of the hardware
 	object, including private (`_x`) and dunder (`__class__`, `__dict__`)
