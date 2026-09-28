@@ -7,13 +7,28 @@ from html import escape
 import logging
 from pathlib import Path
 import time
-from types import SimpleNamespace
+
+from pyrtc.qt_compat import require_qt6, unavailable_qt_class
+
+_GUI_INSTALL_HINT = (
+    "pyrtc-manager-gui requires GUI dependencies (qtpy and a Qt6 binding). "
+    "Install with: pip install pyrtcao[gui]"
+)
 
 try:
-    from PyQt5.QtCore import QPointF, QRectF, Qt, QTimer
-    from PyQt5.QtGui import QBrush, QColor, QFont, QKeySequence, QPainter, QPainterPath, QPen
-    from PyQt5.QtWidgets import (
+    require_qt6()
+    from qtpy.QtCore import QPointF, QRectF, Qt, QTimer
+    from qtpy.QtGui import (
         QAction,
+        QBrush,
+        QColor,
+        QFont,
+        QKeySequence,
+        QPainter,
+        QPainterPath,
+        QPen,
+    )
+    from qtpy.QtWidgets import (
         QApplication,
         QComboBox,
         QDialog,
@@ -23,6 +38,7 @@ try:
         QFileDialog,
         QFormLayout,
         QFrame,
+        QGraphicsItem,
         QGraphicsPathItem,
         QGraphicsRectItem,
         QGraphicsScene,
@@ -52,30 +68,22 @@ try:
     _GUI_IMPORT_ERROR = None
 except ImportError as exc:
     _GUI_IMPORT_ERROR = exc
-
-    class _QtUnavailableBase:
-        def __init__(self, *args, **kwargs):
-            raise ImportError(
-                "pyrtc-manager-gui requires GUI dependencies. Install with: pip install pyrtc[gui]"
-            ) from _GUI_IMPORT_ERROR
+    _QtUnavailable = unavailable_qt_class(_GUI_INSTALL_HINT, exc)
 
     QAction = QApplication = QComboBox = QDialog = QDialogButtonBox = QDockWidget = QFileDialog = (
         QFormLayout
-    ) = QFrame = QGraphicsPathItem = (  # type: ignore[assignment]
-        QGraphicsRectItem
-    ) = QGraphicsScene = QGraphicsSimpleTextItem = QGraphicsView = QHBoxLayout = QLabel = (
-        QLineEdit
-    ) = QListWidget = QListWidgetItem = QMainWindow = QMessageBox = QPushButton = QPlainTextEdit = (
-        QScrollArea
-    ) = QSizePolicy = QSplitter = QStatusBar = QTabWidget = QToolBar = QToolButton = QTextEdit = (
-        QVBoxLayout
-    ) = QWidget = QTimer = QInputDialog = _QtUnavailableBase
+    ) = QFrame = QGraphicsItem = QGraphicsPathItem = QGraphicsRectItem = QGraphicsScene = (
+        QGraphicsSimpleTextItem
+    ) = QGraphicsView = QHBoxLayout = QLabel = QLineEdit = QListWidget = QListWidgetItem = (
+        QMainWindow
+    ) = QMessageBox = QPushButton = QPlainTextEdit = QScrollArea = QSizePolicy = QSplitter = (
+        QStatusBar
+    ) = QTabWidget = QToolBar = QToolButton = QTextEdit = QVBoxLayout = QWidget = QTimer = (
+        QInputDialog
+    ) = _QtUnavailable
     QPointF = QRectF = QBrush = QColor = QFont = QKeySequence = QPainter = QPainterPath = QPen = (
-        _QtUnavailableBase
-    )
-    Qt = SimpleNamespace(
-        Horizontal=0, Vertical=0, AlignTop=0, LeftDockWidgetArea=0, BottomDockWidgetArea=0
-    )
+        Qt
+    ) = _QtUnavailable
 
 from pyrtc.logging_utils import get_logger
 from pyrtc.component_descriptors import list_component_descriptors
@@ -169,9 +177,7 @@ def _build_log_html(lines: list[str], theme, *, title: str | None = None) -> str
 
 def _require_gui_backend() -> None:
     if _GUI_IMPORT_ERROR is not None:
-        raise ImportError(
-            "pyrtc-manager-gui requires GUI dependencies. Install with: pip install pyrtc[gui]"
-        ) from _GUI_IMPORT_ERROR
+        raise ImportError(_GUI_INSTALL_HINT) from _GUI_IMPORT_ERROR
 
 
 class GraphEdgeItem:
@@ -269,7 +275,7 @@ class GraphNodeButtonItem(QGraphicsRectItem):
         self._enabled = enabled
         self.label_item = QGraphicsSimpleTextItem(label, self)
         self.label_item.setPos(x + 10.0, y + 3.0)
-        self.setAcceptedMouseButtons(Qt.LeftButton)
+        self.setAcceptedMouseButtons(Qt.MouseButton.LeftButton)
         self.setZValue(2)
 
     def set_enabled(self, enabled: bool) -> None:
@@ -317,9 +323,9 @@ class GraphNodeItem(QGraphicsRectItem):
         self._drag_started = False
         self._drag_activation_delay = 0.12
         self.setFlags(
-            QGraphicsRectItem.ItemIsMovable
-            | QGraphicsRectItem.ItemIsSelectable
-            | QGraphicsRectItem.ItemSendsGeometryChanges
+            QGraphicsItem.GraphicsItemFlag.ItemIsMovable
+            | QGraphicsItem.GraphicsItemFlag.ItemIsSelectable
+            | QGraphicsItem.GraphicsItemFlag.ItemSendsGeometryChanges
         )
         self.setAcceptHoverEvents(True)
         self.setZValue(1)
@@ -423,14 +429,14 @@ class GraphNodeItem(QGraphicsRectItem):
 
     def itemChange(self, change, value):
         result = super().itemChange(change, value)
-        if change == QGraphicsRectItem.ItemPositionHasChanged:
+        if change == QGraphicsItem.GraphicsItemChange.ItemPositionHasChanged:
             for edge_item in self._edge_items:
                 edge_item.update_positions()
             if self._position_callback is not None:
                 self._position_callback(
                     self.node.section_name, float(self.pos().x()), float(self.pos().y())
                 )
-        if change == QGraphicsRectItem.ItemSelectedHasChanged:
+        if change == QGraphicsItem.GraphicsItemChange.ItemSelectedHasChanged:
             self.apply_theme(self.theme)
             if bool(value) and (self._selection_guard is None or self._selection_guard()):
                 self._press_time = time.monotonic()
@@ -469,10 +475,10 @@ class GraphCanvas(QGraphicsView):
         self.position_callback = position_callback
         self.scene = QGraphicsScene(self)
         self.setScene(self.scene)
-        self.setRenderHint(QPainter.Antialiasing)
-        self.setTransformationAnchor(QGraphicsView.AnchorUnderMouse)
-        self.setResizeAnchor(QGraphicsView.AnchorViewCenter)
-        self.setFrameShape(QFrame.NoFrame)
+        self.setRenderHint(QPainter.RenderHint.Antialiasing)
+        self.setTransformationAnchor(QGraphicsView.ViewportAnchor.AnchorUnderMouse)
+        self.setResizeAnchor(QGraphicsView.ViewportAnchor.AnchorViewCenter)
+        self.setFrameShape(QFrame.Shape.NoFrame)
         self._items_by_section = {}
         self._edge_items = []
         self._dragging = False
@@ -547,7 +553,7 @@ class GraphCanvas(QGraphicsView):
         return not self._suppress_selection_callback
 
     def mousePressEvent(self, event):
-        if self.itemAt(event.pos()) is None:
+        if self.itemAt(event.position().toPoint()) is None:
             self.scene.clearSelection()
             self.deselection_callback()
         super().mousePressEvent(event)
@@ -637,7 +643,9 @@ class ComponentSettingsDialog(QDialog):
                 form.addRow(f"output:{stream.name}", editor)
                 self._output_stream_inputs[stream.name] = editor
 
-        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
@@ -712,11 +720,11 @@ class ManagerMainWindow(QMainWindow):
 
     def _register_window_shortcut(self, action, shortcut) -> None:
         action.setShortcut(shortcut)
-        action.setShortcutContext(Qt.WidgetWithChildrenShortcut)
+        action.setShortcutContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
         self.addAction(action)
 
     def _build_ui(self) -> None:
-        splitter = QSplitter(Qt.Horizontal)
+        splitter = QSplitter(Qt.Orientation.Horizontal)
         self.setCentralWidget(splitter)
 
         self.catalog_panel = QFrame()
@@ -760,7 +768,7 @@ class ManagerMainWindow(QMainWindow):
             "Select a component to inspect its settings and actions."
         )
         self.inspector_empty_state.setObjectName("SubtleText")
-        self.inspector_empty_state.setAlignment(Qt.AlignTop)
+        self.inspector_empty_state.setAlignment(Qt.AlignmentFlag.AlignTop)
         self.inspector_empty_state.setWordWrap(True)
         inspector_layout.addWidget(self.inspector_empty_state)
         self.inspector_tabs = QTabWidget()
@@ -819,7 +827,7 @@ class ManagerMainWindow(QMainWindow):
         self.log_output = QTextEdit()
         self.log_output.setReadOnly(True)
         self.log_dock.setWidget(self.log_output)
-        self.addDockWidget(Qt.BottomDockWidgetArea, self.log_dock)
+        self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, self.log_dock)
 
         self.setStatusBar(QStatusBar())
 
@@ -882,15 +890,15 @@ class ManagerMainWindow(QMainWindow):
     def _build_menubar(self) -> None:
         file_menu = self.menuBar().addMenu("File")
         self.save_action = QAction("Save", self)
-        self.load_action.setShortcut(QKeySequence.Open)
+        self.load_action.setShortcut(QKeySequence.StandardKey.Open)
         self.save_action.triggered.connect(self.save_config)
-        self.save_action.setShortcut(QKeySequence.Save)
+        self.save_action.setShortcut(QKeySequence.StandardKey.Save)
         self.save_as_action = QAction("Save As", self)
         self.save_as_action.triggered.connect(self.save_config_as)
-        self.save_as_action.setShortcut(QKeySequence.SaveAs)
+        self.save_as_action.setShortcut(QKeySequence.StandardKey.SaveAs)
         self.exit_action = QAction("Exit", self)
         self.exit_action.triggered.connect(self.close)
-        self.exit_action.setShortcut(QKeySequence.Quit)
+        self.exit_action.setShortcut(QKeySequence.StandardKey.Quit)
         file_menu.addAction(self.load_action)
         file_menu.addAction(self.save_action)
         file_menu.addAction(self.save_as_action)
@@ -914,7 +922,7 @@ class ManagerMainWindow(QMainWindow):
         )
         self.remove_component_action = QAction("Remove Selected Component", self)
         self.remove_component_action.triggered.connect(self.remove_selected_component)
-        self.remove_component_action.setShortcut(QKeySequence.Delete)
+        self.remove_component_action.setShortcut(QKeySequence.StandardKey.Delete)
         self.add_connection_action = QAction("Add Connection", self)
         self.add_connection_action.triggered.connect(self.add_connection)
         self._register_window_shortcut(self.add_connection_action, QKeySequence("Ctrl+Shift+C"))
@@ -943,7 +951,7 @@ class ManagerMainWindow(QMainWindow):
         view_menu = self.menuBar().addMenu("View")
         self.refresh_action = QAction("Refresh", self)
         self.refresh_action.triggered.connect(self.refresh_view)
-        self.refresh_action.setShortcut(QKeySequence.Refresh)
+        self.refresh_action.setShortcut(QKeySequence.StandardKey.Refresh)
         self.restart_action = QAction("Restart Selected", self)
         self.restart_action.triggered.connect(self.restart_selected_component)
         self._register_window_shortcut(self.restart_action, QKeySequence("Ctrl+Shift+R"))
@@ -952,10 +960,10 @@ class ManagerMainWindow(QMainWindow):
         self._register_window_shortcut(self.toggle_logs_action, QKeySequence("Ctrl+Shift+L"))
         self.zoom_in_action = QAction("Zoom In", self)
         self.zoom_in_action.triggered.connect(self.graph_canvas.zoom_in)
-        self.zoom_in_action.setShortcut(QKeySequence.ZoomIn)
+        self.zoom_in_action.setShortcut(QKeySequence.StandardKey.ZoomIn)
         self.zoom_out_action = QAction("Zoom Out", self)
         self.zoom_out_action.triggered.connect(self.graph_canvas.zoom_out)
-        self.zoom_out_action.setShortcut(QKeySequence.ZoomOut)
+        self.zoom_out_action.setShortcut(QKeySequence.StandardKey.ZoomOut)
         self.zoom_reset_action = QAction("Reset Zoom", self)
         self.zoom_reset_action.triggered.connect(self.graph_canvas.reset_zoom)
         self.zoom_reset_action.setShortcut(QKeySequence("Ctrl+0"))
@@ -1259,7 +1267,7 @@ class ManagerMainWindow(QMainWindow):
         self.component_list.clear()
         for node in snapshot.nodes:
             item = QListWidgetItem(f"{node.section_name} [{node.state}]")
-            item.setData(Qt.UserRole, node.section_name)
+            item.setData(Qt.ItemDataRole.UserRole, node.section_name)
             self.component_list.addItem(item)
             if node.section_name == selected:
                 self.component_list.setCurrentItem(item)
@@ -1269,7 +1277,7 @@ class ManagerMainWindow(QMainWindow):
         item = self.component_list.currentItem()
         if item is None:
             return
-        section_name = item.data(Qt.UserRole)
+        section_name = item.data(Qt.ItemDataRole.UserRole)
         self.selected_section = section_name
         self.graph_canvas.select_section(section_name)
         self._populate_inspector(section_name)
@@ -1278,7 +1286,7 @@ class ManagerMainWindow(QMainWindow):
         self.selected_section = section_name
         for index in range(self.component_list.count()):
             item = self.component_list.item(index)
-            if item.data(Qt.UserRole) == section_name:
+            if item.data(Qt.ItemDataRole.UserRole) == section_name:
                 self.component_list.setCurrentItem(item)
                 break
         self._populate_inspector(section_name)
@@ -1415,7 +1423,7 @@ class ManagerMainWindow(QMainWindow):
             class_file=class_file,
             parent=self,
         )
-        if dialog.exec_() != QDialog.Accepted:
+        if dialog.exec() != QDialog.DialogCode.Accepted:
             return
         values = dialog.values()
         section_name = values["section_name"]
@@ -1644,4 +1652,4 @@ def launch_manager_gui(
         config_path=config_path, mode=mode, theme_name=theme_name, refresh_ms=refresh_ms
     )
     window.show()
-    return app.exec_()
+    return app.exec()

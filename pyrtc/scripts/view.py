@@ -9,6 +9,11 @@ import pyrtc.utils as utils
 from . import viewer_helpers as _viewer_helpers
 
 
+_INSTALL_HINT = (
+    "pyrtc-view requires viewer dependencies (qtpy and a Qt6 binding such as PySide6). "
+    "Install with: pip install pyrtcao[viewer]"
+)
+
 _compute_window_size = _viewer_helpers.compute_window_size
 _normalize_frame = _viewer_helpers.normalize_frame
 _read_shm_metadata = _viewer_helpers.read_shm_metadata
@@ -62,9 +67,7 @@ def main(argv=None) -> int:
         from .viewer_core import launch_mosaic_viewer
     except ImportError as exc:
         logger.exception("Viewer dependencies are unavailable")
-        raise SystemExit(
-            "pyrtc-view requires viewer dependencies. Install with: pip install pyrtc[viewer]"
-        ) from exc
+        raise SystemExit(_INSTALL_HINT) from exc
 
     try:
         shm_names, static_vmin, static_vmax = _split_targets_and_limits(args.items)
@@ -91,9 +94,7 @@ def main(argv=None) -> int:
         )
     except ImportError as exc:
         logger.exception("Viewer dependencies are unavailable")
-        raise SystemExit(
-            "pyrtc-view requires viewer dependencies. Install with: pip install pyrtc[viewer]"
-        ) from exc
+        raise SystemExit(_INSTALL_HINT) from exc
 
 
 if __name__ == "__main__":

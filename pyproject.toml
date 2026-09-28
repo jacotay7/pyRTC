@@ -59,7 +59,8 @@ aotpy = [
 	"aotpy>=3.2",
 ]
 gui = [
-	"PyQt5",
+	"qtpy>=2.0",
+	"PySide6",
 ]
 gpu = [
 	"torch",
@@ -68,7 +69,9 @@ torch = [
 	"torch",
 ]
 viewer = [
-	"PyQt5",
+	"qtpy>=2.0",
+	"PySide6",
+	"matplotlib>=3.5",
 	"tqdm",
 ]
 specula = [

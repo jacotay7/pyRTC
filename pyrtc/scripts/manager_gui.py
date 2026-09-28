@@ -7,6 +7,11 @@ from pathlib import Path
 
 from pyrtc.logging_utils import add_logging_cli_args, configure_logging_from_args
 
+_INSTALL_HINT = (
+    "pyrtc-manager-gui requires GUI dependencies (qtpy and a Qt6 binding such as PySide6). "
+    "Install with: pip install pyrtcao[gui]"
+)
+
 
 def _build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Launch the pyrtc manager GUI.")
@@ -43,9 +48,7 @@ def main(argv=None) -> int:
         from pyrtc.gui.main_window import launch_manager_gui
     except ImportError as exc:
         logger.exception("GUI dependencies are unavailable")
-        raise SystemExit(
-            "pyrtc-manager-gui requires GUI dependencies. Install with: pip install pyrtc[gui]"
-        ) from exc
+        raise SystemExit(_INSTALL_HINT) from exc
 
     mode = args.mode
     if mode == "soft":
@@ -53,12 +56,16 @@ def main(argv=None) -> int:
     elif mode == "hard":
         mode = "hard-rtc"
 
-    return launch_manager_gui(
-        config_path=args.config,
-        mode=mode,
-        theme_name=args.theme,
-        refresh_ms=max(int(args.refresh_ms), 200),
-    )
+    try:
+        return launch_manager_gui(
+            config_path=args.config,
+            mode=mode,
+            theme_name=args.theme,
+            refresh_ms=max(int(args.refresh_ms), 200),
+        )
+    except ImportError as exc:
+        logger.exception("GUI dependencies are unavailable")
+        raise SystemExit(_INSTALL_HINT) from exc
 
 
 if __name__ == "__main__":

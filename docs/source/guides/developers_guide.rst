@@ -33,7 +33,13 @@ Optional extras:
 
    pip install -e .[docs]
    pip install -e .[viewer]
+   pip install -e .[gui]
    pip install -e .[gpu]
+
+The ``viewer`` and ``gui`` extras install ``qtpy`` and PySide6 (Qt6). Without
+them, ``tests/test_qt_smoke.py`` skips; with them it builds the manager GUI and
+the viewer on Qt's ``offscreen`` platform, so it needs no display. To check
+PyQt6 as well, install ``PyQt6`` and run it with ``QT_API=pyqt6``.
 
 Day-to-Day Checks
 -----------------
