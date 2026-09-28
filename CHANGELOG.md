@@ -119,6 +119,11 @@ All notable changes to `pyrtcao` will be documented in this file.
 
 ### Added
 
+- **ALPAO adapter supports any actuator count** (#73). The layout is the
+	smallest centred-disk grid holding the mirror's actuator count (identical
+	to the previous DM97 layout), or an explicit `layout_file`. The SDK is
+	imported when the mirror is created, from an optional `sdk_path`, so the
+	module imports without the vendor SDK installed.
 - **End-to-end pipeline latency benchmark** (#62).
 	`benchmarks/pipeline_latency_bench.py` launches the synthetic SHWFS system
 	through `RTCManager` in soft and hard mode, with stream notify on and off,

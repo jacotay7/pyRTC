@@ -222,10 +222,72 @@ def test_alpao_dm_init_and_layout(monkeypatch, tmp_path):
 
     dm = module.ALPAODM(conf)
     assert dm.layout.shape == (11, 11)
+    xx, yy = np.meshgrid(np.arange(11), np.arange(11))
+    assert np.array_equal(dm.layout, np.sqrt((xx - 5) ** 2 + (yy - 5) ** 2) < 5.5)
     assert dm.dm.serial == "BAX123"
     assert dm.CAP == 0.5
     dm.__del__()
     assert dm.dm.reset is True
+
+
+@pytest.mark.parametrize("count", [69, 97, 241, 468, 820])
+def test_alpao_circular_layout_has_exact_actuator_count(count):
+    module = importlib.import_module("pyrtc.hardware.alpao_dm")
+    layout = module.circular_actuator_layout(count)
+    assert int(layout.sum()) == count
+    # Centred disk: symmetric under both flips and transposition.
+    assert np.array_equal(layout, layout[::-1, ::-1])
+    assert np.array_equal(layout, layout.T)
+
+
+def test_alpao_module_imports_without_sdk_and_honours_layout_and_sdk_path(monkeypatch, tmp_path):
+    from testsupport import private_stream
+
+    sys.modules.pop("pyrtc.hardware.alpao_dm", None)
+    monkeypatch.delitem(sys.modules, "Lib64.asdk", raising=False)
+    monkeypatch.delitem(sys.modules, "Lib64", raising=False)
+    module = importlib.import_module("pyrtc.hardware.alpao_dm")  # no SDK needed
+
+    sdk_dir = tmp_path / "sdk"
+    (sdk_dir / "Lib64").mkdir(parents=True)
+    (sdk_dir / "Lib64" / "__init__.py").write_text("")
+    (sdk_dir / "Lib64" / "asdk.py").write_text(
+        "class DM:\n"
+        "    def __init__(self, serial):\n"
+        "        self.serial = serial\n"
+        "    def Get(self, key):\n"
+        "        return 12\n"
+        "    def Send(self, shape):\n"
+        "        pass\n"
+        "    def Reset(self):\n"
+        "        pass\n"
+    )
+    layout = np.zeros((4, 4), dtype=bool)
+    layout[:3, :] = True
+    layout_file = tmp_path / "layout.npy"
+    np.save(layout_file, layout)
+    monkeypatch.setattr(
+        importlib.import_module("pyrtc.wavefront_corrector"), "create_stream", private_stream
+    )
+    monkeypatch.setattr(sys, "path", list(sys.path))
+
+    dm = module.ALPAODM(
+        {
+            "name": "wfc",
+            "serial": "BAX999",
+            "num_actuators": 12,
+            "num_modes": 4,
+            "sdk_path": str(sdk_dir),
+            "layout_file": str(layout_file),
+            "functions": [],
+        }
+    )
+    try:
+        assert np.array_equal(dm.layout, layout)
+    finally:
+        dm.__del__()
+        for name in ("Lib64.asdk", "Lib64"):
+            sys.modules.pop(name, None)
 
 
 @pytest.mark.parametrize(
