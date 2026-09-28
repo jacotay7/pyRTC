@@ -29,10 +29,31 @@ Producers (components that own an output) call
    frame = stream.read_new(timeout=1.0)   # block until the next write
    frame = stream.read(out=buffer)        # zero-alloc read into a buffer
 
-``create_stream`` reuses an existing stream when its shape and dtype already
-match (so viewers stay attached across component restarts) and rebuilds it
-otherwise. Observers that must never write (viewers, telemetry, latency
+``create_stream`` reuses an existing stream when its shape, dtype and notify
+setting already match (so viewers stay attached across component restarts)
+and rebuilds it otherwise. Observers that must never write (viewers, telemetry, latency
 probes) pass ``readonly=True`` to ``open_stream``.
+
+Wake-up notifications
+---------------------
+
+Streams made by ``create_stream`` use pyshmem's ``notify=True``: a write
+wakes consumers parked in ``read_stream`` (``read_after_publication``) through
+a Linux futex, instead of each consumer sleeping and re-checking every few
+tens of microseconds. Idle worker threads then stop competing for the GIL and
+the CPU, which lowers end-to-end latency and jitter in the running pipeline.
+Each write pays one extra wake system call (a few microseconds).
+
+Set ``PYRTC_STREAM_NOTIFY=0`` in the environment to create polling streams
+instead (hard-RTC component processes inherit the variable), or pass
+``notify=False`` to ``create_stream``. On a quiet host with deep CPU idle
+states a parked consumer can wake a little later than a polling one at low
+frame rates, so measure your own system with
+``python -m benchmarks.stream_handoff_bench`` and
+``python -m benchmarks.pipeline_latency_bench``. The flag is fixed when a
+stream is created, so an existing stream with the other setting (for example
+one left over from an older pyrtc) is rebuilt rather than reused. Off Linux
+the flag is recorded but consumers keep polling.
 
 Publication metadata
 --------------------

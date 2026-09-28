@@ -20,6 +20,13 @@ Developer Guide: [https://pyrtc-ao.readthedocs.io/en/latest/guides/developers_gu
 ## Performance
 
 The benchmark section is intentionally near the top because performance is a primary design constraint for `pyrtc`.
+Two different things are reported here, and they should not be confused:
+
+- **Kernel compute** — the time to run one AO iteration's compute kernels (image formation, slopes, control update) back to back in a single thread. This is a lower bound for what the math costs.
+- **End-to-end pipeline latency** — the time from the wavefront sensor publishing a frame to the loop publishing the DM command computed from it, in a *running* pyrtc system. This adds shared-memory handoffs between components, thread/process scheduling and, in soft-RTC mode, GIL contention between worker threads. It is the number to use when estimating loop delay.
+
+### Kernel Compute (single-threaded harness)
+
 These measurements were captured on the current GPU-enabled host with the closed-loop synthetic benchmark harness:
 
 ```bash
@@ -44,7 +51,7 @@ The benchmark drives deterministic modal disturbances through synthetic `PYWFS` 
 
 ### Synthetic AO Loop Benchmarks
 
-Values are reported as `p99 throughput / p99 latency`.
+Values are reported as `p99 throughput / p99 latency` of the kernel compute for one iteration (no inter-component handoffs).
 
 | Loop | 10x10 CPU | 10x10 GPU | 20x20 CPU | 20x20 GPU | 60x60 CPU | 60x60 GPU |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -57,6 +64,28 @@ The benchmark artifacts committed for this host are:
 
 - `benchmarks/readme_benchmark_report.json`
 - `benchmarks/readme_benchmark_table.md`
+
+### End-to-End Pipeline Latency
+
+`benchmarks/pipeline_latency_bench.py` launches the synthetic SHWFS example (`examples/synthetic_shwfs/config.yaml`: 49x49 WFS, 7x7 subapertures, 97 modes, plus the synthetic DM and science camera) through `RTCManager`, lets it settle, and measures `manager.latency()` along `wfs -> signal -> wfc`, pairing writes by frame id. Each run uses private stream names, and every mode/notify combination is repeated three times, interleaved; the table shows the median across repeats.
+
+```bash
+python -m benchmarks.pipeline_latency_bench --samples 2048 --repeats 3 --output benchmarks/pipeline_latency_report.json
+python -m benchmarks.pipeline_latency_bench --samples 4096 --repeats 3 --frame-rate-hz 1000 --output benchmarks/pipeline_latency_report_1khz.json
+```
+
+Host: Intel Core i7-10700 (16 threads), Linux 6.8, Python 3.13, CPU streams, default (unprivileged) scheduling. This is a different, smaller host than the kernel table above. WFS → DM command latency in microseconds (mean / p50 / p99):
+
+| Mode | Stream notify | 200 Hz WFS (example) | 1 kHz WFS |
+| --- | --- | --- | --- |
+| soft-RTC (threads) | off | 321 / 308 / 567 | 287 / 277 / 560 |
+| soft-RTC (threads) | on (default) | 299 / 278 / 627 | 298 / 288 / 555 |
+| hard-RTC (processes) | off | 199 / 193 / 336 | 183 / 178 / 281 |
+| hard-RTC (processes) | on (default) | 153 / 146 / 257 | 154 / 144 / 349 |
+
+Compare that with the kernel table, where a comparable 10x10 SHWFS iteration computes in about 13 us at p99 (on a faster host): most of the end-to-end time is handoffs and scheduling, not math. In soft-RTC mode the component threads share one GIL, which is why hard-RTC is faster despite crossing process boundaries. "Stream notify" is pyshmem's futex wake-up, which pyrtc streams use by default (see the streams guide; `PYRTC_STREAM_NOTIFY=0` turns it off). It lowers hard-RTC mean and median latency by 15-25% (the 1 kHz p99 was worse in this run) and is within run-to-run noise in soft-RTC mode. The numbers move by 2x or more when the host is busy, so rerun the benchmark on the machine you care about.
+
+Artifacts: `benchmarks/pipeline_latency_report.json`, `benchmarks/pipeline_latency_report_1khz.json`, and the single-handoff benchmark `benchmarks/stream_handoff_report.json` (`python -m benchmarks.stream_handoff_bench`).
 
 ## What It Is For
 

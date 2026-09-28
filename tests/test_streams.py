@@ -1,5 +1,7 @@
 """Tests for the pyshmem-backed stream policy (pyrtc.streams)."""
 
+import sys
+
 import numpy as np
 
 import pyrtc.streams as streams
@@ -107,6 +109,112 @@ def test_create_stream_rebuilds_on_mismatch(unique_name):
         assert second.dtype == np.float32
     finally:
         _cleanup_shm(second)
+
+
+def _stored_notify(name):
+    import pyshmem
+
+    return bool(pyshmem.stat(name)["notify"])
+
+
+def test_stream_notify_default_is_on(monkeypatch):
+    monkeypatch.delenv(streams.STREAM_NOTIFY_ENV, raising=False)
+    assert streams.stream_notify_default() is True
+    for value in ("0", "false", "No", " off "):
+        monkeypatch.setenv(streams.STREAM_NOTIFY_ENV, value)
+        assert streams.stream_notify_default() is False
+    monkeypatch.setenv(streams.STREAM_NOTIFY_ENV, "1")
+    assert streams.stream_notify_default() is True
+
+
+def test_create_stream_enables_notify_by_default(monkeypatch, unique_name):
+    monkeypatch.delenv(streams.STREAM_NOTIFY_ENV, raising=False)
+    name = unique_name("notify")
+    shm = streams.create_stream(name, (4,), np.float32)
+    try:
+        assert _stored_notify(name) is True
+        if sys.platform.startswith("linux"):
+            assert shm.notify is True
+    finally:
+        _cleanup_shm(shm)
+
+
+def test_create_stream_notify_env_opt_out(monkeypatch, unique_name):
+    monkeypatch.setenv(streams.STREAM_NOTIFY_ENV, "0")
+    name = unique_name("nonotify")
+    shm = streams.create_stream(name, (4,), np.float32)
+    try:
+        assert _stored_notify(name) is False
+        assert shm.notify is False
+    finally:
+        _cleanup_shm(shm)
+
+
+def test_create_stream_rebuilds_existing_stream_without_notify(unique_name):
+    """A matching stream created without notify is recreated with it."""
+    import pyshmem
+
+    name = unique_name("legacy")
+    legacy = pyshmem.create(name, shape=(2, 2), dtype=np.int32)
+    legacy.write(np.ones((2, 2), dtype=np.int32))
+    legacy.close()
+    shm = streams.create_stream(name, (2, 2), np.int32, notify=True)
+    try:
+        assert _stored_notify(name) is True
+        assert shm.count == 0  # rebuilt, not reused
+    finally:
+        _cleanup_shm(shm)
+
+
+def test_create_stream_rebuilds_on_notify_opt_out(unique_name):
+    name = unique_name("optout")
+    first = streams.create_stream(name, (3,), np.float32, notify=True)
+    first.close()
+    second = streams.create_stream(name, (3,), np.float32, notify=False)
+    try:
+        assert _stored_notify(name) is False
+    finally:
+        _cleanup_shm(second)
+
+
+def test_create_stream_reuses_matching_notify_stream(unique_name):
+    name = unique_name("reusentf")
+    first = streams.create_stream(name, (2,), np.float32, notify=True)
+    try:
+        first.write(np.array([1.0, 2.0], dtype=np.float32))
+        second = streams.create_stream(name, (2,), np.float32, notify=True)
+        assert second.count == 1
+        assert np.array_equal(second.read(), np.array([1.0, 2.0], dtype=np.float32))
+        second.close()
+    finally:
+        _cleanup_shm(first)
+
+
+def test_notify_stream_wakes_parked_reader_across_threads(unique_name):
+    """A consumer parked in read_after_publication wakes on the next write."""
+    import threading
+    import time
+
+    name = unique_name("wake")
+    producer = streams.create_stream(name, (1,), np.float64, notify=True)
+    consumer = streams.open_stream(name, readonly=True)
+    result = {}
+
+    def _consume():
+        publication = consumer.read_after_publication(0, timeout=5.0)
+        result["value"] = float(np.asarray(publication.payload).ravel()[0])
+
+    try:
+        thread = threading.Thread(target=_consume)
+        thread.start()
+        time.sleep(0.05)
+        producer.write(np.array([7.0]))
+        thread.join(timeout=5.0)
+        assert not thread.is_alive()
+        assert result["value"] == 7.0
+    finally:
+        consumer.close()
+        _cleanup_shm(producer)
 
 
 def test_open_stream_attaches_to_existing(unique_name):

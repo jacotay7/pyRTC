@@ -263,3 +263,29 @@ class _FakeManager:
             },
             "segments": [],
         }
+
+
+def test_observer_closes_while_a_writer_thread_holds_the_lock():
+    # pyshmem >= 1.3.5: the lock is shared per name, but closing a handle the
+    # writer is not using must not fail while the writer is mid-write.
+    import threading
+
+    from testsupport import private_stream
+
+    writer = private_stream("lockwrt", (2,), "float32")
+    observer = latency.open_stream(writer.name)
+    holding, release = threading.Event(), threading.Event()
+
+    def _write_under_lock():
+        with writer.locked():
+            holding.set()
+            release.wait(5.0)
+
+    worker = threading.Thread(target=_write_under_lock, daemon=True)
+    worker.start()
+    assert holding.wait(5.0)
+    try:
+        observer.close()
+    finally:
+        release.set()
+        worker.join(5.0)

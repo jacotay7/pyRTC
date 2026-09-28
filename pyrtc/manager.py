@@ -1068,7 +1068,14 @@ class RTCManager:
         stream_path: list[str] | tuple[str, ...] | None = None,
         samples: int = 2048,
         show_progress: bool = False,
+        timeout_seconds: float | None = None,
     ) -> dict:
+        """Measure frame-id aligned latency along a stream path.
+
+        ``timeout_seconds`` bounds the sample collection (``TimeoutError``
+        when the pipeline does not produce ``samples`` frames in time); the
+        default waits indefinitely.
+        """
         from pyrtc.component_descriptors import describe_component_class, get_component_descriptor
         from pyrtc.latency import infer_stream_path, measure_stream_path_latency
 
@@ -1110,6 +1117,7 @@ class RTCManager:
             path,
             samples=samples,
             show_progress=show_progress,
+            timeout_seconds=timeout_seconds,
         )
         payload = report.to_dict()
         payload["inferred_path"] = bool(inferred_path)
