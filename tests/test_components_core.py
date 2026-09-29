@@ -369,7 +369,9 @@ def test_optimizer_base_methods_and_error_paths(monkeypatch):
             for _ in range(n_trials):
                 objective()
 
-    monkeypatch.setattr(pytest.importorskip("optuna"), "create_study", lambda direction, sampler: FakeStudy())
+    monkeypatch.setattr(
+        pytest.importorskip("optuna"), "create_study", lambda direction, sampler: FakeStudy()
+    )
 
     optimizer = Optimizer({"num_steps": 1, "functions": []})
     assert optimizer.objective() is None
