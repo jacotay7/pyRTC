@@ -135,10 +135,12 @@ class XIMEAWFS(WavefrontSensor):
 
         return
 
-    def __del__(self):
+    def close(self, *args, **kwargs):
+        if getattr(self, "_closed", False):
+            return
         component_logger = getattr(self, "logger", logger)
         try:
-            super().__del__()
+            super().close(*args, **kwargs)
         finally:
             cam = getattr(self, "cam", None)
             if cam is not None:

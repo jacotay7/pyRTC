@@ -11,6 +11,8 @@ import pytest
 from pyrtc.streams import clear_shms
 from testsupport import private_stream
 
+from testsupport import bare_component
+
 slopes_mod = importlib.import_module("pyrtc.slopes_process")
 
 
@@ -112,7 +114,7 @@ def test_torch_path_disabled(monkeypatch):
 
 
 def test_slopes_process_methods(tmp_path):
-    sp = slopes_mod.SlopesProcess.__new__(slopes_mod.SlopesProcess)
+    sp = bare_component(slopes_mod.SlopesProcess)
     sp.signal_dtype = np.float32
     sp.wfs_type = "pywfs"
     sp.valid_sub_aps = np.ones((4, 8), dtype=bool)
@@ -147,7 +149,7 @@ def test_slopes_process_methods(tmp_path):
 
 
 def test_compute_signal2d_shwfs():
-    sp = slopes_mod.SlopesProcess.__new__(slopes_mod.SlopesProcess)
+    sp = bare_component(slopes_mod.SlopesProcess)
     sp.wfs_type = "shwfs"
     sp.valid_sub_aps = np.array([[True, False], [False, True]])
     sp.cur_signal_2d = np.zeros((2, 2), dtype=np.float32)
@@ -157,7 +159,7 @@ def test_compute_signal2d_shwfs():
 
 
 def test_set_pupils_registers_pywfs_output_streams(monkeypatch):
-    sp = slopes_mod.SlopesProcess.__new__(slopes_mod.SlopesProcess)
+    sp = bare_component(slopes_mod.SlopesProcess)
     sp.signal_type = "slopes"
     sp.wfs_type = "pywfs"
     sp.signal_dtype = np.float32
@@ -187,7 +189,7 @@ def test_set_pupils_registers_pywfs_output_streams(monkeypatch):
 
 
 def test_set_pupils_rejects_overlapping_pupils(monkeypatch):
-    sp = slopes_mod.SlopesProcess.__new__(slopes_mod.SlopesProcess)
+    sp = bare_component(slopes_mod.SlopesProcess)
     sp.signal_type = "slopes"
     sp.wfs_type = "pywfs"
     sp.signal_dtype = np.float32
@@ -206,7 +208,7 @@ def test_set_pupils_rejects_overlapping_pupils(monkeypatch):
 def _pywfs_process(gpu_device, *, size=64, radius=10):
     """Minimal PYWFS ``SlopesProcess`` (no streams) for exercising compute_signal."""
 
-    sp = slopes_mod.SlopesProcess.__new__(slopes_mod.SlopesProcess)
+    sp = bare_component(slopes_mod.SlopesProcess)
     sp.image_shape = (size, size)
     sp.signal_dtype = np.float32
     sp.signal_type = "slopes"
@@ -392,7 +394,7 @@ def test_slopes_process_normalizes_type_case():
 
 
 def test_compute_signal_raises_for_unsupported_signal_type():
-    sp = slopes_mod.SlopesProcess.__new__(slopes_mod.SlopesProcess)
+    sp = bare_component(slopes_mod.SlopesProcess)
     sp.signal_type = "phase"
     sp.wfs_type = "shwfs"
     sp._image_buffer = None

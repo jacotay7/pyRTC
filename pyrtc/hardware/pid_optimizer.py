@@ -55,6 +55,8 @@ class PIDOptimizer(Optimizer):
             self.is_pol = False
 
             super().__init__(conf)
+            self.register_input_stream("strehl", self.strehl_shm)
+            self.register_input_stream("tiptilt", self.tip_tilt_shm)
             self.logger.info(
                 "Initialized PID optimizer mode=%s num_reads=%s", self.mode, self.num_reads
             )

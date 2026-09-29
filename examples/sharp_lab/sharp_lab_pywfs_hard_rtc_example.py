@@ -126,7 +126,8 @@ def main(argv=None) -> int:
     except KeyboardInterrupt:
         logger.info("Stopping SHARP lab PyWFS hard example")
     finally:
-        manager.stop()
+        # close() also ends the worker threads and releases stream handles.
+        manager.close()
 
     return 0
 

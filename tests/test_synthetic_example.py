@@ -1,6 +1,7 @@
 import importlib
 import importlib.util
 import sys
+import uuid
 from pathlib import Path
 
 import numpy as np
@@ -37,7 +38,9 @@ def test_synthetic_wfc_default_layout_matches_expected_shape():
     config = _load_example_module().read_yaml_file(
         str(REPO_ROOT / "examples" / "synthetic_shwfs" / "config.yaml")
     )
-    clear_shms(["wfc", "wfc_2d"])
+    names = {name: f"{name}_{uuid.uuid4().hex[:8]}" for name in ("wfc", "wfc_2d")}
+    config["wfc"]["input_streams"] = {"wfc": names["wfc"]}
+    config["wfc"]["output_streams"] = dict(names)
     wfc = SyntheticWFC(config["wfc"])
 
     try:
@@ -46,8 +49,8 @@ def test_synthetic_wfc_default_layout_matches_expected_shape():
         assert wfc.correction_vector_2d.read().shape == (11, 11)
         assert wfc.correction_vector_2d is not None
     finally:
-        wfc.stop()
-        clear_shms(["wfc", "wfc_2d"])
+        wfc.close()
+        clear_shms(list(names.values()))
 
 
 def test_ensure_expected_shms_reuses_matching_streams(monkeypatch):

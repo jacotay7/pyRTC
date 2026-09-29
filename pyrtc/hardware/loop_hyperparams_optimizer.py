@@ -52,6 +52,7 @@ class LoopOptimizer(Optimizer):
             self.num_reads = set_from_config(conf, "num_reads", 5)
 
             super().__init__(conf)
+            self.register_input_stream("strehl", self.strehl_shm)
             self.logger.info(
                 "Initialized loop optimizer min_gain=%s max_gain=%s max_leak=%s max_dropped_modes=%s num_reads=%s",
                 self.min_gain,

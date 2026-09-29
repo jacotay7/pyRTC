@@ -30,8 +30,10 @@ aliases.
 ## Code layout
 
 - `pyrtc/component.py` — `Component`, the base class for every runtime
-  component: config parsing, worker threads (one per entry in `functions`), and
-  the stream helpers `read_stream` / `write_stream`.
+  component: config parsing, worker threads (one per entry in `functions`),
+  the stream helpers `read_stream` / `write_stream`, and the lifecycle
+  (`start`/`stop` pause and resume; `close` ends the workers and closes the
+  registered streams for good).
 - Core components: `wavefront_sensor.py`, `slopes_process.py`, `loop.py`,
   `wavefront_corrector.py`, `science_camera.py`, `telemetry.py`,
   `modulator.py`, `optimizer.py`.
@@ -81,6 +83,13 @@ and docs. pyrtc must not reimplement transport features that pyshmem provides.
   registered input sets `Component.frame_id`, and `write_stream` stamps it on
   outputs. `pyrtc.latency` pairs writes across streams by `frame_id`. Keep
   new components on `read_stream` / `write_stream` so they propagate it.
+- Components must register every stream they touch
+  (`register_input_stream` / `register_output_stream`); the helpers raise
+  `KeyError` for anything else. A registered handle is owned by the
+  component and closed by `Component.close()`.
+- Close what you build: `RTCManager.close()` (or `with RTCManager... as m`)
+  and `Component.close()`. `stop()` only pauses; worker threads hold their
+  component, so garbage collection never ends them.
 - Observers (viewers, telemetry, latency, monitors) open streams with
   `open_stream(name, readonly=True)`.
 - Do not use `read_new()` in request/response or lock-step code. It is
@@ -115,9 +124,17 @@ ruff check . && ruff format --check .    # lint, as in CI
   display-bound Qt windows are omitted.
 - `tests/testsupport.py` provides `private_stream` (a real pyshmem stream with a
   unique name, unlinked after each test), `publishing_chain` (a background
-  producer stamping frame ids through several streams), and `StaticStream`
-  (republishes one frame, for telemetry). Prefer real pyshmem streams over new
-  hand-written fakes.
+  producer stamping frame ids through several streams), `StaticStream`
+  (republishes one frame, for telemetry), `bare_component` (a component
+  built without `__init__` but with real stream state, for single-method
+  tests), `prefix_system_streams` (renames every stream in a loaded system
+  config), and `private_synthetic_config` (the synthetic example with private
+  stream names, for tests that run a whole system). Prefer real pyshmem
+  streams over new hand-written fakes.
+- Tests that start a system must use private stream names
+  (`private_synthetic_config`) and close the manager. `RTCManager.build()`
+  reconciles, and may clear, every output stream its config names, so a test
+  on the canonical names can break another system running on the host.
 - `tests/test_qt_smoke.py` builds the manager GUI and the viewer on Qt's
   `offscreen` platform (no display needed) and skips without a Qt6 binding,
   which is the case in CI (`requirements-test.txt` has no Qt). Run it locally
@@ -161,8 +178,9 @@ ruff check . && ruff format --check .    # lint, as in CI
   `COMPONENT_DESCRIPTOR`) in their class body. When an adapter starts reading
   a new config key, add it to `EXTRA_CONFIG_KEYS` (or to the descriptor for a
   built-in), or configs using it will warn.
-- Components can be built with `__new__` in tests, so `Component` methods call
-  `_ensure_stream_state()` before touching stream state.
+- Build components for method-level tests with `testsupport.bare_component`,
+  not `Cls.__new__(Cls)`: the stream helpers assume the state that
+  `Component._init_runtime_state` sets up (there is no lazy-init guard).
 - A `KeyboardInterrupt` at a random point in a Windows test run was pyshmem
   (< 1.3.3) probing process liveness with `os.kill(pid, 0)`, which on Windows
   sends Ctrl+C to the console group. It is fixed in pyshmem 1.3.3. If the

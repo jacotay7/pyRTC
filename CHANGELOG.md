@@ -6,6 +6,52 @@ All notable changes to `pyrtcao` will be documented in this file.
 
 ### Fixed
 
+- **IM calibration settles for the measured DM round trip** (follow-up to
+	#87). `compute_im()` discarded a fixed `im_settle_frames` after each poke
+	even when `check_round_trip()` had measured a longer lag, so on a slow or
+	loaded pipeline pokes were averaged before they landed and the loop could
+	diverge. Each calibration now discards at least the measured number of
+	frames; `im_settle_frames` is the minimum.
+- Requires `pyshmem>=1.3.6`: closing a stream handle while another thread
+	was blocked reading it crashed the process (fixed at the source in pyshmem),
+	which `Component.close()` relies on when a worker does not exit in time.
+- **Components can be torn down; managers no longer leak them** (#37).
+	`stop()` only paused a component: its worker threads, and every
+	shared-memory handle it opened, lived until the process exited, so each
+	manager lifetime in a GUI, notebook, benchmark or test run leaked threads,
+	mappings and file descriptors, and on Windows the open handles pinned
+	stream names so a later rebuild with a new shape failed. `stop()` keeps its
+	pause/resume meaning; the new `Component.close()` stops the component,
+	ends its worker threads (a blocking `read_stream` notices within 0.1 s and
+	raises `ComponentClosedError`), and closes its registered streams. It is
+	idempotent, final (a closed component cannot be restarted), and called
+	from `__del__`. `RTCManager.close()` stops the system, closes every
+	soft-RTC component and shared resource, and shuts down hard-RTC children;
+	`build()`/`start()` afterwards constructs fresh components. `RTCManager`
+	is a context manager. Hard-RTC children now close their component on
+	shutdown, the manager GUI closes a manager it replaces and closes the
+	system when its window closes, and the examples and the pipeline
+	benchmark close what they start. The ALPAO, XIMEA, Spinnaker and PI
+	adapters release their devices in `close()` instead of `__del__` (which
+	never ran while worker threads held the component), and `Telemetry.close()`
+	also stops the ring buffer. A manager whose build fails now closes the
+	components it had already built. The Windows skip on
+	`test_manager_start_clears_stale_output_shms` is removed.
+- **Every component stream is registered, so frame ids reach every output**
+	(#35). `Component` looked up streams by registration and otherwise fell
+	back to any `<name>_shm` attribute, which read and wrote the stream but
+	silently dropped its `frame_id`. The fallback is gone: `read_stream` and
+	`write_stream` raise `KeyError` for unregistered names. The synthetic WFS
+	now registers the `wfc` stream it reads, the synthetic science camera the
+	`signal` stream (so `strehl`, `tiptilt` and the PSFs carry frame ids), the
+	wavefront corrector registers `wfc` as an input as well as an output (so
+	`wfc_2d` carries the command's frame id), and the PID, NCPA and loop
+	hyper-parameter optimizers register their streams. `WavefrontSensor`
+	numbers exposures with its own counter, so reading an input cannot rewind
+	it. Registering a new handle under an existing name closes the handle it
+	replaces. `_ensure_stream_state()`, which existed only for tests that
+	built components with `Cls.__new__`, is removed; tests use
+	`testsupport.bare_component`, which runs the real stream-state setup.
 - **Interaction-matrix calibration waits for a live pipeline** (#87).
 	Worker kernels JIT-compile on first use, so right after start-up the first
 	DM command reached the signal about a second late and a cold `compute_im()`

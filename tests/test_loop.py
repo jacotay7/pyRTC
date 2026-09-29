@@ -5,7 +5,7 @@ import numpy as np
 import pyshmem
 import pytest
 
-from testsupport import private_stream
+from testsupport import bare_component, private_stream
 
 loop_mod = importlib.import_module("pyrtc.loop")
 
@@ -82,7 +82,7 @@ def test_gpu_integrator_matches_cpu(dropped):
 
 
 def test_loop_methods_without_full_init(tmp_path):
-    loop = loop_mod.Loop.__new__(loop_mod.Loop)
+    loop = bare_component(loop_mod.Loop)
     loop.num_modes = 4
     loop.num_dropped_modes = 1
     loop.num_active_modes = 3
@@ -160,6 +160,7 @@ def test_loop_methods_without_full_init(tmp_path):
 
     # send_to_wfc branch with CL DOCRIME
     loop.wfc_shm = private_stream("wfc", (4,), np.float32)
+    loop.register_output_stream("wfc", loop.wfc_shm)
     loop.flat = np.zeros(4, dtype=np.float32)
     loop.cl_docrime = True
     loop.poke_amp = 0.1
@@ -179,7 +180,7 @@ def test_loop_methods_without_full_init(tmp_path):
 
 
 def test_standard_integrator_uses_nonblocking_wfc_read():
-    loop = loop_mod.Loop.__new__(loop_mod.Loop)
+    loop = bare_component(loop_mod.Loop)
     loop.g_cm = np.eye(4, dtype=np.float32) * 0.25
     loop._correction_buffer = np.zeros(4, dtype=np.float32)
     loop.num_active_modes = 3
@@ -187,6 +188,8 @@ def test_standard_integrator_uses_nonblocking_wfc_read():
     sent = {}
     loop.signal_shm = private_stream("signal", (4,), np.float32)
     loop.wfc_shm = private_stream("wfc", (4,), np.float32)
+    loop.register_input_stream("signal", loop.signal_shm)
+    loop.register_output_stream("wfc", loop.wfc_shm)
     loop.signal_shm.write(np.ones(4, dtype=np.float32))
     loop._signal_buffer = np.empty(4, dtype=np.float32)
     loop._wfc_buffer = np.empty(4, dtype=np.float32)
@@ -208,7 +211,7 @@ def test_standard_integrator_uses_nonblocking_wfc_read():
 
 
 def test_loop_compute_cm_zero_matrix_without_failure():
-    loop = loop_mod.Loop.__new__(loop_mod.Loop)
+    loop = bare_component(loop_mod.Loop)
     loop.num_modes = 3
     loop.num_dropped_modes = 0
     loop.num_active_modes = 3
@@ -386,13 +389,20 @@ def test_settle_frames_cover_pipeline_lag(fake_ao_system, caplog):
     system = fake_ao_system(true_im, lag_frames=3).start()
     loop = loop_mod.Loop(system.loop_config())
 
-    with caplog.at_level("WARNING", logger="pyrtc"):
+    # The measured round trip sets how many frames to discard after each poke,
+    # so a slow pipeline still calibrates correctly with the default settings.
+    with caplog.at_level("INFO", logger="pyrtc"):
         loop.compute_im()
-    assert "im_settle_frames" in caplog.text
+    assert "discarding" in caplog.text
+    np.testing.assert_allclose(loop.im, true_im, rtol=1e-4, atol=1e-5)
+    assert loop._active_settle_frames is None
+
+    # Without the round-trip check, one settle frame is not enough for the lag.
+    loop.compute_im(round_trip_check=False)
     assert not np.allclose(loop.im, true_im, atol=1e-3)
 
     loop.im_settle_frames = 5
-    loop.compute_im()
+    loop.compute_im(round_trip_check=False)
     np.testing.assert_allclose(loop.im, true_im, rtol=1e-4, atol=1e-5)
 
 

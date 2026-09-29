@@ -237,9 +237,11 @@ def run_pipeline_latency(
         finally:
             if manager is not None:
                 try:
-                    manager.stop()
+                    # Repeated runs share this process: close, not just stop,
+                    # so earlier systems' threads and handles do not pile up.
+                    manager.close()
                 except Exception:
-                    logger.warning("Failed to stop benchmark manager", exc_info=True)
+                    logger.warning("Failed to close benchmark manager", exc_info=True)
             clear_shms(sorted(set(names.values())))
 
     segments = [

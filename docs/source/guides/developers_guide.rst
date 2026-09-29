@@ -258,6 +258,20 @@ When opening a pull request:
 - list the validation commands you ran
 - call out compatibility or deployment risks
 
+Writing Components
+------------------
+
+Components talk to streams only through handles they register:
+
+- Open each stream once and register it with ``register_input_stream(name, shm)`` (streams the component reads) or ``register_output_stream(name, shm)`` (streams it writes). A stream a component both reads and writes, such as the corrector's ``wfc``, is registered as both.
+- Use ``read_stream`` / ``write_stream`` with the registered name. Reading a registered input records its ``frame_id`` and ``write_stream`` stamps it on the outputs, which is how frame identity reaches the DM. An unregistered name raises ``KeyError``; a ``<name>_shm`` attribute is not a registration.
+- A registered handle belongs to the component: ``close()`` closes it, and registering a different handle under the same name closes the replaced one.
+- Source components (wavefront sensors) number their own frames; ``WavefrontSensor.expose`` keeps a private exposure counter, so a simulator that also reads ``wfc`` does not disturb it.
+
+Release anything else the component holds (device SDK handles, extra threads, ring buffers) by overriding ``close()``: call ``super().close(*args, **kwargs)`` first, which stops the component and joins its workers, then release your own resources. Do not put teardown in ``__del__``; the base ``__del__`` calls ``close()``, but it only runs once the worker threads are gone.
+
+Tests that exercise a single method without running ``__init__`` build the component with ``testsupport.bare_component(Cls, inputs={...}, outputs={...})``, which runs the real stream-state initialization and registers the given streams. Tests that run a whole system use ``testsupport.private_synthetic_config`` for private stream names and close the manager (``with RTCManager... as manager`` or ``manager.close()`` in ``finally``).
+
 Hardware Contributions
 ----------------------
 

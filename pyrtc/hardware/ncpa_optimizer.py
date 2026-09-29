@@ -64,6 +64,8 @@ class NCPAOptimizer(Optimizer):
             self.im = None
 
             super().__init__(conf)
+            self.register_input_stream("strehl", self.strehl_shm)
+            self.register_output_stream("wfc", self.wfc_shm)
             self.logger.info(
                 "Initialized NCPA optimizer start_mode=%s end_mode=%s correction_mag=%s num_reads=%s",
                 self.start_mode,
@@ -106,7 +108,7 @@ class NCPAOptimizer(Optimizer):
                 self.slopes.set_property("ref_slopes_file", self.ref_slopes_file)
                 self.logger.info("Applied NCPA trial in closed-loop mode")
             else:
-                self.wfc_shm.write(modal_coefs)
+                self.write_stream("wfc", modal_coefs)
                 self.logger.info("Applied NCPA trial in open-loop mode")
         except Exception:
             self.logger.exception("Failed to apply NCPA trial")
@@ -137,7 +139,7 @@ class NCPAOptimizer(Optimizer):
                     "Applied optimum NCPA correction in closed-loop mode overwrite=%s", overwrite
                 )
             else:
-                self.wfc_shm.write(modal_coefs)
+                self.write_stream("wfc", modal_coefs)
                 self.logger.info("Applied optimum NCPA correction in open-loop mode")
         except Exception:
             self.logger.exception("Failed to apply optimum NCPA correction")

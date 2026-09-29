@@ -153,10 +153,12 @@ class SpinnakerScienceCamera(ScienceCamera):
 
         return
 
-    def __del__(self):
+    def close(self, *args, **kwargs):
+        if getattr(self, "_closed", False):
+            return
         component_logger = getattr(self, "logger", logger)
         try:
-            super().__del__()
+            super().close(*args, **kwargs)
         finally:
             camera = getattr(self, "camera", None)
             if camera is not None:

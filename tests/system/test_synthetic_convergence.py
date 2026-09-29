@@ -38,6 +38,7 @@ def test_synthetic_loop_converges_after_calibration(tmp_path):
     np.save(config["loop"]["im_file"], np.zeros((98, 97), dtype=np.float32))
 
     manager = RTCManager.from_config(config, config_path=str(SYNTHETIC_CONFIG_PATH), mode="soft")
+    signal_stream = None
     try:
         manager.start()
         time.sleep(0.5)
@@ -74,5 +75,5 @@ def test_synthetic_loop_converges_after_calibration(tmp_path):
             f"open-loop residual {open_loop_rms:.4f}"
         )
     finally:
-        manager.stop()
+        manager.close()
         clear_shms(streams)

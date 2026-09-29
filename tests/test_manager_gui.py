@@ -1,16 +1,13 @@
 from pathlib import Path
 
-from pyrtc import RTCManager
+from testsupport import private_synthetic_config
+from pyrtc import RTCManager, clear_shms
 from pyrtc.config_schema import read_system_config
 from pyrtc.gui.manager_adapter import (
     ManagerAdapter,
     _coerce_runtime_value,
     _is_live_runtime_field,
     _ordered_sections,
-)
-from pyrtc.hardware.synthetic_systems import (
-    _default_wfc_layout,
-    build_synthetic_shwfs_response_matrix,
 )
 from pyrtc.scripts import manager_gui
 
@@ -138,22 +135,26 @@ def test_manager_adapter_surfaces_runtime_parameter_hooks_and_applies_live_value
 
 def test_manager_adapter_build_exposes_built_state(tmp_path):
     adapter = ManagerAdapter()
-    config_path = tmp_path / "synthetic_runtime_config.yaml"
-    config = read_system_config(SYNTHETIC_CONFIG_PATH, validate=False)
-    np_path = tmp_path / "synthetic_identity_im.npy"
-    import numpy as np
+    config_path, names = private_synthetic_config(tmp_path)
 
-    layout = _default_wfc_layout(int(config["wfc"]["num_actuators"]))
-    response = build_synthetic_shwfs_response_matrix(7, int(config["wfc"]["num_modes"]), layout)
-    np.save(np_path, response.astype(np.float32))
-    config["loop"]["im_file"] = str(np_path)
-    config_path.write_text(__import__("yaml").safe_dump(config, sort_keys=False), encoding="utf-8")
+    try:
+        adapter.load_config(str(config_path))
+        status = adapter.build()
 
-    adapter.load_config(str(config_path))
-    status = adapter.build()
+        assert status["state"] == "built"
+        assert status["components"]["wfs"]["state"] == "built"
+        wfs = adapter.manager.get_component("wfs")
+        old_manager = adapter.manager
 
-    assert status["state"] == "built"
-    assert status["components"]["wfs"]["state"] == "built"
+        # Replacing the manager (config edit, reload) closes the old one.
+        adapter.load_config(str(config_path))
+
+        assert old_manager.state == "closed"
+        assert wfs.alive is False
+        assert adapter.manager is not old_manager
+    finally:
+        adapter.close()
+        clear_shms(sorted(set(names.values())))
 
 
 def test_manager_adapter_prefers_common_viewer_streams():

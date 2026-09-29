@@ -66,9 +66,14 @@ the metadata of that same write, which is how telemetry records timestamps.
 Inside components, :meth:`pyrtc.component.Component.read_stream` and
 :meth:`~pyrtc.component.Component.write_stream` handle this for you:
 
+- Both helpers work only on streams the component registered with
+  ``register_input_stream`` / ``register_output_stream``; any other name
+  raises ``KeyError``.
 - ``read_stream(name)`` *consumes* the stream: it returns the first write newer
   than the one it returned last time (the first call returns immediately).
-  ``read_stream(name, block=False)`` only peeks and does not consume.
+  ``read_stream(name, block=False)`` only peeks and does not consume. A
+  blocking read raises ``ComponentClosedError`` if the component is closed
+  while it waits.
 - Reading a registered input records its ``frame_id``, and ``write_stream``
   stamps it on the outputs. The wavefront sensor numbers each exposure, so a
   ``wfc`` command carries the id of the WFS frame it was computed from.

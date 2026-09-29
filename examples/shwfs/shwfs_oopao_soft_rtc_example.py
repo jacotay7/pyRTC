@@ -110,9 +110,13 @@ def stop_system(system: dict) -> None:
         system["dm"].flatten()
     except Exception:
         logger.exception("Failed to flatten the DM during shutdown")
-    for name in ("psf", "slopes", "wfs", "dm"):
+    for name in ("loop", "psf", "slopes", "wfs", "dm", "sim"):
+        if system.get(name) is None or not hasattr(system[name], "close"):
+            continue
         try:
-            system[name].stop()
+            # close() stops the component, ends its worker threads and
+            # releases its stream handles; stop() would only pause it.
+            system[name].close()
         except Exception:
             logger.exception("Failed while stopping %s", name)
 

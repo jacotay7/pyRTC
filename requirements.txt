@@ -8,5 +8,5 @@ optuna
 cmaes
 numexpr
 astropy
-pyshmem>=1.3.5
+pyshmem>=1.3.6
 aobasis>=1.0.2

@@ -31,7 +31,7 @@ logger = get_logger(__name__)
 
 
 def work(obj, function_name, affinity):
-    """Run one component worker function in a loop while the component lives."""
+    """Run one component worker function in a loop until the component closes."""
     set_affinity_and_priority(function_name, affinity, getattr(obj, "realtime_priority", 0))
     work_function = getattr(obj, function_name, None)
     while obj.alive:
@@ -39,6 +39,9 @@ def work(obj, function_name, affinity):
             try:
                 work_function()
             except Exception:
+                if not obj.alive:
+                    # close() interrupted the call (e.g. a blocking read).
+                    break
                 component_logger = getattr(obj, "logger", logger)
                 component_logger.exception("Worker function '%s' crashed", function_name)
                 time.sleep(0.05)
@@ -81,6 +84,7 @@ def launch_component(component, conf_key, start=True):
         set_from_config(conf, "realtime_priority", 0),
     )
 
+    obj = None
     try:
         obj = component(conf=conf)
         if start:
@@ -93,6 +97,10 @@ def launch_component(component, conf_key, start=True):
     except Exception:
         logger.exception("Failed to launch component %s", conf_key)
         raise
+    finally:
+        close = getattr(obj, "close", None)
+        if callable(close):
+            close()
 
 
 DEFAULT_COMPONENT_ORDER = ("modulator", "wfc", "wfs", "slopes", "loop", "psf", "telemetry")
@@ -207,6 +215,11 @@ class BaseComponentRuntime:
     def refresh_health(self) -> str:
         return self.state
 
+    def close(self) -> None:
+        """Stop the component and release everything it holds."""
+        self.stop()
+        self._set_stopped()
+
     def restart(self, *, reason: str | None = None) -> None:
         self.restart_count += 1
         if reason:
@@ -297,6 +310,29 @@ class SoftComponentRuntime(BaseComponentRuntime):
         except Exception as exc:
             self._record_problem(str(exc), state="failed")
             raise
+
+    def close(self) -> None:
+        """Stop the component, end its worker threads and close its streams.
+
+        The runtime drops the component; a later :meth:`start` or
+        :meth:`build` constructs a fresh one.
+        """
+        self.desired_running = False
+        component, self.component = self.component, None
+        if component is None:
+            self._set_stopped()
+            return
+        try:
+            try:
+                component.stop()
+            finally:
+                close = getattr(component, "close", None)
+                if callable(close):
+                    close()
+        except Exception as exc:
+            self._record_problem(str(exc), state="failed")
+            raise
+        self._set_stopped()
 
     def refresh_health(self) -> str:
         if self.component is None:
@@ -396,6 +432,30 @@ class HardComponentRuntime(BaseComponentRuntime):
             raise
         self.launcher = None
         self._set_built()
+
+    def close(self) -> None:
+        """Shut the child process down; kill it if the RPC shutdown fails.
+
+        Stopping a hard-RTC component already ends its process (the child
+        closes its component before exiting), so this is :meth:`stop` plus a
+        forced cleanup when the child does not answer.
+        """
+        launcher = self.launcher
+        try:
+            self.stop()
+        except Exception:
+            self.launcher = None
+            if launcher is not None and hasattr(launcher, "close"):
+                try:
+                    launcher.close(force=True)
+                except Exception:
+                    logger.debug(
+                        "Failed to force-close launcher for %s", self.section_name, exc_info=True
+                    )
+            raise
+        finally:
+            self.desired_running = False
+        self._set_stopped()
 
     def refresh_health(self) -> str:
         if not self.desired_running:
@@ -622,7 +682,7 @@ class RTCManager:
                 self.error = str(exc)
                 for runtime in reversed(built):
                     try:
-                        runtime.stop()
+                        getattr(runtime, "close", runtime.stop)()
                     except Exception:
                         pass
                 raise
@@ -1000,8 +1060,9 @@ class RTCManager:
 
     def stop(self) -> None:
         self._stop_supervisor()
-        if self.state in {"stopped", "created", "validated"} and not self.runtimes:
-            self.state = "stopped"
+        if self.state in {"stopped", "created", "validated", "closed"} and not self.runtimes:
+            if self.state != "closed":
+                self.state = "stopped"
             return
         with self._lock:
             self.state = "stopping"
@@ -1020,6 +1081,77 @@ class RTCManager:
                 raise RuntimeError(self.error)
             self.state = "built" if self.runtimes else "stopped"
             self.error = None
+
+    def close(self) -> None:
+        """Stop the system and release every component for good.
+
+        :meth:`stop` pauses soft-RTC components (their worker threads and
+        stream handles stay alive so :meth:`start` can resume them); ``close``
+        also ends the worker threads and closes the stream handles of every
+        soft-RTC component, shuts down hard-RTC child processes, and closes
+        shared resources that define ``close()``. Streams are not unlinked.
+
+        ``close`` is idempotent. Afterwards the manager holds no components;
+        :meth:`build` or :meth:`start` constructs fresh ones from the config.
+        The manager is also a context manager that closes on exit::
+
+            with RTCManager.from_config_file("config.yaml") as manager:
+                manager.start()
+                ...
+        """
+        self._stop_supervisor()
+        with self._lock:
+            if not self.runtimes and not self.resources:
+                if self.state not in {"created", "validated"}:
+                    self.state = "closed"
+                return
+            self.state = "stopping"
+            failures = []
+            order = self._teardown_order()
+            # Pause everything first so no component is mid-frame while its
+            # neighbours close their streams.
+            for section_name in order:
+                try:
+                    self.runtimes[section_name].stop()
+                except Exception as exc:
+                    failures.append(f"{section_name}: {exc}")
+            for section_name in order:
+                runtime = self.runtimes[section_name]
+                try:
+                    getattr(runtime, "close", runtime.stop)()
+                except Exception as exc:
+                    failures.append(f"{section_name}: {exc}")
+            for resource_name, resource in reversed(list(self.resources.items())):
+                close = getattr(resource, "close", None)
+                if not callable(close):
+                    continue
+                try:
+                    close()
+                except Exception as exc:
+                    failures.append(f"resources.{resource_name}: {exc}")
+            self.runtimes = {}
+            self.resources = {}
+            if failures:
+                self.state = "failed"
+                self.error = "; ".join(failures)
+                raise RuntimeError(self.error)
+            self.state = "closed"
+            self.error = None
+
+    def _teardown_order(self) -> list[str]:
+        """Runtime sections in reverse start order (resource consumers first)."""
+        try:
+            order = [name for name in self._component_start_order() if name in self.runtimes]
+        except Exception:
+            order = []
+        order += [name for name in self.runtimes if name not in order]
+        return list(reversed(order))
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        self.close()
 
     def stop_component(self, section_name: str) -> None:
         with self._lock:

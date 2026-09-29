@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import os
 import threading
+import time
 from typing import Any
 
 from pyrtc.config_runtime import stream_alias_map
@@ -20,6 +21,18 @@ from pyrtc.utils import set_from_config, validate_component_config
 
 
 logger = get_logger(__name__)
+
+# A blocking ``read_stream`` waits in slices of this length so it notices
+# ``close()`` promptly. Writers still wake it at once (notify-enabled streams
+# park on a futex), so the slice only bounds teardown, not latency.
+STREAM_WAIT_SLICE = 0.1
+
+# Default time ``close()`` waits for each worker thread to leave its function.
+DEFAULT_CLOSE_TIMEOUT = 2.0
+
+
+class ComponentClosedError(RuntimeError):
+    """Raised by a blocking read when its component is closed while waiting."""
 
 
 class Component:
@@ -87,29 +100,15 @@ class Component:
             validate_component_config(conf, [cls.__name__ for cls in self.__class__.mro()])
             self._warn_unknown_config_keys(conf)
 
-            self.alive = True
-            self.running = False
-            self.section_name = conf.get("_sectionName")
+            self._init_runtime_state(conf)
             self.class_name = conf.get("class_name")
             self.class_file = conf.get("class_file")
-            self.system_streams = dict(conf.get("_systemStreams", {}))
             self.affinity = conf.get("affinity")
             self.realtime_priority = set_from_config(conf, "realtime_priority", 0)
             requested_gpu_device = set_from_config(conf, "gpu_device", None)
             self.gpu_device = normalize_gpu_device(requested_gpu_device, self.__class__.__name__)
-            self._stream_inputs = {}
-            self._stream_outputs = {}
-            self._consumed_counts = {}
-            self.frame_id = None
-            self._input_stream_names = self._normalize_stream_name_map(
-                conf.get("input_streams", {}), direction="input"
-            )
-            self._output_stream_names = self._normalize_stream_name_map(
-                conf.get("output_streams", {}), direction="output"
-            )
 
             functions_to_run = set_from_config(conf, "functions", [])
-            self.work_threads = []
 
             if isinstance(functions_to_run, list) and len(functions_to_run) > 0:
                 for i, function_name in enumerate(functions_to_run):
@@ -135,6 +134,31 @@ class Component:
             raise
 
         return
+
+    def _init_runtime_state(self, conf) -> None:
+        """Initialize lifecycle flags, stream registries and stream aliases.
+
+        ``__init__`` calls this before starting worker threads. Tests that
+        build a component without ``__init__`` call it through
+        ``testsupport.bare_component`` so the stream helpers work unchanged.
+        """
+
+        self.alive = True
+        self.running = False
+        self._closed = False
+        self.work_threads = []
+        self.section_name = conf.get("_sectionName")
+        self.system_streams = dict(conf.get("_systemStreams", {}))
+        self._stream_inputs = {}
+        self._stream_outputs = {}
+        self._consumed_counts = {}
+        self.frame_id = None
+        self._input_stream_names = self._normalize_stream_name_map(
+            conf.get("input_streams", {}), direction="input"
+        )
+        self._output_stream_names = self._normalize_stream_name_map(
+            conf.get("output_streams", {}), direction="output"
+        )
 
     def _warn_unknown_config_keys(self, conf) -> None:
         """Log a warning for each config key this component class does not read.
@@ -167,65 +191,67 @@ class Component:
         return stream_alias_map(raw_mapping, defaults=self._default_stream_name_map(direction))
 
     def input_stream_name(self, stream_name: str) -> str:
-        self._ensure_stream_state()
         return self._input_stream_names.get(str(stream_name), str(stream_name))
 
     def output_stream_name(self, stream_name: str) -> str:
-        self._ensure_stream_state()
         return self._output_stream_names.get(str(stream_name), str(stream_name))
 
     def stream_aliases(self, direction: str) -> dict[str, str]:
-        self._ensure_stream_state()
         if direction == "input":
             return dict(self._input_stream_names)
         if direction == "output":
             return dict(self._output_stream_names)
         raise ValueError("direction must be 'input' or 'output'")
 
-    def _ensure_stream_state(self) -> None:
-        """Initialize stream-tracking state for partially constructed objects."""
-
-        if not hasattr(self, "_stream_inputs"):
-            self._stream_inputs = {}
-        if not hasattr(self, "_stream_outputs"):
-            self._stream_outputs = {}
-        if not hasattr(self, "_consumed_counts"):
-            self._consumed_counts = {}
-        if not hasattr(self, "frame_id"):
-            self.frame_id = None
-        if not hasattr(self, "_input_stream_names"):
-            self._input_stream_names = {}
-        if not hasattr(self, "_output_stream_names"):
-            self._output_stream_names = {}
-        if not hasattr(self, "system_streams"):
-            self.system_streams = {}
-        if not hasattr(self, "section_name"):
-            self.section_name = None
-
     def _stream_object(self, stream_name: str):
-        """Return the registered SHM object for an input or output stream."""
+        """Return the registered handle for an input or output stream."""
 
-        self._ensure_stream_state()
         if stream_name in self._stream_inputs:
             return self._stream_inputs[stream_name]
         if stream_name in self._stream_outputs:
             return self._stream_outputs[stream_name]
-        conventional_name = f"{stream_name}_shm"
-        if hasattr(self, conventional_name):
-            return getattr(self, conventional_name)
-        raise KeyError(stream_name)
+        raise KeyError(
+            f"{self.__class__.__name__} has no registered stream {stream_name!r}; "
+            "register it with register_input_stream or register_output_stream"
+        )
+
+    def _register_stream(self, registry: dict, stream_name: str, shm) -> None:
+        name = str(stream_name)
+        previous = registry.get(name)
+        registry[name] = shm
+        if previous is None or previous is shm:
+            return
+        # A new handle has its own write counter baseline.
+        self._consumed_counts.pop(name, None)
+        if not self._is_registered_handle(previous):
+            _close_quietly(previous, name, getattr(self, "logger", logger))
+
+    def _is_registered_handle(self, shm) -> bool:
+        return any(
+            candidate is shm
+            for registry in (self._stream_inputs, self._stream_outputs)
+            for candidate in registry.values()
+        )
 
     def register_input_stream(self, stream_name: str, shm) -> None:
-        """Register a stream that this component reads from."""
+        """Register a stream that this component reads from.
 
-        self._ensure_stream_state()
-        self._stream_inputs[str(stream_name)] = shm
+        Reading a registered input with :meth:`read_stream` records its
+        ``frame_id``, so every stream a component reads must be registered.
+        The component owns the handle from then on: :meth:`close` closes it,
+        as does registering a different handle under the same name.
+        """
+
+        self._register_stream(self._stream_inputs, stream_name, shm)
 
     def register_output_stream(self, stream_name: str, shm) -> None:
-        """Register a stream that this component writes to."""
+        """Register a stream that this component writes to.
 
-        self._ensure_stream_state()
-        self._stream_outputs[str(stream_name)] = shm
+        Ownership of the handle passes to the component, as for
+        :meth:`register_input_stream`.
+        """
+
+        self._register_stream(self._stream_outputs, stream_name, shm)
 
     def read_stream(
         self, stream_name: str, *, block: bool = True, timeout: float | None = None, out=None
@@ -243,7 +269,8 @@ class Component:
             ``False``, peek at the current payload without consuming it.
         timeout : float, optional
             Maximum seconds to wait for a new write when ``block`` is
-            ``True``. ``None`` waits indefinitely.
+            ``True``. ``None`` waits until a write arrives or the component
+            is closed.
         out : numpy.ndarray, optional
             Pre-allocated buffer receiving the payload (zero-alloc reads on
             the hot path). Ignored for GPU-attached streams.
@@ -251,9 +278,15 @@ class Component:
         Reading a registered input stream also records its publication
         ``frame_id`` on :attr:`frame_id`, so the next :meth:`write_stream`
         carries the frame identity downstream.
+
+        Raises
+        ------
+        ComponentClosedError
+            When :meth:`close` is called while a blocking read waits.
+        TimeoutError
+            When ``timeout`` expires before a new write arrives.
         """
 
-        self._ensure_stream_state()
         name = str(stream_name)
         stream = self._stream_object(name)
         if stream.gpu_device is not None:
@@ -262,14 +295,32 @@ class Component:
         if consumed is None:
             publication = stream.read_publication(out=out)
         else:
-            # Level-triggered on the last consumed count, so a write published
-            # between two calls is never folded into the wait baseline.
-            publication = stream.read_after_publication(consumed, timeout=timeout, out=out)
+            publication = self._read_after(stream, name, consumed, timeout, out)
         if block:
             self._consumed_counts[name] = publication.count
         if name in self._stream_inputs:
             self.frame_id = publication.frame_id
         return publication.payload
+
+    def _read_after(self, stream, name: str, consumed: int, timeout: float | None, out):
+        # Level-triggered on the last consumed count, so a write published
+        # between two calls is never folded into the wait baseline. The wait
+        # is sliced so close() can end it.
+        deadline = None if timeout is None else time.monotonic() + max(0.0, float(timeout))
+        while True:
+            if not self.alive:
+                raise ComponentClosedError(
+                    f"{self.__class__.__name__} closed while waiting on stream {name!r}"
+                )
+            if deadline is None:
+                wait = STREAM_WAIT_SLICE
+            else:
+                wait = min(STREAM_WAIT_SLICE, max(0.0, deadline - time.monotonic()))
+            try:
+                return stream.read_after_publication(consumed, timeout=wait, out=out)
+            except TimeoutError:
+                if deadline is not None and time.monotonic() >= deadline:
+                    raise
 
     def write_stream(self, stream_name: str, arr):
         """Write one registered output stream.
@@ -281,7 +332,6 @@ class Component:
         payload immediately.
         """
 
-        self._ensure_stream_state()
         name = str(stream_name)
         stream = self._stream_outputs.get(name)
         if stream is None:
@@ -296,17 +346,101 @@ class Component:
 
         return describe_component_class(cls)
 
-    def __del__(self):
+    def close(self, timeout: float | None = DEFAULT_CLOSE_TIMEOUT) -> None:
+        """Tear the component down for good.
+
+        :meth:`stop` only pauses the worker threads; ``close`` ends them and
+        releases the component's shared-memory handles. It stops the
+        component if it is running, clears :attr:`alive` so every worker
+        thread leaves its loop (a blocking :meth:`read_stream` notices within
+        ``STREAM_WAIT_SLICE`` seconds), joins the workers, and closes every
+        registered stream handle. The streams themselves are not unlinked, so
+        observers keep reading the last frames.
+
+        ``close`` is idempotent and safe to call from ``__del__``. Subclasses
+        that hold other resources (device SDK handles, extra threads) override
+        it, call ``super().close(timeout)`` first, then release their own.
+
+        Parameters
+        ----------
+        timeout : float, optional
+            Seconds to wait, in total, for the worker threads to exit. A
+            worker still busy after that (for example blocked inside a device
+            SDK call) is logged and abandoned; it is a daemon thread and exits
+            with the process. ``None`` waits indefinitely.
         """
-        Destructor to clean up the component.
-        """
+
+        if getattr(self, "_closed", False):
+            return
+        self._closed = True
         component_logger = getattr(self, "logger", logger)
+        if getattr(self, "running", False):
+            try:
+                self.stop()
+            except Exception:
+                component_logger.exception("Failed to stop component while closing")
+        self.running = False
+        self.alive = False
+
+        current = threading.current_thread()
+        deadline = None if timeout is None else time.monotonic() + max(0.0, float(timeout))
+        stuck = []
+        for thread in list(getattr(self, "work_threads", [])):
+            if thread is current:
+                continue
+            if not hasattr(thread, "join"):
+                continue
+            remaining = None if deadline is None else max(0.0, deadline - time.monotonic())
+            thread.join(remaining)
+            if thread.is_alive():
+                stuck.append(thread.name)
+        if stuck:
+            # Safe with pyshmem >= 1.3.6: closing a handle wakes a reader
+            # blocked on it (it raises) instead of unmapping under it.
+            component_logger.warning(
+                "Worker threads %s did not exit within %ss; closing streams anyway",
+                stuck,
+                timeout,
+            )
+
+        self._close_streams()
+        if getattr(self, "_closing_from_del", False):
+            component_logger.debug("Closed component during garbage collection")
+        else:
+            component_logger.info("Closed component")
+
+    def _close_streams(self) -> None:
+        component_logger = getattr(self, "logger", logger)
+        seen = set()
+        for registry in (
+            getattr(self, "_stream_inputs", {}),
+            getattr(self, "_stream_outputs", {}),
+        ):
+            for name, shm in list(registry.items()):
+                if id(shm) in seen:
+                    continue
+                seen.add(id(shm))
+                _close_quietly(shm, name, component_logger)
+            registry.clear()
+        getattr(self, "_consumed_counts", {}).clear()
+
+    def __del__(self):
+        """Close the component when it is garbage collected.
+
+        Worker threads keep a reference to their component, so this only runs
+        once the workers are gone (or were never started). Call :meth:`close`
+        explicitly instead of relying on it.
+        """
         try:
-            self.stop()
+            self._closing_from_del = True
+            self.close(timeout=0.0)
         except Exception:
-            component_logger.exception("Failed while stopping component during destruction")
-        finally:
-            self.alive = False
+            try:
+                getattr(self, "logger", logger).exception(
+                    "Failed while closing component during destruction"
+                )
+            except Exception:
+                pass
         return
 
     def start(self):
@@ -314,6 +448,8 @@ class Component:
         Start the registered real-time functions.
         """
         component_logger = getattr(self, "logger", logger)
+        if getattr(self, "_closed", False):
+            raise RuntimeError(f"{self.__class__.__name__} is closed and cannot be restarted")
         try:
             self.running = True
             component_logger.info("Started component")
@@ -324,7 +460,10 @@ class Component:
 
     def stop(self):
         """
-        Stops the registered real-time functions.
+        Pause the registered real-time functions.
+
+        The worker threads stay alive and :meth:`start` resumes them. Use
+        :meth:`close` to end them and release the component's streams.
         """
         component_logger = getattr(self, "logger", logger)
         try:
@@ -334,6 +473,16 @@ class Component:
             component_logger.exception("Failed to stop component")
             raise
         return
+
+
+def _close_quietly(shm, name: str, component_logger) -> None:
+    close = getattr(shm, "close", None)
+    if not callable(close):
+        return
+    try:
+        close()
+    except Exception:
+        component_logger.warning("Failed to close stream %r", name, exc_info=True)
 
 
 if __name__ == "__main__":

@@ -72,6 +72,100 @@ def private_stream(name, shape, dtype, gpu_device=None):
     return stream
 
 
+def bare_component(cls, conf=None, **streams):
+    """Build ``cls`` without its ``__init__`` but with real stream state.
+
+    Runs :meth:`pyrtc.component.Component._init_runtime_state`, so the
+    stream helpers (``read_stream``, ``write_stream``, aliases, ``close``)
+    behave exactly as on a fully constructed component, while the test sets
+    only the attributes the method under test needs. No worker threads are
+    started. Keyword arguments register streams: ``inputs={"signal": shm}``
+    and ``outputs={"wfc": shm}``.
+    """
+    from pyrtc.component import Component
+
+    unknown = set(streams) - {"inputs", "outputs"}
+    if unknown:
+        raise TypeError(f"unexpected keyword arguments: {sorted(unknown)}")
+    obj = cls.__new__(cls)
+    Component._init_runtime_state(obj, dict(conf or {}))
+    for name, shm in (streams.get("inputs") or {}).items():
+        obj.register_input_stream(name, shm)
+    for name, shm in (streams.get("outputs") or {}).items():
+        obj.register_output_stream(name, shm)
+    return obj
+
+
+def private_synthetic_config(workdir, *, prefix=None, include_psf=True):
+    """Write the synthetic SHWFS example config with private stream names.
+
+    Every stream is renamed to ``<prefix>_<name>`` so a test can run the full
+    system next to other tests (or a real RTC) on the same host. Class files
+    become absolute paths and the loop gets a generated interaction matrix.
+    Returns ``(config_path, names)`` where ``names`` maps each canonical
+    stream name to its private one.
+    """
+    import copy
+    from pathlib import Path
+
+    import yaml
+
+    from pyrtc.hardware.synthetic_systems import (
+        _default_wfc_layout,
+        build_synthetic_shwfs_response_matrix,
+    )
+
+    example_dir = Path(__file__).resolve().parents[1] / "examples" / "synthetic_shwfs"
+    config = copy.deepcopy(yaml.safe_load((example_dir / "config.yaml").read_text("utf-8")))
+    prefix = prefix or f"t{uuid.uuid4().hex[:8]}"
+    workdir = Path(workdir)
+    if not include_psf:
+        config.pop("psf", None)
+        for key in ("component_classes", "component_files"):
+            config.get("manager", {}).get(key, {}).pop("psf", None)
+    config.get("manager", {}).pop("graph_layout", None)
+
+    names = {}
+
+    def _private(stream):
+        return names.setdefault(stream, f"{prefix}_{stream}")
+
+    def _absolute(path_value):
+        path = Path(path_value)
+        return str(path if path.is_absolute() else (example_dir / path).resolve())
+
+    for section in config.values():
+        if not isinstance(section, dict) or "class_name" not in section:
+            continue
+        for direction in ("input_streams", "output_streams"):
+            aliases = section.get(direction) or {}
+            section[direction] = {key: _private(value) for key, value in aliases.items()}
+        if section.get("class_file"):
+            section["class_file"] = _absolute(section["class_file"])
+    # The synthetic WFS and science camera read these streams by their
+    # canonical names unless an input alias says otherwise.
+    config["wfs"]["input_streams"] = {"wfc": _private("wfc")}
+    if "psf" in config:
+        config["psf"]["input_streams"] = {"signal": _private("signal")}
+    manager_conf = config.setdefault("manager", {})
+    manager_conf["component_files"] = {
+        key: _absolute(value) for key, value in manager_conf.get("component_files", {}).items()
+    }
+
+    num_regions = int(config["wfs"]["width"]) // int(config["slopes"]["sub_ap_spacing"])
+    layout = _default_wfc_layout(int(config["wfc"]["num_actuators"]))
+    response = build_synthetic_shwfs_response_matrix(
+        num_regions, int(config["wfc"]["num_modes"]), layout
+    )
+    im_path = workdir / f"{prefix}_im.npy"
+    _np().save(im_path, response.astype(_np().float32))
+    config["loop"]["im_file"] = str(im_path)
+
+    config_path = workdir / f"{prefix}_config.yaml"
+    config_path.write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
+    return config_path, names
+
+
 @contextlib.contextmanager
 def publishing_chain(names, *, step_seconds=1e-3, stamp_frame_ids=True):
     """Run a background producer writing frames through ``names`` in order.

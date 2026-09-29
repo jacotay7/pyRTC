@@ -1,13 +1,16 @@
 import importlib
+import threading
+import time
 from pathlib import Path
 
 import numpy as np
 import pytest
 
-from testsupport import private_stream
+from testsupport import bare_component, private_stream
 from pyrtc.modulator import Modulator
 from pyrtc.optimizer import Optimizer
-from pyrtc.component import Component
+from pyrtc.component import Component, ComponentClosedError
+from pyrtc.manager import work
 
 opt_mod = importlib.import_module("pyrtc.optimizer")
 
@@ -74,6 +77,97 @@ def test_write_stream_propagates_input_frame_id():
 
     assert comp.frame_id == 41
     assert output.read_publication().frame_id == 41
+
+
+class ReadingComponent(Component):
+    def __init__(self, conf):
+        self.frames = []
+        super().__init__(conf)
+
+    def consume(self):
+        self.frames.append(self.read_stream("x"))
+
+
+def test_close_ends_a_worker_blocked_in_read_stream():
+    source = private_stream("src", (2,), np.float32)
+    source.write(np.zeros(2, dtype=np.float32))
+    comp = ReadingComponent({"functions": []})
+    comp.register_input_stream("x", source)
+    comp.start()
+    # Start the worker by hand so the stream is registered before it runs.
+    worker = threading.Thread(target=work, args=(comp, "consume", None), daemon=True)
+    comp.work_threads.append(worker)
+    worker.start()
+    deadline = time.monotonic() + 5.0
+    while not comp.frames and time.monotonic() < deadline:
+        time.sleep(0.01)
+    assert comp.frames  # first read returns at once; the next one blocks
+
+    started = time.monotonic()
+    comp.close()
+
+    assert time.monotonic() - started < 1.0
+    assert not worker.is_alive()
+    assert comp.alive is False and comp.running is False
+    with pytest.raises(RuntimeError, match="closed shared memory"):
+        source.read()
+    comp.close()  # idempotent
+    with pytest.raises(RuntimeError, match="closed"):
+        comp.start()
+
+
+def test_blocking_read_raises_when_component_closes():
+    source = private_stream("src", (2,), np.float32)
+    source.write(np.zeros(2, dtype=np.float32))
+    comp = bare_component(DummyComponent, inputs={"x": source})
+    comp.read_stream("x")
+    errors = []
+
+    def _reader():
+        try:
+            comp.read_stream("x")
+        except Exception as exc:
+            errors.append(exc)
+
+    reader = threading.Thread(target=_reader)
+    reader.start()
+    time.sleep(0.05)
+    comp.alive = False
+    reader.join(timeout=2.0)
+
+    assert not reader.is_alive()
+    assert len(errors) == 1 and isinstance(errors[0], ComponentClosedError)
+
+
+def test_stream_helpers_need_registered_streams():
+    comp = bare_component(DummyComponent)
+    # A ``<name>_shm`` attribute is not a registration (#35).
+    comp.x_shm = private_stream("x", (2,), np.float32)
+
+    with pytest.raises(KeyError, match="register"):
+        comp.read_stream("x")
+    with pytest.raises(KeyError, match="register"):
+        comp.write_stream("x", np.zeros(2, dtype=np.float32))
+
+
+def test_registering_a_new_handle_closes_the_replaced_one():
+    first = private_stream("first", (2,), np.float32)
+    second = private_stream("second", (2,), np.float32)
+    shared = private_stream("shared", (2,), np.float32)
+    comp = bare_component(DummyComponent, inputs={"x": first, "y": shared})
+    comp.register_output_stream("y", shared)
+
+    comp.register_input_stream("x", second)
+    comp.register_output_stream("y", second)
+
+    with pytest.raises(RuntimeError, match="closed shared memory"):
+        first.read()
+    # Still registered as an input, so it stays open.
+    shared.read()
+    comp.close()
+    for handle in (second, shared):
+        with pytest.raises(RuntimeError, match="closed shared memory"):
+            handle.read()
 
 
 def test_modulator_name_default_and_custom():

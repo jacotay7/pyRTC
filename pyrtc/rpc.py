@@ -471,7 +471,11 @@ class Listener:
         request_type = request["type"]
         if request_type == "shutdown":
             try:
-                self.hardware.__del__()
+                close = getattr(self.hardware, "close", None)
+                if callable(close):
+                    close()
+                else:
+                    self.hardware.__del__()
                 self.running = False
                 return dict(self.OKMessage)
             except Exception as exc:

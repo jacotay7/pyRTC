@@ -20,8 +20,12 @@ from pyrtc.component_descriptors import (
 )
 from pyrtc.config_runtime import stream_alias_map
 from pyrtc.config_schema import read_system_config
+from pyrtc.logging_utils import get_logger
 
 from .models import GraphEdgeModel, GraphNodeModel, GraphSnapshot
+
+
+logger = get_logger(__name__)
 
 
 _CONFIG_ONLY_FIELDS = {
@@ -49,6 +53,7 @@ _NON_ACTION_METHODS = {
     "get_property",
     "set_property",
     "shutdown",
+    "close",
     "get_hardware",
 }
 
@@ -284,16 +289,18 @@ class ManagerAdapter:
             "streams": {},
         }
         self.config_path = None
-        self.manager = RTCManager.from_config(self.config, config_path=self.config_path, mode=mode)
-        self._last_status = self.manager.status()
+        self._replace_manager(
+            RTCManager.from_config(self.config, config_path=self.config_path, mode=mode)
+        )
         return self.config
 
     def load_config(self, config_path: str, *, mode: str | None = None) -> dict[str, Any]:
         normalized = read_system_config(config_path, validate=False)
         self.config = dict(normalized)
         self.config_path = str(Path(config_path).expanduser().resolve())
-        self.manager = RTCManager.from_config(self.config, config_path=self.config_path, mode=mode)
-        self._last_status = self.manager.status()
+        self._replace_manager(
+            RTCManager.from_config(self.config, config_path=self.config_path, mode=mode)
+        )
         return self.config
 
     def ensure_manager(self) -> RTCManager:
@@ -311,16 +318,39 @@ class ManagerAdapter:
         manager = self.ensure_manager()
         if manager.state in {"running", "degraded", "failed", "starting", "stopping"}:
             raise RuntimeError("Stop the system before changing manager mode")
-        self.manager = RTCManager.from_config(self.config, config_path=self.config_path, mode=mode)
-        self._last_status = self.manager.status()
+        self._replace_manager(
+            RTCManager.from_config(self.config, config_path=self.config_path, mode=mode)
+        )
         return self._last_status
 
     def _rebuild_manager(self) -> None:
         if not self.config:
             return
         mode = None if self.manager is None else self.selected_mode()
-        self.manager = RTCManager.from_config(self.config, config_path=self.config_path, mode=mode)
-        self._last_status = self.manager.status()
+        self._replace_manager(
+            RTCManager.from_config(self.config, config_path=self.config_path, mode=mode)
+        )
+
+    def _replace_manager(self, manager: RTCManager) -> None:
+        """Swap in a new manager, closing the old one's components first.
+
+        The GUI loses its handle on the old manager here, so anything it
+        still runs (threads, stream handles, hard-RTC children) would be
+        orphaned; close it instead.
+        """
+        self.close()
+        self.manager = manager
+        self._last_status = manager.status()
+
+    def close(self) -> None:
+        """Stop and release the current manager's components (idempotent)."""
+        close = getattr(self.manager, "close", None)
+        if not callable(close):
+            return
+        try:
+            close()
+        except Exception:
+            logger.exception("Failed to close the RTC manager")
 
     def save_config(self, path: str | None = None) -> str:
         if not self.config:
