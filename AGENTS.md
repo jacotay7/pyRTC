@@ -287,7 +287,7 @@ ruff check . && ruff format --check .    # lint, as in CI
   pyshmem 1.3.5, `close()` on *any* handle failed while another thread held
   that lock (e.g. a latency observer closing while a soft-RTC producer was
   mid-write). It was fixed at the source, and pyrtc requires
-  a pyshmem that includes the fix (now `>=1.3.7`). Don't add retry workarounds for it.
+  a pyshmem that includes the fix (now `>=1.3.8`). Don't add retry workarounds for it.
 - Latency and handoff numbers on a shared host swing by 2x or more with load;
   compare notify on/off with interleaved `--repeats`, never single runs.
   With a load-following CPU governor, busy neighbours also raise the clock,

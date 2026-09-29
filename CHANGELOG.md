@@ -54,6 +54,11 @@ All notable changes to `pyrtcao` will be documented in this file.
 	loaded pipeline pokes were averaged before they landed and the loop could
 	diverge. Each calibration now discards at least the measured number of
 	frames; `im_settle_frames` is the minimum.
+- Requires `pyshmem>=1.3.8`: opening a stream while another process wrote it
+	failed now and then (`lock owner and depth metadata are inconsistent`,
+	about 0.2% of opens against a 1 kHz writer), which hit anything that
+	attaches to a running system: viewers, `manager.latency()`, telemetry,
+	hard-RTC children. Fixed at the source in jacotay7/pyshmem#20.
 - Requires `pyshmem>=1.3.6`: closing a stream handle while another thread
 	was blocked reading it crashed the process (fixed at the source in pyshmem),
 	which `Component.close()` relies on when a worker does not exit in time.
