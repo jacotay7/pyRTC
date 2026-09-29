@@ -237,6 +237,12 @@ All notable changes to `pyrtcao` will be documented in this file.
 
 ### Added
 
+- **Performance history** (#65). CI now uploads an end-to-end
+	`pipeline-latency` report next to the micro-benchmarks. The new
+	`benchmarks/perf_history.py` reads the reports of recent CI runs (or a
+	directory of saved reports), prints each metric's latest value against
+	its history median, and flags regressions. The Python 3.12 job adds this
+	table to its summary.
 - **Boston Micromachines DM adapter** (#70). `pyrtc.hardware.bmc_dm.BMCDM`
 	drives BMC MEMS mirrors through the BMC DM SDK. Bipolar commands map to
 	the SDK's `[0, 1]` range about a `bias`. The actuator count comes from

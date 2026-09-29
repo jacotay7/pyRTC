@@ -166,6 +166,9 @@ ruff check . && ruff format --check .    # lint, as in CI
 - Perf gate, as in CI:
   `python benchmarks/perf_smoke.py --output perf.json` then
   `python benchmarks/check_perf_baseline.py --current perf.json --baseline benchmarks/perf_smoke_baseline.json --max-ratio 5.0`.
+- Trends across CI runs: `python -m benchmarks.perf_history --repo <owner/repo>`
+  (reads the uploaded perf artifacts; needs `GH_TOKEN`). CI runs only on pull
+  requests into `dev`/`main` and pushes to `main`, so the history is PR runs.
 
 ## Documentation
 
