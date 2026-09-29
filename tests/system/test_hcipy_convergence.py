@@ -64,7 +64,9 @@ def test_hcipy_loop_nulls_a_dm_aberration_and_corrects_the_atmosphere():
     system = module.build_system(config)
     try:
         module.start_system(system)
-        module.prepare_loop(system, gain=0.3, use_atmosphere=False)
+        # Gain 0.15 keeps the integrator stable up to ~9 frames of DM-to-WFS
+        # delay, which a loaded CI runner can reach (0.3 is unstable beyond ~5).
+        module.prepare_loop(system, gain=0.15, use_atmosphere=False)
         loop, sim, psf = system["loop"], system["sim"], system["psf"]
         time.sleep(0.3)
         calibrated = _mean_signal_rms(loop)
@@ -78,7 +80,7 @@ def test_hcipy_loop_nulls_a_dm_aberration_and_corrects_the_atmosphere():
         aberrated = _mean_signal_rms(loop)
         loop.start()
         closed = _wait_until(
-            lambda: (lambda rms: (rms < 0.05 * aberrated, rms))(_mean_signal_rms(loop)), 20.0
+            lambda: (lambda rms: (rms < 0.05 * aberrated, rms))(_mean_signal_rms(loop)), 30.0
         )
 
         # 2. On the atmosphere, closing the loop raises the (time-averaged) Strehl.
