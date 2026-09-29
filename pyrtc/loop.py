@@ -623,7 +623,10 @@ class Loop(Component):
         self.send_to_wfc(np.asarray(correction, dtype=self.wfc_dtype))
         if self.hardware_delay > 0:
             time.sleep(self.hardware_delay)
-        for _ in range(self.im_settle_frames):
+        settle_frames = getattr(self, "_active_settle_frames", None)
+        if settle_frames is None:
+            settle_frames = self.im_settle_frames
+        for _ in range(settle_frames):
             self._next_signal(what="a calibration frame")
         total = np.zeros(self.signal_size, dtype=np.float64)
         for _ in range(self.num_iters_im):
@@ -768,17 +771,22 @@ class Loop(Component):
         try:
             method = self._validate_im_method(self.im_method)
             check = self.im_round_trip_check if round_trip_check is None else round_trip_check
+            settle_frames = self.im_settle_frames
             if check:
                 frames = self.check_round_trip()
-                if method != "docrime" and frames - 1 > self.im_settle_frames:
-                    component_logger.warning(
-                        "The DM round trip took %s frames but im_settle_frames=%s; the first "
-                        "averaged frames after each poke may predate it. Consider "
-                        "im_settle_frames >= %s.",
+                # Discard at least as many frames as the measured round trip
+                # took: on a slow or loaded pipeline a poke can take several
+                # frames to land, and averaging earlier frames corrupts the IM.
+                if method != "docrime" and frames > settle_frames:
+                    component_logger.info(
+                        "DM round trip took %s frames; discarding %s frames after each "
+                        "calibration poke (im_settle_frames=%s)",
+                        frames,
                         frames,
                         self.im_settle_frames,
-                        frames - 1,
                     )
+                    settle_frames = frames
+            self._active_settle_frames = settle_frames
             component_logger.info("Computing interaction matrix using method=%s", method)
             try:
                 if method == "docrime":
@@ -788,6 +796,7 @@ class Loop(Component):
                 else:
                     self.push_pull_im()
             finally:
+                self._active_settle_frames = None
                 try:
                     self.flatten()
                 except Exception:

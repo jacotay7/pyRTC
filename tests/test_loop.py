@@ -389,13 +389,20 @@ def test_settle_frames_cover_pipeline_lag(fake_ao_system, caplog):
     system = fake_ao_system(true_im, lag_frames=3).start()
     loop = loop_mod.Loop(system.loop_config())
 
-    with caplog.at_level("WARNING", logger="pyrtc"):
+    # The measured round trip sets how many frames to discard after each poke,
+    # so a slow pipeline still calibrates correctly with the default settings.
+    with caplog.at_level("INFO", logger="pyrtc"):
         loop.compute_im()
-    assert "im_settle_frames" in caplog.text
+    assert "discarding" in caplog.text
+    np.testing.assert_allclose(loop.im, true_im, rtol=1e-4, atol=1e-5)
+    assert loop._active_settle_frames is None
+
+    # Without the round-trip check, one settle frame is not enough for the lag.
+    loop.compute_im(round_trip_check=False)
     assert not np.allclose(loop.im, true_im, atol=1e-3)
 
     loop.im_settle_frames = 5
-    loop.compute_im()
+    loop.compute_im(round_trip_check=False)
     np.testing.assert_allclose(loop.im, true_im, rtol=1e-4, atol=1e-5)
 
 

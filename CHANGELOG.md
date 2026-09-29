@@ -6,6 +6,12 @@ All notable changes to `pyrtcao` will be documented in this file.
 
 ### Fixed
 
+- **IM calibration settles for the measured DM round trip** (follow-up to
+	#87). `compute_im()` discarded a fixed `im_settle_frames` after each poke
+	even when `check_round_trip()` had measured a longer lag, so on a slow or
+	loaded pipeline pokes were averaged before they landed and the loop could
+	diverge. Each calibration now discards at least the measured number of
+	frames; `im_settle_frames` is the minimum.
 - Requires `pyshmem>=1.3.6`: closing a stream handle while another thread
 	was blocked reading it crashed the process (fixed at the source in pyshmem),
 	which `Component.close()` relies on when a worker does not exit in time.
