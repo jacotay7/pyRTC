@@ -12,6 +12,8 @@ import argparse
 import inspect
 import os
 import time
+import importlib.util
+import sys
 from typing import Any, Mapping
 
 import numpy as np
@@ -24,11 +26,48 @@ from pyrtc.wavefront_corrector import WavefrontCorrector
 from pyrtc.wavefront_sensor import WavefrontSensor
 from pyrtc.utils import read_yaml_file, set_from_config, set_affinity_and_priority
 
-from OOPAO.Atmosphere import Atmosphere
-from OOPAO.DeformableMirror import DeformableMirror
-from OOPAO.Pyramid import Pyramid
-from OOPAO.Source import Source
-from OOPAO.Telescope import Telescope
+
+def _import_oopao_package():
+    """Import OOPAO, working around its import-time ``sys.path`` scan.
+
+    OOPAO's ``__init__`` looks for a ``sys.path`` entry containing "OOPAO"
+    (it expects a clone on ``PYTHONPATH``) and raises ``ValueError`` when the
+    package was pip-installed. Locate the package without executing it and
+    expose its directory on ``sys.path`` just for the import. (Upstream bug,
+    reported to the pyrtc maintainer; see AGENTS.md.)
+    """
+
+    if "OOPAO" in sys.modules or any("OOPAO" in str(entry) for entry in sys.path):
+        return
+    spec = importlib.util.find_spec("OOPAO")
+    if spec is None or not spec.submodule_search_locations:
+        return  # not installed: the imports below raise ModuleNotFoundError
+    package_dir = os.fspath(list(spec.submodule_search_locations)[0])
+    sys.path.append(package_dir)
+    try:
+        importlib.import_module("OOPAO")
+    except ModuleNotFoundError as exc:
+        if exc.name and exc.name.startswith("OOPAO."):
+            # pip installs of OOPAO omit its subpackages (tools, calibration).
+            raise ImportError(
+                f"The installed OOPAO at {package_dir} is incomplete ({exc.name} is "
+                "missing); pip installs of OOPAO omit its subpackages. Clone the "
+                "OOPAO repository and put the clone on PYTHONPATH instead (see the "
+                "pyrtc OOPAO example docs)."
+            ) from exc
+        raise
+    finally:
+        if package_dir in sys.path:
+            sys.path.remove(package_dir)
+
+
+_import_oopao_package()
+
+from OOPAO.Atmosphere import Atmosphere  # noqa: E402
+from OOPAO.DeformableMirror import DeformableMirror  # noqa: E402
+from OOPAO.Pyramid import Pyramid  # noqa: E402
+from OOPAO.Source import Source  # noqa: E402
+from OOPAO.Telescope import Telescope  # noqa: E402
 
 try:
     from OOPAO.ShackHartmann import ShackHartmann
@@ -79,18 +118,14 @@ class OOPAOWFSensor(WavefrontSensor):
             self.context.register_component(self.section_name, self)
 
     def _propagate_source(self):
+        # Current OOPAO propagation idiom: ``src ** first * ...`` resets the
+        # source and re-propagates it along the optical path each frame, so
+        # the DM OPD never accumulates across exposures of a static command.
         if self.tel.isPaired:
-            # Atmosphere.update() rebuilds the source/telescope state from
-            # scratch, so only the DM and WFS need to be applied afterwards.
             self.atm.update()
-            self.ngs * self.dm * self.wfs
+            self.ngs**self.atm * self.tel * self.dm * self.wfs
             return
-
-        # Without atmosphere, OOPAO does not reset the source state for us.
-        # Rebuilding the source/telescope path each frame prevents the DM OPD
-        # from accumulating across repeated exposures of a static command.
-        self.ngs**self.tel
-        self.ngs * self.dm * self.wfs
+        self.ngs**self.tel * self.dm * self.wfs
 
     def expose(self):
         self._propagate_source()
@@ -582,12 +617,20 @@ class OOPAOInterface(Component):
                 wfs=wfs,
             )
             self.kl_basis = None
-            self.use_atmosphere = True
+            oopao_section = self.system_conf.get("oopao")
+            self.use_atmosphere = bool(
+                oopao_section.get("use_atmosphere", True)
+                if isinstance(oopao_section, Mapping)
+                else True
+            )
             self.wfs_interface = OOPAOWFSensor(self.system_conf["wfs"], self.context)
             self.dm_interface = OOPAOWFCorrector(self.system_conf["wfc"], self.context)
             self.psf_interface = OOPAOScienceCamera(self.system_conf["psf"], self.context)
             self.wfc_section = "wfc"
-            self.add_atmosphere()
+            if self.use_atmosphere:
+                self.add_atmosphere()
+            else:
+                self.remove_atmosphere()
             return
 
         self.system_conf = conf.get("_systemConfig", conf)

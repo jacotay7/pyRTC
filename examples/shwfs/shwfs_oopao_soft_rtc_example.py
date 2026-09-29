@@ -122,22 +122,34 @@ def stop_system(system: dict) -> None:
 
 
 def prepare_loop(system: dict, *, gain: float, poke_amp: float, compute_im: bool) -> None:
+    """Calibrate the loop on the unaberrated system.
+
+    Calibration runs with the atmosphere removed and the DM flat: the loop
+    confirms a DM round trip (``Loop.check_round_trip``), reference slopes are
+    taken so the loop regulates to the unaberrated spots rather than to a
+    static WFS offset, then the IM is measured. The atmosphere is restored
+    afterwards only if it was enabled (``oopao.use_atmosphere`` in the config).
+    """
     loop = system["loop"]
     sim = system["sim"]
-    dm = system["dm"]
+    slopes = system["slopes"]
+    loop.poke_amp = poke_amp
     if compute_im:
-        logger.info("Computing interaction matrix with the atmosphere removed")
+        use_atmosphere = sim.use_atmosphere
+        logger.info("Calibrating with the atmosphere removed")
         sim.remove_atmosphere()
-        dm.flatten()
-        loop.poke_amp = poke_amp
+        loop.check_round_trip()
+        logger.info("Taking reference slopes on the flat DM")
+        slopes.take_ref_slopes()
         loop.compute_im()
-        sim.add_atmosphere()
+        if use_atmosphere:
+            sim.add_atmosphere()
     else:
         logger.info("Skipping IM calibration and using an identity-style fallback")
         loop.im = np.eye(loop.signal_size, loop.num_modes, dtype=loop.signal_dtype)
         loop.compute_cm()
     loop.set_gain(gain)
-    dm.flatten()
+    loop.flatten()
 
 
 def format_status_line(system: dict, elapsed: float) -> str:
@@ -149,7 +161,7 @@ def format_status_line(system: dict, elapsed: float) -> str:
     correction_rms = float(np.sqrt(np.mean(correction**2))) if correction.size else 0.0
     strehl = float(system["psf"].strehl_ratio)
     tiptilt = float(system["psf"].peak_dist)
-    return f"t={elapsed:5.1f}s residual_rms={residual_rms:0.4f} dm_rms={correction_rms:0.4f} strehl={strehl:0.3f} tiptilt={tiptilt:0.3f}"
+    return f"t={elapsed:5.1f}s residual_rms={residual_rms:0.4f} dm_rms={correction_rms:0.3e} strehl={strehl:0.3f} tiptilt={tiptilt:0.3f}"
 
 
 def main(argv=None) -> int:
