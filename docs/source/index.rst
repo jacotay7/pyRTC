@@ -14,7 +14,7 @@ For the first stable release series:
 - PyPI distribution name: ``pyrtcao``
 - Python import name: ``pyrtc``
 - Command-line prefix: ``pyrtc-*``
-- Primary supported release surface: Linux on Python 3.9 through 3.14
+- Primary supported release surface: Linux on Python 3.10 through 3.14
 - macOS and Windows currently have smoke-workflow coverage only
 
 The package is organized around reusable AO components such as wavefront sensors, slope processors, loop controllers, wavefront correctors, science cameras, and telemetry producers.

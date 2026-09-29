@@ -19,8 +19,8 @@ from testsupport import StaticStream, private_stream
 pytestmark = pytest.mark.skipif(
     sys.version_info < (3, 11),
     reason=(
-        "AOTPy integration tests require Python 3.11+ in CI. "
-        "Python 3.9 is unsupported by aotpy>=3.2 and Python 3.10 currently has upstream incompatibilities."
+        "AOTPy integration tests require Python 3.11+ in CI; "
+        "Python 3.10 currently has upstream aotpy incompatibilities."
     ),
 )
 
