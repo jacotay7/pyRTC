@@ -237,6 +237,11 @@ All notable changes to `pyrtcao` will be documented in this file.
 
 ### Added
 
+- **Boston Micromachines DM adapter** (#70). `pyrtc.hardware.bmc_dm.BMCDM`
+	drives BMC MEMS mirrors through the BMC DM SDK. Bipolar commands map to
+	the SDK's `[0, 1]` range about a `bias`. The actuator count comes from
+	the SDK, and the layout from BMC's standard geometries or `layout_file`.
+	The mirror is zeroed on close. Tested against a fake SDK.
 - **GenICam camera adapters** (#72). `GenICamWFS` and
 	`GenICamScienceCamera` drive GigE Vision / USB3 Vision cameras (Basler,
 	Allied Vision, FLIR, IDS, ...) through Harvesters and the vendor's GenTL

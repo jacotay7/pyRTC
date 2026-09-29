@@ -234,6 +234,12 @@ Multiple Correctors (Woofer/Tweeter, Tip-Tilt Offload)
 To drive several correctors from one loop, put a ``CorrectorSplitter`` in the
 ``wfc`` section and give each device its own section and ``wfc`` stream:
 
+Boston Micromachines DMs
+------------------------
+
+``pyrtc.hardware.bmc_dm.BMCDM`` drives BMC MEMS mirrors (Multi-DM, Kilo-DM,
+2K, 3K) through the BMC DM SDK's Python module ``bmc``:
+
 .. code-block:: yaml
 
   wfc:
@@ -271,6 +277,26 @@ set it from the IM:
 For tip-tilt offload to a two-mode stage, it has non-zero rows only for the
 DM's tip and tilt modes. ``reset_offload()`` hands everything back to the
 source.
+
+    class_name: pyrtc.hardware.bmc_dm.BMCDM
+    name: kilo_dm
+    serial: "25CW012#023"
+    sdk_path: /opt/Boston Micromachines/lib/python3   # if 'bmc' is not importable
+    num_modes: 400
+    bias: 0.5            # SDK value for a zero command
+    command_scale: 0.5   # SDK value change per unit command
+    command_cap: 0.8
+    functions: [send_to_hardware]
+
+The SDK takes one value per actuator in ``[0, 1]``. MEMS mirrors only pull,
+so commands are applied about ``bias``:
+``clip(bias + command_scale * command, 0, 1)``.
+
+- The actuator count comes from the SDK.
+- The layout is BMC's standard geometry: a square grid, or a square without
+  its corners (Multi-DM 140 on 12x12, Kilo-DM 1020 on 32x32), otherwise a
+  centred disk. Use ``layout_file`` for any other map.
+- Closing the component zeroes the mirror before releasing it.
 
 Parameters
 ----------
