@@ -6,6 +6,15 @@ All notable changes to `pyrtcao` will be documented in this file.
 
 ### Fixed
 
+- **Latency reports align by frame id right after `start()`** (#112).
+	`manager.latency()` and `pyrtc-measure-latency` used to sample each
+	stream independently. While downstream workers were still starting, the
+	WFS window could end before the first `signal`/`wfc` frame, so the report
+	quietly fell back to heuristic count alignment. They now wait until a
+	source frame has reached every stream on the path
+	(`latency.wait_for_path_live`, within `timeout_seconds`). Each segment
+	reports `matched_samples`, and a fallback despite stamped frame ids logs a
+	warning and is labelled in the text report.
 - **The synthetic SHWFS supports `downsample_factor`** (#76). It rendered
 	the raw camera frame at the downsampled shape. It now renders in processed
 	pixels (the geometry SlopesProcess uses) and expands each pixel to a D x D

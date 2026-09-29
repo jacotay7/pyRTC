@@ -14,7 +14,10 @@ from typing import Any, Callable, Mapping, Sequence
 
 import numpy as np
 
+from pyrtc.logging_utils import get_logger
 from pyrtc.utils import pyplot
+
+logger = get_logger(__name__)
 
 
 def open_stream(shm_name):
@@ -151,12 +154,14 @@ class LatencySegment:
     statistics: LatencyStatistics
     processing_statistics: LatencyStatistics | None = None
     alignment: str = "count"
+    matched_samples: int = 0
 
     def to_dict(self) -> dict[str, Any]:
         payload = {
             "source_shm": self.source_shm,
             "target_shm": self.target_shm,
             "alignment": self.alignment,
+            "matched_samples": self.matched_samples,
             "frame_shift": self.frame_shift,
             "count_offset": self.count_offset,
             "count_delta_min": self.count_delta_min,
@@ -267,6 +272,60 @@ def collect_stream_event_history(
             progress_bar.close()
 
     return counts, write_times, frame_ids
+
+
+def wait_for_path_live(
+    streams: Mapping[str, Any],
+    stream_path: Sequence[str],
+    *,
+    timeout_seconds: float | None = None,
+    poll_interval_seconds: float = 1e-4,
+) -> float:
+    """Block until a frame published on the first stream reaches every later stream.
+
+    Right after ``start()`` downstream workers may still be compiling, so the
+    source can publish many frames before anything downstream does. Sampling
+    then would give windows with no frame ids in common. A downstream stream
+    counts as live once it publishes the ``frame_id`` of a source frame seen
+    here, or a write with ``frame_id == 0`` (its producer does not propagate
+    frame ids, so there is nothing to wait for). Returns the seconds waited.
+
+    Raises ``TimeoutError`` if the path is not live within ``timeout_seconds``.
+    """
+
+    source_name = stream_path[0]
+    pending = [name for name in dict.fromkeys(stream_path[1:]) if name != source_name]
+    last_seen = {name: int(streams[name].count) for name in (source_name, *pending)}
+    source_ids: set[int] = set()
+    start = time.perf_counter()
+    while pending:
+        progressed = False
+        for name in (source_name, *pending):
+            stream = streams[name]
+            count = int(stream.count)
+            if count == last_seen[name]:
+                continue
+            _, frame_id = _event_metadata(stream, count)
+            if frame_id is None:
+                continue
+            last_seen[name] = count
+            progressed = True
+            if name == source_name:
+                if frame_id == 0:
+                    # The source does not stamp frame ids; nothing can be matched.
+                    return time.perf_counter() - start
+                source_ids.add(frame_id)
+            elif frame_id == 0 or frame_id in source_ids:
+                pending.remove(name)
+        elapsed = time.perf_counter() - start
+        if pending and timeout_seconds is not None and elapsed >= timeout_seconds:
+            raise TimeoutError(
+                f"Timed out waiting for frames from '{source_name}' to reach "
+                f"{', '.join(repr(name) for name in pending)} (pipeline not live)"
+            )
+        if not progressed:
+            time.sleep(max(0.0, poll_interval_seconds))
+    return time.perf_counter() - start
 
 
 def _event_metadata(stream, count: int):
@@ -424,10 +483,23 @@ def _build_latency_segment(
     target_frame_ids: np.ndarray | None = None,
 ) -> tuple[LatencySegment, np.ndarray]:
     latency_seconds = None
-    if source_frame_ids is not None and target_frame_ids is not None:
+    stamped = (
+        source_frame_ids is not None
+        and target_frame_ids is not None
+        and np.asarray(source_frame_ids).any()
+        and np.asarray(target_frame_ids).any()
+    )
+    if stamped:
         latency_seconds = compute_frame_matched_latency_seconds(
             source_frame_ids, source_write_times, target_frame_ids, target_write_times
         )
+        if latency_seconds is None:
+            logger.warning(
+                "latency %s -> %s: both streams carry frame ids but the sample windows "
+                "share none; falling back to count alignment, which is only a heuristic",
+                source_shm,
+                target_shm,
+            )
     if latency_seconds is not None:
         alignment = "frame_id"
         count_offset = 0
@@ -450,6 +522,7 @@ def _build_latency_segment(
         count_delta_max=_safe_max(residual_count_delta),
         statistics=LatencyStatistics.from_samples(latency_seconds),
         alignment=alignment,
+        matched_samples=int(np.asarray(latency_seconds).size),
     )
     return segment, np.asarray(latency_seconds, dtype=np.float64)
 
@@ -615,8 +688,15 @@ def measure_stream_path_latency(
     shm_opener: Callable[[str], Any] | None = None,
     include_total_samples: bool = False,
     timeout_seconds: float | None = None,
+    wait_for_live: bool = True,
 ) -> tuple[LatencyReport, np.ndarray | None]:
-    """Measure latency across a stream path and return a structured report."""
+    """Measure latency across a stream path and return a structured report.
+
+    With ``wait_for_live`` (the default), sampling starts only once a source
+    frame has reached every stream on the path (:func:`wait_for_path_live`),
+    so the per-stream windows overlap and segments align by frame id.
+    ``timeout_seconds`` bounds the wait and the sampling together.
+    """
 
     if samples < 2:
         raise ValueError("samples must be at least 2")
@@ -629,11 +709,16 @@ def measure_stream_path_latency(
     opener = shm_opener or open_stream
     streams = {stream_name: opener(stream_name) for stream_name in unique_stream_names}
     try:
+        remaining = timeout_seconds
+        if wait_for_live:
+            waited = wait_for_path_live(streams, normalized_path, timeout_seconds=timeout_seconds)
+            if remaining is not None:
+                remaining = max(0.0, remaining - waited)
         counts, write_times, frame_ids = collect_stream_event_history(
             streams,
             samples=samples,
             show_progress=show_progress,
-            timeout_seconds=timeout_seconds,
+            timeout_seconds=remaining,
         )
     finally:
         for stream in streams.values():
@@ -694,8 +779,11 @@ def format_latency_report(report: LatencyReport | Mapping[str, Any]) -> str:
         f"  Max speed (from full-loop P99): {_format_seconds_with_rate(total_stats['p99_seconds'])}",
     ]
     if total.get("alignment") == "frame_id":
-        lines.append("  Alignment: exact (frame id)")
+        lines.append(
+            f"  Alignment: exact (frame id, {total.get('matched_samples', 0)} matched frames)"
+        )
     else:
+        lines.append("  Alignment: count (heuristic; no frame ids matched between the endpoints)")
         lines.append(f"  Count offset: {total.get('count_offset', 0)}")
         lines.append(
             f"  Residual count delta range: {total['count_delta_min']:.0f} to {total['count_delta_max']:.0f}"
@@ -716,6 +804,7 @@ def format_latency_report(report: LatencyReport | Mapping[str, Any]) -> str:
                 + f"mean={_format_seconds(stats['mean_seconds'])}, "
                 + f"jitter={_format_seconds(stats['jitter_seconds'])}, "
                 + f"p99={_format_seconds(stats['p99_seconds'])}"
+                + ("" if segment.get("alignment") == "frame_id" else " (count-aligned)")
             )
             processing_stats = segment.get("processing_statistics")
             if processing_stats is not None:

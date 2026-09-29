@@ -77,9 +77,12 @@ Inside components, :meth:`pyrtc.component.Component.read_stream` and
 - Reading a registered input records its ``frame_id``, and ``write_stream``
   stamps it on the outputs. The wavefront sensor numbers each exposure, so a
   ``wfc`` command carries the id of the WFS frame it was computed from.
-  :mod:`pyrtc.latency` uses these ids to pair writes across streams exactly,
-  and falls back to aligning write counts for producers that do not stamp
-  frame ids.
+  :mod:`pyrtc.latency` uses these ids to pair writes across streams exactly.
+  It first waits until a frame from the source has reached every stream on
+  the path, so the sample windows overlap even right after ``start()``. It
+  falls back to aligning write counts, reported as ``alignment: count`` with a
+  warning, only for producers that do not stamp frame ids or windows that
+  share none.
 
 GPU streams
 -----------

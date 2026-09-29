@@ -1589,13 +1589,19 @@ def test_oopao_wfc_prefers_dm_coordinates_and_telescope_diameter(monkeypatch):
     monkeypatch.setattr(FakeDM, "coordinates", coordinates, raising=False)
     monkeypatch.setattr(FakeTelescope, "D", 8.0, raising=False)
     conf = _oopao_conf()
-    conf["wfc"].update({"num_modes": 2, "basis": {"type": "zernike", "normalize": "none"}})
+    conf["wfc"].update(
+        {
+            "num_modes": 2,
+            "basis": {"type": "zernike", "normalize": "none", "orthonormalize": False},
+        }
+    )
 
     sim = module.OOPAOInterface(conf, param=_oopao_param())
     _wfs, dm, _psf = sim.get_hardware()
 
-    # Tip on those coordinates with the (fake) telescope's 8 m pupil: x / 4 m.
-    np.testing.assert_allclose(dm.M2C[:, 0], coordinates[:, 0] / 4.0, atol=1e-6)
+    # Tip on those coordinates with the (fake) telescope's 8 m pupil is x / 4 m,
+    # times the Noll normalization factor 2.
+    np.testing.assert_allclose(dm.M2C[:, 0], 2.0 * coordinates[:, 0] / 4.0, atol=1e-6)
 
 
 def test_specula_wfc_uses_aobasis_when_wfc_basis_is_set(monkeypatch):

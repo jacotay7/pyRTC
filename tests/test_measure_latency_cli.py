@@ -61,6 +61,7 @@ def test_measure_stream_path_latency_uses_shared_event_history(monkeypatch):
         samples=4,
         shm_opener=_fake_open,
         include_total_samples=True,
+        wait_for_live=False,
     )
 
     assert report.stream_path == ("wfs", "signal", "wfc")
@@ -91,6 +92,61 @@ def test_event_history_records_frame_ids_for_exact_alignment():
     # dst is written one step after src for every frame.
     assert np.all(matched > 0)
     assert np.all(matched < 0.1)
+
+
+def test_latency_waits_for_a_late_pipeline_and_aligns_by_frame_id(caplog):
+    with publishing_chain(
+        ["src", "mid", "dst"], step_seconds=1e-3, downstream_start_seconds=0.3
+    ) as opener:
+        report, _ = latency.measure_stream_path_latency(
+            ["src", "mid", "dst"], samples=16, shm_opener=opener, timeout_seconds=10.0
+        )
+
+    assert report.total.alignment == "frame_id"
+    assert all(segment.alignment == "frame_id" for segment in report.segments)
+    assert report.total.matched_samples >= 8
+    assert "falling back to count alignment" not in caplog.text
+    text = latency.format_latency_report(report)
+    assert "exact (frame id" in text and "matched frames" in text
+
+
+def test_latency_warns_when_windows_share_no_frame_ids(caplog):
+    # Without the liveness wait, the source window ends before downstream starts.
+    with publishing_chain(
+        ["src", "dst"], step_seconds=1e-3, downstream_start_seconds=0.3
+    ) as opener:
+        report, _ = latency.measure_stream_path_latency(
+            ["src", "dst"],
+            samples=8,
+            shm_opener=opener,
+            timeout_seconds=10.0,
+            wait_for_live=False,
+        )
+
+    assert report.total.alignment == "count"
+    assert "falling back to count alignment" in caplog.text
+    assert "Alignment: count (heuristic" in latency.format_latency_report(report)
+
+
+def test_wait_for_path_live_times_out_when_downstream_never_publishes():
+    with publishing_chain(["src", "dst"], downstream_start_seconds=60.0) as opener:
+        streams = {name: opener(name) for name in ("src", "dst")}
+        try:
+            with pytest.raises(TimeoutError, match="'dst'"):
+                latency.wait_for_path_live(streams, ["src", "dst"], timeout_seconds=0.2)
+        finally:
+            for stream in streams.values():
+                stream.close()
+
+
+def test_wait_for_path_live_returns_without_frame_ids():
+    with publishing_chain(["src", "dst"], stamp_frame_ids=False) as opener:
+        streams = {name: opener(name) for name in ("src", "dst")}
+        try:
+            assert latency.wait_for_path_live(streams, ["src", "dst"], timeout_seconds=5.0) < 5.0
+        finally:
+            for stream in streams.values():
+                stream.close()
 
 
 def test_frame_matched_latency_requires_stamped_frames():
