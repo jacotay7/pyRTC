@@ -119,3 +119,41 @@ Streams persist across process exits on Linux (POSIX shared memory), which is
 what hard-RTC relies on for component restarts. **On Windows, named shared
 memory is freed when the last handle closes**, so streams do not survive
 their producer: treat Windows as soft-RTC-only for the 1.x line.
+
+ImageStreamIO (milk / CACAO) bridge
+-----------------------------------
+
+:mod:`pyrtc.isio_bridge` mirrors a stream between pyrtc and ImageStreamIO
+(ISIO), the shared-memory format of milk and CACAO. That lets pyrtc use ISIO
+camera and DM drivers and milk viewers, or feed a CACAO RTC. Each
+``IsioBridge`` component copies one stream in one direction:
+
+.. code-block:: yaml
+
+  isio_wfs:                       # pyrtc -> ISIO
+    class_name: pyrtc.isio_bridge.IsioBridge
+    direction: to_isio
+    isio_name: pyrtc_wfs
+    input_streams: {input: wfs}
+    functions: [mirror]
+  isio_dm:                        # ISIO -> pyrtc
+    class_name: pyrtc.isio_bridge.IsioBridge
+    direction: from_isio
+    isio_name: dm00disp
+    output_streams: {output: dm_from_cacao}
+    functions: [mirror]
+
+For one-off use there is also a CLI:
+``pyrtc-isio-bridge to-isio wfs pyrtc_wfs`` or
+``pyrtc-isio-bridge from-isio dm00disp dm_from_cacao``. It needs ImageStreamIO's
+Python module: ``pip install git+https://github.com/milk-org/ImageStreamIO``.
+
+- Shapes carry over as they are: a pyrtc ``(a, b)`` stream is an ISIO image
+  with ``size = [a, b]``, stored column-major, as ISIO expects.
+- ISIO-to-pyrtc frames carry the ISIO ``cnt0`` as their ``frame_id``.
+- The bridge waits by polling ISIO's semaphore (about 0.1 ms latency),
+  because the ISIO module's blocking waits hold the GIL (#138).
+- An ISIO stream the bridge creates stays after it closes, unless
+  ``remove_on_close`` is set. A different existing stream of the same name is
+  refused.
+

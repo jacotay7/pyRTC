@@ -237,6 +237,13 @@ All notable changes to `pyrtcao` will be documented in this file.
 
 ### Added
 
+- **ImageStreamIO (milk/CACAO) bridge** (#54). `pyrtc.isio_bridge.IsioBridge`
+	(and the `pyrtc-isio-bridge` CLI) mirrors a stream from pyrtc to ISIO, or
+	from ISIO into pyrtc, so pyrtc can use ISIO camera and DM drivers and milk
+	viewers, or feed a CACAO RTC. Shapes carry over, and ISIO `cnt0` becomes
+	the pyrtc `frame_id`. It polls ISIO's semaphores, because the module's
+	blocking waits hold the GIL (#138). Tests run against a real
+	ImageStreamIO build in a new CI workflow.
 - **Micro-Manager camera adapters** (#133, from #74). `MicroManagerWFS`
 	and `MicroManagerScienceCamera` drive any Micro-Manager camera (Andor,
 	Hamamatsu, PCO, Photometrics, ...) through pymmcore-plus from a

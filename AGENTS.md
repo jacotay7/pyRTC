@@ -249,6 +249,12 @@ ruff check . && ruff format --check .    # lint, as in CI
   near r0 and the number of controlled modes modest, or the loop runs away on
   the atmosphere (see `docs/source/examples/hcipy.rst`). The atmosphere
   advances only on WFS exposures with it enabled.
+- `pyrtc/isio_bridge.py` talks to ImageStreamIO through `ImageStreamIOWrap`
+  (built from git; the ISIO CI workflow builds it). Two quirks (#138): write
+  only Fortran-ordered arrays (`np.asfortranarray`), and never call its
+  blocking `semwait`/`semtimedwait` from pyrtc threads, since they hold the
+  GIL. Poll `semtrywait`. Only the creating handle's `destroy()` removes an
+  ISIO file.
 - The interface targets current OOPAO propagation: `src ** tel * dm * wfs`,
   or `src ** atm * tel * dm * wfs` with atmosphere (`**` resets the source).
   DM commands are in metres. `tests/system/test_oopao_convergence.py` runs

@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any, Mapping, Type
 
 from pyrtc.corrector_splitter import CorrectorSplitter
+from pyrtc.isio_bridge import IsioBridge
 from pyrtc.loop import Loop
 from pyrtc.science_camera import ScienceCamera
 from pyrtc.slopes_process import SlopesProcess
@@ -977,6 +978,55 @@ BUILTIN_COMPONENT_DESCRIPTORS: tuple[ComponentDescriptor, ...] = (
                 dtype="float32",
                 shape="(num_modes,)",
                 description="The loop's command stream, owned by the splitter.",
+            ),
+        ),
+        supports_hard_rtc=False,
+        calibration_artifacts=(),
+    ),
+    ComponentDescriptor(
+        section_name="isio_bridge",
+        category="bridge",
+        component_class=IsioBridge,
+        description="Mirrors one stream to or from ImageStreamIO (milk/CACAO) shared memory.",
+        required_fields=(
+            ConfigFieldDescriptor(
+                "direction",
+                "str",
+                "'to_isio' (pyrtc -> ISIO) or 'from_isio' (ISIO -> pyrtc).",
+                required=True,
+                choices=("to_isio", "from_isio"),
+                case_sensitive=False,
+            ),
+            ConfigFieldDescriptor("isio_name", "str", "ImageStreamIO stream name.", required=True),
+        ),
+        optional_fields=(
+            ConfigFieldDescriptor(
+                "poll_interval", "float", "Seconds between ISIO polls.", default=1e-4, minimum=0.0
+            ),
+            ConfigFieldDescriptor(
+                "wait_slice",
+                "float",
+                "Longest single wait before the worker rechecks its state.",
+                default=0.1,
+                minimum=0.0,
+            ),
+            ConfigFieldDescriptor(
+                "num_semaphores",
+                "int",
+                "Semaphores of a created ISIO stream.",
+                default=10,
+                minimum=1,
+            ),
+        ),
+        worker_functions=("mirror",),
+        input_streams=(
+            StreamDescriptor(
+                "input", "input", optional=True, description="pyrtc stream copied to ISIO."
+            ),
+        ),
+        output_streams=(
+            StreamDescriptor(
+                "output", "output", optional=True, description="pyrtc stream fed from ISIO."
             ),
         ),
         supports_hard_rtc=False,
