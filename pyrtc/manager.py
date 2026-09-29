@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import dataclasses
 from dataclasses import dataclass
 import inspect
 import os
@@ -11,7 +12,7 @@ import threading
 import time
 from pathlib import Path
 
-from pyrtc.config_runtime import sync_runtime_config
+from pyrtc.config_runtime import stream_alias_map, sync_runtime_config
 from pyrtc.component_loading import (
     import_symbol as _import_symbol,
     import_symbol_from_file as _import_symbol_from_file,
@@ -104,6 +105,35 @@ def launch_component(component, conf_key, start=True):
 
 
 DEFAULT_COMPONENT_ORDER = ("modulator", "wfc", "wfs", "slopes", "loop", "psf", "telemetry")
+
+
+def _with_configured_stream_names(descriptor, section_conf):
+    """Return ``descriptor`` with stream names mapped to the section's configured names.
+
+    Descriptors name streams by their logical alias (``wfs``, ``signal``);
+    a config may map those to other shared-memory names in
+    ``input_streams`` / ``output_streams`` (#119).
+    """
+
+    if descriptor is None or not isinstance(section_conf, dict):
+        return descriptor
+    aliases = {
+        "input": stream_alias_map(section_conf.get("input_streams")),
+        "output": stream_alias_map(section_conf.get("output_streams")),
+    }
+
+    def _rename(streams, direction):
+        mapping = aliases[direction]
+        return tuple(
+            dataclasses.replace(stream, name=mapping.get(stream.name, stream.name))
+            for stream in streams
+        )
+
+    return dataclasses.replace(
+        descriptor,
+        input_streams=_rename(descriptor.input_streams, "input"),
+        output_streams=_rename(descriptor.output_streams, "output"),
+    )
 
 
 @dataclass
@@ -1231,8 +1261,8 @@ class RTCManager:
                     and not descriptor.input_streams
                     and not descriptor.output_streams
                 ):
-                    return get_component_descriptor(section_name) or descriptor
-                return descriptor
+                    descriptor = get_component_descriptor(section_name) or descriptor
+                return _with_configured_stream_names(descriptor, self.config.get(section_name))
 
         if stream_path is not None:
             path = [str(stream_name) for stream_name in stream_path]
