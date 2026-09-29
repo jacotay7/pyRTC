@@ -242,9 +242,12 @@ def test_frame_ids_propagate_through_the_synthetic_chain(private_system):
     # Downstream streams carry ids of frames the WFS already produced.
     wfs_id = publications["wfs"].frame_id
     assert wfs_id is not None and wfs_id > 0
-    for name in ("wfs_raw", "signal", "signal_2d", "wfc", "wfc_2d"):
+    for name in ("signal", "signal_2d", "wfc", "wfc_2d"):
         frame_id = publications[name].frame_id
         assert frame_id is not None and 0 < frame_id <= wfs_id, name
+    # The WFS writes wfs_raw just before wfs, so it can be one frame ahead.
+    raw_id = publications["wfs_raw"].frame_id
+    assert raw_id is not None and 0 < raw_id <= wfs_id + 1
     # The science camera reads the signal (a registered input) and stamps it.
     assert publications["strehl"].frame_id is not None
 
