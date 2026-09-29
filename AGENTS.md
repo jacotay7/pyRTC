@@ -209,6 +209,15 @@ ruff check . && ruff format --check .    # lint, as in CI
   optical setup without a new DM command (atmosphere on/off) must refresh an
   input, and every step must advance the WFS and PSF branches together, or
   the WFS silently repeats a stale (or blank) frame.
+- The synthetic example calibrates with DOCRIME (`im_method: docrime`,
+  `num_iters_im: 800`). Do not shrink `num_iters_im` far in tests: at 50 the
+  IM is noise and the loop diverges, which looks like a wiring bug (it cost a
+  debugging session). The system tests use 400.
+- A section's built-in checks (descriptor fields, `validate_wfc_config`,
+  default stream roles, worker functions) apply only when its class belongs to
+  that section's component family (`config_schema._section_descriptor`).
+  Otherwise the class's own descriptor is used, which is how a
+  `CorrectorSplitter` can sit in the `wfc` section.
 - The loop's IM method key is `im_method`; `method:` is ignored (it only
   produces an unknown-key warning).
   Calibrate only once the pipeline is live (worker kernels JIT-compile on
