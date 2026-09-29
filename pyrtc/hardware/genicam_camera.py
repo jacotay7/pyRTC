@@ -14,10 +14,10 @@ Config keys, on top of the usual WFS or science-camera ones:
 ``serial`` / ``device_index``
     Which camera to open: by serial number, or the n-th camera found
     (default 0).
-``exposure`` (µs), ``gain``, ``bit_depth`` (8, 10, 12, 14 or 16, mapped to
-``MonoN``), ``pixel_format``, ``binning``, and ROI (``width``, ``height``,
-``left``, ``top``)
-    Applied through the standard GenICam SFNC nodes.
+``exposure``, ``gain``, ``bit_depth``, ``pixel_format``, ``binning``, ROI
+    Applied through the standard GenICam SFNC nodes: ``exposure`` in µs,
+    ``bit_depth`` (8, 10, 12, 14 or 16) as ``PixelFormat`` ``MonoN``, and the
+    ROI from ``width``, ``height``, ``left`` and ``top``.
 ``node_settings``
     Mapping of any other node names to values, applied in order after the
     above (for example ``{AcquisitionFrameRateEnable: true,

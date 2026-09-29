@@ -101,7 +101,7 @@ The project is designed for:
 - laboratory AO systems and hardware integration work
 - simulated AO development and algorithm prototyping
 - moderate-performance real-time control in Python
-- controller research, including machine-learning-assisted control paths
+- controller research: modal gain optimization and pluggable predictive control
 
 ## Release Posture
 
@@ -111,7 +111,7 @@ The project is designed for:
 - PyPI distribution name: `pyrtcao`
 - Python import name: `pyrtc`
 - CLI prefix: `pyrtc-*`
-- Primary supported release surface: Linux, Python 3.10-3.14
+- Primary supported release surface: Linux, Python 3.10-3.14 (free-threaded 3.14t is tested in CI)
 - macOS and Windows: smoke-tested in GitHub Actions, but not part of the primary supported deployment story
 - Windows: soft-RTC only — Windows named shared memory is freed when the last handle closes, so streams do not survive their producer process and hard-RTC restart/reattach flows are unsupported there
 - GPU behavior: benchmark-validated on a Linux CUDA host for synthetic loop workloads, but still target-environment validation required for operational use
@@ -122,8 +122,21 @@ The project is designed for:
 - Component-based AO pipeline built around wavefront sensing, slope processing, control, correction, telemetry, and science imaging
 - Soft-RTC mode for single-process development and simulation workflows
 - Hard-RTC mode for process-isolated hardware integration via shared memory and launcher utilities
-- Optional viewer and benchmarking tools for stream inspection and performance checks
-- Example hardware adapters and simulation-oriented examples under `pyrtc/hardware` and `examples/`
+- Control:
+  - modal bases from [aobasis](https://github.com/jacotay7/aobasis) (KL, Zernike, Fourier, zonal, Hadamard);
+  - push-pull, Hadamard and DOCRIME interaction matrices;
+  - integrator, leaky, PID and POL controllers;
+  - per-mode gains with an optimizer;
+  - pluggable predictive control (modal LQG, least squares);
+  - several correctors per loop (woofer/tweeter, tip-tilt offload).
+- Safety: a loop input watchdog and DM saturation alerts, shown in manager status and the GUI
+- Simulation backends: a built-in synthetic system, HCIPy, SPECULA and OOPAO
+- Hardware adapters, as reference implementations:
+  - cameras: GenICam (GigE/USB3 Vision) and Micro-Manager, plus XIMEA and Spinnaker;
+  - DMs: ALPAO and Boston Micromachines;
+  - a PI modulator.
+- Interoperability: an ImageStreamIO (milk/CACAO) bridge and AOTPy telemetry export
+- Optional viewer, manager GUI, latency measurement and benchmark tools
 
 ## Installation
 
@@ -145,8 +158,14 @@ pip install pyrtcao[aotpy]
 pip install pyrtcao[docs]
 pip install pyrtcao[gpu]
 pip install pyrtcao[specula]
-pip install pyrtcao[hcipy]     # HCIPy simulator backend
+pip install pyrtcao[hcipy]         # HCIPy simulator backend
+pip install pyrtcao[genicam]       # Harvesters: GenICam camera adapters
+pip install pyrtcao[micromanager]  # pymmcore-plus: Micro-Manager camera adapters
+pip install pyrtcao[hardware]      # PI, Spinnaker (rotpy) and XIMEA SDKs for those adapters
 ```
+
+The ImageStreamIO bridge needs ImageStreamIO's Python module:
+`pip install git+https://github.com/milk-org/ImageStreamIO`.
 
 A feature whose extra is missing raises an `ImportError` naming the extra to install.
 
@@ -158,15 +177,7 @@ cd pyRTC
 pip install .
 ```
 
-Optional source extras:
-
-```bash
-pip install .[aotpy]
-pip install .[docs]
-pip install .[gpu]
-pip install .[specula]
-pip install .[viewer]
-```
+The same extras work from a source checkout, e.g. `pip install .[viewer,hcipy]`.
 
 The `specula` extra installs the [SPECULA](https://pypi.org/project/specula/) simulator used by the simulator-backed examples. The OOPAO simulator is not on PyPI and needs a manual install; see [Simulator-Backed Examples](#simulator-backed-examples).
 
@@ -234,6 +245,8 @@ Documentation guides on Read the Docs:
 - [Developer Guide](https://pyrtc-ao.readthedocs.io/en/latest/guides/developers_guide.html)
 - [Synthetic SHWFS Example](https://pyrtc-ao.readthedocs.io/en/latest/examples/synthetic_shwfs.html)
 - [PYWFS Example](https://pyrtc-ao.readthedocs.io/en/latest/examples/pywfs.html)
+- [SHWFS Simulator Examples](https://pyrtc-ao.readthedocs.io/en/latest/examples/shwfs.html)
+- [HCIPy Example](https://pyrtc-ao.readthedocs.io/en/latest/examples/hcipy.html)
 
 ## Architecture Overview
 
@@ -303,6 +316,7 @@ pyrtc-view wfs --log-level INFO
 pyrtc-shm-monitor --log-dir logs
 pyshmem list                # streams are pyshmem streams; unlink/purge them with the pyshmem CLI
 pyrtc-measure-latency signal wfc --log-file latency.log
+pyrtc-isio-bridge to-isio wfs pyrtc_wfs   # mirror a stream to ImageStreamIO (milk/CACAO)
 ```
 
 Performance smoke report:
@@ -326,6 +340,12 @@ pyrtc-core-bench --quick --cpu-only --output core_compute_bench_report.json --lo
 ```
 
 Run without `--cpu-only` to include GPU kernels when CUDA and PyTorch are available.
+
+Benchmark trends across CI runs (reads the uploaded perf artifacts; needs `GH_TOKEN`):
+
+```bash
+python -m benchmarks.perf_history --repo jacotay7/pyRTC --runs 20
+```
 
 The committed closed-loop baseline for the README host is [benchmarks/ao_loop_bench_baseline.json](benchmarks/ao_loop_bench_baseline.json).
 
