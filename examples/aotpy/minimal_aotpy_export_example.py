@@ -34,6 +34,7 @@ except ImportError:
     import aotpy
 
 
+import pyrtc
 from pyrtc.exporters.aotpy_export import (
     export_telemetry_session_to_aotpy,
     telemetry_session_to_aotpy,
@@ -136,7 +137,7 @@ def create_fake_telemetry_stream(session_dir: Path) -> Path:
         "schema_version": 1,
         "session_id": "minimal-example-session",
         "created_at": "2026-03-09T12:00:00Z",
-        "pyrtc_version": "1.0.0",
+        "pyrtc_version": pyrtc.__version__,
         "host": {
             "hostname": "example-host",
             "platform": "example-platform",

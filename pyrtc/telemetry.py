@@ -61,10 +61,12 @@ def _utc_now_iso() -> str:
 
 
 def _resolve_pyrtc_version() -> str:
+    # The distribution is ``pyrtcao``: asking for ``pyrtc`` got the unrelated
+    # WebRTC package's version, or a hard-coded fallback.
     try:
-        return importlib_metadata.version("pyrtc")
+        return importlib_metadata.version("pyrtcao")
     except importlib_metadata.PackageNotFoundError:
-        return "1.0.0"
+        return "0+unknown"
 
 
 def _ensure_path(value: str | Path) -> Path:

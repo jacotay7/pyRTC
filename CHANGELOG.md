@@ -2,10 +2,16 @@
 
 All notable changes to `pyrtcao` will be documented in this file.
 
-## 1.1.0 - Unreleased
+## 1.1.0 - 2026-09-29
 
 ### Fixed
 
+- **Telemetry sessions record the real pyrtc version.** The version lookup
+	asked package metadata for `pyrtc`, but the distribution is `pyrtcao`, so
+	sessions (and AOTPy exports, `PRTCVER`) always said "1.0.0", or the version
+	of the unrelated WebRTC `pyrtc` package when it was installed. It now reads
+	`pyrtcao`. `pyrtc.__version__` is new, and the docs take their version from
+	`pyproject.toml`.
 - **`manager.latency()` without `stream_path` follows renamed streams** (#119).
 	Path inference used the descriptors' logical stream names (`wfs`,
 	`signal`, `wfc`) instead of the shared-memory names configured in each

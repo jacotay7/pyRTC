@@ -6,6 +6,14 @@ classes, orchestration helpers, pyshmem-backed stream helpers, and logging
 utilities so users can build systems from a compact public API surface.
 """
 
+from importlib.metadata import PackageNotFoundError, version as _dist_version
+
+try:
+    # The distribution is ``pyrtcao``; ``pyrtc`` on PyPI is an unrelated package.
+    __version__ = _dist_version("pyrtcao")
+except PackageNotFoundError:  # source tree imported without installation
+    __version__ = "0+unknown"
+
 from .loop import Loop
 from .component_descriptors import (
     ComponentDescriptor,
@@ -54,6 +62,7 @@ from .utils import set_from_config
 from . import streams, utils
 
 __all__ = [
+    "__version__",
     "clear_shms",
     "create_stream",
     "Listener",

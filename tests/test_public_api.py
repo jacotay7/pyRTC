@@ -115,3 +115,24 @@ def test_import_pyrtc_keeps_the_gil_disabled_on_free_threaded_python():
         [sys.executable, "-c", code], capture_output=True, text=True, env=env, check=True
     )
     assert out.stdout.strip() == "False", out.stderr
+
+
+def test_version_comes_from_the_pyrtcao_distribution(monkeypatch):
+    """The distribution is ``pyrtcao``; ``pyrtc`` on PyPI is an unrelated package."""
+    from importlib import metadata
+
+    import pyrtc
+    from pyrtc import telemetry
+
+    assert pyrtc.__version__ == metadata.version("pyrtcao")
+    assert telemetry._resolve_pyrtc_version() == metadata.version("pyrtcao")
+
+    asked = []
+
+    def fake_version(name):
+        asked.append(name)
+        raise metadata.PackageNotFoundError(name)
+
+    monkeypatch.setattr(telemetry.importlib_metadata, "version", fake_version)
+    assert telemetry._resolve_pyrtc_version() == "0+unknown"
+    assert asked == ["pyrtcao"]

@@ -153,8 +153,8 @@ The practical consequence is:
 
 For deployment debugging, prefer `PYRTC_LOG_DIR` over a single shared `PYRTC_LOG_FILE` so each process writes its own log.
 
-Stability Guidance for 1.0
+Stability Guidance for 1.x
 --------------------------
 
-For the `1.0.0` release line, the most stable contract is the core component model and the public imports exposed at package level.
+For the `1.x` release line, the most stable contract is the core component model and the public imports exposed at package level.
 Hardware adapters, GPU-specific paths, and platform-specific deployment details should still be treated cautiously unless they are validated in the target environment.
