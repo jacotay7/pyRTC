@@ -191,7 +191,10 @@ SHWFS soft-RTC system, 1000 samples, median of two interleaved runs, 8-core
 
 Without the GIL, median latency drops 3-15% and the p99 tail 5-30%. The gain
 is modest because the numba kernels already release the GIL (``nogil=True``),
-so most of the remaining contention is in Python glue code. To try it:
+so most of the remaining contention is in Python glue code. One caveat
+(#139): on an oversubscribed host (more busy processes than hardware threads),
+the free-threaded pipeline's latency grew to 6-19 frames, while the GIL build
+stayed at 1-2. Give a free-threaded RTC dedicated cores. To try it:
 ``uv python install 3.14t``, make a venv with it, and install pyrtc as usual.
 
 Logging Workflow

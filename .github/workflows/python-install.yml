@@ -160,7 +160,9 @@ jobs:
       - name: Run tests without the GIL
         env:
           PYTHON_GIL: "0"
-        run: pytest -q --no-cov -m "not gpu" --ignore=tests/test_qt_smoke.py
+        # tests/system is timing-sensitive, and on 3.14t it is unreliable on
+        # busy runners (#139); this job checks thread safety, not timing.
+        run: pytest -q --no-cov -m "not gpu" --ignore=tests/test_qt_smoke.py --ignore=tests/system
 
   docs:
     runs-on: ubuntu-latest
