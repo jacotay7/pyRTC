@@ -95,3 +95,47 @@ def test_synthetic_science_camera_updates_strehl_from_signal(monkeypatch):
     assert camera.frame_counter == 2
     assert high_strehl > low_strehl
     assert sharp_peak > blurred_peak
+
+
+def test_synthetic_shwfs_supports_downsampling(monkeypatch):
+    """With downsample_factor D the raw frame is D x larger, and downsampling
+    it reproduces the processed image of an equivalent non-downsampled sensor."""
+
+    def _sensor(width, downsample):
+        streams = {}
+
+        def _make_stream(name, shape, dtype, gpu_device=None):
+            streams[name] = private_stream(name, shape, dtype, gpu_device=gpu_device)
+            return streams[name]
+
+        monkeypatch.setattr(wfs_mod, "create_stream", _make_stream)
+        monkeypatch.setattr(
+            synthetic_mod, "open_stream", lambda name, gpu_device=None: streams[name]
+        )
+        streams["wfc"] = private_stream("wfc", (32,), np.float32)
+        sensor = synthetic_mod.SyntheticSHWFS(
+            {
+                "name": "synthetic-wfs",
+                "width": width,
+                "height": width,
+                "downsample_factor": downsample,
+                "dark_count": 1,
+                "sub_ap_spacing": 8,
+                "num_modes": 32,
+                "read_noise": 0.0,
+                "frame_rate_hz": 0.0,
+                "functions": [],
+            }
+        )
+        sensor.start_time = 0.0
+        return sensor, streams
+
+    plain, plain_streams = _sensor(32, 0)
+    binned, binned_streams = _sensor(64, 2)
+    for sensor in (plain, binned):
+        monkeypatch.setattr(synthetic_mod.time, "perf_counter", lambda: 1.0)
+        sensor.expose()
+
+    assert binned_streams["wfs_raw"].read().shape == (64, 64)
+    assert binned_streams["wfs"].read().shape == (32, 32)
+    np.testing.assert_allclose(binned_streams["wfs"].read(), plain_streams["wfs"].read(), atol=1)
