@@ -237,6 +237,13 @@ All notable changes to `pyrtcao` will be documented in this file.
 
 ### Added
 
+- **Benchmark results from an aarch64 host and newer GPUs.** The README's
+	pipeline-latency section adds an 80-core Neoverse-N1 host
+	(`benchmarks/pipeline_latency_report*_aarch64.json`) and explains its
+	deep-idle wake-up cost. The developer guide adds free-threaded latency on
+	that host (8x lower soft-RTC p50 at 1 kHz) and the non-reproduction of
+	#139 there. The loop docs add fp16/bf16 control-matrix timings on Ampere
+	and Ada GPUs and why the reduced formats lose on small systems.
 - **ImageStreamIO (milk/CACAO) bridge** (#54). `pyrtc.isio_bridge.IsioBridge`
 	(and the `pyrtc-isio-bridge` CLI) mirrors a stream from pyrtc to ISIO, or
 	from ISIO into pyrtc, so pyrtc can use ISIO camera and DM drivers and milk

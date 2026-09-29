@@ -1,0 +1,728 @@
+{
+  "meta": {
+    "benchmark_type": "pipeline_latency",
+    "config": "examples/synthetic_shwfs/config.yaml",
+    "samples": 2048,
+    "settle_seconds": 3.0,
+    "repeats": 3,
+    "frame_rate_hz": null,
+    "system": {
+      "platform": "Linux-6.17.9-76061709-generic-aarch64-with-glibc2.39",
+      "python": "3.13.15",
+      "cpu_model": "Neoverse-N1",
+      "cpu_count": 80,
+      "gpu": {
+        "available": true,
+        "torch_version": "2.11.0+cu128",
+        "cuda_runtime": "12.8",
+        "device_name": "NVIDIA GeForce RTX 4060",
+        "driver_version": "580.173.02",
+        "memory_total": "4094 MiB"
+      }
+    }
+  },
+  "results": [
+    {
+      "mode": "soft-rtc",
+      "stream_prefix": "bench_0c66c9f5d0",
+      "notify": false,
+      "notify_flag_on_streams": false,
+      "stream_path": [
+        "wfs",
+        "signal",
+        "wfc"
+      ],
+      "frame_rate_hz": null,
+      "include_psf": true,
+      "measurement_seconds": 18.353231985000093,
+      "total": {
+        "count": 2047,
+        "mean_us": 2299.790272901392,
+        "p50_us": 2154.5886993408203,
+        "p99_us": 6133.093833923337,
+        "max_us": 8284.568786621094,
+        "jitter_us": 777.3871644728534
+      },
+      "segments": [
+        {
+          "source": "wfs",
+          "target": "signal",
+          "count": 2047,
+          "mean_us": 1126.1160570525751,
+          "p50_us": 1035.6903076171875,
+          "p99_us": 2458.243370056152,
+          "max_us": 6078.243255615234,
+          "jitter_us": 414.07605337217905
+        },
+        {
+          "source": "signal",
+          "target": "wfc",
+          "count": 2047,
+          "mean_us": 1173.9107708728309,
+          "p50_us": 1077.890396118164,
+          "p99_us": 4239.101409912103,
+          "max_us": 7165.670394897461,
+          "jitter_us": 567.6610914712589
+        }
+      ],
+      "repeat": 0
+    },
+    {
+      "mode": "soft-rtc",
+      "stream_prefix": "bench_9a100f83dd",
+      "notify": true,
+      "notify_flag_on_streams": true,
+      "stream_path": [
+        "wfs",
+        "signal",
+        "wfc"
+      ],
+      "frame_rate_hz": null,
+      "include_psf": true,
+      "measurement_seconds": 17.206691518999833,
+      "total": {
+        "count": 2048,
+        "mean_us": 1714.0101408585906,
+        "p50_us": 1480.8177947998047,
+        "p99_us": 3071.720600128174,
+        "max_us": 3461.122512817383,
+        "jitter_us": 503.6247889551092
+      },
+      "segments": [
+        {
+          "source": "wfs",
+          "target": "signal",
+          "count": 2048,
+          "mean_us": 721.5400692075491,
+          "p50_us": 555.7537078857422,
+          "p99_us": 1952.8746604919427,
+          "max_us": 2253.293991088867,
+          "jitter_us": 357.89107573737243
+        },
+        {
+          "source": "signal",
+          "target": "wfc",
+          "count": 2048,
+          "mean_us": 992.4700716510415,
+          "p50_us": 924.1104125976562,
+          "p99_us": 2077.7368545532213,
+          "max_us": 2904.653549194336,
+          "jitter_us": 269.69098858262134
+        }
+      ],
+      "repeat": 0
+    },
+    {
+      "mode": "hard-rtc",
+      "stream_prefix": "bench_bafcee0c49",
+      "notify": false,
+      "notify_flag_on_streams": false,
+      "stream_path": [
+        "wfs",
+        "signal",
+        "wfc"
+      ],
+      "frame_rate_hz": null,
+      "include_psf": true,
+      "measurement_seconds": 17.029880088000027,
+      "total": {
+        "count": 2048,
+        "mean_us": 802.7462754398584,
+        "p50_us": 809.1926574707031,
+        "p99_us": 923.0732917785643,
+        "max_us": 1332.7598571777344,
+        "jitter_us": 63.0493841727045
+      },
+      "segments": [
+        {
+          "source": "wfs",
+          "target": "signal",
+          "count": 2048,
+          "mean_us": 402.09328290075064,
+          "p50_us": 406.9805145263672,
+          "p99_us": 470.7646369934082,
+          "max_us": 633.4781646728516,
+          "jitter_us": 39.702942297287834
+        },
+        {
+          "source": "signal",
+          "target": "wfc",
+          "count": 2048,
+          "mean_us": 400.6529925391078,
+          "p50_us": 403.8810729980469,
+          "p99_us": 485.2247238159179,
+          "max_us": 712.3947143554688,
+          "jitter_us": 52.209490674002055
+        }
+      ],
+      "repeat": 0
+    },
+    {
+      "mode": "hard-rtc",
+      "stream_prefix": "bench_b0ee0fc263",
+      "notify": true,
+      "notify_flag_on_streams": true,
+      "stream_path": [
+        "wfs",
+        "signal",
+        "wfc"
+      ],
+      "frame_rate_hz": null,
+      "include_psf": true,
+      "measurement_seconds": 17.09113083400007,
+      "total": {
+        "count": 2048,
+        "mean_us": 764.4648430868983,
+        "p50_us": 775.8140563964844,
+        "p99_us": 838.7994766235352,
+        "max_us": 1190.6623840332031,
+        "jitter_us": 45.22414250277143
+      },
+      "segments": [
+        {
+          "source": "wfs",
+          "target": "signal",
+          "count": 2048,
+          "mean_us": 350.6497014313936,
+          "p50_us": 348.3295440673828,
+          "p99_us": 410.921573638916,
+          "max_us": 495.1953887939453,
+          "jitter_us": 20.15218868533668
+        },
+        {
+          "source": "signal",
+          "target": "wfc",
+          "count": 2048,
+          "mean_us": 413.8151416555047,
+          "p50_us": 427.48451232910156,
+          "p99_us": 476.837158203125,
+          "max_us": 853.3000946044922,
+          "jitter_us": 41.78770071712668
+        }
+      ],
+      "repeat": 0
+    },
+    {
+      "mode": "soft-rtc",
+      "stream_prefix": "bench_b35d2a734e",
+      "notify": false,
+      "notify_flag_on_streams": false,
+      "stream_path": [
+        "wfs",
+        "signal",
+        "wfc"
+      ],
+      "frame_rate_hz": null,
+      "include_psf": true,
+      "measurement_seconds": 18.34235025199996,
+      "total": {
+        "count": 2048,
+        "mean_us": 2279.4227115809917,
+        "p50_us": 2143.6214447021484,
+        "p99_us": 4523.391723632812,
+        "max_us": 7746.458053588867,
+        "jitter_us": 685.5981369409374
+      },
+      "segments": [
+        {
+          "source": "wfs",
+          "target": "signal",
+          "count": 2048,
+          "mean_us": 1120.0307635590434,
+          "p50_us": 1035.5710983276367,
+          "p99_us": 2424.0231513977046,
+          "max_us": 3088.235855102539,
+          "jitter_us": 383.5054816011427
+        },
+        {
+          "source": "signal",
+          "target": "wfc",
+          "count": 2048,
+          "mean_us": 1159.3919480219483,
+          "p50_us": 1078.8440704345703,
+          "p99_us": 2793.8580513000443,
+          "max_us": 6128.3111572265625,
+          "jitter_us": 501.7166989623983
+        }
+      ],
+      "repeat": 1
+    },
+    {
+      "mode": "soft-rtc",
+      "stream_prefix": "bench_13715cf58b",
+      "notify": true,
+      "notify_flag_on_streams": true,
+      "stream_path": [
+        "wfs",
+        "signal",
+        "wfc"
+      ],
+      "frame_rate_hz": null,
+      "include_psf": true,
+      "measurement_seconds": 17.267632340999626,
+      "total": {
+        "count": 2048,
+        "mean_us": 1717.7269328385592,
+        "p50_us": 1474.8573303222656,
+        "p99_us": 3116.018772125244,
+        "max_us": 3336.191177368164,
+        "jitter_us": 507.8990758278992
+      },
+      "segments": [
+        {
+          "source": "wfs",
+          "target": "signal",
+          "count": 2048,
+          "mean_us": 730.466446839273,
+          "p50_us": 557.8994750976562,
+          "p99_us": 1938.626766204834,
+          "max_us": 2201.557159423828,
+          "jitter_us": 358.46869677172305
+        },
+        {
+          "source": "signal",
+          "target": "wfc",
+          "count": 2048,
+          "mean_us": 987.2604859992862,
+          "p50_us": 918.269157409668,
+          "p99_us": 2008.929252624512,
+          "max_us": 2415.180206298828,
+          "jitter_us": 268.5813499065549
+        }
+      ],
+      "repeat": 1
+    },
+    {
+      "mode": "hard-rtc",
+      "stream_prefix": "bench_2255f5e5cc",
+      "notify": false,
+      "notify_flag_on_streams": false,
+      "stream_path": [
+        "wfs",
+        "signal",
+        "wfc"
+      ],
+      "frame_rate_hz": null,
+      "include_psf": true,
+      "measurement_seconds": 17.04492587200002,
+      "total": {
+        "count": 2048,
+        "mean_us": 586.3358965143561,
+        "p50_us": 602.9605865478516,
+        "p99_us": 760.9200477600097,
+        "max_us": 936.5081787109375,
+        "jitter_us": 106.31964030904831
+      },
+      "segments": [
+        {
+          "source": "wfs",
+          "target": "signal",
+          "count": 2048,
+          "mean_us": 299.5197428390384,
+          "p50_us": 290.75145721435547,
+          "p99_us": 430.03797531127924,
+          "max_us": 533.3423614501953,
+          "jitter_us": 56.30129715147425
+        },
+        {
+          "source": "signal",
+          "target": "wfc",
+          "count": 2048,
+          "mean_us": 286.81615367531776,
+          "p50_us": 286.34071350097656,
+          "p99_us": 432.01446533203125,
+          "max_us": 459.90943908691406,
+          "jitter_us": 70.10346462794486
+        }
+      ],
+      "repeat": 1
+    },
+    {
+      "mode": "hard-rtc",
+      "stream_prefix": "bench_4ea2611a92",
+      "notify": true,
+      "notify_flag_on_streams": true,
+      "stream_path": [
+        "wfs",
+        "signal",
+        "wfc"
+      ],
+      "frame_rate_hz": null,
+      "include_psf": true,
+      "measurement_seconds": 17.106580141999075,
+      "total": {
+        "count": 2048,
+        "mean_us": 941.5802778676152,
+        "p50_us": 887.751579284668,
+        "p99_us": 1616.8332099914528,
+        "max_us": 2522.9454040527344,
+        "jitter_us": 162.8431236693532
+      },
+      "segments": [
+        {
+          "source": "wfs",
+          "target": "signal",
+          "count": 2048,
+          "mean_us": 457.08799734711647,
+          "p50_us": 434.1602325439453,
+          "p99_us": 708.6253166198729,
+          "max_us": 1957.1781158447266,
+          "jitter_us": 85.64147763487786
+        },
+        {
+          "source": "signal",
+          "target": "wfc",
+          "count": 2048,
+          "mean_us": 484.49228052049875,
+          "p50_us": 458.9557647705078,
+          "p99_us": 903.7518501281735,
+          "max_us": 1944.7803497314453,
+          "jitter_us": 99.45664352281115
+        }
+      ],
+      "repeat": 1
+    },
+    {
+      "mode": "soft-rtc",
+      "stream_prefix": "bench_c55c448ec9",
+      "notify": false,
+      "notify_flag_on_streams": false,
+      "stream_path": [
+        "wfs",
+        "signal",
+        "wfc"
+      ],
+      "frame_rate_hz": null,
+      "include_psf": true,
+      "measurement_seconds": 18.510905821998676,
+      "total": {
+        "count": 2048,
+        "mean_us": 2344.936365261674,
+        "p50_us": 2189.040184020996,
+        "p99_us": 6166.732311248775,
+        "max_us": 8461.713790893555,
+        "jitter_us": 746.5020430700092
+      },
+      "segments": [
+        {
+          "source": "wfs",
+          "target": "signal",
+          "count": 2048,
+          "mean_us": 1146.64644934237,
+          "p50_us": 1060.48583984375,
+          "p99_us": 2550.5518913269043,
+          "max_us": 4745.244979858398,
+          "jitter_us": 396.2394988113432
+        },
+        {
+          "source": "signal",
+          "target": "wfc",
+          "count": 2048,
+          "mean_us": 1198.289915919304,
+          "p50_us": 1091.7186737060547,
+          "p99_us": 4364.111423492431,
+          "max_us": 6695.747375488281,
+          "jitter_us": 557.6553465610444
+        }
+      ],
+      "repeat": 2
+    },
+    {
+      "mode": "soft-rtc",
+      "stream_prefix": "bench_431ad82995",
+      "notify": true,
+      "notify_flag_on_streams": true,
+      "stream_path": [
+        "wfs",
+        "signal",
+        "wfc"
+      ],
+      "frame_rate_hz": null,
+      "include_psf": true,
+      "measurement_seconds": 17.205827748000956,
+      "total": {
+        "count": 2048,
+        "mean_us": 1744.8455328121781,
+        "p50_us": 1499.4144439697266,
+        "p99_us": 3461.98558807373,
+        "max_us": 11444.568634033203,
+        "jitter_us": 683.1711606754469
+      },
+      "segments": [
+        {
+          "source": "wfs",
+          "target": "signal",
+          "count": 2048,
+          "mean_us": 730.4305909201503,
+          "p50_us": 573.3966827392578,
+          "p99_us": 2065.300941467285,
+          "max_us": 7982.730865478516,
+          "jitter_us": 448.14220270908675
+        },
+        {
+          "source": "signal",
+          "target": "wfc",
+          "count": 2048,
+          "mean_us": 1014.4149418920279,
+          "p50_us": 924.8256683349609,
+          "p99_us": 2308.3996772766113,
+          "max_us": 7692.098617553711,
+          "jitter_us": 397.4327440371985
+        }
+      ],
+      "repeat": 2
+    },
+    {
+      "mode": "hard-rtc",
+      "stream_prefix": "bench_dfcab6ed5f",
+      "notify": false,
+      "notify_flag_on_streams": false,
+      "stream_path": [
+        "wfs",
+        "signal",
+        "wfc"
+      ],
+      "frame_rate_hz": null,
+      "include_psf": true,
+      "measurement_seconds": 17.04024515600031,
+      "total": {
+        "count": 2048,
+        "mean_us": 824.5548233389854,
+        "p50_us": 821.5904235839844,
+        "p99_us": 980.9803962707521,
+        "max_us": 1169.9199676513672,
+        "jitter_us": 59.621446951606245
+      },
+      "segments": [
+        {
+          "source": "wfs",
+          "target": "signal",
+          "count": 2048,
+          "mean_us": 409.7010241821408,
+          "p50_us": 408.7686538696289,
+          "p99_us": 503.09181213378906,
+          "max_us": 563.3831024169922,
+          "jitter_us": 43.3883451654946
+        },
+        {
+          "source": "signal",
+          "target": "wfc",
+          "count": 2048,
+          "mean_us": 414.8537991568446,
+          "p50_us": 409.84153747558594,
+          "p99_us": 506.3319206237793,
+          "max_us": 760.5552673339844,
+          "jitter_us": 48.431298392257254
+        }
+      ],
+      "repeat": 2
+    },
+    {
+      "mode": "hard-rtc",
+      "stream_prefix": "bench_36cd9c7dd5",
+      "notify": true,
+      "notify_flag_on_streams": true,
+      "stream_path": [
+        "wfs",
+        "signal",
+        "wfc"
+      ],
+      "frame_rate_hz": null,
+      "include_psf": true,
+      "measurement_seconds": 17.118567088999043,
+      "total": {
+        "count": 2048,
+        "mean_us": 822.0447925850749,
+        "p50_us": 837.5644683837891,
+        "p99_us": 952.8756141662598,
+        "max_us": 1308.9179992675781,
+        "jitter_us": 56.41352396745225
+      },
+      "segments": [
+        {
+          "source": "wfs",
+          "target": "signal",
+          "count": 2048,
+          "mean_us": 390.3490724042058,
+          "p50_us": 397.9206085205078,
+          "p99_us": 472.55992889404297,
+          "max_us": 525.4745483398438,
+          "jitter_us": 31.87606565214216
+        },
+        {
+          "source": "signal",
+          "target": "wfc",
+          "count": 2048,
+          "mean_us": 431.6957201808691,
+          "p50_us": 432.4913024902344,
+          "p99_us": 491.8861389160156,
+          "max_us": 840.9023284912109,
+          "jitter_us": 37.86881641610828
+        }
+      ],
+      "repeat": 2
+    }
+  ],
+  "summary": [
+    {
+      "mode": "soft-rtc",
+      "notify": false,
+      "runs": 3,
+      "stream_path": [
+        "wfs",
+        "signal",
+        "wfc"
+      ],
+      "total": {
+        "mean_us": 2299.790272901392,
+        "p50_us": 2154.5886993408203,
+        "p99_us": 6133.093833923337,
+        "max_us": 8284.568786621094,
+        "jitter_us": 746.5020430700092,
+        "count": 6143
+      },
+      "segments": [
+        {
+          "source": "wfs",
+          "target": "signal",
+          "mean_us": 1126.1160570525751,
+          "p50_us": 1035.6903076171875,
+          "p99_us": 2458.243370056152,
+          "max_us": 4745.244979858398,
+          "jitter_us": 396.2394988113432,
+          "count": 6143
+        },
+        {
+          "source": "signal",
+          "target": "wfc",
+          "mean_us": 1173.9107708728309,
+          "p50_us": 1078.8440704345703,
+          "p99_us": 4239.101409912103,
+          "max_us": 6695.747375488281,
+          "jitter_us": 557.6553465610444,
+          "count": 6143
+        }
+      ]
+    },
+    {
+      "mode": "soft-rtc",
+      "notify": true,
+      "runs": 3,
+      "stream_path": [
+        "wfs",
+        "signal",
+        "wfc"
+      ],
+      "total": {
+        "mean_us": 1717.7269328385592,
+        "p50_us": 1480.8177947998047,
+        "p99_us": 3116.018772125244,
+        "max_us": 3461.122512817383,
+        "jitter_us": 507.8990758278992,
+        "count": 6144
+      },
+      "segments": [
+        {
+          "source": "wfs",
+          "target": "signal",
+          "mean_us": 730.4305909201503,
+          "p50_us": 557.8994750976562,
+          "p99_us": 1952.8746604919427,
+          "max_us": 2253.293991088867,
+          "jitter_us": 358.46869677172305,
+          "count": 6144
+        },
+        {
+          "source": "signal",
+          "target": "wfc",
+          "mean_us": 992.4700716510415,
+          "p50_us": 924.1104125976562,
+          "p99_us": 2077.7368545532213,
+          "max_us": 2904.653549194336,
+          "jitter_us": 269.69098858262134,
+          "count": 6144
+        }
+      ]
+    },
+    {
+      "mode": "hard-rtc",
+      "notify": false,
+      "runs": 3,
+      "stream_path": [
+        "wfs",
+        "signal",
+        "wfc"
+      ],
+      "total": {
+        "mean_us": 802.7462754398584,
+        "p50_us": 809.1926574707031,
+        "p99_us": 923.0732917785643,
+        "max_us": 1169.9199676513672,
+        "jitter_us": 63.0493841727045,
+        "count": 6144
+      },
+      "segments": [
+        {
+          "source": "wfs",
+          "target": "signal",
+          "mean_us": 402.09328290075064,
+          "p50_us": 406.9805145263672,
+          "p99_us": 470.7646369934082,
+          "max_us": 563.3831024169922,
+          "jitter_us": 43.3883451654946,
+          "count": 6144
+        },
+        {
+          "source": "signal",
+          "target": "wfc",
+          "mean_us": 400.6529925391078,
+          "p50_us": 403.8810729980469,
+          "p99_us": 485.2247238159179,
+          "max_us": 712.3947143554688,
+          "jitter_us": 52.209490674002055,
+          "count": 6144
+        }
+      ]
+    },
+    {
+      "mode": "hard-rtc",
+      "notify": true,
+      "runs": 3,
+      "stream_path": [
+        "wfs",
+        "signal",
+        "wfc"
+      ],
+      "total": {
+        "mean_us": 822.0447925850749,
+        "p50_us": 837.5644683837891,
+        "p99_us": 952.8756141662598,
+        "max_us": 1308.9179992675781,
+        "jitter_us": 56.41352396745225,
+        "count": 6144
+      },
+      "segments": [
+        {
+          "source": "wfs",
+          "target": "signal",
+          "mean_us": 390.3490724042058,
+          "p50_us": 397.9206085205078,
+          "p99_us": 472.55992889404297,
+          "max_us": 525.4745483398438,
+          "jitter_us": 31.87606565214216,
+          "count": 6144
+        },
+        {
+          "source": "signal",
+          "target": "wfc",
+          "mean_us": 431.6957201808691,
+          "p50_us": 432.4913024902344,
+          "p99_us": 491.8861389160156,
+          "max_us": 853.3000946044922,
+          "jitter_us": 41.78770071712668,
+          "count": 6144
+        }
+      ]
+    }
+  ]
+}

@@ -236,9 +236,39 @@ modal update is:
 - ``bfloat16``: median 6e-3, p99 1e-2.
 
 Both are well below typical WFS noise. The gain comes from moving fewer bytes,
-so it only pays off for large systems. On a Quadro P620, a 64x64 system
-(8192 slopes x 4096 modes) went from 2.09 ms to 1.29 ms with fp16, while a
-32x32 system was slightly slower because of the extra scaling steps.
+so it only pays off for large systems. Time of one ``leak_integrator_gpu``
+step (numpy slopes in, numpy correction out, so transfers included), fp32 ->
+fp16:
+
+.. list-table::
+   :header-rows: 1
+
+   * - GPU
+     - 32x32 (2048 x 1024)
+     - 60x60 (7200 x 3600)
+     - 64x64 (8192 x 4096)
+   * - Quadro P620 (Pascal), mean
+     - 226 -> 286 us
+     -
+     - 2.09 -> 1.29 ms
+   * - RTX A400 (Ampere), median
+     - 349 -> 356 us
+     - 1.38 -> 0.87 ms
+     - 1.71 -> 1.02 ms
+   * - GeForce RTX 4060 (Ada), median
+     - 330 -> 368 us
+     - 681 -> 514 us
+     - 798 -> 560 us
+
+On Ampere and Ada, fp16 and bf16 are the same speed. The GPU work alone (the
+``matvec``) is 1.9-2.0x faster at 64x64, the most that halving the bytes
+allows; the rest of the step is fixed transfer and dispatch cost. At 32x32 the
+reduced formats are slower on every GPU tried, and that is launch overhead,
+not GPU work: ``matvec`` issues about ten small torch operations (input peak,
+scaling, cast, multiply, rescale) where a plain fp32 matrix issues one.
+Captured in a CUDA graph, the 32x32 fp16 ``matvec`` takes 60 us on the A400
+against 103 us for fp32. On small systems the CPU-side dispatch cost sets the
+time, so keep them in fp32.
 ``python -m benchmarks.core_compute_bench`` reports
 ``loop.leak_integrator_gpu_float16`` and ``_bfloat16`` next to fp32.
 

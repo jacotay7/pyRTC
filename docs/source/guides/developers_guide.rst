@@ -219,12 +219,40 @@ SHWFS soft-RTC system, 1000 samples, median of two interleaved runs, 8-core
      - 358
 
 Without the GIL, median latency drops 3-15% and the p99 tail 5-30%. The gain
-is modest because the numba kernels already release the GIL (``nogil=True``),
-so most of the remaining contention is in Python glue code. One caveat
-(#139): on an oversubscribed host (more busy processes than hardware threads),
-the free-threaded pipeline's latency grew to 6-19 frames, while the GIL build
-stayed at 1-2. Give a free-threaded RTC dedicated cores. To try it:
-``uv python install 3.14t``, make a venv with it, and install pyrtc as usual.
+is modest on this host because the numba kernels already release the GIL
+(``nogil=True``), so most of the remaining contention is in Python glue code.
+
+On slower cores the gain is much larger, because the glue code takes longer
+while holding the GIL. On an 80-core aarch64 host (Neoverse-N1), measured the
+same way on 8 cores, p50 / p99 in microseconds:
+
+.. list-table::
+   :header-rows: 1
+
+   * - frame rate, consumers
+     - 3.14
+     - 3.14t
+   * - 200 Hz, notify
+     - 1673 / 3337
+     - 966 / 1199
+   * - 1 kHz, notify
+     - 6987 / 16105
+     - 843 / 1078
+
+There the GIL build cannot keep up with a 1 kHz soft-RTC pipeline (the median
+latency exceeds the frame period, so frames queue), and the free-threaded build
+keeps up easily.
+
+One caveat (#139): on an oversubscribed 16-thread host (more busy processes
+than hardware threads), the free-threaded pipeline's latency grew to 6-19
+frames, while the GIL build stayed at 1-2. This did not reproduce on the
+aarch64 host (no SMT): 20 of 20 HCIPy system-test runs passed on both builds
+with 14 busy processes on 8 or 16 cores and with 30 on 16. Until it is
+understood, give a free-threaded RTC dedicated cores. When load-testing a
+simulated system, also cap its BLAS threads (``OPENBLAS_NUM_THREADS=1``): the
+simulator's OpenBLAS pools can otherwise occupy every core on their own. To
+try free-threading: ``uv python install 3.14t``, make a venv with it, and
+install pyrtc as usual.
 
 Logging Workflow
 ----------------
