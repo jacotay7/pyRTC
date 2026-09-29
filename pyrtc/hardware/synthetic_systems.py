@@ -245,8 +245,28 @@ class SyntheticSHWFS(WavefrontSensor):
 
         if self.read_noise > 0.0:
             image += self.rng.normal(0.0, self.read_noise, size=self.image_shape).astype(np.float32)
+        image = self._to_raw_resolution(image)
         image = np.clip(image, 0.0, np.iinfo(self.image_raw_dtype).max)
         return image.astype(self.image_raw_dtype)
+
+    def _to_raw_resolution(self, image):
+        """Expand a processed-resolution frame to the raw camera shape.
+
+        The spot geometry is defined in processed pixels (what SlopesProcess
+        sees). With ``downsample_factor`` D, each pixel becomes a D x D block,
+        so the base class's block-mean downsampling reproduces ``image``.
+        """
+        factor = int(self.downsample_factor)
+        raw_shape = tuple(int(axis) for axis in self.image_raw_shape)
+        if factor <= 1 and tuple(image.shape) == raw_shape:
+            return image
+        if factor > 1:
+            image = np.repeat(np.repeat(image, factor, axis=0), factor, axis=1)
+        raw = np.full(raw_shape, self.background_level, dtype=np.float32)
+        rows = min(raw_shape[0], image.shape[0])
+        cols = min(raw_shape[1], image.shape[1])
+        raw[:rows, :cols] = image[:rows, :cols]
+        return raw
 
     def expose(self):
         self._sleep_for_frame_rate()

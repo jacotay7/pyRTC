@@ -6,6 +6,11 @@ All notable changes to `pyrtcao` will be documented in this file.
 
 ### Fixed
 
+- **The synthetic SHWFS supports `downsample_factor`** (#76). It rendered
+	the raw camera frame at the downsampled shape. It now renders in processed
+	pixels (the geometry SlopesProcess uses) and expands each pixel to a D x D
+	block, so downsampling reproduces the same image. The OOPAO WFS was not
+	affected: its raw frame is OOPAO's camera frame.
 - **The OOPAO examples run and converge again** (#88).
 	- The interface uses current OOPAO propagation (`src ** tel * dm * wfs`),
 	  fixing a crash in the DM relay on current OOPAO.
