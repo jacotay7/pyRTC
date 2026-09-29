@@ -11,6 +11,7 @@
 # documentation root, use os.path.abspath to make it absolute, like shown here.
 #
 import os
+import tomllib
 import sys
 from typing import Dict
 
@@ -43,7 +44,10 @@ sys.path.insert(0, os.path.abspath(".."))
 project = "pyrtc"
 copyright = "2024, Jacob Taylor"
 author = "Jacob Taylor"
-release = "1.0.0"
+# The version comes from pyproject.toml, so it cannot drift from the package.
+with open(os.path.join(os.path.dirname(__file__), "..", "..", "pyproject.toml"), "rb") as _f:
+    release = tomllib.load(_f)["project"]["version"]
+version = release
 
 # -- General configuration ---------------------------------------------------
 

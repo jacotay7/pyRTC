@@ -440,7 +440,7 @@ Areas that still need target-environment validation before operational use:
 - multi-process deployment details
 - platform-specific driver and device behavior
 
-Current platform stance for `1.0.0`:
+Current platform stance for the `1.x` releases:
 
 - Linux is the primary supported operating system.
 - macOS and Windows smoke jobs are useful compatibility signal, but they are not the primary release target.
