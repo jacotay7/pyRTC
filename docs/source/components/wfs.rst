@@ -169,3 +169,32 @@ IDS, Baumer and others (``pip install pyrtcao[genicam]``):
 are transposed into pyrtc's ``(width, height)`` stream shape, so ``width``
 and ``height`` mean the same as the camera's ``Width`` and ``Height`` nodes.
 
+Micro-Manager Cameras
+---------------------
+
+``pyrtc.hardware.micromanager_camera`` drives any camera that
+`Micro-Manager <https://micro-manager.org>`_ supports (Andor, Hamamatsu,
+PCO, Photometrics, ...) through pymmcore-plus. Install it with
+``pip install pyrtcao[micromanager]``, get Micro-Manager with ``mmcore install``,
+and describe the hardware in a Micro-Manager ``.cfg`` file:
+
+.. code-block:: yaml
+
+  wfs:
+    class_name: pyrtc.hardware.micromanager_camera.MicroManagerWFS
+    name: andor_wfs
+    mm_config: /lab/micro-manager/rig.cfg
+    camera: Andor            # device label, if there is more than one camera
+    width: 256
+    height: 256
+    left: 0
+    top: 0
+    exposure: 1.0            # milliseconds
+    properties:              # any device properties, applied in order
+      Andor: {Gain: 100, ReadoutMode: "10MHz"}
+    functions: [expose]
+
+Frames stream from continuous sequence acquisition, and each exposure takes
+the newest frame, so the loop never falls behind the camera.
+``MicroManagerScienceCamera`` takes the same keys for the ``psf`` section.
+

@@ -87,6 +87,9 @@ hcipy = [
 genicam = [
 	"harvesters>=1.4",
 ]
+micromanager = [
+	"pymmcore-plus>=0.11",
+]
 hardware = [
 	"pipython",
 	"rotpy",
