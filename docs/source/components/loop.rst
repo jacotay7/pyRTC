@@ -134,3 +134,33 @@ number of stale episodes, and human-readable ``alerts``. The manager includes
 it as ``safety`` in each component's status (soft and hard RTC), and the
 manager GUI shows alerts on the component's graph node.
 
+Modal Gains
+-----------
+
+Each controlled mode ``i`` runs with the gain
+``gain * modal_gains[i] / optical_gains[i]`` (``loop.effective_gains``). The
+per-mode factors are folded into the control matrix, so they cost nothing per
+frame, and every integrator uses them. ``modal_gains`` and ``optical_gains``
+default to 1. Set them in the config (a list with ``num_modes`` values or a
+``.npy`` file) or at run time with ``set_modal_gains`` and
+``set_optical_gains``. ``optical_gains`` compensates a WFS's reduced
+sensitivity on a residual wavefront, such as a pyramid's optical gains taken
+from simulation or calibration.
+
+``loop.optimize_modal_gains`` picks the gains from closed-loop telemetry
+(Gendron & Léna 1994). It reconstructs each mode's pseudo open-loop PSD from
+the residuals measured at the current gains, and estimates the white noise
+from the PSD's high-frequency end. It then chooses the stable gain that
+minimizes the predicted residual variance for the loop delay:
+
+.. code-block:: python
+
+  signal_frames = ...  # (num_frames, signal_size) closed-loop `signal` frames
+  residuals = loop.modal_residuals(signal_frames)
+  result = loop.optimize_modal_gains(residuals, frame_rate=1000.0, delay_frames=2)
+  print(result.gains, result.max_gain)
+
+``delay_frames`` is the loop delay in frames. The largest stable integrator
+gain is 1.0 for a delay of 1 and 0.618 for 2. The functions in
+:mod:`pyrtc.modal_gains` work on any residual array.
+

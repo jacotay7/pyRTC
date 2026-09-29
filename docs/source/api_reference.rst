@@ -26,6 +26,7 @@ Module Index
    manager
    component_loading
    modal_basis
+   modal_gains
    latency
    telemetry
    utils
