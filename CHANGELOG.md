@@ -237,6 +237,12 @@ All notable changes to `pyrtcao` will be documented in this file.
 
 ### Added
 
+- **Micro-Manager camera adapters** (#133, from #74). `MicroManagerWFS`
+	and `MicroManagerScienceCamera` drive any Micro-Manager camera (Andor,
+	Hamamatsu, PCO, Photometrics, ...) through pymmcore-plus from a
+	Micro-Manager `.cfg` file (`pip install pyrtcao[micromanager]`). They
+	stream the newest frame from continuous acquisition, and are tested
+	against a fake core.
 - **Free-threaded Python support** (#66). pyrtc runs on CPython 3.13t/3.14t
 	with the GIL off: every core import supports free threading, and the
 	suite passes with `PYTHON_GIL=0`. A new `free-threaded` CI job checks
