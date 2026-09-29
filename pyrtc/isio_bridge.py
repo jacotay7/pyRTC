@@ -54,7 +54,31 @@ logger = get_logger(__name__)
 DIRECTIONS = ("to_isio", "from_isio")
 
 
+def _preload_isio_library() -> None:
+    """Load ``libImageStreamIO.so`` from ``sys.path`` so the wrapper can link to it.
+
+    ``pip install`` puts the library next to ``ImageStreamIOWrap`` in
+    site-packages, but the extension's RPATH does not include ``$ORIGIN``, so
+    importing it fails with "libImageStreamIO.so: cannot open shared object
+    file" unless the library is already loaded (#138).
+    """
+
+    import ctypes
+    import os
+    import sys
+
+    for entry in sys.path:
+        candidate = os.path.join(entry or ".", "libImageStreamIO.so")
+        if os.path.isfile(candidate):
+            try:
+                ctypes.CDLL(candidate, mode=ctypes.RTLD_GLOBAL)
+            except OSError:
+                continue
+            return
+
+
 def _isio_module():
+    _preload_isio_library()
     try:
         return require_optional("ImageStreamIOWrap", "isio", "The ImageStreamIO bridge")
     except ImportError as exc:

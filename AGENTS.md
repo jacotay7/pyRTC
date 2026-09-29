@@ -254,7 +254,8 @@ ruff check . && ruff format --check .    # lint, as in CI
   only Fortran-ordered arrays (`np.asfortranarray`), and never call its
   blocking `semwait`/`semtimedwait` from pyrtc threads, since they hold the
   GIL. Poll `semtrywait`. Only the creating handle's `destroy()` removes an
-  ISIO file.
+  ISIO file. A pip install can't import on its own (missing `$ORIGIN` RPATH);
+  `isio_bridge._isio_module()` preloads `libImageStreamIO.so` first.
 - The interface targets current OOPAO propagation: `src ** tel * dm * wfs`,
   or `src ** atm * tel * dm * wfs` with atmosphere (`**` resets the source).
   DM commands are in metres. `tests/system/test_oopao_convergence.py` runs

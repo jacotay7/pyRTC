@@ -6,9 +6,12 @@ import uuid
 import numpy as np
 import pytest
 
-ISIO = pytest.importorskip("ImageStreamIOWrap")
+from pyrtc.isio_bridge import IsioBridge, _isio_module  # noqa: E402
 
-from pyrtc.isio_bridge import IsioBridge  # noqa: E402
+try:
+    ISIO = _isio_module()  # also preloads libImageStreamIO.so (#138)
+except ImportError as exc:  # not installed, or unloadable
+    pytest.skip(f"ImageStreamIO is not available: {exc}", allow_module_level=True)
 from pyrtc.streams import open_stream  # noqa: E402
 from testsupport import private_stream  # noqa: E402
 
