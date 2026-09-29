@@ -1,6 +1,15 @@
+import contextlib
+import importlib
+import logging
+import threading
+import time
+import uuid
+
 import numpy as np
 import pytest
-import importlib
+
+from pyrtc.streams import clear_shms
+from testsupport import private_stream
 
 slopes_mod = importlib.import_module("pyrtc.slopes_process")
 
@@ -150,47 +159,48 @@ def test_compute_signal2d_shwfs():
 def test_set_pupils_registers_pywfs_output_streams(monkeypatch):
     sp = slopes_mod.SlopesProcess.__new__(slopes_mod.SlopesProcess)
     sp.signal_type = "slopes"
+    sp.wfs_type = "pywfs"
     sp.signal_dtype = np.float32
     sp.gpu_device = None
     sp.valid_sub_aps_file = ""
-    sp._stream_inputs = {}
-    sp._stream_outputs = {}
-    sp._stream_defaults = {}
-    sp.system_streams = {}
-    sp.section_name = None
+    sp.image_shape = (8, 8)
+    sp.central_obscuration_ratio = 0.0
 
-    monkeypatch.setattr(
-        sp,
-        "compute_pupils_mask",
-        lambda: setattr(sp, "pupil_mask", np.ones((4, 4), dtype=bool)),
-    )
-    monkeypatch.setattr(
-        sp,
-        "set_valid_sub_aps",
-        lambda valid_sub_aps: (
-            setattr(sp, "valid_sub_aps", valid_sub_aps.astype(bool)),
-            setattr(sp, "cur_signal_2d", np.zeros(valid_sub_aps.shape, dtype=np.float32)),
-        ),
-    )
+    # The default names are global; keep this test off them.
     monkeypatch.setattr(slopes_mod, "clear_shms", lambda names: None)
     monkeypatch.setattr(
         slopes_mod,
         "open_stream",
         lambda name, gpu_device=None: (_ for _ in ()).throw(FileNotFoundError(name)),
     )
+    monkeypatch.setattr(slopes_mod, "create_stream", private_stream)
 
-    class _FakeShm:
-        def __init__(self, name, shape, dtype, gpu_device=None, consumer=False):
-            self.name = name
-            self.shape = shape
-            self.dtype = dtype
-
-    monkeypatch.setattr(slopes_mod, "create_stream", _FakeShm)
-
-    sp.set_pupils([(1, 1), (1, 2), (2, 1), (2, 2)], 1)
+    sp.set_pupils([(2, 2), (6, 2), (2, 6), (6, 6)], 2)
 
     assert "signal" in sp._stream_outputs
     assert "signal_2d" in sp._stream_outputs
+    n = int(np.count_nonzero(sp.p1mask))
+    assert sp.num_pixels_in_pupils == n
+    assert sp._stream_outputs["signal"].shape == (2 * n,)
+    assert sp.slopes_arr_1d.shape == sp.ref_slopes_1d.shape == (2 * n,)
+    assert sp.ref_slopes.shape == sp.valid_sub_aps.shape
+
+
+def test_set_pupils_rejects_overlapping_pupils(monkeypatch):
+    sp = slopes_mod.SlopesProcess.__new__(slopes_mod.SlopesProcess)
+    sp.signal_type = "slopes"
+    sp.wfs_type = "pywfs"
+    sp.signal_dtype = np.float32
+    sp.gpu_device = None
+    sp.valid_sub_aps_file = ""
+    sp.image_shape = (16, 16)
+    sp.central_obscuration_ratio = 0.0
+    monkeypatch.setattr(slopes_mod, "clear_shms", lambda names: None)
+    monkeypatch.setattr(slopes_mod, "create_stream", private_stream)
+
+    # Overlapping pupils would make the numba kernel write past its buffers.
+    with pytest.raises(ValueError, match="pupil geometry"):
+        sp.set_pupils([(5, 5), (8, 5), (5, 11), (11, 11)], 3)
 
 
 def _pywfs_process(gpu_device, *, size=64, radius=10):
@@ -390,3 +400,248 @@ def test_compute_signal_raises_for_unsupported_signal_type():
 
     with pytest.raises(ValueError, match="unsupported signal_type"):
         sp.compute_signal()
+
+
+# --- live instances (real streams, running worker thread) -------------------
+
+LIVE_SIZE = 64
+LIVE_LOCS = [(16, 16), (48, 16), (16, 48), (48, 48)]
+
+
+class _ErrorRecords(logging.Handler):
+    def __init__(self):
+        super().__init__(logging.ERROR)
+        self.records = []
+
+    def emit(self, record):
+        self.records.append(record)
+
+
+@contextlib.contextmanager
+def _live_pywfs(gpu_device=None, radius=10):
+    """A running PYWFS ``SlopesProcess`` on private streams.
+
+    Yields ``(process, wfs_stream, errors)``; ``errors`` collects ERROR log
+    records of the component (worker crashes are logged, not raised).
+    """
+
+    wfs = private_stream("wfs", (LIVE_SIZE, LIVE_SIZE), np.float32)
+    wfs.write(np.ones((LIVE_SIZE, LIVE_SIZE), dtype=np.float32))
+    suffix = uuid.uuid4().hex[:8]
+    outputs = {"signal": f"sig_{suffix}", "signal_2d": f"sig2d_{suffix}"}
+    conf = {
+        "type": "PYWFS",
+        "signal_type": "slopes",
+        "functions": ["compute_signal"],
+        "input_streams": {"wfs": wfs.name},
+        "output_streams": outputs,
+        "pupils": [f"{y},{x}" for x, y in LIVE_LOCS],
+        "pupils_radius": radius,
+    }
+    if gpu_device is not None:
+        conf["gpu_device"] = gpu_device
+    errors = _ErrorRecords()
+    proc = None
+    try:
+        proc = slopes_mod.SlopesProcess(conf)
+        proc.logger.addHandler(errors)
+        proc.start()
+        yield proc, wfs, errors
+    finally:
+        if proc is not None:
+            proc.logger.removeHandler(errors)
+            proc.running = False
+            proc.alive = False
+            # The worker may be parked in a blocking WFS read: feed it frames
+            # until it exits, and only then close the streams it uses.
+            deadline = time.monotonic() + 10
+            for thread in proc.work_threads:
+                while thread.is_alive() and time.monotonic() < deadline:
+                    wfs.write(np.ones((LIVE_SIZE, LIVE_SIZE), dtype=np.float32))
+                    thread.join(timeout=0.05)
+            assert not any(thread.is_alive() for thread in proc.work_threads)
+            for stream in (proc.signal, proc.signal_2d, proc.wfs_shm):
+                stream.close()
+        clear_shms(list(outputs.values()))
+
+
+def _host(value):
+    return value.detach().cpu().numpy() if hasattr(value, "detach") else np.asarray(value)
+
+
+_FRAME_IDS = iter(range(10**6, 10**7))
+
+
+def _publish_and_read(proc, wfs, image, timeout=10.0):
+    """Write one WFS frame and return the signal the worker publishes for it.
+
+    The frame id identifies the publication, since the worker may still be
+    finishing an earlier frame when this one is written.
+    """
+
+    stream = proc.signal
+    after = stream.count
+    frame_id = next(_FRAME_IDS)
+    wfs.write(image, frame_id=frame_id)
+    deadline = time.monotonic() + timeout
+    while True:
+        publication = stream.read_after_publication(
+            after, timeout=max(0.0, deadline - time.monotonic())
+        )
+        if publication.frame_id == frame_id:
+            return _host(publication.payload)
+        after = publication.count
+
+
+@contextlib.contextmanager
+def _frame_producer(wfs, images):
+    """Write ``images`` round-robin to ``wfs`` from a background thread."""
+
+    stop = threading.Event()
+
+    def run():
+        i = 0
+        while not stop.is_set():
+            wfs.write(images[i % len(images)])
+            i += 1
+            time.sleep(2e-4)
+
+    thread = threading.Thread(target=run, daemon=True)
+    thread.start()
+    try:
+        yield
+    finally:
+        stop.set()
+        thread.join(timeout=5)
+
+
+def _expected_pywfs(proc, image):
+    n = int(np.count_nonzero(proc.p1mask))
+    buffers = {k: np.empty(n, dtype=np.float32) for k in ("p1", "p2", "p3", "p4", "tmp1", "tmp2")}
+    return slopes_mod.compute_slopes_pywfs_optim_numba(
+        image=np.asarray(image, dtype=np.float32).ravel(),
+        p1_mask=proc.p1mask.ravel(),
+        p2_mask=proc.p2mask.ravel(),
+        p3_mask=proc.p3mask.ravel(),
+        p4_mask=proc.p4mask.ravel(),
+        num_pixels_in_pupils=n,
+        slopes=np.zeros(2 * n, dtype=np.float32),
+        ref_slopes=proc.ref_slopes_1d,
+        **buffers,
+    )
+
+
+def _live_images(seed=0, count=4):
+    rng = np.random.default_rng(seed)
+    return [
+        rng.uniform(100.0, 200.0, (LIVE_SIZE, LIVE_SIZE)).astype(np.float32) for _ in range(count)
+    ]
+
+
+def _check_set_pupils_live(gpu_device):
+    images = _live_images()
+    with _live_pywfs(gpu_device, radius=10) as (proc, wfs, errors):
+        old_n = proc.num_pixels_in_pupils
+        signal = _publish_and_read(proc, wfs, images[0])
+        np.testing.assert_allclose(signal, _expected_pywfs(proc, images[0]), rtol=1e-5, atol=1e-6)
+
+        # Resize (and later shrink) the pupils while frames keep arriving.
+        for radius in (14, 7):
+            with _frame_producer(wfs, images):
+                time.sleep(0.05)
+                proc.set_pupils(list(LIVE_LOCS), radius)
+                time.sleep(0.05)
+
+            n = int(np.count_nonzero(proc.p1mask))
+            assert n != old_n
+            assert proc.num_pixels_in_pupils == n
+            for name in ("p1", "p2", "p3", "p4", "tmp1", "tmp2"):
+                assert getattr(proc, name).shape == (n,)
+            assert proc.slopes_arr_1d.shape == proc.ref_slopes_1d.shape == (2 * n,)
+            assert proc.ref_slopes.shape == proc.valid_sub_aps.shape == (2 * radius, 4 * radius)
+            assert proc.signal.shape == (2 * n,)
+            assert proc.signal_2d.shape == (2 * radius, 4 * radius)
+
+            signal = _publish_and_read(proc, wfs, images[1])
+            assert signal.shape == (2 * n,)
+            np.testing.assert_allclose(
+                signal, _expected_pywfs(proc, images[1]), rtol=1e-5, atol=1e-6
+            )
+            old_n = n
+
+        assert not errors.records, [r.getMessage() for r in errors.records]
+
+
+def _check_take_ref_slopes_live(gpu_device):
+    image = _live_images(seed=1, count=1)[0]
+    with _live_pywfs(gpu_device) as (proc, wfs, errors):
+        if gpu_device is not None:
+            import torch
+
+            assert isinstance(proc.signal.read(), torch.Tensor)
+        proc.set_ref_slopes(np.full(proc.ref_slopes.shape, 0.5, dtype=np.float32))
+        proc.ref_slope_count = 5
+        with _frame_producer(wfs, [image]):
+            proc.take_ref_slopes()
+
+        # The reference is the zero-reference signal of the (constant) frame,
+        # not a mix with the old 0.5 reference or the shared 2D buffer.
+        expected_1d = _expected_pywfs(proc, image) + proc.ref_slopes_1d
+        np.testing.assert_allclose(proc.ref_slopes_1d, expected_1d, rtol=1e-5, atol=1e-6)
+        expected_2d = proc.compute_signal_2d(
+            expected_1d, out=np.zeros(proc.ref_slopes.shape, dtype=np.float32)
+        )
+        np.testing.assert_allclose(proc.ref_slopes, expected_2d, rtol=1e-5, atol=1e-6)
+        assert np.all(proc.ref_slopes[~proc.valid_sub_aps] == 0.0)
+
+        signal = _publish_and_read(proc, wfs, image)
+        np.testing.assert_allclose(signal, 0.0, atol=1e-5)
+        assert not errors.records, [r.getMessage() for r in errors.records]
+
+
+def test_set_pupils_on_live_instance_reallocates_buffers():
+    _check_set_pupils_live(None)
+
+
+def test_take_ref_slopes_on_live_instance():
+    _check_take_ref_slopes_live(None)
+
+
+def test_take_ref_slopes_reads_stream_snapshots_not_shared_buffer():
+    """take_ref_slopes must not average through the worker's ``cur_signal_2d``."""
+
+    with _live_pywfs() as (proc, wfs, _):
+        proc.running = False  # no worker writes: publish by hand
+        time.sleep(0.01)
+        frames = [np.full(proc.signal.shape, v, dtype=np.float32) for v in (1.0, 3.0)]
+        proc.cur_signal_2d.fill(99.0)
+        proc.ref_slope_count = 2
+
+        def publish():
+            time.sleep(0.05)
+            for frame in frames:
+                after = proc.signal.count
+                proc.signal.write(frame)
+                while proc.signal.count <= after:
+                    time.sleep(1e-3)
+                time.sleep(0.05)
+
+        thread = threading.Thread(target=publish)
+        thread.start()
+        proc.take_ref_slopes()
+        thread.join()
+        np.testing.assert_allclose(proc.ref_slopes_1d, 2.0)
+        assert np.all(proc.ref_slopes[proc.valid_sub_aps] == 2.0)
+        assert np.all(proc.ref_slopes[~proc.valid_sub_aps] == 0.0)
+
+
+@pytest.mark.gpu
+@pytest.mark.skipif(not _cuda_available(), reason="CUDA is not available")
+def test_set_pupils_on_live_gpu_instance_rebuilds_device_cache():
+    _check_set_pupils_live("cuda:0")
+
+
+@pytest.mark.gpu
+@pytest.mark.skipif(not _cuda_available(), reason="CUDA is not available")
+def test_take_ref_slopes_with_gpu_signal_stream():
+    _check_take_ref_slopes_live("cuda:0")

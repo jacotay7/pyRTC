@@ -64,12 +64,12 @@ def _xvals(int_n):
     return np.meshgrid(coords, coords)[0]
 
 
-def _cog(image, int_n, num_regions, threshold=0.0, ref=None):
+def _cog(image, int_n, num_regions, threshold=0.0, ref=None, slopes=None):
     zeros = np.zeros((2 * num_regions, num_regions), dtype=np.float32)
     ref = zeros if ref is None else ref
     return sp.compute_slopes_shwfs_optim_numba(
         image.astype(np.float32),
-        zeros.copy(),
+        zeros.copy() if slopes is None else slopes,
         ref,
         np.float32(threshold),
         np.float32(int_n),
@@ -262,7 +262,7 @@ def test_no_flux_and_sub_threshold_sub_apertures_give_zero_slopes():
     ref = np.ones((2 * num_regions, num_regions), dtype=np.float32)
     dirty = np.full_like(ref, 99.0)
 
-    cog = _cog(image, int_n, num_regions, threshold=3.0, ref=ref)
+    cog = _cog(image, int_n, num_regions, threshold=3.0, ref=ref, slopes=dirty.copy())
     wcog = _wcog(image, int_n, num_regions, threshold=3.0, ref=ref, slopes=dirty.copy())
     corr = _correlation(
         image, reference, int_n, num_regions, radius=2, threshold=3.0, ref=ref, slopes=dirty.copy()
@@ -284,6 +284,8 @@ def test_out_of_bounds_sub_apertures_are_zeroed():
     int_n = 8
     image = _spot_image(2, int_n, np.full((2, 2, 2), 0.2))[:, : int_n + 4]
     dirty = np.full((4, 2), 7.0, dtype=np.float32)
+    out = _cog(image, int_n, 2, slopes=dirty.copy())
+    assert np.all(out[:, 1] == 0.0) and np.all(out[:, 0] != 0.0)
     out = _wcog(image, int_n, 2, slopes=dirty.copy())
     assert np.all(out[:, 1] == 0.0)
     out = _correlation(image, image, int_n, 2, radius=2, slopes=dirty.copy())
@@ -345,6 +347,49 @@ def test_default_centroider_is_cog_and_unchanged(known_shifts):
     assert proc.centroider == "cog"
     image = _spot_image(N_REG, INT_N, known_shifts).astype(np.int32)
     np.testing.assert_allclose(_signal(proc, image), _cog(image, INT_N, N_REG), atol=1e-6)
+
+
+def test_cog_kernel_matches_float_copy_for_integer_images(known_shifts):
+    """The CoG kernel converts pixels itself; results equal the old float copy."""
+
+    image = _spot_image(N_REG, INT_N, known_shifts) * 3.0
+    for dtype in (np.uint16, np.int32, np.float32, np.float64):
+        raw = image.astype(dtype)
+        zeros = np.zeros((2 * N_REG, N_REG), dtype=np.float32)
+        direct = sp.compute_slopes_shwfs_optim_numba(
+            raw, zeros.copy(), zeros, np.float32(2.0), np.float32(INT_N), _xvals(INT_N), 0, 0, INT_N
+        )
+        np.testing.assert_array_equal(direct, _cog(raw, INT_N, N_REG, threshold=2.0))
+
+
+def test_cog_compute_signal_reuses_buffers(known_shifts):
+    proc = _shwfs_process()
+    proc.valid_sub_aps[0, 0] = False
+    proc.set_valid_sub_aps(proc.valid_sub_aps.copy())
+    image = _spot_image(N_REG, INT_N, known_shifts).astype(np.int32)
+    image[:INT_N, INT_N : 2 * INT_N] = 0  # dark sub-aperture (0, 1)
+    expected = _cog(image, INT_N, N_REG)
+
+    first = _signal(proc, image)
+    signal = proc.written["signal"]
+    buffer = proc._shwfs_slopes
+    np.testing.assert_allclose(first, expected * proc.valid_sub_aps, atol=1e-6)
+    assert first[0, 1] == 0.0 and first[N_REG, 1] == 0.0
+    np.testing.assert_array_equal(signal, expected[proc.valid_sub_aps])
+
+    # A brighter frame then the same frame again: no stale values survive.
+    _signal(proc, image * 2)
+    again = _signal(proc, image)
+    np.testing.assert_array_equal(again, first)
+    assert proc._shwfs_slopes is buffer
+    assert proc.written["signal"] is signal
+    np.testing.assert_array_equal(signal, expected[proc.valid_sub_aps])
+
+    # A new valid-sub-aperture mask rebuilds the gather buffer.
+    proc.set_valid_sub_aps(np.ones_like(proc.valid_sub_aps))
+    _signal(proc, image)
+    assert proc.written["signal"].shape == (expected.size,)
+    np.testing.assert_array_equal(proc.written["signal"], expected.ravel())
 
 
 def test_wcog_centroider_through_compute_signal(known_shifts):
