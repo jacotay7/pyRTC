@@ -22,13 +22,13 @@ pytest.importorskip("specula")
 
 from pyrtc import clear_shms  # noqa: E402
 from pyrtc.utils import read_yaml_file  # noqa: E402
+from testsupport import prefix_system_streams
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 EXAMPLES = {
     "shwfs": REPO_ROOT / "examples" / "shwfs" / "shwfs_specula_soft_rtc_example.py",
     "pywfs": REPO_ROOT / "examples" / "pywfs" / "pywfs_specula_soft_rtc_example.py",
 }
-SECTIONS = ("wfs", "slopes", "loop", "wfc", "psf")
 
 
 def _load_example(name: str):
@@ -36,19 +36,6 @@ def _load_example(name: str):
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
-
-
-def _prefix_streams(config: dict, prefix: str) -> list[str]:
-    names = set()
-    for section in SECTIONS:
-        conf = config.get(section)
-        if not isinstance(conf, dict):
-            continue
-        for key in ("input_streams", "output_streams"):
-            aliases = conf.get(key) or {}
-            conf[key] = {logical: f"{prefix}{target}" for logical, target in aliases.items()}
-            names.update(conf[key].values())
-    return sorted(names)
 
 
 def _mean_signal_rms(loop, samples: int = 10) -> float:
@@ -67,7 +54,7 @@ def test_specula_loop_converges_after_calibration(example, tmp_path, monkeypatch
     # Fewer averaged frames per poke keeps the runtime down; the simulation
     # is noise free, so the IM is unchanged.
     config["loop"]["num_iters_im"] = 2
-    streams = _prefix_streams(config, f"t{os.getpid()}_{uuid.uuid4().hex[:6]}_")
+    streams = prefix_system_streams(config, f"t{os.getpid()}_{uuid.uuid4().hex[:6]}_")
     specula_param = read_yaml_file(str(module.PARAM_PATH))
     specula_param["main"]["root_dir"] = str(tmp_path / "specula")
     param_file = tmp_path / "params.yaml"
