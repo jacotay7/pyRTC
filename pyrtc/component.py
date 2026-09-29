@@ -395,6 +395,8 @@ class Component:
             if thread.is_alive():
                 stuck.append(thread.name)
         if stuck:
+            # Safe with pyshmem >= 1.3.6: closing a handle wakes a reader
+            # blocked on it (it raises) instead of unmapping under it.
             component_logger.warning(
                 "Worker threads %s did not exit within %ss; closing streams anyway",
                 stuck,

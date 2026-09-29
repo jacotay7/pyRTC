@@ -189,7 +189,7 @@ def test_set_pupils_registers_pywfs_output_streams(monkeypatch):
 
 
 def test_set_pupils_rejects_overlapping_pupils(monkeypatch):
-    sp = slopes_mod.SlopesProcess.__new__(slopes_mod.SlopesProcess)
+    sp = bare_component(slopes_mod.SlopesProcess)
     sp.signal_type = "slopes"
     sp.wfs_type = "pywfs"
     sp.signal_dtype = np.float32

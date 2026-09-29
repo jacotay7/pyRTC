@@ -6,6 +6,9 @@ All notable changes to `pyrtcao` will be documented in this file.
 
 ### Fixed
 
+- Requires `pyshmem>=1.3.6`: closing a stream handle while another thread
+	was blocked reading it crashed the process (fixed at the source in pyshmem),
+	which `Component.close()` relies on when a worker does not exit in time.
 - **Components can be torn down; managers no longer leak them** (#37).
 	`stop()` only paused a component: its worker threads, and every
 	shared-memory handle it opened, lived until the process exited, so each
