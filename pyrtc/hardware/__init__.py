@@ -3,6 +3,7 @@ from importlib import import_module
 
 _EXPORTS = {
     "ALPAODM": (".alpao_dm", "ALPAODM"),
+    "BMCDM": (".bmc_dm", "BMCDM"),
     "SPECULAInterface": (".specula_interface", "SPECULAInterface"),
     "HCIPyInterface": (".hcipy_interface", "HCIPyInterface"),
     "SpinnakerScienceCamera": (".spinnaker_science_cam", "SpinnakerScienceCamera"),
