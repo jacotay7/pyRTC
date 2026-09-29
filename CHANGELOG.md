@@ -237,6 +237,12 @@ All notable changes to `pyrtcao` will be documented in this file.
 
 ### Added
 
+- **Free-threaded Python support** (#66). pyrtc runs on CPython 3.13t/3.14t
+	with the GIL off: every core import supports free threading, and the
+	suite passes with `PYTHON_GIL=0`. A new `free-threaded` CI job checks
+	both. On the synthetic soft-RTC pipeline, p50 latency drops 3-15% and p99
+	5-30% (developer guide).
+
 - **Performance history** (#65). CI now uploads an end-to-end
 	`pipeline-latency` report next to the micro-benchmarks. The new
 	`benchmarks/perf_history.py` reads the reports of recent CI runs (or a
