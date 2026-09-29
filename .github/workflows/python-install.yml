@@ -112,6 +112,28 @@ jobs:
           name: perf-smoke-report-py${{ matrix.python-version }}
           path: benchmarks/perf_smoke_report.json
 
+      # End-to-end latency of the running synthetic system, kept as an
+      # artifact so benchmarks/perf_history.py can track it (#65).
+      - name: Run pipeline latency benchmark
+        if: matrix.python-version == '3.12'
+        run: python benchmarks/pipeline_latency_bench.py --samples 500 --repeats 1 --modes soft --notify on --no-psf --timeout 120 --output benchmarks/ci_pipeline_latency.json
+
+      - name: Upload pipeline latency artifact
+        if: matrix.python-version == '3.12'
+        uses: actions/upload-artifact@v7
+        with:
+          name: pipeline-latency
+          path: benchmarks/ci_pipeline_latency.json
+
+      # Trend against earlier CI runs, in the job summary. Informational:
+      # shared runners are too noisy to gate on.
+      - name: Performance history
+        if: matrix.python-version == '3.12'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python -m benchmarks.perf_history --repo ${{ github.repository }} --runs 20 --max-ratio 2.0 --current benchmarks/perf_smoke_report.json >> "$GITHUB_STEP_SUMMARY"
+
   docs:
     runs-on: ubuntu-latest
     strategy:

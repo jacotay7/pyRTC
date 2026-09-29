@@ -120,6 +120,27 @@ Compare the current host report against the committed baseline:
        --current benchmarks/readme_benchmark_report.json \
        --baseline benchmarks/ao_loop_bench_baseline.json
 
+Performance History
+-------------------
+
+Every CI run uploads its micro-benchmark report (``perf-smoke-report-py<version>``)
+and, from Python 3.12, an end-to-end ``pipeline-latency`` report of the running
+synthetic system. ``benchmarks/perf_history.py`` collects those artifacts from
+recent runs and prints each metric's latest value against the median of
+earlier runs, flagging regressions. CI adds this table to the 3.12 job's
+summary; it is informational, because shared runners are noisy.
+
+.. code-block:: bash
+
+    export GH_TOKEN=...   # any token that can read Actions artifacts
+    python -m benchmarks.perf_history --repo jacotay7/pyRTC --runs 20
+    python -m benchmarks.perf_history --repo jacotay7/pyRTC --artifact pipeline-latency
+    # a lab host: keep nightly perf_smoke reports in a directory
+    python -m benchmarks.perf_history --from-dir lab_reports/ --plot trends.png --max-ratio 1.3
+
+It exits with status 1 when a metric's latest value exceeds ``--max-ratio``
+times its history, so a scheduled lab job can gate on it.
+
 Logging Workflow
 ----------------
 
