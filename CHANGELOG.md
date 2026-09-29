@@ -6,6 +6,18 @@ All notable changes to `pyrtcao` will be documented in this file.
 
 ### Fixed
 
+- **The OOPAO examples run and converge again** (#88).
+	- The interface uses current OOPAO propagation (`src ** tel * dm * wfs`),
+	  fixing a crash in the DM relay on current OOPAO.
+	- The standalone bridge honours `oopao.use_atmosphere`; it hard-coded the
+	  atmosphere on, so calibration and the loop ran against turbulence.
+	- The examples calibrate like the SPECULA ones: DM round-trip check,
+	  reference slopes on the flat system, then the IM. The PYWFS example's KL
+	  basis call no longer crashes.
+	- `import OOPAO` works when OOPAO is installed without a clone on
+	  `PYTHONPATH`, and an incomplete pip install gives a clear error.
+	- New system test `tests/system/test_oopao_convergence.py` (skipped
+	  without OOPAO).
 - **IM calibration settles for the measured DM round trip** (follow-up to
 	#87). `compute_im()` discarded a fixed `im_settle_frames` after each poke
 	even when `check_round_trip()` had measured a longer lag, so on a slow or

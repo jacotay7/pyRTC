@@ -198,13 +198,19 @@ ruff check . && ruff format --check .    # lint, as in CI
   first use, so the first DM command can take about a second to land).
 - Windows frees named shared memory when the last handle closes, so streams do
   not outlive their producer there. Treat Windows as soft-RTC only.
-- `import OOPAO` fails with `ValueError: attempt to get argmin of an empty
-  sequence` when OOPAO was installed with plain `pip install` (it is not on
-  PyPI). `OOPAO/__init__.py` picks the shortest `sys.path` entry containing
-  `OOPAO` (case-sensitive) and writes `precision_oopao.npy` into it, so it only
-  imports from a writable clone whose path contains `OOPAO` and that is on
-  `PYTHONPATH`. OOPAO therefore cannot be a pyrtc extra; the recipe is in
-  `docs/source/examples/pywfs.rst`. SPECULA is on PyPI (`specula` extra).
+- OOPAO (not on PyPI) has two packaging bugs. Its `__init__` looks for a
+  `sys.path` entry containing `OOPAO` and fails with `ValueError: attempt to
+  get argmin of an empty sequence` otherwise, and a pip install from git omits
+  its subpackages (`OOPAO.tools`, `OOPAO.calibration`). `oopao_interface`
+  works around the first (it exposes the package directory on `sys.path` for
+  the import) and raises a clear `ImportError` for the second. The supported
+  install is a clone on `PYTHONPATH` (recipe in `docs/source/examples/pywfs.rst`).
+  Per the maintainer, don't file OOPAO issues upstream; the write-up is kept
+  outside the repo for the maintainer.
+- The interface targets current OOPAO propagation: `src ** tel * dm * wfs`,
+  or `src ** atm * tel * dm * wfs` with atmosphere (`**` resets the source).
+  DM commands are in metres. `tests/system/test_oopao_convergence.py` runs
+  when OOPAO is importable (e.g. `PYTHONPATH=<clone>`) and skips otherwise.
 
 - pyshmem shares one lock state per stream name inside a process. Before
   pyshmem 1.3.5, `close()` on *any* handle failed while another thread held
