@@ -8,11 +8,11 @@ They are kept here because they are broadly reusable across components and do
 not belong to a single subsystem.
 """
 
+import importlib
 import yaml
 import sys
 import select
 import os
-from astropy.io import fits
 import numpy as np
 from scipy.ndimage import median_filter, gaussian_filter
 import socket
@@ -321,6 +321,7 @@ def load_data(filename, dtype=None):
     if filename.endswith(".npy"):
         data = np.load(filename)
     elif filename.endswith(".fits"):
+        fits = require_optional("astropy.io.fits", "fits", "Reading FITS files")
         with fits.open(filename) as hdul:
             data = hdul[0].data
     else:
@@ -525,16 +526,32 @@ def gaussian_2d_grid(i, j, sigma, grid_size):
     return grid
 
 
+def require_optional(module: str, extra: str, feature: str):
+    """Import an optional dependency, or raise ``ImportError`` naming its extra.
+
+    ``module`` is the module to import (e.g. ``"astropy.io.fits"``), ``extra``
+    the ``pyrtcao`` extra that installs it, and ``feature`` what needs it, for
+    the error message.
+    """
+    try:
+        return importlib.import_module(module)
+    except ImportError as exc:
+        package = module.split(".")[0]
+        raise ImportError(
+            f"{feature} needs the optional package '{package}'; "
+            f"install it with: pip install 'pyrtcao[{extra}]'"
+        ) from exc
+
+
 def pyplot():
     """Import and return ``matplotlib.pyplot`` on first use.
 
-    Plotting is optional; importing pyplot selects a (possibly GUI) backend,
-    so pyrtc modules only do it inside plotting helpers. Those helpers return
-    the figure without showing it; call ``plt.show()`` or display it yourself.
+    Plotting is optional (the ``plot`` extra); importing pyplot selects a
+    (possibly GUI) backend, so pyrtc modules only do it inside plotting
+    helpers. Those helpers return the figure without showing it; call
+    ``plt.show()`` or display it yourself.
     """
-    import matplotlib.pyplot as plt
-
-    return plt
+    return require_optional("matplotlib.pyplot", "plot", "Plotting")
 
 
 def set_affinity(affinity):

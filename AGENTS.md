@@ -51,7 +51,17 @@ aliases.
   component class).
 - `pyrtc/modal_basis.py` — modal bases (`M2C`) for wavefront correctors,
   built with the external [aobasis](https://github.com/jacotay7/aobasis)
-  package from a `basis:` config section and the actuator geometry.
+  package from a `basis:` config section and the actuator geometry. Basis
+  bugs get fixed in aobasis (maintainers allow PRs and releases there), not
+  worked around here. Since aobasis 1.1, Zernikes carry the Noll factor, and
+  pyrtc orthonormalizes Zernike and Fourier bases by default, so a test that
+  expects raw values must set `orthonormalize: false`.
+- Dependencies: keep `[project] dependencies` to what the soft-RTC core
+  needs. Anything else goes in an extra and is imported lazily through
+  `pyrtc.utils.require_optional(module, extra, feature)`, which names the
+  extra in its error. `import pyrtc` must not import optional packages
+  (checked in `tests/test_public_api.py`). Add test-only needs to
+  `requirements-test.txt`.
 - `pyrtc/latency.py` — stream latency measurement. `pyrtc/exporters/` — AOTPy
   export of telemetry sessions.
 - `pyrtc/hardware/` — reference adapters (cameras, DMs, simulators, synthetic

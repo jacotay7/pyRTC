@@ -3,11 +3,11 @@
 import argparse
 import time
 
-import matplotlib.pyplot as plt
 import numpy as np
 
 from pyrtc.logging_utils import add_logging_cli_args, configure_logging_from_args
 from pyrtc.streams import open_stream
+from pyrtc.utils import pyplot
 
 
 def rolling_average(data, window_size):
@@ -64,6 +64,7 @@ def main(argv=None) -> int:
     def compute_next_value():
         return np.max(shm.read())
 
+    plt = pyplot()
     fig, ax = plt.subplots(figsize=(12, 5))
     (line,) = ax.plot([], [], lw=2)
 

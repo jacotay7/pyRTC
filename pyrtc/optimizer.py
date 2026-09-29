@@ -3,7 +3,8 @@
 The optimizer layer in pyrtc is used for tasks such as loop gain tuning or
 hardware-assisted aberration optimization. These workflows are intentionally
 outside the steady-state real-time pipeline, which makes them a good fit for an
-Optuna-based trial/study abstraction.
+Optuna-based trial/study abstraction. Optuna is optional: install the
+``optimize`` extra (``pip install 'pyrtcao[optimize]'``).
 """
 
 import argparse
@@ -11,15 +12,25 @@ import os
 import sys
 import time
 
-import optuna
-
 from pyrtc.logging_utils import get_logger
 from pyrtc.rpc import Listener
 from pyrtc.component import Component
-from pyrtc.utils import read_yaml_file, set_affinity_and_priority, set_from_config
+from pyrtc.utils import (
+    read_yaml_file,
+    require_optional,
+    set_affinity_and_priority,
+    set_from_config,
+)
 
 
 logger = get_logger(__name__)
+
+
+def _create_study():
+    """Return a new maximizing Optuna study with the CMA-ES sampler."""
+
+    optuna = require_optional("optuna", "optimize", "pyrtc.Optimizer")
+    return optuna.create_study(direction="maximize", sampler=optuna.samplers.CmaEsSampler())
 
 
 class Optimizer(Component):
@@ -69,9 +80,7 @@ class Optimizer(Component):
         """
         try:
             self.name = "Optimizer"
-            self.study = optuna.create_study(
-                direction="maximize", sampler=optuna.samplers.CmaEsSampler()
-            )
+            self.study = _create_study()
             self.num_steps = set_from_config(conf, "num_steps", 100)
 
             super().__init__(conf)
@@ -148,9 +157,7 @@ class Optimizer(Component):
     def reset_study(self):
         component_logger = getattr(self, "logger", logger)
         try:
-            self.study = optuna.create_study(
-                direction="maximize", sampler=optuna.samplers.CmaEsSampler()
-            )
+            self.study = _create_study()
             component_logger.info("Reset optimizer study")
         except Exception:
             component_logger.exception("Failed to reset optimizer study")
