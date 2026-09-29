@@ -94,7 +94,12 @@ def test_ignore_piston_defaults_to_true():
     )
     with_piston = build_m2c(
         parse_basis_config(
-            {"type": "zernike", "normalize": "none", "orthonormalize": False, "ignore_piston": False}
+            {
+                "type": "zernike",
+                "normalize": "none",
+                "orthonormalize": False,
+                "ignore_piston": False,
+            }
         ),
         num_modes=3,
         layout=layout,
@@ -150,9 +155,9 @@ def test_fourier_without_piston_is_limited_to_one_fewer_mode_than_actuators():
 )
 def test_orthonormalize_default_depends_on_basis_type(basis_type, expected):
     assert parse_basis_config({"type": basis_type}).orthonormalize is expected
-    assert parse_basis_config({"type": basis_type, "orthonormalize": not expected}).orthonormalize is (
-        not expected
-    )
+    assert parse_basis_config(
+        {"type": basis_type, "orthonormalize": not expected}
+    ).orthonormalize is (not expected)
 
 
 @pytest.mark.parametrize("basis_type", ["zernike", "fourier"])
