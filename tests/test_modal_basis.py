@@ -71,7 +71,9 @@ def test_orthonormalize_gives_orthonormal_columns(basis_type):
 def test_orthonormalize_keeps_mode_order_and_sign():
     layout = _alpao97_layout()
     raw = build_m2c(
-        parse_basis_config({"type": "zernike", "normalize": "l2"}), num_modes=5, layout=layout
+        parse_basis_config({"type": "zernike", "normalize": "l2", "orthonormalize": False}),
+        num_modes=5,
+        layout=layout,
     )
     ortho = build_m2c(
         parse_basis_config({"type": "zernike", "normalize": "l2", "orthonormalize": True}),
@@ -86,10 +88,14 @@ def test_orthonormalize_keeps_mode_order_and_sign():
 def test_ignore_piston_defaults_to_true():
     layout = _alpao97_layout()
     with_default = build_m2c(
-        parse_basis_config({"type": "zernike", "normalize": "none"}), num_modes=3, layout=layout
+        parse_basis_config({"type": "zernike", "normalize": "none", "orthonormalize": False}),
+        num_modes=3,
+        layout=layout,
     )
     with_piston = build_m2c(
-        parse_basis_config({"type": "zernike", "normalize": "none", "ignore_piston": False}),
+        parse_basis_config(
+            {"type": "zernike", "normalize": "none", "orthonormalize": False, "ignore_piston": False}
+        ),
         num_modes=3,
         layout=layout,
     )
@@ -123,12 +129,40 @@ def test_rank_deficient_basis_logs_warning(caplog):
     logger = logging.getLogger("test_modal_basis")
     with caplog.at_level(logging.WARNING, logger="test_modal_basis"):
         build_m2c(
-            parse_basis_config({"type": "fourier"}),
+            parse_basis_config({"type": "zernike"}),
             num_modes=97,
             layout=_alpao97_layout(),
             logger=logger,
         )
+    # Checked on the raw modes, so orthonormalizing (the Zernike default) does not hide it.
     assert "rank" in caplog.text
+    assert "arbitrary orthogonal directions" in caplog.text
+
+
+def test_fourier_without_piston_is_limited_to_one_fewer_mode_than_actuators():
+    with pytest.raises(ValueError, match="maximum available is 96"):
+        build_m2c(parse_basis_config({"type": "fourier"}), num_modes=97, layout=_alpao97_layout())
+
+
+@pytest.mark.parametrize(
+    ("basis_type", "expected"),
+    [("zernike", True), ("fourier", True), ("kl", False), ("hadamard", False), ("zonal", False)],
+)
+def test_orthonormalize_default_depends_on_basis_type(basis_type, expected):
+    assert parse_basis_config({"type": basis_type}).orthonormalize is expected
+    assert parse_basis_config({"type": basis_type, "orthonormalize": not expected}).orthonormalize is (
+        not expected
+    )
+
+
+@pytest.mark.parametrize("basis_type", ["zernike", "fourier"])
+def test_default_zernike_and_fourier_bases_are_orthogonal(basis_type):
+    m2c = build_m2c(
+        parse_basis_config({"type": basis_type, "normalize": "l2"}),
+        num_modes=50,
+        layout=_alpao97_layout(),
+    )
+    np.testing.assert_allclose(m2c.T @ m2c, np.eye(50), atol=1e-5)
 
 
 def test_kl_shape_depends_on_pupil_diameter_over_outer_scale():
@@ -163,12 +197,20 @@ def test_positions_file_overrides_layout(tmp_path):
     path = tmp_path / "pos.npy"
     np.save(path, positions)
     m2c = build_m2c(
-        parse_basis_config({"type": "zernike", "positions_file": str(path), "normalize": "none"}),
+        parse_basis_config(
+            {
+                "type": "zernike",
+                "positions_file": str(path),
+                "normalize": "none",
+                "orthonormalize": False,
+            }
+        ),
         num_modes=2,
         layout=np.ones((5, 5), dtype=bool),  # ignored
     )
-    # Default pupil diameter is twice the largest actuator radius: tip = x.
-    np.testing.assert_allclose(m2c[:, 0], [-1.0, 0.0, 1.0, 0.0], atol=1e-6)
+    # Default pupil diameter is twice the largest actuator radius, so tip is x
+    # times the Noll factor 2.
+    np.testing.assert_allclose(m2c[:, 0], [-2.0, 0.0, 2.0, 0.0], atol=1e-6)
 
 
 def test_default_layout_matches_actuator_count():

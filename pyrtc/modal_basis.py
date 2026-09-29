@@ -57,6 +57,10 @@ _TYPE_KEYS = {
     "zonal_fast": {"min_distance"},
     "hadamard": set(),
 }
+# Bases that are not orthogonal once sampled on a discrete actuator grid and
+# are orthonormalized unless the config says otherwise (#105). Hadamard stays
+# raw by default so its +/-1 patterns survive for calibration.
+_ORTHONORMALIZE_BY_DEFAULT = {"zernike", "fourier"}
 
 
 @dataclass(frozen=True)
@@ -202,7 +206,9 @@ def parse_basis_config(raw: Any, *, num_modes: int | None = None) -> BasisConfig
         type=basis_type,
         n_modes=n_modes,
         normalize=normalize.lower(),
-        orthonormalize=_bool(raw.get("orthonormalize", False), "orthonormalize"),
+        orthonormalize=_bool(
+            raw.get("orthonormalize", basis_type in _ORTHONORMALIZE_BY_DEFAULT), "orthonormalize"
+        ),
         pupil_diameter=pupil_diameter,
         positions_file=positions_file,
         params=params,
@@ -301,21 +307,6 @@ def normalize_modes(modes: np.ndarray, how: str) -> np.ndarray:
         raise ValueError(f"unknown normalization '{how}'")
     scale = np.where(scale > 0, scale, 1.0)
     return modes / scale
-
-
-def orthonormalize_modes(modes: np.ndarray) -> np.ndarray:
-    """Gram-Schmidt the columns of ``modes`` in order (QR), keeping each sign.
-
-    Mode ``k`` of the result spans the same space as modes ``0..k`` of the
-    input, so the modal ordering (e.g. by radial order) is preserved.
-    """
-
-    if modes.shape[1] == 0:
-        return modes
-    q, r = np.linalg.qr(modes)
-    signs = np.sign(np.diag(r))
-    signs[signs == 0] = 1.0
-    return q * signs
 
 
 def generate_modes(
@@ -417,19 +408,26 @@ def build_m2c(
             f"aobasis {basis.type} returned shape {modes.shape}, "
             f"expected {(num_actuators, num_modes)}"
         )
+    # Check the rank before orthonormalizing: QR of a rank-deficient matrix
+    # still returns orthonormal columns, which would hide the problem.
+    rank = int(np.linalg.matrix_rank(modes)) if num_modes else 0
     if basis.orthonormalize:
+        from aobasis import orthonormalize_modes
+
         modes = orthonormalize_modes(modes)
     modes = normalize_modes(modes, basis.normalize)
 
-    rank = int(np.linalg.matrix_rank(modes)) if num_modes else 0
     if logger is not None:
         if rank < num_modes:
             logger.warning(
-                "basis %s: M2C has rank %s < %s modes; some modes are linearly dependent "
-                "on this actuator geometry",
+                "basis %s: %s modes have rank %s on this actuator geometry; some modes "
+                "are linearly dependent%s",
                 basis.type,
-                rank,
                 num_modes,
+                rank,
+                " (orthonormalize replaced them with arbitrary orthogonal directions)"
+                if basis.orthonormalize
+                else "",
             )
         logger.info(
             "Built %s basis with aobasis: actuators=%s modes=%s pupil_diameter=%.4g m",
