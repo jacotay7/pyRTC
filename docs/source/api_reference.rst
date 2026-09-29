@@ -41,11 +41,17 @@ Module Index
    :nosignatures:
 
    synthetic_systems
+   hcipy_interface
+   genicam_camera
+   micromanager_camera
+   bmc_dm
 
 Notes
 -----
 
-Optional vendor-backed hardware adapters are not listed here because some of
-them depend on site-specific SDKs that may not be installed on the docs host.
+Hardware adapters whose vendor SDK is imported at module load (ALPAO, XIMEA,
+Spinnaker, PI, OOPAO, SPECULA) are not listed here, because those SDKs may
+not be installed on the docs host. The adapters listed above import their SDK
+only when constructed.
 Those adapters are still documented in source and in the hardware example
 modules under ``pyrtc.hardware``.

@@ -60,6 +60,16 @@ Common configuration and workflow concerns include:
 This class is often subclassed for site-specific cameras under `pyrtc.hardware`.
 
 
+Image Shape Convention
+----------------------
+
+pyrtc image streams have shape ``(width, height)``: ``width`` is the first
+array axis. Camera SDKs return frames as ``(Height, Width)`` (rows,
+columns), so an adapter must transpose each frame (``frame.T``) before
+publishing it. Then ``width``/``height`` in the config mean the same as the
+camera's own settings. The GenICam and Micro-Manager adapters do this. The
+XIMEA and Spinnaker adapters don't yet, so use square ROIs with them (#130).
+
 Parameters
 ----------
 

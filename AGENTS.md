@@ -67,10 +67,23 @@ aliases.
 - `pyrtc/modal_gains.py` (per-mode gain optimization) and `pyrtc/predictive.py`
   (pluggable predictors for `Loop.predictive_integrator`) hold control
   algorithms as plain numpy, so they are testable without streams.
+- `pyrtc/corrector_splitter.py` — one loop driving several correctors
+  (woofer/tweeter, offload); it sits in the `wfc` section.
+  `pyrtc/isio_bridge.py` — mirrors a stream to or from ImageStreamIO
+  (milk/CACAO).
 - `pyrtc/latency.py` — stream latency measurement. `pyrtc/exporters/` — AOTPy
   export of telemetry sessions.
-- `pyrtc/hardware/` — reference adapters (cameras, DMs, simulators, synthetic
-  systems). Vendor SDKs are optional and may be missing.
+- `pyrtc/hardware/` — reference adapters:
+  - cameras: GenICam, Micro-Manager, XIMEA, Spinnaker;
+  - DMs: ALPAO, BMC;
+  - simulators: synthetic, HCIPy, SPECULA, OOPAO;
+  - optimizers.
+
+  Vendor SDKs are optional and may be missing. New adapters import them
+  inside `__init__` (`require_optional`), not at module load, so the module
+  imports and documents without the SDK. Camera frames come as
+  `(Height, Width)` and pyrtc streams are `(width, height)`, so transpose
+  (#130).
 - `pyrtc/gui/`, `pyrtc/scripts/` — manager GUI, viewer, and CLI entry points
   (declared in `pyproject.toml` under `[project.scripts]`). The GUI and viewer
   use Qt6 through `qtpy` (PySide6 by default, PyQt6 also works), selected by
@@ -153,9 +166,18 @@ ruff check . && ruff format --check .    # lint, as in CI
   reconciles, and may clear, every output stream its config names, so a test
   on the canonical names can break another system running on the host.
 - `tests/test_qt_smoke.py` builds the manager GUI and the viewer on Qt's
-  `offscreen` platform (no display needed) and skips without a Qt6 binding,
-  which is the case in CI (`requirements-test.txt` has no Qt). Run it locally
-  after GUI or viewer changes, also with `QT_API=pyqt6` if PyQt6 is installed.
+  `offscreen` platform (no display needed) and skips without a Qt6 binding.
+  `requirements-test.txt` has no Qt, so it runs only in the `qt-offscreen`
+  CI job (`gui-smoke.yml`). Run it locally after GUI or viewer changes, also
+  with `QT_API=pyqt6` if PyQt6 is installed.
+- Other CI jobs worth knowing:
+  - `free-threaded`: Python 3.14t with `PYTHON_GIL=0`; it skips `tests/system`
+    (#139).
+  - `ISIO Bridge` (`isio-bridge.yml`): builds ImageStreamIO and runs
+    `tests/test_isio_bridge.py`, which skips elsewhere.
+  - Hardware adapter tests run against fake SDK modules
+    (`tests/test_genicam_camera.py`, `test_bmc_dm.py`, ...). Follow that
+    pattern for new adapters.
 - The closed-loop regression `tests/system/test_synthetic_convergence.py` is
   the best end-to-end check that stream semantics still work.
 - `benchmarks/pipeline_latency_bench.py` measures the running synthetic
@@ -205,8 +227,9 @@ ruff check . && ruff format --check .    # lint, as in CI
   (< 1.3.3) probing process liveness with `os.kill(pid, 0)`, which on Windows
   sends Ctrl+C to the console group. It is fixed in pyshmem 1.3.3. If the
   symptom returns, look for signal-0 probes before blaming the test.
-- Tests force the non-GUI `Agg` matplotlib backend (`tests/conftest.py`)
-  because some library code still calls `plt.show()` (#34).
+- Tests force the non-GUI `Agg` matplotlib backend (`tests/conftest.py`) so
+  that plotting helpers and scripts (`pyrtc-shm-monitor` still calls
+  `plt.show()`) never open windows.
 - SPECULA processing objects only run when an input has a fresh
   `generation_time`. In `specula_interface.py`, anything that changes the
   optical setup without a new DM command (atmosphere on/off) must refresh an
@@ -242,6 +265,10 @@ ruff check . && ruff format --check .    # lint, as in CI
   install is a clone on `PYTHONPATH` (recipe in `docs/source/examples/pywfs.rst`).
   Per the maintainer, don't file OOPAO issues upstream; the write-up is kept
   outside the repo for the maintainer.
+- `oopao_interface` targets current OOPAO propagation: `src ** tel * dm * wfs`,
+  or `src ** atm * tel * dm * wfs` with atmosphere (`**` resets the source).
+  DM commands are in metres. `tests/system/test_oopao_convergence.py` runs
+  when OOPAO is importable (e.g. `PYTHONPATH=<clone>`) and skips otherwise.
 - `hcipy_interface` builds its whole system from a flat parameter mapping
   (defaults in `DEFAULT_PARAMS`). HCIPy's Shack-Hartmann optics need the
   pupil magnified to the physical microlens-array size (the interface uses
@@ -250,22 +277,17 @@ ruff check . && ruff format --check .    # lint, as in CI
   the atmosphere (see `docs/source/examples/hcipy.rst`). The atmosphere
   advances only on WFS exposures with it enabled.
 - `pyrtc/isio_bridge.py` talks to ImageStreamIO through `ImageStreamIOWrap`
-  (built from git; the ISIO CI workflow builds it). Two quirks (#138): write
+  (built from git; the ISIO CI workflow builds it). Its quirks (#138): write
   only Fortran-ordered arrays (`np.asfortranarray`), and never call its
   blocking `semwait`/`semtimedwait` from pyrtc threads, since they hold the
   GIL. Poll `semtrywait`. Only the creating handle's `destroy()` removes an
   ISIO file. A pip install can't import on its own (missing `$ORIGIN` RPATH);
   `isio_bridge._isio_module()` preloads `libImageStreamIO.so` first.
-- The interface targets current OOPAO propagation: `src ** tel * dm * wfs`,
-  or `src ** atm * tel * dm * wfs` with atmosphere (`**` resets the source).
-  DM commands are in metres. `tests/system/test_oopao_convergence.py` runs
-  when OOPAO is importable (e.g. `PYTHONPATH=<clone>`) and skips otherwise.
-
 - pyshmem shares one lock state per stream name inside a process. Before
   pyshmem 1.3.5, `close()` on *any* handle failed while another thread held
   that lock (e.g. a latency observer closing while a soft-RTC producer was
-  mid-write). It was fixed at the source and pyrtc requires
-  `pyshmem>=1.3.5`; don't add retry workarounds for it.
+  mid-write). It was fixed at the source, and pyrtc requires
+  a pyshmem that includes the fix (now `>=1.3.7`). Don't add retry workarounds for it.
 - Latency and handoff numbers on a shared host swing by 2x or more with load;
   compare notify on/off with interleaved `--repeats`, never single runs.
 
@@ -283,8 +305,12 @@ ruff check . && ruff format --check .    # lint, as in CI
   `IMPROVEMENT_PLAN.md`). Durable guidance belongs in this file, and
   user-facing changes belong in `CHANGELOG.md`.
 - When you work around a minor issue instead of fixing it (out of scope, not
-  worth blocking on), open a GitHub issue in the affected repository if you
-  have credentials: what you hit, where, the workaround, and what the real fix
+  worth blocking on), open a GitHub issue in this repository if you have
+  credentials: what you hit, where, the workaround, and what the real fix
   would be. Link the issue from the workaround when it lives in code. If you
   cannot open an issue, tell the maintainer instead. The goal is to move on
   without forgetting it.
+- Never report bugs to third-party repositories (OOPAO, ImageStreamIO/milk,
+  HCIPy, SPECULA, vendor SDKs, ...). Work around them in pyrtc and record them
+  in a pyrtc issue (e.g. #138). The maintainer's own packages (pyshmem,
+  aobasis) are the exception: fix those at the source.

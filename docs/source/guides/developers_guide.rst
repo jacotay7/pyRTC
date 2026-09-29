@@ -35,7 +35,10 @@ Optional extras:
    pip install -e .[viewer]
    pip install -e .[gui]
    pip install -e .[gpu]
+   pip install -e .[hcipy]   # runs the HCIPy tests instead of skipping them
 
+``requirements-test.txt`` already installs the optional packages the suite
+exercises (matplotlib, astropy, optuna, hcipy, aotpy).
 The ``viewer`` and ``gui`` extras install ``qtpy`` and PySide6 (Qt6). Without
 them, ``tests/test_qt_smoke.py`` skips; with them it builds the manager GUI and
 the viewer on Qt's ``offscreen`` platform, so it needs no display. To check
@@ -64,6 +67,32 @@ If you want to keep the validation environment for inspection instead of using a
 .. code-block:: bash
 
    python -m pyrtc.scripts.validate_dist_install --dist-dir dist --venv-dir wheel-test-env
+
+Continuous Integration
+----------------------
+
+GitHub Actions runs on pull requests into ``dev`` and ``main`` and on pushes to
+``main``:
+
+- ``python-install.yml``:
+
+  - ``install`` runs the suite with coverage on Python 3.10-3.14, plus the wheel
+    checks and the perf smoke gate;
+  - ``smoke-system-notebook`` runs the end-to-end system tests and notebooks;
+  - ``free-threaded`` runs the suite on 3.14t with ``PYTHON_GIL=0``, without
+    ``tests/system``;
+  - ``docs`` runs the Sphinx build.
+
+- ``cross-platform-smoke.yml``: macOS and Windows smoke tests.
+- ``gui-smoke.yml`` (``qt-offscreen``): the Qt manager GUI and viewer on the
+  offscreen platform.
+- ``isio-bridge.yml``: builds ImageStreamIO and runs the ISIO bridge tests.
+- ``lint.yml``: ``ruff check`` and ``ruff format --check``.
+- ``publish-package.yml``: builds and publishes to TestPyPI/PyPI, on a release
+  or by hand.
+
+The simulator system tests are timing-sensitive on busy runners; see the
+notes on loop delay in ``AGENTS.md`` before tightening their thresholds.
 
 Documentation Workflow
 ----------------------

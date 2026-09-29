@@ -47,6 +47,11 @@ The base install is the soft-RTC core. Optional extras:
 	pip install pyrtcao[gpu]
 	pip install pyrtcao[viewer]   # pyrtc-view
 	pip install pyrtcao[gui]      # pyrtc-manager-gui
+	pip install pyrtcao[hcipy]         # HCIPy simulator (examples/hcipy)
+	pip install pyrtcao[specula]       # SPECULA simulator (examples/shwfs, examples/pywfs)
+	pip install pyrtcao[genicam]       # GenICam (GigE/USB3 Vision) camera adapters
+	pip install pyrtcao[micromanager]  # Micro-Manager camera adapters
+	pip install pyrtcao[hardware]      # PI, Spinnaker (rotpy) and XIMEA SDKs for those adapters
 
 A feature whose extra is missing raises an ``ImportError`` naming the extra.
 The ``viewer`` and ``gui`` extras install Qt6 through `qtpy` with PySide6.

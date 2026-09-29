@@ -434,7 +434,7 @@ All notable changes to `pyrtcao` will be documented in this file.
 	raw modes. Hadamard stays raw so its +/-1 patterns survive. The M2C rank
 	check now runs on the raw modes, so orthonormalizing no longer hides a
 	rank-deficient basis.
-- **aobasis 1.1.0 is required.** It fixes the Zernike Noll order (several
+- **aobasis 1.1.0 or newer is required** (1.2.0 since #50). 1.1.0 fixes the Zernike Noll order (several
 	modes swap index) and adds the Noll normalization (see its changelog), and
 	a Fourier basis is now always full rank or an error: without piston it
 	holds at most `num_actuators - 1` modes. Recalibrate IMs taken with
