@@ -58,13 +58,17 @@ def test_importing_pyrtc_does_not_import_pyplot():
 
 
 def test_import_pyrtc_does_not_import_optional_extras():
-    """The core install must work without the optimize/fits/plot extras (#50)."""
+    """The core install must work without the optimize/fits/plot/gpu extras (#50).
+
+    torch (the ``gpu`` extra) is imported only by GPU code paths: importing it
+    takes most of a second, which every component process would pay.
+    """
     import subprocess
     import sys
 
     code = (
         "import sys, pyrtc, pyrtc.utils, pyrtc.latency, pyrtc.optimizer;"
-        "print(sorted(m for m in ('optuna', 'astropy', 'matplotlib.pyplot', 'numexpr') "
+        "print(sorted(m for m in ('optuna', 'astropy', 'matplotlib.pyplot', 'numexpr', 'torch') "
         "if m in sys.modules))"
     )
     out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, check=True)

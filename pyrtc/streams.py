@@ -18,25 +18,30 @@ from pyrtc.logging_utils import get_logger
 
 logger = get_logger(__name__)
 
-TORCH_AVAILABLE = False
-torch = None
-
-try:
-    import torch  # noqa: F401  (availability probe for normalize_gpu_device)
-
-    TORCH_AVAILABLE = True
-except Exception:
-    TORCH_AVAILABLE = False
+#: Whether PyTorch imports; ``None`` until :func:`gpu_torch_available` first
+#: probes it. torch takes most of a second to import, so CPU-only processes
+#: never do.
+TORCH_AVAILABLE: bool | None = None
 
 
 def gpu_torch_available() -> bool:
+    """Return whether PyTorch is importable, importing it on the first call."""
+
+    global TORCH_AVAILABLE
+    if TORCH_AVAILABLE is None:
+        try:
+            import torch  # noqa: F401
+
+            TORCH_AVAILABLE = True
+        except Exception:
+            TORCH_AVAILABLE = False
     return TORCH_AVAILABLE
 
 
 def normalize_gpu_device(gpu_device, context: str = ""):
     if gpu_device is None:
         return None
-    if not TORCH_AVAILABLE:
+    if not gpu_torch_available():
         prefix = f"{context}: " if context else ""
         logging.log(
             level=logging.WARNING,

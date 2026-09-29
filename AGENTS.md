@@ -60,8 +60,10 @@ aliases.
   needs. Anything else goes in an extra and is imported lazily through
   `pyrtc.utils.require_optional(module, extra, feature)`, which names the
   extra in its error. `import pyrtc` must not import optional packages
-  (checked in `tests/test_public_api.py`). Add test-only needs to
-  `requirements-test.txt`.
+  (checked in `tests/test_public_api.py`), and that includes torch: probe it
+  with `pyrtc.streams.gpu_torch_available()` and import it inside GPU code
+  paths. Keep `requirements.txt` identical to the core `dependencies`. Add
+  test-only needs to `requirements-test.txt`.
 - `pyrtc/latency.py` — stream latency measurement. `pyrtc/exporters/` — AOTPy
   export of telemetry sessions.
 - `pyrtc/hardware/` — reference adapters (cameras, DMs, simulators, synthetic

@@ -35,7 +35,7 @@ classifiers = [
 ]
 dependencies = [
 	"numpy>=1.26",
-	"pyshmem>=1.3.6",
+	"pyshmem>=1.3.7",
 	"aobasis>=1.2.0",
 	"PyYAML",
 	"numba",
