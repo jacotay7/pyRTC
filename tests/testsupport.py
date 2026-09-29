@@ -167,13 +167,18 @@ def private_synthetic_config(workdir, *, prefix=None, include_psf=True):
 
 
 @contextlib.contextmanager
-def publishing_chain(names, *, step_seconds=1e-3, stamp_frame_ids=True):
+def publishing_chain(
+    names, *, step_seconds=1e-3, stamp_frame_ids=True, downstream_start_seconds=0.0
+):
     """Run a background producer writing frames through ``names`` in order.
 
     Each frame is written to every stream in turn, ``step_seconds`` apart,
     stamped with the same frame id (as pyrtc components do), so stream ``i+1``
     lags stream ``i`` by one step. Yields an opener mapping a logical name to a
     fresh read-only handle, suitable for ``latency.open_stream``.
+
+    With ``downstream_start_seconds``, only the first stream is written for
+    that long, like a pipeline whose downstream workers are still compiling.
     """
     import pyshmem
 
@@ -182,9 +187,13 @@ def publishing_chain(names, *, step_seconds=1e-3, stamp_frame_ids=True):
 
     def _run():
         frame_id = 0
+        downstream_from = time.monotonic() + downstream_start_seconds
         while not stop.is_set():
             frame_id += 1
-            for stream in streams.values():
+            live = time.monotonic() >= downstream_from
+            for index, stream in enumerate(streams.values()):
+                if index and not live:
+                    continue
                 stream.write(
                     _np().full(1, frame_id, dtype=_np().float32),
                     frame_id=frame_id if stamp_frame_ids else None,
