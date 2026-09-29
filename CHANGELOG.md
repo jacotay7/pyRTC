@@ -237,6 +237,19 @@ All notable changes to `pyrtcao` will be documented in this file.
 
 ### Added
 
+- **Predictive control** (#57). The new `predictive_integrator` loop
+	function forecasts each mode's pseudo open-loop disturbance for when the
+	command lands, using the loop's `delay_frames`, and cancels it.
+	- Predictors are pluggable (`pyrtc.predictive.register_predictor`). Built
+	  in: `ar_kalman` (modal LQG with an AR(2) model per mode and a
+	  steady-state Kalman filter) and `least_squares` (a per-mode linear
+	  prediction filter).
+	- The loop records POL data while it runs as a delay-aware POL
+	  integrator; `loop.fit_predictor()` fits the predictor and switches the
+	  loop to it.
+	- In simulation, both cut a vibration mode's residual more than 15-fold
+	  against the best integrator gain.
+
 - **Per-mode gains, optical-gain compensation and gain optimization** (#56).
 	- The loop gain of mode `i` is `gain * modal_gains[i] / optical_gains[i]`,
 	  set in the config or at run time (`set_modal_gains`,

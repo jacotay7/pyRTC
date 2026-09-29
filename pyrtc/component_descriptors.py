@@ -557,6 +557,13 @@ BUILTIN_COMPONENT_DESCRIPTORS: tuple[ComponentDescriptor, ...] = (
                 minimum=0.0,
             ),
             ConfigFieldDescriptor(
+                "predictor",
+                "dict | None",
+                "Predictive control for predictive_integrator: type (persistence, ar_kalman, "
+                "least_squares), delay_frames, gain, fit_frames and the predictor's options.",
+                default=None,
+            ),
+            ConfigFieldDescriptor(
                 "watchdog_timeout",
                 "float | None",
                 "Seconds without a new signal frame before the closed loop reports its input "
@@ -625,6 +632,7 @@ BUILTIN_COMPONENT_DESCRIPTORS: tuple[ComponentDescriptor, ...] = (
             "leaky_integrator",
             "pid_integrator",
             "pid_integrator_pol",
+            "predictive_integrator",
         ),
         input_streams=(
             StreamDescriptor(

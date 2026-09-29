@@ -64,6 +64,9 @@ aliases.
   with `pyrtc.streams.gpu_torch_available()` and import it inside GPU code
   paths. Keep `requirements.txt` identical to the core `dependencies`. Add
   test-only needs to `requirements-test.txt`.
+- `pyrtc/modal_gains.py` (per-mode gain optimization) and `pyrtc/predictive.py`
+  (pluggable predictors for `Loop.predictive_integrator`) hold control
+  algorithms as plain numpy, so they are testable without streams.
 - `pyrtc/latency.py` — stream latency measurement. `pyrtc/exporters/` — AOTPy
   export of telemetry sessions.
 - `pyrtc/hardware/` — reference adapters (cameras, DMs, simulators, synthetic

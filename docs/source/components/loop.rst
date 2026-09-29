@@ -164,3 +164,51 @@ minimizes the predicted residual variance for the loop delay:
 gain is 1.0 for a delay of 1 and 0.618 for 2. The functions in
 :mod:`pyrtc.modal_gains` work on any residual array.
 
+Predictive Control
+------------------
+
+The ``predictive_integrator`` worker function controls each mode from a
+forecast instead of the current residual. Every frame it:
+
+1. estimates the pseudo open-loop (POL) disturbance, ``cm @ signal`` minus the
+   command that was on the corrector during the exposure (the one sent
+   ``delay_frames`` iterations earlier);
+2. asks a predictor for that disturbance ``horizon`` frames ahead
+   (``horizon`` defaults to ``delay_frames``);
+3. moves the command towards cancelling the forecast,
+   ``c = (1 - g) c - g * prediction``.
+
+.. code-block:: yaml
+
+  loop:
+    functions: [predictive_integrator]
+    gain: 0.3                # used until the predictor is fitted
+    predictor:
+      type: ar_kalman        # or least_squares, persistence, or a registered name
+      delay_frames: 2
+      gain: 1.0              # blend towards the prediction once fitted
+      fit_frames: 4096       # POL frames kept for fitting
+
+Before a fit, the predictor is ``persistence`` and the loop blends with the
+loop ``gain``, which makes it a delay-aware POL integrator. It records POL
+data meanwhile. Once it has run long enough, fit the predictor:
+
+.. code-block:: python
+
+  loop.fit_predictor()   # fits on the recorded POL and switches to it
+
+Built-in predictors (:mod:`pyrtc.predictive`):
+
+- ``ar_kalman``: modal LQG. It fits an AR(2) model per mode (least squares,
+  corrected for the measurement noise estimated from the spectrum's floor)
+  and predicts with a steady-state Kalman filter. It suits vibrations and
+  other resonant disturbances.
+- ``least_squares``: a per-mode linear prediction filter over the last
+  ``order`` POL samples (default 8), fitted by ridge regression.
+
+In closed-loop simulations with a 2-frame delay, both cut the residual of a
+lightly damped vibration mode more than 15-fold compared with the best
+integrator gain, and match it on slow turbulence. To add a method, subclass
+``ModalPredictor`` and register it with ``@register_predictor("name")``; the
+loop then accepts ``predictor.type: name``.
+

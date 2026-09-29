@@ -122,6 +122,15 @@ class Loop(Component):
         by them to compensate. Default: all 1.
     leaky_gain : float, optional
         Leaky integrator gain. Default is 0.0.
+    predictor : dict, optional
+        Predictive control for :meth:`predictive_integrator` (see
+        :mod:`pyrtc.predictive`): ``type`` (``persistence``, ``ar_kalman``,
+        ``least_squares`` or a registered name), ``delay_frames`` (frames
+        from an exposure until the command computed from it takes effect,
+        default 2; also the default prediction ``horizon``), ``gain`` (blend
+        towards the prediction once fitted, default 1.0), ``fit_frames``
+        (POL frames kept for :meth:`fit_predictor`, default 4096), and the
+        predictor's own options.
     hardware_delay : float, optional
         Delay for the hardware. Default is 0.0.
     poke_amp : float, optional
@@ -366,6 +375,7 @@ class Loop(Component):
             )
             self.gain = set_from_config(self.conf, "gain", 0.1)
             self.leaky_gain = set_from_config(self.conf, "leaky_gain", 0.0)
+            self.configure_predictor(set_from_config(self.conf, "predictor", None))
             self.perturb_amp = 0
             self.hardware_delay = set_from_config(self.conf, "hardware_delay", 0.0)
             self.poke_amp = set_from_config(self.conf, "poke_amp", 1e-2)
@@ -1248,6 +1258,10 @@ class Loop(Component):
             self.conditioning = requested_conditioning
             self.tikhonov_reg = requested_tikhonov
             self.num_active_modes = self.num_modes - self.num_dropped_modes
+            record = getattr(self, "_pol_record", None)
+            if record is not None and record.shape[1] != self.num_active_modes:
+                # The controlled modes changed: the predictor must be refitted.
+                self.configure_predictor(self._predictor_conf)
             if self.num_active_modes < 0:
                 raise ValueError("Invalid number of modes used in CM. Check num_dropped_modes")
             active_im = self.im[:, : self.num_active_modes]
@@ -1394,6 +1408,100 @@ class Loop(Component):
             "last_action": self._last_watchdog_action,
             "alerts": alerts,
         }
+
+    def configure_predictor(self, predictor_conf=None):
+        """Set up predictive control from a ``predictor`` config mapping.
+
+        Builds an unfitted predictor. Until :meth:`fit_predictor` runs,
+        :meth:`predictive_integrator` blends with the loop ``gain``, which makes
+        it a delay-aware pseudo open-loop integrator, while it records POL data
+        for the fit.
+        """
+
+        from pyrtc.predictive import make_predictor
+
+        conf = dict(predictor_conf or {})
+        self.predictor_delay = int(conf.get("delay_frames", 2))
+        if self.predictor_delay < 1:
+            raise ValueError("predictor.delay_frames must be >= 1")
+        conf.setdefault("horizon", self.predictor_delay)
+        self.predictor_gain = float(conf.get("gain", 1.0))
+        if not 0 < self.predictor_gain <= 1:
+            raise ValueError("predictor.gain must be in (0, 1]")
+        fit_frames = int(conf.get("fit_frames", 4096))
+        if fit_frames < 64:
+            raise ValueError("predictor.fit_frames must be >= 64")
+        num_active = int(self.num_active_modes)
+        self._predictor_conf = conf
+        self.predictor = make_predictor(conf, num_active)
+        self.predictor_fitted = False
+        self._pol_record = np.zeros((fit_frames, num_active))
+        self._pol_count = 0
+        self._sent_commands = deque(maxlen=self.predictor_delay)
+
+    def recorded_pol(self) -> np.ndarray:
+        """Return the recorded pseudo open-loop modes, oldest first."""
+
+        size = self._pol_record.shape[0]
+        count = min(self._pol_count, size)
+        if self._pol_count <= size:
+            return self._pol_record[:count].copy()
+        start = self._pol_count % size
+        return np.concatenate((self._pol_record[start:], self._pol_record[:start]))
+
+    def fit_predictor(self, pol_history=None):
+        """Fit the predictor and switch :meth:`predictive_integrator` to it.
+
+        ``pol_history`` defaults to the POL modes recorded while the loop ran
+        :meth:`predictive_integrator`. A new predictor is built, fitted, and
+        warmed up on the latest data, then swapped in as one object, so a
+        running loop never sees a half-fitted model. Returns the predictor.
+        """
+
+        from pyrtc.predictive import make_predictor
+
+        history = self.recorded_pol() if pol_history is None else np.asarray(pol_history)
+        predictor = make_predictor(self._predictor_conf, int(self.num_active_modes))
+        predictor.fit(history)
+        for pol in history[-64:]:
+            predictor.update(pol)
+        self.predictor = predictor
+        self.predictor_fitted = True
+        getattr(self, "logger", logger).info(
+            "Fitted %s predictor on %s POL frames", predictor.name, len(history)
+        )
+        return predictor
+
+    def predictive_integrator(self):
+        """Predictive control step (see :mod:`pyrtc.predictive`).
+
+        Estimates each mode's pseudo open-loop disturbance, ``cm @ signal``
+        minus the command that was on the corrector during the exposure (the
+        one sent ``delay_frames`` iterations ago). The predictor forecasts it
+        ``horizon`` frames ahead, and the command moves towards cancelling
+        that forecast: ``c = (1 - g) c + g (-prediction)``.
+        """
+
+        slopes = self._read_signal(out=self._signal_buffer)
+        if slopes is None:
+            return
+        num_active = int(self.num_active_modes)
+        current = self.read_stream("wfc", block=False, out=self._wfc_buffer).squeeze()
+        residual = self.cm[:num_active] @ slopes
+        sent = self._sent_commands
+        applied = sent[0] if len(sent) == sent.maxlen else current[:num_active]
+        pol = residual - applied
+        self._pol_record[self._pol_count % self._pol_record.shape[0]] = pol
+        self._pol_count += 1
+
+        predictor = self.predictor
+        predictor.update(pol)
+        prediction = predictor.predict()
+        gain = self.predictor_gain if self.predictor_fitted else self.gain
+        new_correction = np.zeros_like(current)
+        new_correction[:num_active] = (1 - gain) * current[:num_active] - gain * prediction
+        self.send_to_wfc(new_correction, slopes=slopes)
+        sent.append(new_correction[:num_active].copy())
 
     def standard_integrator_pol(self):
         """

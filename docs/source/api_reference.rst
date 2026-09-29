@@ -27,6 +27,7 @@ Module Index
    component_loading
    modal_basis
    modal_gains
+   predictive
    latency
    telemetry
    utils
