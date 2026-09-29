@@ -222,6 +222,13 @@ def test_frame_ids_propagate_through_the_synthetic_chain(private_system):
     config_path, names = private_system
     with RTCManager.from_config_file(config_path) as manager:
         manager.start()
+        # Wait until the whole chain is live: right after start the worker
+        # kernels are still JIT-compiling, so early windows don't overlap.
+        wfc = open_stream(names["wfc"], readonly=True)
+        try:
+            wfc.wait_for_count(after=wfc.count + 20, timeout=30.0)
+        finally:
+            wfc.close()
         report = manager.latency(
             stream_path=[names["wfs"], names["signal"], names["wfc"]],
             samples=32,
