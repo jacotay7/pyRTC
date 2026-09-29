@@ -237,6 +237,16 @@ All notable changes to `pyrtcao` will be documented in this file.
 
 ### Added
 
+- **Per-mode gains, optical-gain compensation and gain optimization** (#56).
+	- The loop gain of mode `i` is `gain * modal_gains[i] / optical_gains[i]`,
+	  set in the config or at run time (`set_modal_gains`,
+	  `set_optical_gains`). It is folded into the control matrix and used by
+	  every integrator, including POL.
+	- `loop.optimize_modal_gains(residuals, frame_rate, delay_frames=...)`
+	  chooses per-mode gains from closed-loop modal residuals
+	  (`loop.modal_residuals`), using the Gendron & Léna pseudo open-loop PSD
+	  method in the new `pyrtc.modal_gains`. In simulation, the chosen gains
+	  come within 5% of the brute-force optimum.
 - **Safety watchdog and saturation reporting** (#60).
 	- The closed loop waits at most `watchdog_timeout` (default 1 s) for a
 	  new `signal` frame. On timeout it reports the input stale, including

@@ -112,6 +112,14 @@ class Loop(Component):
         Number of modes to drop. Default is 0.
     gain : float, optional
         Gain for the integrator. Default is 0.1.
+    modal_gains : list, str or None, optional
+        Per-mode gain factors (length ``num_modes``, or a ``.npy`` file). The
+        integrator gain of mode ``i`` is ``gain * modal_gains[i] /
+        optical_gains[i]``. Default: all 1.
+    optical_gains : list, str or None, optional
+        Per-mode WFS optical gains (e.g. a pyramid's reduced sensitivity on a
+        residual wavefront, from simulation or calibration). Gains are divided
+        by them to compensate. Default: all 1.
     leaky_gain : float, optional
         Leaky integrator gain. Default is 0.0.
     hardware_delay : float, optional
@@ -350,6 +358,12 @@ class Loop(Component):
 
             self.im = np.zeros((self.signal_size, self.num_modes), dtype=self.signal_dtype)
             self.cm = np.zeros((self.num_modes, self.signal_size), dtype=self.signal_dtype)
+            self._modal_gains = self._mode_vector(
+                set_from_config(self.conf, "modal_gains", None), "modal_gains"
+            )
+            self._optical_gains = self._mode_vector(
+                set_from_config(self.conf, "optical_gains", None), "optical_gains"
+            )
             self.gain = set_from_config(self.conf, "gain", 0.1)
             self.leaky_gain = set_from_config(self.conf, "leaky_gain", 0.0)
             self.perturb_amp = 0
@@ -429,8 +443,108 @@ class Loop(Component):
     @gain.setter
     def gain(self, gain):
         self._gain = float(gain)
-        if hasattr(self, "cm"):
-            self.g_cm = self._gain * self.cm
+        self._update_gain_matrix()
+
+    @property
+    def effective_gains(self) -> np.ndarray:
+        """Per-mode integrator gains: ``gain * modal_gains / optical_gains``."""
+
+        num_modes = int(getattr(self, "num_modes", 0) or 0)
+        gains = np.full(num_modes, self.gain, dtype=np.float64)
+        modal = getattr(self, "_modal_gains", None)
+        optical = getattr(self, "_optical_gains", None)
+        if modal is not None:
+            gains *= modal
+        if optical is not None:
+            gains /= optical
+        return gains
+
+    def _update_gain_matrix(self):
+        """Rebuild ``g_cm``, the control matrix with each mode's gain folded in."""
+
+        if not hasattr(self, "cm"):
+            return
+        gains = self.effective_gains
+        if gains.size != self.cm.shape[0]:
+            self.g_cm = self.gain * self.cm
+            return
+        self.g_cm = (gains[:, None] * self.cm).astype(self.cm.dtype, copy=False)
+
+    def _mode_vector(self, value, name):
+        """Parse a per-mode vector (list, array or ``.npy`` path); ``None`` means all 1."""
+
+        if value is None or (isinstance(value, str) and not value):
+            return None
+        if isinstance(value, str):
+            value = np.load(value)
+        vector = np.asarray(value, dtype=np.float64).reshape(-1)
+        num_modes = int(self.num_modes)
+        if vector.size != num_modes:
+            raise ValueError(f"{name} must have {num_modes} entries, got {vector.size}")
+        if not np.all(np.isfinite(vector)):
+            raise ValueError(f"{name} must be finite")
+        if name == "optical_gains" and np.any(vector <= 0):
+            raise ValueError("optical_gains must be positive")
+        if name == "modal_gains" and np.any(vector < 0):
+            raise ValueError("modal_gains must be >= 0")
+        return vector
+
+    def set_modal_gains(self, modal_gains):
+        """Set per-mode gain factors (``None`` resets them to 1)."""
+
+        self._modal_gains = self._mode_vector(modal_gains, "modal_gains")
+        self._update_gain_matrix()
+        getattr(self, "logger", logger).info("Set modal gains")
+
+    def set_optical_gains(self, optical_gains):
+        """Set per-mode optical gains to compensate (``None`` resets them to 1)."""
+
+        self._optical_gains = self._mode_vector(optical_gains, "optical_gains")
+        self._update_gain_matrix()
+        getattr(self, "logger", logger).info("Set optical gains")
+
+    def modal_residuals(self, signal_frames) -> np.ndarray:
+        """Project closed-loop ``signal`` frames onto the controlled modes.
+
+        ``signal_frames`` has shape ``(num_frames, signal_size)``; returns
+        ``(num_frames, num_active_modes)`` modal residuals for
+        :meth:`optimize_modal_gains`.
+        """
+
+        frames = np.asarray(signal_frames, dtype=np.float64).reshape(-1, self.signal_size)
+        return frames @ np.asarray(self.cm[: self.num_active_modes], dtype=np.float64).T
+
+    def optimize_modal_gains(self, residuals, frame_rate, *, delay_frames=2, apply=True, **kwargs):
+        """Choose per-mode gains from closed-loop modal residuals.
+
+        ``residuals`` comes from :meth:`modal_residuals` for frames recorded
+        with the current gains. See :func:`pyrtc.modal_gains.optimize_modal_gains`
+        for the method and keyword arguments. With ``apply`` (default), the
+        result replaces ``modal_gains`` so the effective gains equal the
+        optimum. Returns the :class:`~pyrtc.modal_gains.ModalGainResult`.
+        """
+
+        from pyrtc.modal_gains import optimize_modal_gains
+
+        active = int(self.num_active_modes)
+        current = self.effective_gains[:active]
+        result = optimize_modal_gains(
+            residuals, frame_rate, current, delay_frames=delay_frames, **kwargs
+        )
+        if apply:
+            if self.gain <= 0:
+                raise ValueError("loop gain must be positive to apply modal gains")
+            modal = (
+                np.ones(int(self.num_modes))
+                if self._modal_gains is None
+                else self._modal_gains.copy()
+            )
+            optical = (
+                np.ones(int(self.num_modes)) if self._optical_gains is None else self._optical_gains
+            )
+            modal[:active] = result.gains * optical[:active] / self.gain
+            self.set_modal_gains(modal)
+        return result
 
     def set_gain(self, gain):
         """
@@ -1147,7 +1261,7 @@ class Loop(Component):
             self.cm[:, :] = 0
             self.cm[: self.num_active_modes, :] = inverse
             self.cm[self.num_active_modes :, :] = 0
-            self.g_cm = self.gain * self.cm
+            self._update_gain_matrix()
             self.f_im = np.copy(self.im)
             self.f_im[:, self.num_active_modes :] = 0
             self.last_singular_values = singular_values
@@ -1193,7 +1307,10 @@ class Loop(Component):
         s_pol = slopes - self.f_im @ correction
 
         # Update Command Vector c_n = g*CM*s_{POL} + (1 − g) c_{n-1}  https://arxiv.org/pdf/1903.12124.pdf Eq 3
-        return (1 - self.gain) * correction - np.dot(self.g_cm, s_pol)
+        gains = self.effective_gains.astype(np.asarray(correction).dtype, copy=False)
+        if gains.size != np.size(correction):
+            gains = self.gain
+        return (1 - gains) * correction - np.dot(self.g_cm, s_pol)
 
     def _read_signal(self, out=None):
         """Read the next ``signal`` frame, or return ``None`` if the input is stale.

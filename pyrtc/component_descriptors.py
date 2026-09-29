@@ -499,6 +499,18 @@ BUILTIN_COMPONENT_DESCRIPTORS: tuple[ComponentDescriptor, ...] = (
                 minimum=0.0,
             ),
             ConfigFieldDescriptor("gain", "float", "Integrator gain.", default=0.1),
+            ConfigFieldDescriptor(
+                "modal_gains",
+                "list[float] | str | None",
+                "Per-mode gain factors (num_modes values or a .npy file); unset means all 1.",
+                default=None,
+            ),
+            ConfigFieldDescriptor(
+                "optical_gains",
+                "list[float] | str | None",
+                "Per-mode WFS optical gains that the loop compensates; unset means all 1.",
+                default=None,
+            ),
             ConfigFieldDescriptor("leaky_gain", "float", "Leaky-integrator gain.", default=0.0),
             ConfigFieldDescriptor(
                 "hardware_delay", "float", "Estimated hardware delay.", default=0.0, minimum=0.0
