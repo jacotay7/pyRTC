@@ -420,6 +420,15 @@ All notable changes to `pyrtcao` will be documented in this file.
 
 ### Changed
 
+- **The HCIPy example runs single-threaded BLAS by default.** It sets
+	`OPENBLAS_NUM_THREADS` and related variables to `1` before importing
+	numpy, unless they are already set, as hard-RTC children do. The HCIPy
+	system test caps the pools with `threadpoolctl` (now in
+	`requirements-test.txt`). HCIPy otherwise kept a full OpenBLAS pool busy.
+	On 16 cores the pools used about 15 of them, the WFS ran slower (23
+	against 32 frames/s), and the system test took 3x longer on a loaded host
+	(69 s against 23 s).
+
 - **`import pyrtc` no longer imports torch** (0.47 s instead of 1.3 s with
 	torch installed). pyrtc probes torch lazily
 	(`streams.gpu_torch_available()`), and pyshmem 1.3.7, now required, does

@@ -300,6 +300,8 @@ ruff check . && ruff format --check .    # lint, as in CI
   `OPENBLAS_NUM_THREADS=1` made the WFS faster (32 vs 23 frames/s) and the
   HCIPy system test 2.5x shorter. Cap BLAS threads before timing or
   load-testing a simulated system, or the BLAS pools are what you measure.
+  The HCIPy example sets the variables before numpy loads; its system test,
+  where numpy is already imported, uses `threadpoolctl.threadpool_limits`.
   The Loop's control multiply (`np.dot` inside numba goes to scipy's
   OpenBLAS) does use them for large matrices, so do not cap them blindly on a
   real RTC.
