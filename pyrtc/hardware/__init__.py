@@ -10,7 +10,6 @@ _EXPORTS = {
     "XIMEAWFS": (".ximea_wfs", "XIMEAWFS"),
     "GenICamWFS": (".genicam_camera", "GenICamWFS"),
     "GenICamScienceCamera": (".genicam_camera", "GenICamScienceCamera"),
-
     "MicroManagerWFS": (".micromanager_camera", "MicroManagerWFS"),
     "MicroManagerScienceCamera": (".micromanager_camera", "MicroManagerScienceCamera"),
     "PIModulator": (".pi_modulator", "PIModulator"),
