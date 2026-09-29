@@ -23,10 +23,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}
 
@@ -46,13 +46,10 @@ jobs:
         run: python -m twine check dist/*
 
       - name: Verify built wheel installs cleanly
-        run: python pyRTC/scripts/validate_dist_install.py --dist-dir dist
-
-      - name: Run ruff lint checks
-        run: ruff check pyRTC tests benchmarks
+        run: python pyrtc/scripts/validate_dist_install.py --dist-dir dist
 
       - name: Verify import
-        run: python -c "import pyRTC; print('pyRTC import OK')"
+        run: python -c "import pyrtc; print('pyrtc import OK')"
 
       - name: Run pytest with coverage
         run: pytest

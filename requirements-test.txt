@@ -3,3 +3,11 @@ pytest-cov
 ruff
 build
 twine
+aotpy>=3.2
+# Optional extras exercised by the test suite (optimize, fits, plot).
+optuna
+cmaes
+astropy
+matplotlib>=3.5
+hcipy>=0.6          # the HCIPy bridge tests and system test
+threadpoolctl       # caps BLAS threads in the HCIPy system test

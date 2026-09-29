@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-"""Low-level kernel benchmark suite for pyRTC compute hotspots.
+"""Low-level kernel benchmark suite for pyrtc compute hotspots.
 
 The benchmarks in this module measure the p99 throughput and latency of the
 individual kernels that dominate synthetic AO-loop runtime. These results are
@@ -20,16 +20,21 @@ from typing import Any, Callable, Dict
 
 import numpy as np
 
-from pyRTC.Loop import leakIntegratorGPU, leakyIntegratorNumba
-from pyRTC.Pipeline import gpu_torch_available
-from pyRTC.logging_utils import add_logging_cli_args, configure_logging_from_args, get_logger
-from pyRTC.SlopesProcess import (
-    computeSlopesPYWFSOptimNumba,
-    computeSlopesPYWFSTorch,
-    computeSlopesSHWFSOptimNumba,
+from pyrtc.loop import ReducedPrecisionMatrix, leak_integrator_gpu, leaky_integrator_numba
+from pyrtc.streams import gpu_torch_available
+from pyrtc.logging_utils import add_logging_cli_args, configure_logging_from_args, get_logger
+from pyrtc.slopes_process import (
+    build_shwfs_correlation_templates_numba,
+    build_shwfs_wcog_weights_numba,
+    compute_slopes_pywfs_optim_numba,
+    compute_slopes_pywfs_torch,
+    compute_slopes_shwfs_correlation_numba,
+    compute_slopes_shwfs_optim_numba,
+    compute_slopes_shwfs_wcog_numba,
+    shwfs_subaperture_coords,
 )
-from pyRTC.WavefrontCorrector import ModaltoZonalWithFlat
-from pyRTC.WavefrontSensor import downsample_int32_image_jit, rotate_image_jit
+from pyrtc.wavefront_corrector import ModaltoZonalWithFlat
+from pyrtc.wavefront_sensor import downsample_int32_image_jit, rotate_image_jit
 
 
 logger = get_logger(__name__)
@@ -39,10 +44,18 @@ CORE_KERNEL_LABELS = {
     "wavefront_sensor.downsample_int32_image_jit": "WFS downsample",
     "wavefront_sensor.rotate_image_jit": "WFS rotate",
     "wavefront_corrector.ModaltoZonalWithFlat": "WFC modal->zonal",
-    "loop.leakyIntegratorNumba": "Loop integrator",
-    "slopes.computeSlopesPYWFSOptimNumba": "PYWFS slopes",
-    "slopes.computeSlopesSHWFSOptimNumba": "SHWFS slopes",
+    "loop.leaky_integrator_numba": "Loop integrator",
+    "slopes.compute_slopes_pywfs_optim_numba": "PYWFS slopes",
+    "slopes.compute_slopes_shwfs_optim_numba": "SHWFS slopes",
+    "slopes.compute_slopes_shwfs_wcog_numba": "SHWFS WCoG slopes",
+    "slopes.compute_slopes_shwfs_correlation_numba": "SHWFS correlation slopes",
 }
+
+# Sub-aperture geometry for the WCoG / correlation benchmarks. The CoG profile
+# keeps its historical 2x2-pixel sub-apertures; correlation needs a template
+# plus a search window, so these use a more representative size.
+SHWFS_CENTROIDER_INT_N = 8
+SHWFS_CORRELATION_RADIUS = 2
 
 
 def _format_stats(stats: dict[str, float] | None) -> str:
@@ -79,20 +92,22 @@ def _build_summary_table(results: Dict[str, Any]) -> str:
             cpu_summary = _format_stats(stats)
             gpu_summary = "-"
             gpu_profile = gpu_profiles.get(profile_name, {})
-            if kernel_name == "loop.leakyIntegratorNumba":
-                gpu_stats = gpu_profile.get("loop.leakIntegratorGPU")
+            if kernel_name == "loop.leaky_integrator_numba":
+                gpu_stats = gpu_profile.get("loop.leak_integrator_gpu")
                 if gpu_profile.get("status", {}).get("available") is True and gpu_stats:
                     gpu_summary = _format_stats(gpu_stats)
-            elif kernel_name == "slopes.computeSlopesPYWFSOptimNumba":
-                gpu_stats = gpu_profile.get("slopes.computeSlopesPYWFSTorch")
+            elif kernel_name == "slopes.compute_slopes_pywfs_optim_numba":
+                gpu_stats = gpu_profile.get("slopes.compute_slopes_pywfs_torch")
                 if gpu_profile.get("status", {}).get("available") is True and gpu_stats:
                     gpu_summary = _format_stats(gpu_stats)
-            rows.append([
-                profile_name,
-                CORE_KERNEL_LABELS.get(kernel_name, kernel_name),
-                cpu_summary,
-                gpu_summary,
-            ])
+            rows.append(
+                [
+                    profile_name,
+                    CORE_KERNEL_LABELS.get(kernel_name, kernel_name),
+                    cpu_summary,
+                    gpu_summary,
+                ]
+            )
     return _render_table(["Size", "Kernel", "CPU p99", "GPU p99"], rows)
 
 
@@ -160,7 +175,11 @@ def collect_system_info() -> Dict[str, Any]:
     nvidia_smi_path = shutil.which("nvidia-smi")
     if nvidia_smi_path:
         lines = _run_command_lines(
-            [nvidia_smi_path, "--query-gpu=name,driver_version,memory.total", "--format=csv,noheader"]
+            [
+                nvidia_smi_path,
+                "--query-gpu=name,driver_version,memory.total",
+                "--format=csv,noheader",
+            ]
         )
         if lines:
             parts = [part.strip() for part in lines[0].split(",")]
@@ -204,16 +223,22 @@ def _time_kernel(func: Callable[[], Any], iterations: int, warmup: int) -> Dict[
 
 def _bench_wfs_downsample(iterations: int, warmup: int, side: int) -> Dict[str, float]:
     image = (np.random.RandomState(0).rand(side, side) * 1000).astype(np.int32)
-    return _time_kernel(lambda: downsample_int32_image_jit(image, 2), iterations=iterations, warmup=warmup)
+    return _time_kernel(
+        lambda: downsample_int32_image_jit(image, 2), iterations=iterations, warmup=warmup
+    )
 
 
 def _bench_wfs_rotate(iterations: int, warmup: int, side: int) -> Dict[str, float]:
     image = np.random.RandomState(1).rand(side, side).astype(np.float32)
     angle_rad = np.float32(0.1)
-    return _time_kernel(lambda: rotate_image_jit(image, angle_rad), iterations=iterations, warmup=warmup)
+    return _time_kernel(
+        lambda: rotate_image_jit(image, angle_rad), iterations=iterations, warmup=warmup
+    )
 
 
-def _bench_wfc_modal_to_zonal(iterations: int, warmup: int, num_modes: int, num_actuators: int) -> Dict[str, float]:
+def _bench_wfc_modal_to_zonal(
+    iterations: int, warmup: int, num_modes: int, num_actuators: int
+) -> Dict[str, float]:
     rng = np.random.RandomState(2)
     correction = rng.randn(num_modes).astype(np.float32)
     m2c = rng.randn(num_actuators, num_modes).astype(np.float32)
@@ -225,7 +250,9 @@ def _bench_wfc_modal_to_zonal(iterations: int, warmup: int, num_modes: int, num_
     )
 
 
-def _bench_loop_leaky_integrator(iterations: int, warmup: int, signal_size: int, num_modes: int) -> Dict[str, float]:
+def _bench_loop_leaky_integrator(
+    iterations: int, warmup: int, signal_size: int, num_modes: int
+) -> Dict[str, float]:
     rng = np.random.RandomState(3)
     slopes = rng.randn(signal_size).astype(np.float32)
     recon = rng.randn(num_modes, signal_size).astype(np.float32)
@@ -235,7 +262,9 @@ def _bench_loop_leaky_integrator(iterations: int, warmup: int, signal_size: int,
     num_active_modes = max(1, num_modes - 2)
 
     return _time_kernel(
-        lambda: leakyIntegratorNumba(slopes, recon, old_correction, correction, leak, num_active_modes),
+        lambda: leaky_integrator_numba(
+            slopes, recon, old_correction, correction, leak, num_active_modes
+        ),
         iterations=iterations,
         warmup=warmup,
     )
@@ -254,7 +283,9 @@ def _build_pywfs_masks(length: int, pixels_per_pupil: int):
     return p1, p2, p3, p4
 
 
-def _bench_slopes_pywfs_numba(iterations: int, warmup: int, image_side: int, pixels_per_pupil: int) -> Dict[str, float]:
+def _bench_slopes_pywfs_numba(
+    iterations: int, warmup: int, image_side: int, pixels_per_pupil: int
+) -> Dict[str, float]:
     rng = np.random.RandomState(4)
     length = image_side * image_side
     image = (rng.rand(length) * 5000).astype(np.float32)
@@ -271,7 +302,7 @@ def _bench_slopes_pywfs_numba(iterations: int, warmup: int, image_side: int, pix
     ref_slopes = np.zeros(2 * pixels_per_pupil, dtype=np.float32)
 
     return _time_kernel(
-        lambda: computeSlopesPYWFSOptimNumba(
+        lambda: compute_slopes_pywfs_optim_numba(
             image,
             p1_mask,
             p2_mask,
@@ -292,7 +323,9 @@ def _bench_slopes_pywfs_numba(iterations: int, warmup: int, image_side: int, pix
     )
 
 
-def _bench_slopes_shwfs_numba(iterations: int, warmup: int, num_regions: int, spacing: int, int_n: int) -> Dict[str, float]:
+def _bench_slopes_shwfs_numba(
+    iterations: int, warmup: int, num_regions: int, spacing: int, int_n: int
+) -> Dict[str, float]:
     rng = np.random.RandomState(5)
     side = num_regions * spacing
     image = (rng.rand(side, side) * 3000).astype(np.float32)
@@ -305,7 +338,7 @@ def _bench_slopes_shwfs_numba(iterations: int, warmup: int, num_regions: int, sp
     spacing_val = np.float32(spacing)
 
     return _time_kernel(
-        lambda: computeSlopesSHWFSOptimNumba(
+        lambda: compute_slopes_shwfs_optim_numba(
             image,
             slopes,
             unaberrated,
@@ -321,7 +354,99 @@ def _bench_slopes_shwfs_numba(iterations: int, warmup: int, num_regions: int, sp
     )
 
 
-def _bench_gpu_kernels(iterations: int, warmup: int, signal_size: int, num_modes: int, pixels_per_pupil: int) -> Dict[str, Dict[str, float]]:
+def _shwfs_centroider_inputs(num_regions: int, int_n: int):
+    rng = np.random.RandomState(7)
+    side = num_regions * int_n
+    coords = shwfs_subaperture_coords(int_n)
+    yy, xx = np.meshgrid(coords, coords, indexing="ij")
+    spot = np.exp(-(xx**2 + yy**2) / (2.0 * 1.2**2)) * 3000.0
+    reference = np.tile(spot, (num_regions, num_regions)).astype(np.float32)
+    image = (reference + rng.rand(side, side) * 30.0).astype(np.float32)
+    slopes = np.zeros((2 * num_regions, num_regions), dtype=np.float32)
+    unaberrated = np.zeros_like(slopes)
+    return image, reference, coords, slopes, unaberrated
+
+
+def _bench_slopes_shwfs_wcog_numba(
+    iterations: int, warmup: int, num_regions: int, int_n: int
+) -> Dict[str, float]:
+    image, _, coords, slopes, unaberrated = _shwfs_centroider_inputs(num_regions, int_n)
+    centers = np.zeros_like(slopes)
+    sigma = (int_n / 2.0) / 2.3548
+    weights_x = np.empty((num_regions, num_regions, int_n), dtype=np.float32)
+    weights_y = np.empty_like(weights_x)
+    build_shwfs_wcog_weights_numba(
+        coords, centers, np.float32(1.0 / (2.0 * sigma * sigma)), weights_x, weights_y
+    )
+
+    return _time_kernel(
+        lambda: compute_slopes_shwfs_wcog_numba(
+            image,
+            slopes,
+            unaberrated,
+            np.float32(1.0),
+            np.float32(int_n),
+            coords,
+            0,
+            0,
+            int_n,
+            centers,
+            weights_x,
+            weights_y,
+            np.float32(1.0),
+        ),
+        iterations=iterations,
+        warmup=warmup,
+    )
+
+
+def _bench_slopes_shwfs_correlation_numba(
+    iterations: int, warmup: int, num_regions: int, int_n: int, radius: int
+) -> Dict[str, float]:
+    image, reference, _, slopes, unaberrated = _shwfs_centroider_inputs(num_regions, int_n)
+    core = int_n - 2 * radius
+    templates = np.zeros((num_regions, num_regions, core, core), dtype=np.float32)
+    template_flux = np.zeros((num_regions, num_regions), dtype=np.float32)
+    build_shwfs_correlation_templates_numba(
+        reference,
+        np.float32(1.0),
+        np.float32(int_n),
+        0,
+        0,
+        int_n,
+        radius,
+        templates,
+        template_flux,
+    )
+    ref_positions = np.zeros_like(slopes)
+    window = np.empty((int_n, int_n), dtype=np.float32)
+    scores = np.empty((2 * radius + 1, 2 * radius + 1), dtype=np.float64)
+
+    return _time_kernel(
+        lambda: compute_slopes_shwfs_correlation_numba(
+            image,
+            slopes,
+            unaberrated,
+            np.float32(1.0),
+            np.float32(int_n),
+            0,
+            0,
+            int_n,
+            templates,
+            template_flux,
+            ref_positions,
+            radius,
+            window,
+            scores,
+        ),
+        iterations=iterations,
+        warmup=warmup,
+    )
+
+
+def _bench_gpu_kernels(
+    iterations: int, warmup: int, signal_size: int, num_modes: int, pixels_per_pupil: int
+) -> Dict[str, Dict[str, float]]:
     if not gpu_torch_available():
         return {"status": {"available": False, "reason": "PyTorch not available"}}
 
@@ -339,10 +464,24 @@ def _bench_gpu_kernels(iterations: int, warmup: int, signal_size: int, num_modes
     recon_gpu = torch.tensor(recon_np, device="cuda")
 
     leak_stats = _time_kernel(
-        lambda: leakIntegratorGPU(slopes_np, recon_gpu, old_np, 0.05, max(1, num_modes - 2)),
+        lambda: leak_integrator_gpu(slopes_np, recon_gpu, old_np, 0.05, max(1, num_modes - 2)),
         iterations=iterations,
         warmup=warmup,
     )
+    # fp16/bf16 control-matrix storage with fp32 accumulation (#67).
+    reduced_stats = {}
+    for dtype in ("float16", "bfloat16"):
+        try:
+            reduced = ReducedPrecisionMatrix(recon_np, dtype, device="cuda")
+        except Exception:
+            continue
+        reduced_stats[f"loop.leak_integrator_gpu_{dtype}"] = _time_kernel(
+            lambda reduced=reduced: leak_integrator_gpu(
+                slopes_np, reduced, old_np, 0.05, max(1, num_modes - 2)
+            ),
+            iterations=iterations,
+            warmup=warmup,
+        )
 
     length = max(signal_size, 4 * pixels_per_pupil)
     image = torch.tensor((rng.rand(length) * 5000).astype(np.float32), device="cuda")
@@ -356,7 +495,7 @@ def _bench_gpu_kernels(iterations: int, warmup: int, signal_size: int, num_modes
     ref = torch.zeros(2 * pixels_per_pupil, device="cuda", dtype=torch.float32)
 
     slopes_stats = _time_kernel(
-        lambda: computeSlopesPYWFSTorch(
+        lambda: compute_slopes_pywfs_torch(
             image,
             p1_mask,
             p2_mask,
@@ -372,8 +511,9 @@ def _bench_gpu_kernels(iterations: int, warmup: int, signal_size: int, num_modes
 
     return {
         "status": {"available": True, "device": str(torch.cuda.get_device_name(0))},
-        "loop.leakIntegratorGPU": leak_stats,
-        "slopes.computeSlopesPYWFSTorch": slopes_stats,
+        "loop.leak_integrator_gpu": leak_stats,
+        **reduced_stats,
+        "slopes.compute_slopes_pywfs_torch": slopes_stats,
     }
 
 
@@ -388,17 +528,27 @@ def _run_profile_benchmarks(grid_size: int, iterations: int, warmup: int):
     int_n = 2
 
     return {
-        "wavefront_sensor.downsample_int32_image_jit": _bench_wfs_downsample(iterations, warmup, side),
+        "wavefront_sensor.downsample_int32_image_jit": _bench_wfs_downsample(
+            iterations, warmup, side
+        ),
         "wavefront_sensor.rotate_image_jit": _bench_wfs_rotate(iterations, warmup, side),
         "wavefront_corrector.ModaltoZonalWithFlat": _bench_wfc_modal_to_zonal(
             iterations, warmup, num_modes, num_modes
         ),
-        "loop.leakyIntegratorNumba": _bench_loop_leaky_integrator(iterations, warmup, signal_size, num_modes),
-        "slopes.computeSlopesPYWFSOptimNumba": _bench_slopes_pywfs_numba(
+        "loop.leaky_integrator_numba": _bench_loop_leaky_integrator(
+            iterations, warmup, signal_size, num_modes
+        ),
+        "slopes.compute_slopes_pywfs_optim_numba": _bench_slopes_pywfs_numba(
             iterations, warmup, pywfs_side, pixels_per_pupil
         ),
-        "slopes.computeSlopesSHWFSOptimNumba": _bench_slopes_shwfs_numba(
+        "slopes.compute_slopes_shwfs_optim_numba": _bench_slopes_shwfs_numba(
             iterations, warmup, num_regions, spacing, int_n
+        ),
+        "slopes.compute_slopes_shwfs_wcog_numba": _bench_slopes_shwfs_wcog_numba(
+            iterations, warmup, num_regions, SHWFS_CENTROIDER_INT_N
+        ),
+        "slopes.compute_slopes_shwfs_correlation_numba": _bench_slopes_shwfs_correlation_numba(
+            iterations, warmup, num_regions, SHWFS_CENTROIDER_INT_N, SHWFS_CORRELATION_RADIUS
         ),
     }
 
@@ -470,7 +620,7 @@ def run_core_compute_benchmarks(
 
 def _build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Benchmark core pyRTC compute kernels (JIT + optional GPU paths)."
+        description="Benchmark core pyrtc compute kernels (JIT + optional GPU paths)."
     )
     parser.add_argument("--iterations", type=int, default=2000, help="Timed iterations per kernel")
     parser.add_argument("--warmup", type=int, default=200, help="Warmup iterations per kernel")
@@ -496,7 +646,9 @@ def _build_arg_parser() -> argparse.ArgumentParser:
 def main(argv=None) -> int:
     parser = _build_arg_parser()
     args = parser.parse_args(argv)
-    configure_logging_from_args(args, app_name="pyrtc-core-bench", component_name="benchmarks.core_compute_bench")
+    configure_logging_from_args(
+        args, app_name="pyrtc-core-bench", component_name="benchmarks.core_compute_bench"
+    )
 
     results = run_core_compute_benchmarks(
         iterations=args.iterations,

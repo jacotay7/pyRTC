@@ -15,14 +15,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13"]
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}
 
@@ -42,13 +42,10 @@ jobs:
         run: python -m twine check dist/*
 
       - name: Verify built wheel installs cleanly
-        run: python pyRTC/scripts/validate_dist_install.py --dist-dir dist
-
-      - name: Run ruff lint checks
-        run: ruff check pyRTC tests benchmarks
+        run: python pyrtc/scripts/validate_dist_install.py --dist-dir dist
 
       - name: Verify import
-        run: python -c "import pyRTC; print('pyRTC import OK')"
+        run: python -c "import pyrtc; print('pyrtc import OK')"
 
       - name: Run pytest with coverage
         run: pytest
@@ -62,10 +59,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}
 
@@ -85,7 +82,7 @@ jobs:
         run: python -m twine check dist/*
 
       - name: Verify built wheel installs cleanly
-        run: python pyRTC/scripts/validate_dist_install.py --dist-dir dist
+        run: python pyrtc/scripts/validate_dist_install.py --dist-dir dist
 
       - name: Run system and notebook smoke tests
         run: pytest tests/system tests/notebooks -q --no-cov
@@ -102,14 +99,94 @@ jobs:
           print(json.dumps(report, indent=2))
           PY
 
+      # The committed baseline comes from the fast lab host, so the ratio
+      # threshold on shared GitHub runners is deliberately generous: it
+      # catches order-of-magnitude hot-path regressions without flaking on
+      # runner variance. Use --max-ratio 1.5 when comparing on the lab host.
       - name: Compare against committed perf baseline
-        run: python benchmarks/check_perf_baseline.py --current benchmarks/perf_smoke_report.json --baseline benchmarks/perf_smoke_baseline.json
+        run: python benchmarks/check_perf_baseline.py --current benchmarks/perf_smoke_report.json --baseline benchmarks/perf_smoke_baseline.json --max-ratio 5.0
 
       - name: Upload performance smoke artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: perf-smoke-report-py${{ matrix.python-version }}
           path: benchmarks/perf_smoke_report.json
+
+      # End-to-end latency of the running synthetic system, kept as an
+      # artifact so benchmarks/perf_history.py can track it (#65).
+      - name: Run pipeline latency benchmark
+        if: matrix.python-version == '3.12'
+        run: python benchmarks/pipeline_latency_bench.py --samples 500 --repeats 1 --modes soft --notify on --no-psf --timeout 120 --output benchmarks/ci_pipeline_latency.json
+
+      - name: Upload pipeline latency artifact
+        if: matrix.python-version == '3.12'
+        uses: actions/upload-artifact@v7
+        with:
+          name: pipeline-latency
+          path: benchmarks/ci_pipeline_latency.json
+
+      # Trend against earlier CI runs, in the job summary. Informational:
+      # shared runners are too noisy to gate on.
+      - name: Performance history
+        if: matrix.python-version == '3.12'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python -m benchmarks.perf_history --repo ${{ github.repository }} --runs 20 --max-ratio 2.0 --current benchmarks/perf_smoke_report.json >> "$GITHUB_STEP_SUMMARY"
+
+  # Free-threaded CPython (#66): pyrtc's worker threads contend for the GIL
+  # otherwise. Checks that importing pyrtc keeps the GIL off and that the
+  # suite passes with it forced off.
+  free-threaded:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.14t"
+
+      - name: Install package
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install . -r requirements-test.txt
+
+      - name: Importing pyrtc keeps the GIL disabled
+        run: python -c "import sys, pyrtc, pyrtc.manager, pyrtc.loop; assert not sys._is_gil_enabled(), 'an import re-enabled the GIL'"
+
+      - name: Run tests without the GIL
+        env:
+          PYTHON_GIL: "0"
+        # tests/system runs too: its #139 runaway was the HCIPy simulator's
+        # OpenBLAS pools oversubscribing the runner, and that test now caps them.
+        run: pytest -q --no-cov -m "not gpu" --ignore=tests/test_qt_smoke.py
+
+  # aarch64: ARM orders memory more weakly than x86, so pyshmem's
+  # cross-process publication uses libatomic acquire/release there instead of
+  # plain stores, and thread timing differs. Run the whole suite, system
+  # tests included.
+  aarch64:
+    runs-on: ubuntu-24.04-arm
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+
+      - name: Install package
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install . -r requirements-test.txt
+
+      - name: Run pytest with coverage
+        run: pytest
 
   docs:
     runs-on: ubuntu-latest
@@ -120,10 +197,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}
 

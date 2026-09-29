@@ -1,3 +1,15 @@
+[run]
+# Measure the whole package by import name (source_pkgs), so it is measured
+# wherever it is installed (CI tests a non-editable install). Never list
+# dotted submodules: that makes coverage import pyrtc early and numpy is then
+# imported a second time, which breaks numpy's internal sentinels.
+source_pkgs = pyrtc
+omit =
+    # Qt windows that need a display; their logic lives in manager_adapter.py
+    # and viewer_helpers.py, which are measured.
+    */pyrtc/gui/main_window.py
+    */pyrtc/scripts/viewer_core.py
+
 [report]
 exclude_lines =
     if __name__ == .__main__.

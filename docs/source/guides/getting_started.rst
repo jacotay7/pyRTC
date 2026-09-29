@@ -3,7 +3,7 @@
 Getting Started
 ===============
 
-This guide is the shortest path from installation to a working `pyRTC` session.
+This guide is the shortest path from installation to a working `pyrtc` session.
 
 Package Name
 ------------
@@ -14,11 +14,18 @@ Install the project from PyPI as `pyrtcao`:
 
 	pip install pyrtcao
 
-Import it in Python as `pyRTC`:
+.. warning::
+
+   An unrelated WebRTC library is published on PyPI as ``pyrtc`` and also
+   installs a top-level ``pyrtc`` module. Install this project as
+   ``pyrtcao`` (``pip install pyrtc`` gets the WebRTC library) and don't
+   install both in the same environment.
+
+Import it in Python as `pyrtc`:
 
 .. code-block:: python
 
-	import pyRTC
+	import pyrtc
 
 If you are working from a source checkout instead of PyPI:
 
@@ -28,18 +35,34 @@ If you are working from a source checkout instead of PyPI:
 	cd pyRTC
 	pip install .
 
-Optional extras:
+The base install is the soft-RTC core. Optional extras:
 
 .. code-block:: bash
 
+	pip install pyrtcao[plot]       # matplotlib: plotting helpers, pyrtc-shm-monitor
+	pip install pyrtcao[fits]       # astropy: .fits files
+	pip install pyrtcao[optimize]   # optuna + cmaes: pyrtc.Optimizer, hardware optimizers
+	pip install pyrtcao[aotpy]
 	pip install pyrtcao[docs]
 	pip install pyrtcao[gpu]
-	pip install pyrtcao[viewer]
+	pip install pyrtcao[viewer]   # pyrtc-view
+	pip install pyrtcao[gui]      # pyrtc-manager-gui
+	pip install pyrtcao[hcipy]         # HCIPy simulator (examples/hcipy)
+	pip install pyrtcao[specula]       # SPECULA simulator (examples/shwfs, examples/pywfs)
+	pip install pyrtcao[genicam]       # GenICam (GigE/USB3 Vision) camera adapters
+	pip install pyrtcao[micromanager]  # Micro-Manager camera adapters
+	pip install pyrtcao[hardware]      # PI, Spinnaker (rotpy) and XIMEA SDKs for those adapters
+
+A feature whose extra is missing raises an ``ImportError`` naming the extra.
+The ``viewer`` and ``gui`` extras install Qt6 through `qtpy` with PySide6.
+PyQt6 works too: install ``qtpy`` and ``PyQt6`` yourself instead of the
+extra. If both bindings are installed, PySide6 is used unless ``QT_API=pyqt6``
+is set. Qt5 (PyQt5, PySide2) is not supported.
 
 Core Concepts
 -------------
 
-`pyRTC` is organized around adaptive optics components that exchange data through shared memory streams.
+`pyrtc` is organized around adaptive optics components that exchange data through shared memory streams.
 The core objects you will usually work with are:
 
 - `WavefrontSensor`: produces images
@@ -63,7 +86,42 @@ After installation, verify that the public package imports cleanly:
 
 .. code-block:: bash
 
-	python -c "import pyRTC; print(pyRTC.__all__)"
+	python -c "import pyrtc; print(pyrtc.__all__)"
+
+Validate a Config Before Launch
+-------------------------------
+
+Before starting a system, validate the full YAML file:
+
+.. code-block:: bash
+
+	pyrtc-validate-config examples/synthetic_shwfs/config.yaml
+
+Keys that a component does not read (often a typo, such as ``method`` for the
+loop's ``im_method``) are reported as warnings after the summary; the config is
+still valid.
+
+For automation or GUI-oriented tooling, JSON output is also available:
+
+.. code-block:: bash
+
+	pyrtc-validate-config examples/synthetic_shwfs/config.yaml --format json
+
+Export Telemetry Sessions to AOTPy
+----------------------------------
+
+If you want to move a saved telemetry session into the broader AO ecosystem,
+install the optional AOTPy dependency and export the session after capture:
+
+.. code-block:: bash
+
+	pip install pyrtcao[aotpy]
+	pyrtc-export-aotpy data/session_20260309_120000_abcd1234 exported_session.fits
+
+The exporter only maps the streams actually present in the session. The current
+mapping is conservative: `wfs` becomes detector pixels, `signal` becomes WFS
+measurements when the shape is interpretable, `wfc` becomes command history,
+and `psf_short` or `psf_long` become scoring-camera outputs.
 
 Minimal Component Example
 -------------------------
@@ -72,9 +130,9 @@ The base component class starts configured functions in worker threads. A minima
 
 .. code-block:: python
 
-	from pyRTC.pyRTCComponent import pyRTCComponent
+	from pyrtc.component import Component
 
-	component = pyRTCComponent(
+	component = Component(
 		 {
 			  "affinity": 0,
 			  "functions": [],
@@ -92,32 +150,32 @@ Configuration is supplied as nested dictionaries or YAML files. A typical AO set
 
 	loop:
 	  gain: 0.1
-	  numDroppedModes: 0
+	  num_dropped_modes: 0
 	  functions:
-		 - standardIntegrator
+		 - standard_integrator
 
 	wfs:
 	  name: OOPAOWFS
 	  width: 28
 	  height: 28
-	  darkCount: 1000
+	  dark_count: 1000
 	  functions:
 		 - expose
 
 	slopes:
 	  type: PYWFS
-	  signalType: slopes
+	  signal_type: slopes
 	  functions:
-		 - computeSignal
+		 - compute_signal
 
 	wfc:
 	  name: OOPAOWFC
-	  numActuators: 100
-	  numModes: 80
+	  num_actuators: 100
+	  num_modes: 80
 	  functions:
-		 - sendToHardware
+		 - send_to_hardware
 
-Required keys depend on the component. For example, wavefront-corrector configs require `name`, `numActuators`, and `numModes`.
+Required keys depend on the component. For example, wavefront-corrector configs require `name`, `num_actuators`, and `num_modes`.
 
 Suggested First Run
 -------------------
@@ -125,12 +183,12 @@ Suggested First Run
 For a practical first run, use the synthetic Shack-Hartmann example described in :doc:`../examples/synthetic_shwfs`.
 That path needs no hardware and no external simulator, but it still exercises the standard `WavefrontSensor -> SlopesProcess -> Loop -> WavefrontCorrector` chain and publishes the same viewer-friendly streams you will use later with real devices.
 
-After that, move to the OOPAO-based path in :doc:`../examples/pywfs` if you want a richer simulated optical model.
+After that, move to the OOPAO-based path in :doc:`../examples/pywfs` if you want a richer simulated optical model. OOPAO is not installed with pyrtc and needs a manual install; that page explains how.
 The script-driven entry point is:
 
 .. code-block:: bash
 
-	python examples/scao/run_soft_rtc.py --duration 10
+	python examples/pywfs/pywfs_oopao_soft_rtc_example.py --duration 10
 
 Use the companion notebook only once you want to step through the same workflow interactively.
 
@@ -143,7 +201,7 @@ If you installed the `viewer` extra, the package exposes command-line tools for 
 
 	pyrtc-view wfs
 	pyrtc-shm-monitor
-	pyrtc-clear-shms
+	pyshmem list        # clean up with: pyshmem unlink NAME ...
 
 The performance benchmark entry point is also available after installation:
 
@@ -154,7 +212,7 @@ The performance benchmark entry point is also available after installation:
 Logging
 -------
 
-The main CLI tools and example entry points use the shared `pyRTC` logger.
+The main CLI tools and example entry points use the shared `pyrtc` logger.
 By default they log at `INFO` level to the console with timestamps.
 
 Useful one-off overrides:
@@ -172,7 +230,7 @@ You can also set logging once in the shell for multi-process runs:
 	export PYRTC_LOG_LEVEL=INFO
 	export PYRTC_LOG_DIR=./logs
 	export PYRTC_LOG_COLOR=1
-	python examples/synthetic_shwfs/run_soft_rtc.py --duration 15
+	python examples/synthetic_shwfs/synthetic_shwfs_soft_rtc_example.py --duration 15
 
 Supported environment variables are:
 
@@ -187,8 +245,8 @@ When you use `hard-RTC`, child processes inherit the logging environment automat
 Troubleshooting
 ---------------
 
-- If GPU mode is configured but PyTorch is unavailable, `pyRTC` falls back to CPU mode for supported paths.
-- If viewer commands fail, install the viewer extra: `pip install pyrtcao[viewer]`
+- If GPU mode is configured but PyTorch is unavailable, `pyrtc` falls back to CPU mode for supported paths.
+- If viewer commands fail, install the viewer extra: `pip install pyrtcao[viewer]` (or `pyrtcao[gui]` for `pyrtc-manager-gui`). Both need a Qt6 binding (PySide6 or PyQt6); PyQt5 is no longer used.
 - If a component fails at startup, check the YAML keys first; several components validate required config fields eagerly.
 - If a multi-process run is hard to diagnose, set `PYRTC_LOG_DIR=./logs` before launching so each process writes a separate file.
 - For first-time development, stay on Linux unless you have validated your target platform locally.

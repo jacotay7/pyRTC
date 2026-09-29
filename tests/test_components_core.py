@@ -1,16 +1,21 @@
 import importlib
+import threading
+import time
 from pathlib import Path
 
+import numpy as np
 import pytest
 
-from pyRTC.Modulator import Modulator
-from pyRTC.Optimizer import Optimizer
-from pyRTC.pyRTCComponent import pyRTCComponent
+from testsupport import bare_component, private_stream
+from pyrtc.modulator import Modulator
+from pyrtc.optimizer import Optimizer
+from pyrtc.component import Component, ComponentClosedError
+from pyrtc.manager import work
 
-opt_mod = importlib.import_module("pyRTC.Optimizer")
+opt_mod = importlib.import_module("pyrtc.optimizer")
 
 
-class DummyComponent(pyRTCComponent):
+class DummyComponent(Component):
     pass
 
 
@@ -38,13 +43,140 @@ def test_pyrtc_component_start_stop():
     assert c.running is False
 
 
+def _stream_component(input_stream, output_stream):
+    comp = DummyComponent({"functions": []})
+    comp.register_input_stream("x", input_stream)
+    comp.register_output_stream("y", output_stream)
+    return comp
+
+
+def test_read_stream_blocking_reads_consume_and_peeks_do_not():
+    source = private_stream("src", (2,), np.float32)
+    comp = _stream_component(source, private_stream("dst", (2,), np.float32))
+
+    source.write(np.array([1, 1], dtype=np.float32))
+    assert comp.read_stream("x")[0] == 1
+    with pytest.raises(TimeoutError):
+        comp.read_stream("x", timeout=0.05)
+
+    source.write(np.array([2, 2], dtype=np.float32))
+    # A peek sees the new write but must not consume it...
+    assert comp.read_stream("x", block=False)[0] == 2
+    # ...so the next blocking read still returns it without waiting.
+    assert comp.read_stream("x", timeout=0.05)[0] == 2
+
+
+def test_write_stream_propagates_input_frame_id():
+    source = private_stream("src", (2,), np.float32)
+    output = private_stream("dst", (2,), np.float32)
+    comp = _stream_component(source, output)
+
+    source.write(np.zeros(2, dtype=np.float32), frame_id=41)
+    comp.read_stream("x")
+    comp.write_stream("y", np.ones(2, dtype=np.float32))
+
+    assert comp.frame_id == 41
+    assert output.read_publication().frame_id == 41
+
+
+class ReadingComponent(Component):
+    def __init__(self, conf):
+        self.frames = []
+        super().__init__(conf)
+
+    def consume(self):
+        self.frames.append(self.read_stream("x"))
+
+
+def test_close_ends_a_worker_blocked_in_read_stream():
+    source = private_stream("src", (2,), np.float32)
+    source.write(np.zeros(2, dtype=np.float32))
+    comp = ReadingComponent({"functions": []})
+    comp.register_input_stream("x", source)
+    comp.start()
+    # Start the worker by hand so the stream is registered before it runs.
+    worker = threading.Thread(target=work, args=(comp, "consume", None), daemon=True)
+    comp.work_threads.append(worker)
+    worker.start()
+    deadline = time.monotonic() + 5.0
+    while not comp.frames and time.monotonic() < deadline:
+        time.sleep(0.01)
+    assert comp.frames  # first read returns at once; the next one blocks
+
+    started = time.monotonic()
+    comp.close()
+
+    assert time.monotonic() - started < 1.0
+    assert not worker.is_alive()
+    assert comp.alive is False and comp.running is False
+    with pytest.raises(RuntimeError, match="closed shared memory"):
+        source.read()
+    comp.close()  # idempotent
+    with pytest.raises(RuntimeError, match="closed"):
+        comp.start()
+
+
+def test_blocking_read_raises_when_component_closes():
+    source = private_stream("src", (2,), np.float32)
+    source.write(np.zeros(2, dtype=np.float32))
+    comp = bare_component(DummyComponent, inputs={"x": source})
+    comp.read_stream("x")
+    errors = []
+
+    def _reader():
+        try:
+            comp.read_stream("x")
+        except Exception as exc:
+            errors.append(exc)
+
+    reader = threading.Thread(target=_reader)
+    reader.start()
+    time.sleep(0.05)
+    comp.alive = False
+    reader.join(timeout=2.0)
+
+    assert not reader.is_alive()
+    assert len(errors) == 1 and isinstance(errors[0], ComponentClosedError)
+
+
+def test_stream_helpers_need_registered_streams():
+    comp = bare_component(DummyComponent)
+    # A ``<name>_shm`` attribute is not a registration (#35).
+    comp.x_shm = private_stream("x", (2,), np.float32)
+
+    with pytest.raises(KeyError, match="register"):
+        comp.read_stream("x")
+    with pytest.raises(KeyError, match="register"):
+        comp.write_stream("x", np.zeros(2, dtype=np.float32))
+
+
+def test_registering_a_new_handle_closes_the_replaced_one():
+    first = private_stream("first", (2,), np.float32)
+    second = private_stream("second", (2,), np.float32)
+    shared = private_stream("shared", (2,), np.float32)
+    comp = bare_component(DummyComponent, inputs={"x": first, "y": shared})
+    comp.register_output_stream("y", shared)
+
+    comp.register_input_stream("x", second)
+    comp.register_output_stream("y", second)
+
+    with pytest.raises(RuntimeError, match="closed shared memory"):
+        first.read()
+    # Still registered as an input, so it stays open.
+    shared.read()
+    comp.close()
+    for handle in (second, shared):
+        with pytest.raises(RuntimeError, match="closed shared memory"):
+            handle.read()
+
+
 def test_modulator_name_default_and_custom():
     with pytest.raises(TypeError):
         Modulator({})
 
     m1 = DummyModulator({"functions": []})
     assert m1.name == "modulator"
-    assert m1.goTo((1, 2)) == 1
+    assert m1.go_to((1, 2)) == 1
     assert m1.position == (1, 2)
 
     m2 = DummyModulator({"name": "m", "functions": []})
@@ -67,7 +199,7 @@ def test_optimizer_apply_next_and_reset_study(monkeypatch):
     def fake_create_study(direction, sampler):
         return FakeStudy()
 
-    monkeypatch.setattr(opt_mod.optuna, "create_study", fake_create_study)
+    monkeypatch.setattr(pytest.importorskip("optuna"), "create_study", fake_create_study)
 
     class TOptimizer(Optimizer):
         def __init__(self, conf):
@@ -79,24 +211,24 @@ def test_optimizer_apply_next_and_reset_study(monkeypatch):
             self.objective_calls += 1
             return 1.0
 
-        def applyTrial(self, trial):
+        def apply_trial(self, trial):
             self.applied = trial
 
-    opt = TOptimizer({"numSteps": 2, "functions": []})
+    opt = TOptimizer({"num_steps": 2, "functions": []})
     assert opt.objective() == 1.0
     opt.optimize()
     assert opt.objective_calls >= 2
-    opt.applyNext()
+    opt.apply_next()
     assert opt.applied == {"trial": 1}
-    assert opt.applyOptimum() is None
-    assert opt.applyTrial({}) is None
+    assert opt.apply_optimum() is None
+    assert opt.apply_trial({}) is None
     old = opt.study
-    opt.resetStudy()
+    opt.reset_study()
     assert opt.study is not old
 
 
 def test_pyrtc_component_init_and_lifecycle_error_paths(monkeypatch):
-    component_module = importlib.import_module("pyRTC.pyRTCComponent")
+    component_module = importlib.import_module("pyrtc.component")
 
     def bad_validate(conf, class_names):
         raise RuntimeError("invalid")
@@ -130,7 +262,7 @@ def test_pyrtc_component_init_and_lifecycle_error_paths(monkeypatch):
 
 
 def test_pyrtc_component_creates_worker_threads(monkeypatch):
-    component_module = importlib.import_module("pyRTC.pyRTCComponent")
+    component_module = importlib.import_module("pyrtc.component")
     created = []
 
     class FakeThread:
@@ -149,7 +281,7 @@ def test_pyrtc_component_creates_worker_threads(monkeypatch):
 
     component = DummyComponent({"affinity": 3, "functions": ["first", "second"]})
 
-    assert len(component.workThreads) == 2
+    assert len(component.work_threads) == 2
     assert [thread.args[1] for thread in created] == ["first", "second"]
     assert [thread.args[2] for thread in created] == [3, 4]
     assert all(thread.daemon for thread in created)
@@ -157,8 +289,8 @@ def test_pyrtc_component_creates_worker_threads(monkeypatch):
 
 
 def test_pyrtc_component_main_invokes_launch_component(monkeypatch):
-    pipeline_module = importlib.import_module("pyRTC.Pipeline")
-    component_module = importlib.import_module("pyRTC.pyRTCComponent")
+    manager_module = importlib.import_module("pyrtc.manager")
+    component_module = importlib.import_module("pyrtc.component")
     called = {}
 
     def fake_launch_component(component_class, component_name, start=False):
@@ -166,17 +298,20 @@ def test_pyrtc_component_main_invokes_launch_component(monkeypatch):
         called["component_name"] = component_name
         called["start"] = start
 
-    monkeypatch.setattr(pipeline_module, "launchComponent", fake_launch_component)
+    monkeypatch.setattr(manager_module, "launch_component", fake_launch_component)
     source = Path(component_module.__file__).read_text(encoding="utf-8")
-    exec(compile(source, component_module.__file__, "exec"), {"__name__": "__main__", "__file__": component_module.__file__})
+    exec(
+        compile(source, component_module.__file__, "exec"),
+        {"__name__": "__main__", "__file__": component_module.__file__},
+    )
 
-    assert called["component_class"].__name__ == "pyRTCComponent"
+    assert called["component_class"].__name__ == "Component"
     assert called["component_name"] == "component"
     assert called["start"] is True
 
 
 def test_modulator_start_stop_restart_and_error_paths(monkeypatch):
-    modulator_module = importlib.import_module("pyRTC.Modulator")
+    modulator_module = importlib.import_module("pyrtc.modulator")
 
     modulator = DummyModulator({"functions": []})
     modulator.start()
@@ -189,13 +324,13 @@ def test_modulator_start_stop_restart_and_error_paths(monkeypatch):
     def bad_component_init(self, conf):
         raise RuntimeError("mod init failed")
 
-    monkeypatch.setattr(modulator_module.pyRTCComponent, "__init__", bad_component_init)
+    monkeypatch.setattr(modulator_module.Component, "__init__", bad_component_init)
     with pytest.raises(RuntimeError, match="mod init failed"):
         DummyModulator({"functions": []})
 
 
 def test_modulator_start_stop_error_paths(monkeypatch):
-    modulator_module = importlib.import_module("pyRTC.Modulator")
+    modulator_module = importlib.import_module("pyrtc.modulator")
     modulator = DummyModulator({"functions": []})
 
     class QuietLogger:
@@ -213,11 +348,11 @@ def test_modulator_start_stop_error_paths(monkeypatch):
     def bad_stop(self):
         raise RuntimeError("stop failed")
 
-    monkeypatch.setattr(modulator_module.pyRTCComponent, "start", bad_start)
+    monkeypatch.setattr(modulator_module.Component, "start", bad_start)
     with pytest.raises(RuntimeError, match="start failed"):
         modulator.start()
 
-    monkeypatch.setattr(modulator_module.pyRTCComponent, "stop", bad_stop)
+    monkeypatch.setattr(modulator_module.Component, "stop", bad_stop)
     with pytest.raises(RuntimeError, match="stop failed"):
         modulator.stop()
 
@@ -234,12 +369,14 @@ def test_optimizer_base_methods_and_error_paths(monkeypatch):
             for _ in range(n_trials):
                 objective()
 
-    monkeypatch.setattr(opt_mod.optuna, "create_study", lambda direction, sampler: FakeStudy())
+    monkeypatch.setattr(
+        pytest.importorskip("optuna"), "create_study", lambda direction, sampler: FakeStudy()
+    )
 
-    optimizer = Optimizer({"numSteps": 1, "functions": []})
+    optimizer = Optimizer({"num_steps": 1, "functions": []})
     assert optimizer.objective() is None
-    assert optimizer.applyOptimum() is None
-    assert optimizer.applyTrial({"trial": 2}) is None
+    assert optimizer.apply_optimum() is None
+    assert optimizer.apply_trial({"trial": 2}) is None
 
     def bad_optimize(objective, n_trials):
         raise RuntimeError("optimize failed")
@@ -253,16 +390,20 @@ def test_optimizer_base_methods_and_error_paths(monkeypatch):
 
     optimizer.study.ask = bad_ask
     with pytest.raises(RuntimeError, match="ask failed"):
-        optimizer.applyNext()
+        optimizer.apply_next()
 
-    monkeypatch.setattr(opt_mod.optuna, "create_study", lambda direction, sampler: (_ for _ in ()).throw(RuntimeError("reset failed")))
+    monkeypatch.setattr(
+        pytest.importorskip("optuna"),
+        "create_study",
+        lambda direction, sampler: (_ for _ in ()).throw(RuntimeError("reset failed")),
+    )
     with pytest.raises(RuntimeError, match="reset failed"):
-        optimizer.resetStudy()
+        optimizer.reset_study()
 
 
 def test_optimizer_init_failure_logs_and_raises(monkeypatch):
     monkeypatch.setattr(
-        opt_mod.optuna,
+        pytest.importorskip("optuna"),
         "create_study",
         lambda direction, sampler: (_ for _ in ()).throw(RuntimeError("study failed")),
     )

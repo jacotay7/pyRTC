@@ -1,19 +1,138 @@
-import pyRTC
+import json
+import subprocess
+import sys
+
+import pyrtc
 
 
 def test_package_root_imports():
-    assert pyRTC.Loop is not None
-    assert pyRTC.WavefrontSensor is not None
-    assert pyRTC.WavefrontCorrector is not None
-    assert pyRTC.SlopesProcess is not None
-    assert pyRTC.ScienceCamera is not None
-    assert pyRTC.Optimizer is not None
-    assert pyRTC.Telemetry is not None
+    assert pyrtc.loop is not None
+    assert pyrtc.RTCManager is not None
+    assert pyrtc.wavefront_sensor is not None
+    assert pyrtc.wavefront_corrector is not None
+    assert pyrtc.slopes_process is not None
+    assert pyrtc.science_camera is not None
+    assert pyrtc.optimizer is not None
+    assert pyrtc.telemetry is not None
+    assert pyrtc.ComponentDescriptor is not None
+    assert pyrtc.ConfigFieldDescriptor is not None
+    assert pyrtc.get_component_descriptor is not None
 
 
 def test_package_exposes_module_helpers():
-    assert pyRTC.Pipeline is not None
-    assert pyRTC.utils is not None
-    assert callable(pyRTC.setFromConfig)
-    assert callable(pyRTC.launchComponent)
-    assert callable(pyRTC.initExistingShm)
+    assert pyrtc.streams is not None
+    assert pyrtc.utils is not None
+    assert callable(pyrtc.set_from_config)
+    assert callable(pyrtc.launch_component)
+    assert callable(pyrtc.open_stream)
+    assert callable(pyrtc.create_stream)
+    assert callable(pyrtc.build_descriptor_catalog)
+    assert callable(pyrtc.describe_component_class)
+    assert callable(pyrtc.list_component_descriptors)
+    assert callable(pyrtc.register_component_descriptor)
+    assert callable(pyrtc.validate_config_with_descriptor)
+
+
+def test_importing_pyrtc_does_not_modify_the_environment():
+    code = (
+        "import os, json; before = dict(os.environ); "
+        "import pyrtc, pyrtc.loop, pyrtc.slopes_process, pyrtc.wavefront_corrector; "
+        "print(json.dumps(sorted(k for k in set(before) | set(os.environ) "
+        "if before.get(k) != os.environ.get(k))))"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", code], capture_output=True, text=True, check=True
+    )
+    assert json.loads(result.stdout.strip().splitlines()[-1]) == []
+
+
+def test_importing_pyrtc_does_not_import_pyplot():
+    code = (
+        "import sys, pyrtc, pyrtc.loop, pyrtc.latency, pyrtc.slopes_process; "
+        "print('matplotlib.pyplot' in sys.modules)"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", code], capture_output=True, text=True, check=True
+    )
+    assert result.stdout.strip().splitlines()[-1] == "False"
+
+
+def test_import_pyrtc_does_not_import_optional_extras():
+    """The core install must work without the optimize/fits/plot/gpu extras (#50).
+
+    torch (the ``gpu`` extra) is imported only by GPU code paths: importing it
+    takes most of a second, which every component process would pay.
+    """
+    import subprocess
+    import sys
+
+    code = (
+        "import sys, pyrtc, pyrtc.utils, pyrtc.latency, pyrtc.optimizer;"
+        "print(sorted(m for m in ('optuna', 'astropy', 'matplotlib.pyplot', 'numexpr', 'torch') "
+        "if m in sys.modules))"
+    )
+    out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, check=True)
+    assert out.stdout.strip() == "[]"
+
+
+def test_missing_optional_extra_names_the_extra(monkeypatch):
+    import sys
+
+    import pytest
+
+    from pyrtc.utils import load_data, require_optional
+
+    # A None entry in sys.modules makes the import raise ImportError.
+    for name in ("astropy", "astropy.io", "astropy.io.fits"):
+        monkeypatch.setitem(sys.modules, name, None)
+    with pytest.raises(ImportError, match=r"pyrtcao\[fits\]"):
+        load_data("frame.fits")
+    with pytest.raises(ImportError, match=r"pyrtcao\[optimize\]"):
+        require_optional("pyrtc_no_such_module", "optimize", "Test feature")
+
+
+def test_import_pyrtc_keeps_the_gil_disabled_on_free_threaded_python():
+    """On a free-threaded build, no core import may turn the GIL back on (#66).
+
+    A C extension that does not declare free-threading support re-enables the
+    GIL process-wide when imported (astropy's erfa does), which would bring
+    back the thread contention the build removes.
+    """
+    import subprocess
+    import sys
+    import sysconfig
+
+    import pytest
+
+    if not sysconfig.get_config_var("Py_GIL_DISABLED"):
+        pytest.skip("not a free-threaded Python build")
+    code = (
+        "import sys, pyrtc, pyrtc.manager, pyrtc.loop, pyrtc.slopes_process, "
+        "pyrtc.wavefront_sensor, pyrtc.wavefront_corrector; print(sys._is_gil_enabled())"
+    )
+    env = {key: value for key, value in __import__("os").environ.items() if key != "PYTHON_GIL"}
+    out = subprocess.run(
+        [sys.executable, "-c", code], capture_output=True, text=True, env=env, check=True
+    )
+    assert out.stdout.strip() == "False", out.stderr
+
+
+def test_version_comes_from_the_pyrtcao_distribution(monkeypatch):
+    """The distribution is ``pyrtcao``; ``pyrtc`` on PyPI is an unrelated package."""
+    from importlib import metadata
+
+    import pyrtc
+    from pyrtc import telemetry
+
+    assert pyrtc.__version__ == metadata.version("pyrtcao")
+    assert telemetry._resolve_pyrtc_version() == metadata.version("pyrtcao")
+
+    asked = []
+
+    def fake_version(name):
+        asked.append(name)
+        raise metadata.PackageNotFoundError(name)
+
+    monkeypatch.setattr(telemetry.importlib_metadata, "version", fake_version)
+    assert telemetry._resolve_pyrtc_version() == "0+unknown"
+    assert asked == ["pyrtcao"]

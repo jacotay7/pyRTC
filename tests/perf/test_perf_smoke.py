@@ -8,7 +8,10 @@ def test_run_perf_smoke_schema(monkeypatch):
 
     def _fake_core_compute(**kwargs):
         called["value"] = True
-        return {"kernels": {"dummy": {"mean_s": 0.0}}, "gpu_kernels": {"status": {"available": False}}}
+        return {
+            "kernels": {"dummy": {"mean_s": 0.0}},
+            "gpu_kernels": {"status": {"available": False}},
+        }
 
     monkeypatch.setattr(perf_smoke, "run_core_compute_benchmarks", _fake_core_compute)
 

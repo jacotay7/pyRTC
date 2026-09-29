@@ -4,10 +4,10 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pyrtcao"
-version = "1.0.0"
+version = "1.1.0"
 description = "Adaptive optics real-time control software written in Python."
 readme = { file = "README.md", content-type = "text/markdown" }
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 license = "GPL-3.0-or-later"
 license-files = ["LICENSE"]
 authors = [
@@ -25,33 +25,47 @@ classifiers = [
 	"Intended Audience :: Science/Research",
 	"Operating System :: POSIX :: Linux",
 	"Programming Language :: Python :: 3",
-	"Programming Language :: Python :: 3.9",
 	"Programming Language :: Python :: 3.10",
 	"Programming Language :: Python :: 3.11",
 	"Programming Language :: Python :: 3.12",
 	"Programming Language :: Python :: 3.13",
+	"Programming Language :: Python :: 3.14",
 	"Topic :: Scientific/Engineering",
 	"Topic :: Scientific/Engineering :: Astronomy",
 ]
 dependencies = [
-	"numpy>=1.26,<2.3",
-	"matplotlib",
+	"numpy>=1.26",
+	"pyshmem>=1.3.8",
+	"aobasis>=1.2.0",
 	"PyYAML",
 	"numba",
 	"scipy",
 	"psutil",
-	"optuna",
-	"cmaes",
-	"numexpr",
-	"astropy",
 ]
 
 [project.urls]
-Documentation = "https://pyrtc.readthedocs.io/en/latest/"
+Documentation = "https://pyrtc-ao.readthedocs.io/en/latest/"
 Source = "https://github.com/jacotay7/pyRTC"
 Tracker = "https://github.com/jacotay7/pyRTC/issues"
 
 [project.optional-dependencies]
+optimize = [
+	"optuna",
+	"cmaes",
+]
+fits = [
+	"astropy",
+]
+plot = [
+	"matplotlib>=3.5",
+]
+aotpy = [
+	"aotpy>=3.2",
+]
+gui = [
+	"qtpy>=2.0",
+	"PySide6",
+]
 gpu = [
 	"torch",
 ]
@@ -59,8 +73,22 @@ torch = [
 	"torch",
 ]
 viewer = [
-	"PyQt5",
+	"qtpy>=2.0",
+	"PySide6",
+	"matplotlib>=3.5",
 	"tqdm",
+]
+specula = [
+	"specula>=1.0",
+]
+hcipy = [
+	"hcipy>=0.6",
+]
+genicam = [
+	"harvesters>=1.4",
+]
+micromanager = [
+	"pymmcore-plus>=0.11",
 ]
 hardware = [
 	"pipython",
@@ -76,20 +104,23 @@ docs = [
 ]
 
 [project.scripts]
-pyrtc-view = "pyRTC.scripts.view:main"
-pyrtc-shm-monitor = "pyRTC.scripts.shm_monitor:main"
-pyrtc-clear-shms = "pyRTC.scripts.clear_shms:main"
-pyrtc-view-launch-all = "pyRTC.scripts.view_launch_all:main"
-pyrtc-measure-latency = "pyRTC.scripts.measure_latency:main"
+pyrtc-view = "pyrtc.scripts.view:main"
+pyrtc-shm-monitor = "pyrtc.scripts.shm_monitor:main"
+pyrtc-view-launch-all = "pyrtc.scripts.view_launch_all:main"
+pyrtc-measure-latency = "pyrtc.scripts.measure_latency:main"
+pyrtc-validate-config = "pyrtc.scripts.validate_config:main"
+pyrtc-export-aotpy = "pyrtc.scripts.export_aotpy:main"
+pyrtc-isio-bridge = "pyrtc.isio_bridge:main"
+pyrtc-manager-gui = "pyrtc.scripts.manager_gui:main"
 pyrtc-core-bench = "benchmarks.core_compute_bench:main"
 pyrtc-ao-loop-bench = "benchmarks.ao_loop_bench:main"
 
 [tool.setuptools.packages.find]
-include = ["pyRTC", "pyRTC.*", "benchmarks", "benchmarks.*"]
+include = ["pyrtc", "pyrtc.*", "benchmarks", "benchmarks.*"]
 
 [tool.ruff]
 line-length = 100
-target-version = "py39"
+target-version = "py310"
 exclude = [
 	"build",
 	"dist",
@@ -102,4 +133,4 @@ select = ["E", "F"]
 ignore = ["E402", "E501"]
 
 [tool.ruff.lint.per-file-ignores]
-"pyRTC/hardware/*.py" = ["E722"]
+"pyrtc/hardware/*.py" = ["E722"]

@@ -1,10 +1,7 @@
-numpy>=1.26,<2.3
-matplotlib
+numpy>=1.26
+pyshmem>=1.3.8
+aobasis>=1.2.0
 PyYAML
 numba
 scipy
 psutil
-optuna
-cmaes
-numexpr
-astropy

@@ -3,12 +3,12 @@
 Architecture Overview
 =====================
 
-This guide describes the current `pyRTC` execution model at a level useful for developers and system integrators preparing a real deployment.
+This guide describes the current `pyrtc` execution model at a level useful for developers and system integrators preparing a real deployment.
 
 System Model
 ------------
 
-`pyRTC` is built around a small set of AO component abstractions that exchange data through shared-memory streams.
+`pyrtc` is built around a small set of AO component abstractions that exchange data through shared-memory streams.
 The main intent is to keep algorithm logic, device-facing logic, and runtime orchestration separable.
 
 The primary components are:
@@ -38,7 +38,7 @@ This is not the only legal layout, but it is the default conceptual model to kee
 Soft-RTC vs Hard-RTC
 --------------------
 
-`pyRTC` currently supports two broad operating styles.
+`pyrtc` currently supports two broad operating styles.
 
 Soft-RTC
 ~~~~~~~~
@@ -66,6 +66,25 @@ This is useful when you need:
 
 The tradeoff is additional orchestration complexity and a higher burden on deployment discipline.
 
+Component Lifecycle
+-------------------
+
+A component moves through three states:
+
+- **Constructed**: ``__init__`` opens its streams and starts one worker thread per entry in ``functions``. The workers idle until the component is started.
+- **Running / stopped**: ``start()`` and ``stop()`` only flip ``running``. ``stop()`` is a pause: the worker threads and stream handles stay alive, so ``start()`` resumes immediately.
+- **Closed**: ``close()`` stops the component, clears ``alive`` so every worker leaves its loop, joins the workers (with a timeout), and closes every registered stream handle. It is idempotent and final: a closed component cannot be started again. A worker blocked in ``read_stream`` notices within ``pyrtc.component.STREAM_WAIT_SLICE`` (0.1 s); the streams themselves are not unlinked, so viewers keep the last frames.
+
+``RTCManager`` follows the same split. ``manager.stop()`` pauses soft-RTC components (and, as before, shuts down hard-RTC child processes). ``manager.close()`` stops everything, closes every soft-RTC component and shared resource, and shuts down the hard-RTC children; afterwards ``build()`` or ``start()`` constructs fresh components from the config. The manager is a context manager:
+
+.. code-block:: python
+
+   with RTCManager.from_config_file("config.yaml") as manager:
+       manager.start()
+       ...
+
+Long-lived processes (the manager GUI, notebooks, benchmarks, test suites) must close a manager they are done with. Worker threads keep a reference to their component, so garbage collection alone never ends them, and on Windows an open handle keeps a shared-memory name alive, which blocks rebuilding that stream with a new shape.
+
 Shared Memory
 -------------
 
@@ -91,7 +110,7 @@ Extension Model
 ---------------
 
 Most real deployments will subclass or adapt the core AO components for site-specific hardware.
-The `pyRTC.hardware` package exists to show that pattern.
+The `pyrtc.hardware` package exists to show that pattern.
 
 Treat those hardware files as reference integrations:
 
@@ -109,10 +128,21 @@ For first deployments:
 - add hardware one component at a time
 - keep GPU assumptions optional until validated on the target machine
 
+Thread settings for numeric libraries:
+
+- Importing `pyrtc` does not change `OMP_NUM_THREADS`, `OPENBLAS_NUM_THREADS`,
+  `MKL_NUM_THREADS` and friends. In a soft-RTC, several component threads call
+  BLAS concurrently; set these to `1` in the environment **before** starting
+  Python if multithreaded BLAS oversubscribes your cores.
+- Hard-RTC child processes default to `1` for each of them unless the variable
+  is already set in the launching environment.
+- Pin worker threads with each component's `affinity` (Linux), and use
+  `realtime_priority` for `SCHED_FIFO` scheduling.
+
 Observability
 -------------
 
-`pyRTC` now uses a shared logging configuration across the main scripts, launchers, and selected control-plane library paths.
+`pyrtc` now uses a shared logging configuration across the main scripts, launchers, and selected control-plane library paths.
 The design goal is to make startup, orchestration, and operator-visible failures easy to diagnose without adding avoidable overhead to the real-time loop.
 
 The practical consequence is:
@@ -123,8 +153,8 @@ The practical consequence is:
 
 For deployment debugging, prefer `PYRTC_LOG_DIR` over a single shared `PYRTC_LOG_FILE` so each process writes its own log.
 
-Stability Guidance for 1.0
+Stability Guidance for 1.x
 --------------------------
 
-For the `1.0.0` release line, the most stable contract is the core component model and the public imports exposed at package level.
+For the `1.x` release line, the most stable contract is the core component model and the public imports exposed at package level.
 Hardware adapters, GPU-specific paths, and platform-specific deployment details should still be treated cautiously unless they are validated in the target environment.

@@ -1,0 +1,37 @@
+name: GUI Smoke
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+      - dev
+
+jobs:
+  qt-offscreen:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install Qt runtime libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libegl1 libgl1 libxkbcommon0 libfontconfig1 libdbus-1-3
+
+      - name: Install package with GUI and viewer extras
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install ".[gui,viewer]" -r requirements-test.txt
+
+      - name: Run Qt smoke tests offscreen
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: pytest tests/test_qt_smoke.py -q --no-cov

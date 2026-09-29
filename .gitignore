@@ -28,6 +28,7 @@ pip-wheel-metadata/
 htmlcov/
 .tox/
 .nox/
+.hypothesis/
 
 # Type checker and linter caches
 .mypy_cache/
@@ -54,5 +55,15 @@ Thumbs.db
 *.fits
 *.npy
 *.png
+*.pth
+examples/*/data_cl/
 coverage.xml
 wheel-test-env
+session_*
+examples/aotpy/output/*
+
+# Agent/working notes (durable guidance goes in AGENTS.md)
+*_PLAN.md
+
+# Sphinx autosummary output (regenerated on every docs build)
+docs/source/generated/

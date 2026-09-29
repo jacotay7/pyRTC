@@ -1,21 +1,21 @@
 .. wfs:
 
-.. currentmodule:: pyRTC.WavefrontSensor
+.. currentmodule:: pyrtc.wavefront_sensor
 
 
 Wavefront Sensor
 ================
 
-In pyRTC, one of the core components is the wavefront sensor object. It typically starts the AO chain by running
-a continues capture sequence of images. This object is the producer of the `wfs` and `wfsRaw` shared memory objects
+In pyrtc, one of the core components is the wavefront sensor object. It typically starts the AO chain by running
+a continues capture sequence of images. This object is the producer of the `wfs` and `wfs_raw` shared memory objects
 which contain the dark subtracted and original image respectively. The images can then be processed by the slopesProcess
 class to compute the intermediate data product used for wavefront reconstruction.
 
 Soft-RTC Example
 ----------------
 
-The following is an example of how to initialize a WavefrontSensor component in pyRTC. Here we are in the `soft-RTC` mode
-of pyRTC, which holds all components in the same python process. See below for how to launch a hard-RTC equivalent.
+The following is an example of how to initialize a WavefrontSensor component in pyrtc. Here we are in the `soft-RTC` mode
+of pyrtc, which holds all components in the same python process. See below for how to launch a hard-RTC equivalent.
 
 .. code-block:: python
 
@@ -23,24 +23,24 @@ of pyRTC, which holds all components in the same python process. See below for h
   First we import the relevant wavefront sensor class. Typically, this will be a
   specific hardware class which has been defined to work with the SDK of your camera.
 
-  As an example (see hardware/ximeaWFS.py):
+  As an example (see hardware/ximea_wfs.py):
 
-  from pyRTC.hardware import XIMEA_WFS
+  from pyrtc.hardware import XIMEAWFS
 
   Here, I will just initialize the Wavefront Sensor Superclass as an example
   """
 
   #%% Run in interactive python or jupyter notebook to keep process alive
-  from pyRTC.WavefrontSensor import WavefrontSensor
+  from pyrtc.wavefront_sensor import WavefrontSensor
   import matplotlib.pyplot as plt
-  from pyRTC.utils import read_yaml_file
+  from pyrtc.utils import read_yaml_file
 
   confWFS = {
   "name": "example",
   "width": 256,
   "height": 256,
-  "darkCount": 1000,
-  "darkFile": "", #Here you can add a dark file, if existing "./EXAMPLE/calib/wfsDark.npy",
+  "dark_count": 1000,
+  "dark_file": "", #Here you can add a dark file, if existing "./EXAMPLE/calib/wfsDark.npy",
   "affinity": 2,
   "functions": ["expose"]
   }
@@ -71,13 +71,13 @@ of pyRTC, which holds all components in the same python process. See below for h
 Hard-RTC Example
 ----------------
 
-The following is an example of how to initialize a WavefrontSensor component in pyRTC. Here we are in the `hard-RTC` mode
-of pyRTC, which holds all components in the separate python processes. This circumvents the python Global Interpreter Lock
+The following is an example of how to initialize a WavefrontSensor component in pyrtc. Here we are in the `hard-RTC` mode
+of pyrtc, which holds all components in the separate python processes. This circumvents the python Global Interpreter Lock
 See above for how to launch a soft-RTC equivalent.
 
 .. code-block:: python
   
-  from pyRTC.Pipeline import hardwareLauncher
+  from pyrtc import HardwareLauncher
 
   """
   For the Hard-RTC, you will need to set-up a config before hand and store it in a yaml file.
@@ -90,13 +90,13 @@ See above for how to launch a soft-RTC equivalent.
     binning: 1 
     exposure: 2000
     gain: 0
-    bitDepth: 10
+    bit_depth: 10
     left: 448 
     top: 280 
     width: 400 
     height: 400 
-    darkCount: 2000
-    darkFile: "/home/whetstone/pyRTC/examples/sharp_lab/calib/dark.npy"
+    dark_count: 2000
+    dark_file: "/home/whetstone/pyrtc/examples/sharp_lab/calib/dark.npy"
     affinity: 3
     functions:
     - expose
@@ -105,7 +105,7 @@ See above for how to launch a soft-RTC equivalent.
   port = 3000
 
   #Initialize the hardware launcher for your WFS child hardware class
-  wfs = hardwareLauncher('path/to/pyRTC/hardware/myHardwareWfs.py',config,port)
+  wfs = HardwareLauncher('path/to/pyrtc/hardware/myHardwareWfs.py',config,port)
   """
   Launch the process.
 
@@ -118,15 +118,25 @@ See above for how to launch a soft-RTC equivalent.
 
   """
   Once the connection has been made successfully, you can run any function in the hardware class
-  using the run function. You can also get and set properties of the hardware using getProperty()
-  and setProperty() respectively.
+  using the run function. You can also get and set properties of the hardware using get_property()
+  and set_property() respectively.
   """
   wfs.run("expose")
 
-  wfs.setProperty("exposure", 100)
+  wfs.set_property("exposure", 100)
 
-  print(wfs.getProperty("exposure"))
+  print(wfs.get_property("exposure"))
 
+
+Image Shape Convention
+----------------------
+
+pyrtc image streams have shape ``(width, height)``: ``width`` is the first
+array axis. Camera SDKs return frames as ``(Height, Width)`` (rows,
+columns), so an adapter must transpose each frame (``frame.T``) before
+publishing it. Then ``width``/``height`` in the config mean the same as the
+camera's own settings. The GenICam and Micro-Manager adapters do this. The
+XIMEA and Spinnaker adapters don't yet, so use square ROIs with them (#130).
 
 Parameters
 ----------
@@ -137,3 +147,64 @@ Parameters
   :undoc-members:
   :show-inheritance:
   :no-index:
+
+GenICam Cameras (GigE Vision / USB3 Vision)
+-------------------------------------------
+
+``pyrtc.hardware.genicam_camera`` drives any GenICam camera through
+`Harvesters <https://github.com/genicam/harvesters>`_ and the vendor's GenTL
+producer (a ``.cti`` file). That covers Basler, Allied Vision, FLIR/Teledyne,
+IDS, Baumer and others (``pip install pyrtcao[genicam]``):
+
+.. code-block:: yaml
+
+  wfs:
+    class_name: pyrtc.hardware.genicam_camera.GenICamWFS
+    name: shwfs_cam
+    cti_file: /opt/vendor/lib/producer.cti   # or set GENICAM_GENTL64_PATH
+    serial: "12345678"                        # or device_index: 0
+    width: 640
+    height: 480
+    left: 0
+    top: 0
+    exposure: 500        # microseconds (ExposureTime)
+    gain: 0.0
+    bit_depth: 12        # PixelFormat Mono12
+    node_settings:       # any other GenICam nodes, applied last in order
+      AcquisitionFrameRateEnable: true
+      AcquisitionFrameRate: 1000
+    functions: [expose]
+
+``GenICamScienceCamera`` takes the same keys for the ``psf`` section. Frames
+are transposed into pyrtc's ``(width, height)`` stream shape, so ``width``
+and ``height`` mean the same as the camera's ``Width`` and ``Height`` nodes.
+
+Micro-Manager Cameras
+---------------------
+
+``pyrtc.hardware.micromanager_camera`` drives any camera that
+`Micro-Manager <https://micro-manager.org>`_ supports (Andor, Hamamatsu,
+PCO, Photometrics, ...) through pymmcore-plus. Install it with
+``pip install pyrtcao[micromanager]``, get Micro-Manager with ``mmcore install``,
+and describe the hardware in a Micro-Manager ``.cfg`` file:
+
+.. code-block:: yaml
+
+  wfs:
+    class_name: pyrtc.hardware.micromanager_camera.MicroManagerWFS
+    name: andor_wfs
+    mm_config: /lab/micro-manager/rig.cfg
+    camera: Andor            # device label, if there is more than one camera
+    width: 256
+    height: 256
+    left: 0
+    top: 0
+    exposure: 1.0            # milliseconds
+    properties:              # any device properties, applied in order
+      Andor: {Gain: 100, ReadoutMode: "10MHz"}
+    functions: [expose]
+
+Frames stream from continuous sequence acquisition, and each exposure takes
+the newest frame, so the loop never falls behind the camera.
+``MicroManagerScienceCamera`` takes the same keys for the ``psf`` section.
+

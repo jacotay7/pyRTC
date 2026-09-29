@@ -1,0 +1,815 @@
+"""Latency measurement helpers for pyrtc shared-memory streams.
+
+The helpers in this module stay in the control plane. They attach to existing
+shared-memory streams, sample timestamp metadata, and summarize latency and
+jitter without changing the steady-state RTC hot path.
+"""
+
+from __future__ import annotations
+
+from collections import deque
+from dataclasses import dataclass
+import time
+from typing import Any, Callable, Mapping, Sequence
+
+import numpy as np
+
+from pyrtc.logging_utils import get_logger
+from pyrtc.utils import pyplot
+
+logger = get_logger(__name__)
+
+
+def open_stream(shm_name):
+    """Attach a read-only observer handle to an existing SHM stream.
+
+    The import lives here so tests can monkeypatch this module directly without
+    an import cycle through ``pyrtc.streams`` at module import time.
+    """
+
+    from pyrtc.streams import open_stream as _open_stream
+
+    return _open_stream(shm_name, readonly=True)
+
+
+def _safe_mean(values) -> float:
+    arr = np.asarray(values, dtype=np.float64).reshape(-1)
+    if arr.size == 0:
+        return 0.0
+    return float(np.add.reduce(arr, dtype=np.float64) / arr.size)
+
+
+def _safe_percentile(values, pct: float) -> float:
+    arr = np.asarray(values, dtype=np.float64).reshape(-1)
+    if arr.size == 0:
+        return 0.0
+    sorted_vals = sorted(float(x) for x in arr)
+    if len(sorted_vals) == 1:
+        return sorted_vals[0]
+    rank = (pct / 100.0) * (len(sorted_vals) - 1)
+    low = int(rank)
+    high = min(low + 1, len(sorted_vals) - 1)
+    if low == high:
+        return sorted_vals[low]
+    weight = rank - low
+    return sorted_vals[low] * (1.0 - weight) + sorted_vals[high] * weight
+
+
+def _safe_min(values) -> float:
+    arr = np.asarray(values, dtype=np.float64).reshape(-1)
+    if arr.size == 0:
+        return 0.0
+    return min(float(x) for x in arr)
+
+
+def _safe_max(values) -> float:
+    arr = np.asarray(values, dtype=np.float64).reshape(-1)
+    if arr.size == 0:
+        return 0.0
+    return max(float(x) for x in arr)
+
+
+def _safe_std(values) -> float:
+    arr = np.asarray(values, dtype=np.float64).reshape(-1)
+    if arr.size == 0:
+        return 0.0
+    return float(np.std(arr, dtype=np.float64))
+
+
+def _format_seconds(seconds: float) -> str:
+    """Format a latency value using human-scaled time units."""
+
+    value = float(seconds)
+    magnitude = abs(value)
+    if magnitude >= 1.0:
+        return f"{value:.3f} s"
+    if magnitude >= 1e-3:
+        return f"{value * 1e3:.3f} ms"
+    return f"{value * 1e6:.3f} us"
+
+
+def _format_seconds_with_rate(seconds: float) -> str:
+    """Format latency with the equivalent maximum update rate in kHz."""
+
+    value = float(seconds)
+    if value <= 0.0:
+        rate_text = "inf kHz"
+    else:
+        rate_text = f"{(1.0 / value) / 1e3:.3f} kHz"
+    return f"{_format_seconds(value)} (max speed {rate_text})"
+
+
+@dataclass(frozen=True)
+class LatencyStatistics:
+    sample_count: int
+    mean_seconds: float
+    std_seconds: float
+    jitter_seconds: float
+    min_seconds: float
+    max_seconds: float
+    p50_seconds: float
+    p95_seconds: float
+    p99_seconds: float
+    p999_seconds: float
+
+    @classmethod
+    def from_samples(cls, samples) -> "LatencyStatistics":
+        arr = np.asarray(samples, dtype=np.float64).reshape(-1)
+        return cls(
+            sample_count=int(arr.size),
+            mean_seconds=_safe_mean(arr),
+            std_seconds=_safe_std(arr),
+            jitter_seconds=_safe_std(arr),
+            min_seconds=_safe_min(arr),
+            max_seconds=_safe_max(arr),
+            p50_seconds=_safe_percentile(arr, 50.0),
+            p95_seconds=_safe_percentile(arr, 95.0),
+            p99_seconds=_safe_percentile(arr, 99.0),
+            p999_seconds=_safe_percentile(arr, 99.9),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "sample_count": self.sample_count,
+            "mean_seconds": self.mean_seconds,
+            "std_seconds": self.std_seconds,
+            "jitter_seconds": self.jitter_seconds,
+            "min_seconds": self.min_seconds,
+            "max_seconds": self.max_seconds,
+            "p50_seconds": self.p50_seconds,
+            "p95_seconds": self.p95_seconds,
+            "p99_seconds": self.p99_seconds,
+            "p999_seconds": self.p999_seconds,
+        }
+
+
+@dataclass(frozen=True)
+class LatencySegment:
+    source_shm: str
+    target_shm: str
+    frame_shift: int
+    count_offset: int
+    count_delta_min: float
+    count_delta_max: float
+    statistics: LatencyStatistics
+    processing_statistics: LatencyStatistics | None = None
+    alignment: str = "count"
+    matched_samples: int = 0
+
+    def to_dict(self) -> dict[str, Any]:
+        payload = {
+            "source_shm": self.source_shm,
+            "target_shm": self.target_shm,
+            "alignment": self.alignment,
+            "matched_samples": self.matched_samples,
+            "frame_shift": self.frame_shift,
+            "count_offset": self.count_offset,
+            "count_delta_min": self.count_delta_min,
+            "count_delta_max": self.count_delta_max,
+            "statistics": self.statistics.to_dict(),
+        }
+        if self.processing_statistics is not None:
+            payload["processing_statistics"] = self.processing_statistics.to_dict()
+        return payload
+
+
+@dataclass(frozen=True)
+class LatencyReport:
+    source_shm: str
+    target_shm: str
+    stream_path: tuple[str, ...]
+    inferred_path: bool
+    sample_count: int
+    total: LatencySegment
+    segments: tuple[LatencySegment, ...]
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "source_shm": self.source_shm,
+            "target_shm": self.target_shm,
+            "stream_path": list(self.stream_path),
+            "inferred_path": self.inferred_path,
+            "sample_count": self.sample_count,
+            "total": self.total.to_dict(),
+            "segments": [segment.to_dict() for segment in self.segments],
+        }
+
+
+def collect_stream_event_history(
+    streams,
+    samples: int,
+    *,
+    poll_interval_seconds: float = 1e-4,
+    timeout_seconds: float | None = None,
+    show_progress: bool = False,
+):
+    """Collect per-stream write events over one shared wall-clock window.
+
+    The sampler polls the write counters of all requested streams and records
+    each new write event (count, write time, and frame id) as it appears, which
+    preserves cross-stream timing for asynchronous pipelines.
+    """
+
+    stream_items = list(streams.items())
+    if not stream_items:
+        raise ValueError("At least one stream is required for latency sampling")
+    if samples < 1:
+        raise ValueError("samples must be at least 1")
+
+    counts = {stream_name: np.empty(samples, dtype=np.float64) for stream_name, _ in stream_items}
+    write_times = {
+        stream_name: np.empty(samples, dtype=np.float64) for stream_name, _ in stream_items
+    }
+    frame_ids = {stream_name: np.zeros(samples, dtype=np.uint64) for stream_name, _ in stream_items}
+    collected = {stream_name: 0 for stream_name, _ in stream_items}
+    last_seen_count = {stream_name: int(stream.count) for stream_name, stream in stream_items}
+
+    progress_bar = None
+    total_needed = samples * len(stream_items)
+    if show_progress:
+        try:
+            import tqdm
+
+            progress_bar = tqdm.tqdm(total=total_needed)
+        except ImportError:
+            progress_bar = None
+
+    start_time = time.perf_counter()
+    try:
+        while any(collected[stream_name] < samples for stream_name, _ in stream_items):
+            progressed = False
+            for stream_name, stream in stream_items:
+                if collected[stream_name] >= samples:
+                    continue
+                current_count = int(stream.count)
+                if current_count == last_seen_count[stream_name]:
+                    continue
+                write_time, frame_id = _event_metadata(stream, current_count)
+                if write_time is None:
+                    # Another write landed mid-sample; take it on the next pass.
+                    continue
+                last_seen_count[stream_name] = current_count
+                index = collected[stream_name]
+                counts[stream_name][index] = current_count
+                write_times[stream_name][index] = write_time
+                frame_ids[stream_name][index] = frame_id
+                collected[stream_name] = index + 1
+                progressed = True
+                if progress_bar is not None:
+                    progress_bar.update(1)
+
+            if all(collected[stream_name] >= samples for stream_name, _ in stream_items):
+                break
+            if (
+                timeout_seconds is not None
+                and (time.perf_counter() - start_time) >= timeout_seconds
+            ):
+                raise TimeoutError("Timed out while collecting latency samples")
+            if not progressed:
+                time.sleep(max(0.0, poll_interval_seconds))
+    finally:
+        if progress_bar is not None:
+            progress_bar.close()
+
+    return counts, write_times, frame_ids
+
+
+def wait_for_path_live(
+    streams: Mapping[str, Any],
+    stream_path: Sequence[str],
+    *,
+    timeout_seconds: float | None = None,
+    poll_interval_seconds: float = 1e-4,
+) -> float:
+    """Block until a frame published on the first stream reaches every later stream.
+
+    Right after ``start()`` downstream workers may still be compiling, so the
+    source can publish many frames before anything downstream does. Sampling
+    then would give windows with no frame ids in common. A downstream stream
+    counts as live once it publishes the ``frame_id`` of a source frame seen
+    here, or a write with ``frame_id == 0`` (its producer does not propagate
+    frame ids, so there is nothing to wait for). Returns the seconds waited.
+
+    Raises ``TimeoutError`` if the path is not live within ``timeout_seconds``.
+    """
+
+    source_name = stream_path[0]
+    pending = [name for name in dict.fromkeys(stream_path[1:]) if name != source_name]
+    last_seen = {name: int(streams[name].count) for name in (source_name, *pending)}
+    source_ids: set[int] = set()
+    start = time.perf_counter()
+    while pending:
+        progressed = False
+        for name in (source_name, *pending):
+            stream = streams[name]
+            count = int(stream.count)
+            if count == last_seen[name]:
+                continue
+            _, frame_id = _event_metadata(stream, count)
+            if frame_id is None:
+                continue
+            last_seen[name] = count
+            progressed = True
+            if name == source_name:
+                if frame_id == 0:
+                    # The source does not stamp frame ids; nothing can be matched.
+                    return time.perf_counter() - start
+                source_ids.add(frame_id)
+            elif frame_id == 0 or frame_id in source_ids:
+                pending.remove(name)
+        elapsed = time.perf_counter() - start
+        if pending and timeout_seconds is not None and elapsed >= timeout_seconds:
+            raise TimeoutError(
+                f"Timed out waiting for frames from '{source_name}' to reach "
+                f"{', '.join(repr(name) for name in pending)} (pipeline not live)"
+            )
+        if not progressed:
+            time.sleep(max(0.0, poll_interval_seconds))
+    return time.perf_counter() - start
+
+
+def _event_metadata(stream, count: int):
+    """Return ``(write_time, frame_id)`` of publication ``count``.
+
+    Returns ``(None, None)`` when a newer write replaced it while sampling, so
+    a timestamp is never paired with another publication's frame id.
+    """
+
+    write_time = float(stream.write_time)
+    frame_id = int(stream.frame_id)
+    if int(stream.count) != count:
+        return None, None
+    return write_time, frame_id
+
+
+def compute_frame_matched_latency_seconds(
+    source_frame_ids: np.ndarray,
+    source_write_times: np.ndarray,
+    target_frame_ids: np.ndarray,
+    target_write_times: np.ndarray,
+) -> np.ndarray | None:
+    """Match target writes to the source write that carried the same frame id.
+
+    Components stamp each output with the ``frame_id`` of the input frame it
+    was computed from, so this pairing is exact. Returns ``None`` when either
+    stream carries no frame ids (``0``), e.g. a producer that does not
+    propagate them; callers then fall back to count alignment.
+    """
+
+    source_ids = np.asarray(source_frame_ids, dtype=np.uint64).reshape(-1)
+    target_ids = np.asarray(target_frame_ids, dtype=np.uint64).reshape(-1)
+    if not source_ids.any() or not target_ids.any():
+        return None
+    source_by_id: dict[int, float] = {}
+    for frame_id, write_time in zip(source_ids, np.asarray(source_write_times).reshape(-1)):
+        # The first write of a frame is when it became available downstream.
+        source_by_id.setdefault(int(frame_id), float(write_time))
+    latencies = []
+    matched_ids = set()
+    for frame_id, write_time in zip(target_ids, np.asarray(target_write_times).reshape(-1)):
+        key = int(frame_id)
+        if key == 0 or key in matched_ids or key not in source_by_id:
+            continue
+        matched_ids.add(key)
+        latencies.append(float(write_time) - source_by_id[key])
+    if not latencies:
+        return None
+    return np.asarray(latencies, dtype=np.float64)
+
+
+def compute_latency_seconds(source_write_times: np.ndarray, target_write_times: np.ndarray):
+    """Estimate latency samples and compensate for simple frame misalignment."""
+
+    source_arr = np.asarray(source_write_times, dtype=np.float64).reshape(-1)
+    target_arr = np.asarray(target_write_times, dtype=np.float64).reshape(-1)
+    if source_arr.size != target_arr.size:
+        raise ValueError("source_write_times and target_write_times must have the same length")
+
+    sys_latency = target_arr - source_arr
+    frame_shift = 0
+
+    while _safe_mean(sys_latency) < 0 and frame_shift < source_arr.size - 1:
+        frame_shift += 1
+        sys_latency = target_arr[frame_shift:] - source_arr[:-frame_shift]
+
+    return sys_latency, frame_shift
+
+
+def compute_count_aligned_latency_seconds(
+    source_counts: np.ndarray,
+    source_write_times: np.ndarray,
+    target_counts: np.ndarray,
+    target_write_times: np.ndarray,
+    *,
+    neighbor_search: int = 2,
+) -> tuple[np.ndarray, int, np.ndarray]:
+    """Estimate latency after aligning source and target events by SHM count.
+
+    Each stream maintains its own monotonically increasing count. Two connected
+    streams often have a large constant count offset because they were created
+    or started at different times. This function removes that startup offset and
+    then matches writes by normalized count so the reported latency reflects the
+    live pipeline delay rather than wall-clock age differences.
+    """
+
+    source_count_arr = np.rint(np.asarray(source_counts, dtype=np.float64).reshape(-1)).astype(
+        np.int64
+    )
+    target_count_arr = np.rint(np.asarray(target_counts, dtype=np.float64).reshape(-1)).astype(
+        np.int64
+    )
+    source_time_arr = np.asarray(source_write_times, dtype=np.float64).reshape(-1)
+    target_time_arr = np.asarray(target_write_times, dtype=np.float64).reshape(-1)
+    if not (
+        source_count_arr.size
+        == target_count_arr.size
+        == source_time_arr.size
+        == target_time_arr.size
+    ):
+        raise ValueError("count and timestamp arrays must all have the same length")
+    if source_count_arr.size == 0:
+        return np.empty(0, dtype=np.float64), 0, np.empty(0, dtype=np.int64)
+
+    count_offset = int(np.rint(np.median(target_count_arr - source_count_arr)))
+    source_by_count = {
+        int(count): float(timestamp) for count, timestamp in zip(source_count_arr, source_time_arr)
+    }
+
+    matched_latencies = []
+    matched_residual_deltas = []
+    for target_count, target_time in zip(target_count_arr, target_time_arr):
+        best_latency = None
+        best_residual = None
+        target_count_int = int(target_count)
+        for residual in range(0, neighbor_search + 1):
+            for signed_residual in (-residual, residual) if residual > 0 else (0,):
+                candidate_source_count = target_count_int - count_offset - signed_residual
+                source_time = source_by_count.get(candidate_source_count)
+                if source_time is None:
+                    continue
+                latency = float(target_time - source_time)
+                if latency < 0:
+                    continue
+                if best_latency is None or latency < best_latency:
+                    best_latency = latency
+                    best_residual = signed_residual
+            if best_latency is not None:
+                break
+        if best_latency is None:
+            continue
+        matched_latencies.append(best_latency)
+        matched_residual_deltas.append(0 if best_residual is None else int(best_residual))
+
+    if matched_latencies:
+        return (
+            np.asarray(matched_latencies, dtype=np.float64),
+            count_offset,
+            np.asarray(matched_residual_deltas, dtype=np.int64),
+        )
+
+    fallback_latency, frame_shift = compute_latency_seconds(source_time_arr, target_time_arr)
+    fallback_residual = np.full(fallback_latency.shape, frame_shift, dtype=np.int64)
+    return fallback_latency, frame_shift, fallback_residual
+
+
+def _build_latency_segment(
+    source_shm: str,
+    target_shm: str,
+    source_counts: np.ndarray,
+    source_write_times: np.ndarray,
+    target_counts: np.ndarray,
+    target_write_times: np.ndarray,
+    source_frame_ids: np.ndarray | None = None,
+    target_frame_ids: np.ndarray | None = None,
+) -> tuple[LatencySegment, np.ndarray]:
+    latency_seconds = None
+    stamped = (
+        source_frame_ids is not None
+        and target_frame_ids is not None
+        and np.asarray(source_frame_ids).any()
+        and np.asarray(target_frame_ids).any()
+    )
+    if stamped:
+        latency_seconds = compute_frame_matched_latency_seconds(
+            source_frame_ids, source_write_times, target_frame_ids, target_write_times
+        )
+        if latency_seconds is None:
+            logger.warning(
+                "latency %s -> %s: both streams carry frame ids but the sample windows "
+                "share none; falling back to count alignment, which is only a heuristic",
+                source_shm,
+                target_shm,
+            )
+    if latency_seconds is not None:
+        alignment = "frame_id"
+        count_offset = 0
+        residual_count_delta = np.zeros(1, dtype=np.int64)
+    else:
+        alignment = "count"
+        latency_seconds, count_offset, residual_count_delta = compute_count_aligned_latency_seconds(
+            source_counts,
+            source_write_times,
+            target_counts,
+            target_write_times,
+        )
+
+    segment = LatencySegment(
+        source_shm=source_shm,
+        target_shm=target_shm,
+        frame_shift=0,
+        count_offset=count_offset,
+        count_delta_min=_safe_min(residual_count_delta),
+        count_delta_max=_safe_max(residual_count_delta),
+        statistics=LatencyStatistics.from_samples(latency_seconds),
+        alignment=alignment,
+        matched_samples=int(np.asarray(latency_seconds).size),
+    )
+    return segment, np.asarray(latency_seconds, dtype=np.float64)
+
+
+def plot_latency_histogram(
+    latency_seconds: np.ndarray, *, title: str, bins: int, xrange: Sequence[float]
+):
+    """Render a log-scaled histogram that highlights high-percentile latency."""
+
+    plt = pyplot()
+    low, high = (float(xrange[0]), float(xrange[1]))
+    fig = plt.figure(figsize=(10, 6))
+    plt.hist(
+        latency_seconds,
+        bins=np.logspace(np.log10(low), np.log10(high), bins),
+        log=True,
+        color="k",
+        histtype="step",
+        density=False,
+    )
+
+    p99 = _safe_percentile(latency_seconds, 99.0)
+    p999 = _safe_percentile(latency_seconds, 99.9)
+    p9999 = _safe_percentile(latency_seconds, 99.99)
+
+    plt.axvline(x=p99, color="green", label=f"1 in 100 > {1e6 * p99:.0f}us")
+    plt.axvline(x=p999, color="orange", label=f"1 in 1,000 > {1e6 * p999:.0f}us")
+    plt.axvline(x=p9999, color="red", label=f"1 in 10,000 > {1e6 * p9999:.0f}us")
+
+    plt.xscale("log")
+    plt.yscale("log")
+    plt.xlabel("Latency [s]", size=16)
+    plt.ylabel("Counts", size=16)
+    plt.title(title, size=18)
+    plt.grid(True, which="both", linestyle="--", linewidth=0.5)
+    plt.legend()
+    plt.tight_layout()
+    return fig
+
+
+def _descriptor_transition(descriptor) -> tuple[str, str] | None:
+    input_names = [stream.name for stream in descriptor.input_streams if stream.name != "*"]
+    if not input_names:
+        return None
+
+    preferred_outputs = [
+        stream.name
+        for stream in descriptor.output_streams
+        if not stream.optional and stream.name != "*"
+    ]
+    fallback_outputs = [stream.name for stream in descriptor.output_streams if stream.name != "*"]
+    output_names = preferred_outputs or fallback_outputs
+    if not output_names:
+        return None
+
+    source_name = input_names[0]
+    target_name = next((name for name in output_names if name != source_name), None)
+    if target_name is None:
+        return None
+    return source_name, target_name
+
+
+def build_stream_transitions(
+    section_names: Sequence[str],
+    descriptor_resolver: Callable[[str], Any | None],
+) -> list[tuple[str, str]]:
+    """Build stream-to-stream transitions implied by component descriptors."""
+
+    transitions = []
+    for section_name in section_names:
+        descriptor = descriptor_resolver(section_name)
+        if descriptor is None:
+            continue
+        transition = _descriptor_transition(descriptor)
+        if transition is None:
+            continue
+        transitions.append(transition)
+    return transitions
+
+
+def _shortest_path(
+    adjacency: Mapping[str, list[str]], source_shm: str, target_shm: str
+) -> list[str] | None:
+    queue = deque([(source_shm, [source_shm])])
+    visited = {source_shm}
+    while queue:
+        current, path = queue.popleft()
+        if current == target_shm:
+            return path
+        for neighbor in adjacency.get(current, []):
+            if neighbor in visited:
+                continue
+            visited.add(neighbor)
+            queue.append((neighbor, path + [neighbor]))
+    return None
+
+
+def _longest_path_from(
+    adjacency: Mapping[str, list[str]], node: str, visited: set[str]
+) -> list[str]:
+    best_path = [node]
+    for neighbor in adjacency.get(node, []):
+        if neighbor in visited:
+            continue
+        candidate = [node] + _longest_path_from(adjacency, neighbor, visited | {neighbor})
+        if len(candidate) > len(best_path):
+            best_path = candidate
+    return best_path
+
+
+def infer_stream_path(
+    *,
+    section_names: Sequence[str],
+    descriptor_resolver: Callable[[str], Any | None],
+    source_shm: str | None = None,
+    target_shm: str | None = None,
+) -> tuple[list[str], bool]:
+    """Infer a sensible stream path for latency breakdowns.
+
+    When both ``source_shm`` and ``target_shm`` are provided, the function first
+    tries to find a descriptor-backed path between them. If none exists, the
+    caller can still measure the pair directly.
+    """
+
+    transitions = build_stream_transitions(section_names, descriptor_resolver)
+    adjacency: dict[str, list[str]] = {}
+    indegree: dict[str, int] = {}
+    for source_name, target_name in transitions:
+        adjacency.setdefault(source_name, []).append(target_name)
+        adjacency.setdefault(target_name, [])
+        indegree.setdefault(source_name, 0)
+        indegree[target_name] = indegree.get(target_name, 0) + 1
+
+    if source_shm is not None and target_shm is not None:
+        inferred = _shortest_path(adjacency, source_shm, target_shm)
+        if inferred is not None:
+            return inferred, True
+        return [source_shm, target_shm], False
+
+    if not transitions:
+        raise ValueError("No descriptor-backed stream path could be inferred for this system")
+
+    candidate_sources = [stream_name for stream_name, degree in indegree.items() if degree == 0]
+    if not candidate_sources:
+        candidate_sources = [transitions[0][0]]
+
+    best_path: list[str] = []
+    for stream_name in candidate_sources:
+        candidate = _longest_path_from(adjacency, stream_name, {stream_name})
+        if len(candidate) > len(best_path):
+            best_path = candidate
+
+    if len(best_path) < 2:
+        raise ValueError("Unable to infer a latency path with at least two streams")
+    return best_path, True
+
+
+def measure_stream_path_latency(
+    stream_path: Sequence[str],
+    *,
+    samples: int = 2048,
+    show_progress: bool = False,
+    shm_opener: Callable[[str], Any] | None = None,
+    include_total_samples: bool = False,
+    timeout_seconds: float | None = None,
+    wait_for_live: bool = True,
+) -> tuple[LatencyReport, np.ndarray | None]:
+    """Measure latency across a stream path and return a structured report.
+
+    With ``wait_for_live`` (the default), sampling starts only once a source
+    frame has reached every stream on the path (:func:`wait_for_path_live`),
+    so the per-stream windows overlap and segments align by frame id.
+    ``timeout_seconds`` bounds the wait and the sampling together.
+    """
+
+    if samples < 2:
+        raise ValueError("samples must be at least 2")
+
+    normalized_path = [str(stream_name) for stream_name in stream_path]
+    if len(normalized_path) < 2:
+        raise ValueError("stream_path must contain at least two stream names")
+
+    unique_stream_names = list(dict.fromkeys(normalized_path))
+    opener = shm_opener or open_stream
+    streams = {stream_name: opener(stream_name) for stream_name in unique_stream_names}
+    try:
+        remaining = timeout_seconds
+        if wait_for_live:
+            waited = wait_for_path_live(streams, normalized_path, timeout_seconds=timeout_seconds)
+            if remaining is not None:
+                remaining = max(0.0, remaining - waited)
+        counts, write_times, frame_ids = collect_stream_event_history(
+            streams,
+            samples=samples,
+            show_progress=show_progress,
+            timeout_seconds=remaining,
+        )
+    finally:
+        for stream in streams.values():
+            close = getattr(stream, "close", None)
+            if close is not None:
+                close()
+
+    def _segment(source_name, target_name):
+        return _build_latency_segment(
+            source_name,
+            target_name,
+            counts[source_name],
+            write_times[source_name],
+            counts[target_name],
+            write_times[target_name],
+            frame_ids[source_name],
+            frame_ids[target_name],
+        )
+
+    segments = [
+        _segment(source_name, target_name)[0]
+        for source_name, target_name in zip(normalized_path[:-1], normalized_path[1:])
+    ]
+    total_segment, total_samples = _segment(normalized_path[0], normalized_path[-1])
+
+    report = LatencyReport(
+        source_shm=normalized_path[0],
+        target_shm=normalized_path[-1],
+        stream_path=tuple(normalized_path),
+        inferred_path=False,
+        sample_count=int(samples),
+        total=total_segment,
+        segments=tuple(segments),
+    )
+    if include_total_samples:
+        return report, total_samples
+    return report, None
+
+
+def format_latency_report(report: LatencyReport | Mapping[str, Any]) -> str:
+    """Return a readable text summary for a latency report."""
+
+    payload = report.to_dict() if hasattr(report, "to_dict") else dict(report)
+    total = payload["total"]
+    total_stats = total["statistics"]
+    path_label = " -> ".join(payload["stream_path"])
+
+    lines = [
+        f"Latency report: {payload['source_shm']} -> {payload['target_shm']}",
+        f"Path: {path_label}{' (inferred)' if payload.get('inferred_path') else ''}",
+        f"Samples: {payload['sample_count']}",
+        "",
+        "Total",
+        f"  Mean: {_format_seconds(total_stats['mean_seconds'])}",
+        f"  Jitter (std): {_format_seconds(total_stats['jitter_seconds'])}",
+        f"  Min / Max: {_format_seconds(total_stats['min_seconds'])} / {_format_seconds(total_stats['max_seconds'])}",
+        f"  P95 / P99 / P99.9: {_format_seconds(total_stats['p95_seconds'])} / {_format_seconds(total_stats['p99_seconds'])} / {_format_seconds(total_stats['p999_seconds'])}",
+        f"  Max speed (from full-loop P99): {_format_seconds_with_rate(total_stats['p99_seconds'])}",
+    ]
+    if total.get("alignment") == "frame_id":
+        lines.append(
+            f"  Alignment: exact (frame id, {total.get('matched_samples', 0)} matched frames)"
+        )
+    else:
+        lines.append("  Alignment: count (heuristic; no frame ids matched between the endpoints)")
+        lines.append(f"  Count offset: {total.get('count_offset', 0)}")
+        lines.append(
+            f"  Residual count delta range: {total['count_delta_min']:.0f} to {total['count_delta_max']:.0f}"
+        )
+    processing_stats = total.get("processing_statistics")
+    if processing_stats is not None:
+        lines.append(f"  Processing latency: {_format_seconds(processing_stats['mean_seconds'])}")
+
+    segments = payload.get("segments", [])
+    if segments:
+        lines.append("")
+        lines.append("Breakdown")
+        for segment in segments:
+            stats = segment["statistics"]
+            lines.append(
+                "  "
+                + f"{segment['source_shm']} -> {segment['target_shm']}: "
+                + f"mean={_format_seconds(stats['mean_seconds'])}, "
+                + f"jitter={_format_seconds(stats['jitter_seconds'])}, "
+                + f"p99={_format_seconds(stats['p99_seconds'])}"
+                + ("" if segment.get("alignment") == "frame_id" else " (count-aligned)")
+            )
+            processing_stats = segment.get("processing_statistics")
+            if processing_stats is not None:
+                lines.append(
+                    "    " + f"processing={_format_seconds(processing_stats['mean_seconds'])}"
+                )
+
+    return "\n".join(lines)
