@@ -255,8 +255,10 @@ def test_ring_buffer_seconds_window_orders_dump_by_time(monkeypatch, tmp_path):
         monkeypatch.setattr(tele_mod, "open_stream", opener)
         telemetry = tele_mod.Telemetry({"data_dir": str(tmp_path), "functions": []})
         try:
-            telemetry.start_ring_buffer("rb_a", seconds=0.2, frames=5000)
-            time.sleep(0.6)
+            # A 1 s window: sleep granularity on some CI hosts (macOS) makes the
+            # producer publish far slower than the requested 2 ms period.
+            telemetry.start_ring_buffer("rb_a", seconds=1.0, frames=5000)
+            time.sleep(1.5)
             before = time.time()
             session_path = telemetry.dump_ring_buffer()
         finally:
@@ -265,8 +267,8 @@ def test_ring_buffer_seconds_window_orders_dump_by_time(monkeypatch, tmp_path):
     stamps = tele_mod.load_telemetry_session(session_path)["rb_a"]["timestamps"]
     assert len(stamps) > 10
     assert np.all(np.diff(stamps) >= 0)
-    assert stamps.min() >= before - 0.2 - 0.05
-    assert stamps.max() - stamps.min() <= 0.2
+    assert stamps.min() >= before - 1.0 - 0.05
+    assert stamps.max() - stamps.min() <= 1.0
 
 
 def test_ring_buffer_estimates_capacity_from_rate(monkeypatch, tmp_path):
