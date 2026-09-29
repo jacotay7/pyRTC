@@ -20,7 +20,7 @@ from typing import Any, Callable, Dict
 
 import numpy as np
 
-from pyrtc.loop import leak_integrator_gpu, leaky_integrator_numba
+from pyrtc.loop import ReducedPrecisionMatrix, leak_integrator_gpu, leaky_integrator_numba
 from pyrtc.streams import gpu_torch_available
 from pyrtc.logging_utils import add_logging_cli_args, configure_logging_from_args, get_logger
 from pyrtc.slopes_process import (
@@ -468,6 +468,20 @@ def _bench_gpu_kernels(
         iterations=iterations,
         warmup=warmup,
     )
+    # fp16/bf16 control-matrix storage with fp32 accumulation (#67).
+    reduced_stats = {}
+    for dtype in ("float16", "bfloat16"):
+        try:
+            reduced = ReducedPrecisionMatrix(recon_np, dtype, device="cuda")
+        except Exception:
+            continue
+        reduced_stats[f"loop.leak_integrator_gpu_{dtype}"] = _time_kernel(
+            lambda reduced=reduced: leak_integrator_gpu(
+                slopes_np, reduced, old_np, 0.05, max(1, num_modes - 2)
+            ),
+            iterations=iterations,
+            warmup=warmup,
+        )
 
     length = max(signal_size, 4 * pixels_per_pupil)
     image = torch.tensor((rng.rand(length) * 5000).astype(np.float32), device="cuda")
@@ -498,6 +512,7 @@ def _bench_gpu_kernels(
     return {
         "status": {"available": True, "device": str(torch.cuda.get_device_name(0))},
         "loop.leak_integrator_gpu": leak_stats,
+        **reduced_stats,
         "slopes.compute_slopes_pywfs_torch": slopes_stats,
     }
 

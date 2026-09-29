@@ -212,3 +212,33 @@ integrator gain, and match it on slow turbulence. To add a method, subclass
 ``ModalPredictor`` and register it with ``@register_predictor("name")``; the
 loop then accepts ``predictor.type: name``.
 
+Reduced-Precision Control Matrix (GPU)
+--------------------------------------
+
+On a GPU, the control-matrix multiply is memory-bound. ``ReducedPrecisionMatrix``
+stores the matrix in ``float16`` or ``bfloat16`` with an fp32 scale per row, and
+multiplies with fp32 accumulation. ``leak_integrator_gpu`` accepts it in place
+of a tensor:
+
+.. code-block:: python
+
+  from pyrtc.loop import ReducedPrecisionMatrix, leak_integrator_gpu
+
+  cm16 = ReducedPrecisionMatrix(loop.g_cm, "float16", device="cuda")
+  correction = leak_integrator_gpu(slopes, cm16, correction, leak, loop.num_active_modes)
+
+The row scale keeps large control-matrix entries from overflowing fp16, and
+the input is scaled to unit peak before the cast. Measured on a regularized
+control matrix with slopes from DM modes plus 10% noise, the error in the
+modal update is:
+
+- ``float16``: median 8e-4, p99 1.2e-3 relative;
+- ``bfloat16``: median 6e-3, p99 1e-2.
+
+Both are well below typical WFS noise. The gain comes from moving fewer bytes,
+so it only pays off for large systems. On a Quadro P620, a 64x64 system
+(8192 slopes x 4096 modes) went from 2.09 ms to 1.29 ms with fp16, while a
+32x32 system was slightly slower because of the extra scaling steps.
+``python -m benchmarks.core_compute_bench`` reports
+``loop.leak_integrator_gpu_float16`` and ``_bfloat16`` next to fp32.
+

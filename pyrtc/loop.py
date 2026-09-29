@@ -48,6 +48,67 @@ def leaky_integrator_numba(
     return correction
 
 
+class ReducedPrecisionMatrix:
+    """A control matrix stored on a torch device in fp32, fp16 or bf16.
+
+    The multiply is memory-bound, so halving the bytes per element roughly
+    halves its time on a GPU. Each row is divided by its largest absolute
+    value, stored as a separate fp32 scale, so large control-matrix entries
+    cannot overflow fp16 and every row uses the format's full precision.
+    Products accumulate in fp32 (``torch.mv`` on half inputs), and the result
+    is fp32.
+
+    Parameters
+    ----------
+    matrix : array_like, shape (num_modes, signal_size)
+        Control matrix.
+    dtype : {"float32", "float16", "bfloat16"}
+        Storage precision. Default "float16".
+    device : str or torch.device
+        Torch device. Default "cuda".
+    """
+
+    SUPPORTED_DTYPES = ("float32", "float16", "bfloat16")
+
+    def __init__(self, matrix, dtype: str = "float16", device="cuda") -> None:
+        if not gpu_torch_available():
+            raise ImportError(
+                "ReducedPrecisionMatrix requires PyTorch. Install with 'pip install pyrtcao[gpu]'."
+            )
+        import torch
+
+        dtype = str(dtype).lower()
+        if dtype not in self.SUPPORTED_DTYPES:
+            raise ValueError(f"dtype must be one of {self.SUPPORTED_DTYPES}, got {dtype!r}")
+        full = torch.as_tensor(np.asarray(matrix, dtype=np.float32), device=device)
+        if full.ndim != 2:
+            raise ValueError("matrix must be 2-D")
+        if dtype == "float32":
+            scale = torch.ones(full.shape[0], dtype=torch.float32, device=full.device)
+        else:
+            scale = full.abs().amax(dim=1)
+            scale = torch.where(scale > 0, scale, torch.ones_like(scale))
+            full = full / scale[:, None]
+        self.dtype = dtype
+        self.device = full.device
+        self.shape = tuple(full.shape)
+        self.matrix = full.to(getattr(torch, dtype))
+        self.scale = scale.to(torch.float32)
+
+    def matvec(self, vector, rows: int | None = None):
+        """Return ``(matrix @ vector)[:rows]`` as an fp32 tensor on the device."""
+
+        import torch
+
+        rows = self.shape[0] if rows is None else int(rows)
+        # Scale the input to unit peak so a half-precision cast cannot overflow.
+        vec = torch.as_tensor(vector, device=self.device, dtype=torch.float32)
+        peak = vec.abs().max()
+        peak = torch.where(peak > 0, peak, torch.ones_like(peak))
+        product = torch.mv(self.matrix[:rows], (vec / peak).to(self.matrix.dtype))
+        return product.to(torch.float32) * (self.scale[:rows] * peak)
+
+
 def leak_integrator_gpu(
     slopes: np.ndarray,
     reconstruction_matrix: Any,
@@ -55,7 +116,11 @@ def leak_integrator_gpu(
     leak: float,
     num_active_modes: int,
 ):
-    """GPU counterpart of :func:`leaky_integrator_numba` (same semantics)."""
+    """GPU counterpart of :func:`leaky_integrator_numba` (same semantics).
+
+    ``reconstruction_matrix`` is a torch tensor or a
+    :class:`ReducedPrecisionMatrix` (fp16/bf16 storage, fp32 accumulation).
+    """
 
     if not gpu_torch_available():
         raise ImportError(
@@ -64,8 +129,11 @@ def leak_integrator_gpu(
 
     import torch
 
-    slopes_gpu = torch.as_tensor(slopes, device=reconstruction_matrix.device)
-    update = torch.matmul(reconstruction_matrix[:num_active_modes], slopes_gpu).cpu().numpy()
+    if isinstance(reconstruction_matrix, ReducedPrecisionMatrix):
+        update = reconstruction_matrix.matvec(slopes, rows=num_active_modes).cpu().numpy()
+    else:
+        slopes_gpu = torch.as_tensor(slopes, device=reconstruction_matrix.device)
+        update = torch.matmul(reconstruction_matrix[:num_active_modes], slopes_gpu).cpu().numpy()
     correction = (1 - leak) * np.asarray(old_correction, dtype=update.dtype)
     correction[:num_active_modes] -= update
     correction[num_active_modes:] = 0
