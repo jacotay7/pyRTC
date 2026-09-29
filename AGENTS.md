@@ -173,6 +173,9 @@ ruff check . && ruff format --check .    # lint, as in CI
 - Other CI jobs worth knowing:
   - `free-threaded`: Python 3.14t with `PYTHON_GIL=0`; it skips `tests/system`
     (#139).
+  - `aarch64`: the whole suite on an ARM64 runner (`ubuntu-24.04-arm`). ARM
+    orders memory more weakly than x86, so pyshmem's cross-process publication
+    takes a different (libatomic) path there.
   - `ISIO Bridge` (`isio-bridge.yml`): builds ImageStreamIO and runs
     `tests/test_isio_bridge.py`, which skips elsewhere.
   - Hardware adapter tests run against fake SDK modules

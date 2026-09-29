@@ -81,6 +81,9 @@ GitHub Actions runs on pull requests into ``dev`` and ``main`` and on pushes to
   - ``smoke-system-notebook`` runs the end-to-end system tests and notebooks;
   - ``free-threaded`` runs the suite on 3.14t with ``PYTHON_GIL=0``, without
     ``tests/system``;
+  - ``aarch64`` runs the whole suite, system tests included, on an ARM64
+    runner (``ubuntu-24.04-arm``), where memory ordering and pyshmem's atomics
+    differ from x86;
   - ``docs`` runs the Sphinx build.
 
 - ``cross-platform-smoke.yml``: macOS and Windows smoke tests.

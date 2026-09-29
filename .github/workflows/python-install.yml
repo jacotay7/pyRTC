@@ -164,6 +164,30 @@ jobs:
         # busy runners (#139); this job checks thread safety, not timing.
         run: pytest -q --no-cov -m "not gpu" --ignore=tests/test_qt_smoke.py --ignore=tests/system
 
+  # aarch64: ARM orders memory more weakly than x86, so pyshmem's
+  # cross-process publication uses libatomic acquire/release there instead of
+  # plain stores, and thread timing differs. Run the whole suite, system
+  # tests included.
+  aarch64:
+    runs-on: ubuntu-24.04-arm
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+
+      - name: Install package
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install . -r requirements-test.txt
+
+      - name: Run pytest with coverage
+        run: pytest
+
   docs:
     runs-on: ubuntu-latest
     strategy:

@@ -257,6 +257,11 @@ All notable changes to `pyrtcao` will be documented in this file.
 	Micro-Manager `.cfg` file (`pip install pyrtcao[micromanager]`). They
 	stream the newest frame from continuous acquisition, and are tested
 	against a fake core.
+- **An `aarch64` CI job** runs the whole suite, system tests included, on
+	GitHub's ARM64 runner. pyrtc and pyshmem pass on an 80-core Neoverse-N1
+	host, but ARM had no CI coverage; its weaker memory ordering sends
+	pyshmem's cross-process publication through libatomic instead of plain
+	stores.
 - **Free-threaded Python support** (#66). pyrtc runs on CPython 3.13t/3.14t
 	with the GIL off: every core import supports free threading, and the
 	suite passes with `PYTHON_GIL=0`. A new `free-threaded` CI job checks
