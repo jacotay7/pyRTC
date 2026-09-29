@@ -582,3 +582,56 @@ def test_watchdog_config_is_validated(conf, match):
         )
     assert loop_mod.Loop._validate_watchdog(0, "OPEN") == (None, "open")
     assert loop_mod.Loop._validate_watchdog(None, "hold") == (None, "hold")
+
+
+def _regularized_cm(seed=0):
+    rng = np.random.default_rng(seed)
+    im = rng.standard_normal((120, 60))
+    u, s, vt = np.linalg.svd(im, full_matrices=False)
+    keep = s > s[0] / 30
+    return im, (vt[keep].T / s[keep]) @ u[:, keep].T
+
+
+@pytest.mark.parametrize(
+    ("dtype", "median_limit"), [("float32", 1e-6), ("float16", 2e-3), ("bfloat16", 2e-2)]
+)
+def test_reduced_precision_matrix_accuracy(dtype, median_limit):
+    """fp16/bf16 CM storage with fp32 accumulation (#67), on CPU torch."""
+    pytest.importorskip("torch")
+    im, cm = _regularized_cm()
+    cm = cm * 1e5  # entries far beyond fp16's range: the per-row scale must absorb them
+    matrix = loop_mod.ReducedPrecisionMatrix(cm, dtype, device="cpu")
+    rng = np.random.default_rng(1)
+    errors = []
+    for _ in range(50):
+        slopes = im @ rng.standard_normal(im.shape[1]) + 0.1 * rng.standard_normal(im.shape[0])
+        slopes *= 1e3  # and slopes large enough to overflow an unscaled cast
+        reference = cm @ slopes
+        result = matrix.matvec(slopes).numpy()
+        assert np.all(np.isfinite(result))
+        errors.append(np.linalg.norm(result - reference) / np.linalg.norm(reference))
+    assert np.median(errors) < median_limit
+    assert matrix.matvec(slopes, rows=5).shape == (5,)
+
+
+def test_reduced_precision_matrix_validates_dtype():
+    pytest.importorskip("torch")
+    with pytest.raises(ValueError, match="dtype"):
+        loop_mod.ReducedPrecisionMatrix(np.eye(2), "int8", device="cpu")
+    with pytest.raises(ValueError, match="2-D"):
+        loop_mod.ReducedPrecisionMatrix(np.ones(3), "float16", device="cpu")
+
+
+@pytest.mark.gpu
+@pytest.mark.skipif(not pyshmem.gpu_available(), reason="CUDA is not available")
+@pytest.mark.parametrize("dtype", ["float16", "bfloat16"])
+def test_gpu_integrator_with_reduced_precision_matrix(dtype):
+    slopes, recon, old = _integrator_case()
+    num_active = recon.shape[0] - 1
+    cpu = loop_mod.leaky_integrator_numba(
+        slopes, recon, old, np.empty_like(old), np.float32(0.05), num_active
+    )
+    matrix = loop_mod.ReducedPrecisionMatrix(recon, dtype, device="cuda")
+    gpu = loop_mod.leak_integrator_gpu(slopes, matrix, old, 0.05, num_active)
+    tolerance = 5e-3 if dtype == "float16" else 3e-2
+    np.testing.assert_allclose(gpu, cpu, rtol=tolerance, atol=tolerance * np.abs(cpu).max())

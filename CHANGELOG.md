@@ -237,6 +237,12 @@ All notable changes to `pyrtcao` will be documented in this file.
 
 ### Added
 
+- **fp16/bf16 control matrix on GPU** (#67). `pyrtc.loop.ReducedPrecisionMatrix`
+	stores the CM in half precision with per-row fp32 scales and multiplies
+	with fp32 accumulation; `leak_integrator_gpu` accepts it. The error in the
+	modal update is about 1e-3 (fp16) or 1e-2 (bf16), relative. On a Quadro
+	P620, a 64x64 system's integrator step drops from 2.1 ms to 1.3 ms. The
+	core benchmark times both variants.
 - **Predictive control** (#57). The new `predictive_integrator` loop
 	function forecasts each mode's pseudo open-loop disturbance for when the
 	command lands, using the loop's `delay_frames`, and cancels it.
