@@ -43,6 +43,10 @@ def test_synthetic_loop_converges_after_calibration(tmp_path):
         time.sleep(0.5)
 
         loop = manager.get_component("loop")
+        # Every component must read the renamed streams; a stream read via an
+        # undeclared default name would silently break the closed loop.
+        assert manager.get_component("wfs").input_stream_name("wfc") in streams
+        assert manager.get_component("psf").input_stream_name("signal") in streams
         signal_stream = open_stream(loop.input_stream_name("signal"))
 
         loop.stop()
