@@ -67,6 +67,7 @@ pyrtc is an open-source, community-driven Python package for real-time control o
   examples/synthetic_shwfs
   examples/shwfs
   examples/pywfs
+  examples/hcipy
 
 
 Citing pyrtc

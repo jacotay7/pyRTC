@@ -1,0 +1,19 @@
+# HCIPy system for the SHWFS example (see pyrtc/hardware/hcipy_interface.py).
+telescope_diameter: 2.0       # 0.2 m sub-apertures, about r0 at 700 nm
+wfs_type: shwfs
+wfs_wavelength: 7.0e-7
+num_lenslets: 10
+pixels_per_lenslet: 12        # 120x120 WFS detector, 12 px per sub-aperture
+spot_fwhm_pixels: 2.5         # diffraction-limited spot width on the detector
+wfs_photons: 1.0e7
+photon_noise: false
+num_actuators_across: 11      # Fried geometry: 89 actuators inside the pupil
+actuator_crosstalk: 0.15
+r0: 0.15
+L0: 25.0
+wind_speed: 10.0
+frame_rate: 1000.0
+science_wavelength: 1.6e-6
+science_q: 4
+science_num_airy: 16          # 128x128 science PSF
+seed: 1

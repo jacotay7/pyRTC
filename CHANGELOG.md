@@ -237,6 +237,16 @@ All notable changes to `pyrtcao` will be documented in this file.
 
 ### Added
 
+- **HCIPy simulator backend** (#55). `pyrtc.hardware.hcipy_interface`
+	builds a telescope, DM, Shack-Hartmann or modulated pyramid WFS,
+	frozen-flow atmosphere and science camera from a flat parameter file
+	with HCIPy, which is pip-installable (`pip install pyrtcao[hcipy]`). It
+	adapts them to the pyrtc WFS, corrector and camera components, standalone
+	or as a manager `resource`. The corrector passes its real actuator
+	positions to aobasis. New example `examples/hcipy/`, docs page, unit
+	tests, and a system test that nulls a DM aberration and raises the
+	Strehl on the atmosphere.
+
 - **fp16/bf16 control matrix on GPU** (#67). `pyrtc.loop.ReducedPrecisionMatrix`
 	stores the CM in half precision with per-row fp32 scales and multiplies
 	with fp32 accumulation; `leak_integrator_gpu` accepts it. The error in the

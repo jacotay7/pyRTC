@@ -9,3 +9,4 @@ optuna
 cmaes
 astropy
 matplotlib>=3.5
+hcipy>=0.6          # the HCIPy bridge tests and system test
