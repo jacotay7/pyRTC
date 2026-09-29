@@ -237,6 +237,13 @@ All notable changes to `pyrtcao` will be documented in this file.
 
 ### Added
 
+- **Multiple correctors per loop** (#58). A `CorrectorSplitter` in the `wfc`
+	section splits the loop's modal command across several corrector
+	sections (woofer/tweeter, DM plus tip-tilt stage), so one IM calibrates
+	all of them. Its optional offload integrator moves the content the target
+	can represent (coupling from `set_coupling_from_im`) onto the target
+	without changing the wavefront. Config validation now uses a section's
+	built-in rules only when its class belongs to that component family.
 - **HCIPy simulator backend** (#55). `pyrtc.hardware.hcipy_interface`
 	builds a telescope, DM, Shack-Hartmann or modulated pyramid WFS,
 	frozen-flow atmosphere and science camera from a flat parameter file

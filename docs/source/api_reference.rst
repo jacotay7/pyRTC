@@ -26,6 +26,7 @@ Module Index
    manager
    component_loading
    modal_basis
+   corrector_splitter
    modal_gains
    predictive
    latency

@@ -49,7 +49,7 @@ def _resolve_class_symbol(class_name: str, class_file: str | None = None):
 def _default_stream_aliases_for_section(
     section_name: str, section_conf: Mapping[str, Any]
 ) -> tuple[dict[str, str], dict[str, str]]:
-    descriptor = get_component_descriptor(section_name)
+    descriptor = _section_descriptor(section_name, section_conf)[0]
     if descriptor is None:
         class_name = section_conf.get("class_name")
         class_file = section_conf.get("class_file")
@@ -162,6 +162,34 @@ def _validate_required_section_mappings(conf: Mapping[str, Any]) -> None:
             _require_mapping(conf[section_name], section_name)
 
 
+def _section_descriptor(section_name: str, section_conf: Mapping[str, Any]):
+    """Return ``(descriptor, builtin)`` for validating a section.
+
+    A section is validated against its built-in descriptor (``builtin`` True)
+    unless its class resolves to something outside that component family,
+    such as a ``CorrectorSplitter`` in the ``wfc`` section; then the class's
+    own descriptor is used.
+    """
+
+    descriptor = get_component_descriptor(section_name)
+    class_name = section_conf.get("class_name") if isinstance(section_conf, Mapping) else None
+    if descriptor is None or not class_name:
+        return descriptor, True
+    try:
+        from pyrtc.component_loading import resolve_class_symbol
+
+        component_class = resolve_class_symbol(class_name, section_conf.get("class_file"))
+    except Exception:
+        return descriptor, True
+    if not isinstance(component_class, type) or issubclass(
+        component_class, descriptor.component_class
+    ):
+        return descriptor, True
+    from pyrtc.component_descriptors import describe_component_class
+
+    return describe_component_class(component_class), False
+
+
 def _validate_functions_section(section_name: str, section_conf: Mapping[str, Any]) -> None:
     if "functions" not in section_conf:
         return
@@ -170,7 +198,7 @@ def _validate_functions_section(section_name: str, section_conf: Mapping[str, An
     if not isinstance(functions, list):
         raise ConfigValidationError(f"{section_name}: 'functions' must be a list of method names")
 
-    descriptor = get_component_descriptor(section_name)
+    descriptor, _builtin = _section_descriptor(section_name, section_conf)
     if descriptor is None:
         return
 
@@ -645,7 +673,11 @@ def _validate_cross_component_consistency(conf: Mapping[str, Any]) -> None:
     loop_conf = conf["loop"]
     wfc_conf = conf["wfc"]
 
-    num_modes = _coerce_int(wfc_conf["num_modes"], "wfc", "num_modes", minimum=1)
+    raw_modes = wfc_conf.get("num_modes")
+    if raw_modes is None and isinstance(wfc_conf.get("correctors"), list):
+        # A CorrectorSplitter's modes are its correctors' modes.
+        raw_modes = sum(int(entry.get("modes", 0)) for entry in wfc_conf["correctors"])
+    num_modes = _coerce_int(raw_modes, "wfc", "num_modes", minimum=1)
     dropped_modes = _coerce_int(
         loop_conf.get("num_dropped_modes", 0), "loop", "num_dropped_modes", minimum=0
     )
@@ -762,15 +794,19 @@ def validate_system_config(conf: Any, *, config_path: str | Path | None = None) 
 
     for section_name in list_component_sections():
         if section_name in normalized:
+            descriptor, _builtin = _section_descriptor(section_name, normalized[section_name])
             try:
-                validate_config_with_descriptor(section_name, normalized[section_name])
+                validate_config_with_descriptor(
+                    section_name, normalized[section_name], descriptor=descriptor
+                )
             except (TypeError, ValueError) as exc:
                 raise ConfigValidationError(str(exc)) from exc
 
     validate_wfs_config(normalized["wfs"])
     _validate_slopes_config(normalized["slopes"])
     validate_loop_config(normalized["loop"])
-    validate_wfc_config(normalized["wfc"])
+    if _section_descriptor("wfc", normalized["wfc"])[1]:
+        validate_wfc_config(normalized["wfc"])
 
     if "psf" in normalized:
         _validate_psf_config(normalized["psf"])

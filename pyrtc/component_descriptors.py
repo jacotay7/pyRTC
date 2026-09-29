@@ -13,6 +13,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Mapping, Type
 
+from pyrtc.corrector_splitter import CorrectorSplitter
 from pyrtc.loop import Loop
 from pyrtc.science_camera import ScienceCamera
 from pyrtc.slopes_process import SlopesProcess
@@ -928,6 +929,59 @@ BUILTIN_COMPONENT_DESCRIPTORS: tuple[ComponentDescriptor, ...] = (
         supports_hard_rtc=False,
         calibration_artifacts=(),
     ),
+    ComponentDescriptor(
+        section_name="corrector_splitter",
+        category="wavefront_corrector",
+        component_class=CorrectorSplitter,
+        description=(
+            "Splits the loop's modal command across several correctors (woofer/tweeter) "
+            "and offloads content between them. Goes in the loop's wfc section."
+        ),
+        required_fields=(
+            ConfigFieldDescriptor(
+                "correctors",
+                "list",
+                "Correctors as {name, stream, modes}; the loop's modes are theirs, in order.",
+                required=True,
+            ),
+        ),
+        optional_fields=(
+            ConfigFieldDescriptor(
+                "offload",
+                "dict | None",
+                "Offloading: {source, target, gain, coupling (matrix or .npy)}.",
+                default=None,
+            ),
+            ConfigFieldDescriptor(
+                "num_modes",
+                "int",
+                "Total modes; must equal the correctors' total when given.",
+                default=None,
+                minimum=1,
+            ),
+        ),
+        worker_functions=("split",),
+        input_streams=(
+            StreamDescriptor(
+                "wfc",
+                "input",
+                dtype="float32",
+                shape="(num_modes,)",
+                description="Combined modal command from the loop.",
+            ),
+        ),
+        output_streams=(
+            StreamDescriptor(
+                "wfc",
+                "output",
+                dtype="float32",
+                shape="(num_modes,)",
+                description="The loop's command stream, owned by the splitter.",
+            ),
+        ),
+        supports_hard_rtc=False,
+        calibration_artifacts=(),
+    ),
 )
 
 
@@ -1007,10 +1061,16 @@ def build_descriptor_catalog() -> dict[str, dict[str, Any]]:
     }
 
 
-def validate_config_with_descriptor(section_name: str, conf: Mapping[str, Any]) -> None:
-    """Validate generic field presence and types using descriptor metadata."""
+def validate_config_with_descriptor(
+    section_name: str, conf: Mapping[str, Any], descriptor: ComponentDescriptor | None = None
+) -> None:
+    """Validate generic field presence and types using descriptor metadata.
 
-    descriptor = get_component_descriptor(section_name)
+    ``descriptor`` defaults to the section's built-in descriptor.
+    """
+
+    if descriptor is None:
+        descriptor = get_component_descriptor(section_name)
     if descriptor is None:
         return
 

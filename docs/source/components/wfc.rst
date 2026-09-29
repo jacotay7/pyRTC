@@ -228,6 +228,50 @@ fraction, and how many commands saturated any actuator. When at least
 it logs a warning (at most every 10 s) and reports an alert. The manager
 status (``safety``) and the manager GUI's graph node show it.
 
+Multiple Correctors (Woofer/Tweeter, Tip-Tilt Offload)
+------------------------------------------------------
+
+To drive several correctors from one loop, put a ``CorrectorSplitter`` in the
+``wfc`` section and give each device its own section and ``wfc`` stream:
+
+.. code-block:: yaml
+
+  wfc:
+    class_name: pyrtc.corrector_splitter.CorrectorSplitter
+    correctors:
+      - {name: woofer, stream: woofer_wfc, modes: 20}
+      - {name: tweeter, stream: tweeter_wfc, modes: 60}
+    offload: {source: tweeter, target: woofer, gain: 0.02}   # optional
+    functions: [split]
+  woofer:
+    class_name: ALPAODM          # any wavefront corrector
+    num_modes: 20
+    input_streams: {wfc: woofer_wfc}
+    output_streams: {wfc: woofer_wfc, wfc_2d: woofer_wfc_2d}
+    ...
+
+The loop controls ``20 + 60`` modes: the woofer's first, then the tweeter's.
+The splitter writes each corrector its slice every frame, so the interaction
+matrix calibrates both devices with no change to the loop.
+
+With ``offload``, the target corrector (the woofer, or a tip-tilt stage)
+takes over, at rate ``gain``, the part of the source command it can
+represent. The total wavefront does not change. It needs the coupling ``C``,
+the source-mode equivalent of each target mode; calibrate the IM first, then
+set it from the IM:
+
+.. code-block:: python
+
+  loop.compute_im()
+  splitter = manager.get_component("wfc")
+  splitter.set_coupling_from_im(loop.im)   # C = pinv(IM_source) @ IM_target
+  # the configured gain now applies; set_offload_gain(g) changes it
+
+``coupling`` can also be given in the config, as a matrix or a ``.npy`` file.
+For tip-tilt offload to a two-mode stage, it has non-zero rows only for the
+DM's tip and tilt modes. ``reset_offload()`` hands everything back to the
+source.
+
 Parameters
 ----------
 
