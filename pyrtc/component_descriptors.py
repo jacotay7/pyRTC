@@ -517,7 +517,32 @@ BUILTIN_COMPONENT_DESCRIPTORS: tuple[ComponentDescriptor, ...] = (
                 "delay", "int", "Artificial delay in frames.", default=0, minimum=0
             ),
             ConfigFieldDescriptor(
-                "im_method", "str", "Interaction-matrix calibration method.", default="push-pull"
+                "im_method",
+                "str",
+                "Interaction-matrix calibration method ('push-pull', 'hadamard' or 'docrime').",
+                default="push-pull",
+                choices=Loop.SUPPORTED_IM_METHODS,
+                case_sensitive=False,
+            ),
+            ConfigFieldDescriptor(
+                "im_settle_frames",
+                "int",
+                "Signal frames discarded after each calibration poke before averaging.",
+                default=1,
+                minimum=0,
+            ),
+            ConfigFieldDescriptor(
+                "im_round_trip_check",
+                "bool",
+                "Check that a DM poke reaches the signal before compute_im calibrates.",
+                default=True,
+            ),
+            ConfigFieldDescriptor(
+                "im_timeout",
+                "float",
+                "Seconds allowed for the round-trip check and for each calibration frame.",
+                default=30.0,
+                minimum=0.0,
             ),
             ConfigFieldDescriptor(
                 "im_file", "str", "Path to the interaction-matrix file.", default=""

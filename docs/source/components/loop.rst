@@ -81,3 +81,30 @@ Parameters
   :undoc-members:
   :show-inheritance:
   :no-index:
+
+Interaction-Matrix Calibration
+------------------------------
+
+``compute_im()`` calibrates with ``im_method``:
+
+- ``push-pull`` (default): each mode is poked to ``+poke_amp`` and
+  ``-poke_amp`` in turn.
+- ``hadamard``: all modes are poked at once with ``+/-poke_amp`` Hadamard
+  patterns and the IM is demultiplexed. For the same number of frames, white
+  sensor noise in the IM drops by about ``sqrt(num_modes)``.
+- ``docrime``: random-perturbation calibration.
+
+After each poke, ``im_settle_frames`` frames (default 1) are discarded before
+``num_iters_im`` frames are averaged, so frames exposed while the corrector was
+still moving are not used. ``hardware_delay`` adds a fixed wait on top.
+
+Before calibrating, ``compute_im()`` runs ``check_round_trip()`` (disable with
+``im_round_trip_check: false``). It flattens the corrector, waits for stable
+signal frames, pokes every mode, waits for the signal to move and settle, then
+flattens and waits for it to return. Right after start-up the worker kernels
+JIT-compile, and the first DM command can take about a second to reach the
+signal; calibrating in that window produced zero or smeared IM columns. If the
+round trip never completes within ``im_timeout`` seconds (default 30), a
+``TimeoutError`` explains why, e.g. a ``poke_amp`` too small to measure. Call
+``check_round_trip()`` yourself before other steps that need the live
+pipeline, such as taking reference slopes.

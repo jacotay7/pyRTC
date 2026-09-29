@@ -87,6 +87,25 @@ def test_validate_loop_config_rejects_bad_cm_method():
         validate_loop_config({"cm_method": "ridge-ish"})
 
 
+def test_validate_loop_config_checks_im_calibration_keys():
+    validate_loop_config(
+        {
+            "im_method": "Hadamard",
+            "im_settle_frames": 0,
+            "im_round_trip_check": False,
+            "im_timeout": 5,
+        }
+    )
+    with pytest.raises(ConfigValidationError, match="im_method"):
+        validate_loop_config({"im_method": "push_pull"})
+    with pytest.raises(ConfigValidationError, match="im_settle_frames"):
+        validate_loop_config({"im_settle_frames": -1})
+    with pytest.raises(ConfigValidationError, match="im_round_trip_check"):
+        validate_loop_config({"im_round_trip_check": "yes"})
+    with pytest.raises(ConfigValidationError, match="im_timeout"):
+        validate_loop_config({"im_timeout": -1.0})
+
+
 def test_validate_loop_config_rejects_bad_tikhonov_regularization():
     with pytest.raises(ConfigValidationError, match="tikhonov_reg"):
         validate_loop_config({"tikhonov_reg": -0.1})

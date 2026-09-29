@@ -167,6 +167,14 @@ def test_slopes_descriptor_restricts_signal_type_and_type_case_insensitively():
         validate_config_with_descriptor("slopes", {"type": "CURVATURE", "signal_type": "slopes"})
 
 
+def test_loop_descriptor_restricts_im_method_case_insensitively():
+    validate_config_with_descriptor("loop", {"im_method": "HADAMARD", "im_settle_frames": 2})
+    with pytest.raises(ValueError, match="im_method"):
+        validate_config_with_descriptor("loop", {"im_method": "zonal"})
+    with pytest.raises(ValueError, match="im_settle_frames"):
+        validate_config_with_descriptor("loop", {"im_settle_frames": -1})
+
+
 def test_case_sensitive_choices_still_match_exactly():
     field_descriptor = ConfigFieldDescriptor("mode", "str", "Mode.", choices=("fast",))
 
