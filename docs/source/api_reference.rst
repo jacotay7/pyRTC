@@ -30,6 +30,7 @@ Module Index
    modal_gains
    predictive
    latency
+   isio_bridge
    telemetry
    utils
 
