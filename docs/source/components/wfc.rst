@@ -35,12 +35,13 @@ A ``basis`` section looks like this:
       L0: 30.0             # kl only, metres (default 30.0)
       ignore_piston: true  # kl, zernike, fourier (default true)
       normalize: peak      # peak | rms | l2 | none (default peak)
-      orthonormalize: false
+      orthonormalize: true # default true for zernike and fourier, false otherwise
 
 Keys:
 
 ``type``
-  ``kl`` (Karhunen-Loeve modes of von Karman turbulence), ``zernike`` (Noll order),
+  ``kl`` (Karhunen-Loeve modes of von Karman turbulence), ``zernike`` (Noll order and
+  normalization),
   ``fourier``, ``zonal`` (single-actuator pokes), ``zonal_fast`` (groups of actuators at
   least ``min_distance`` apart, poked together) or ``hadamard``.
 ``n_modes``
@@ -60,13 +61,23 @@ Keys:
   ``loop.poke_amp`` bounds the stroke), ``rms`` (unit RMS over actuators), ``l2`` (unit
   norm) or ``none`` (aobasis output unchanged).
 ``orthonormalize``
-  Gram-Schmidt the modes in order before normalizing. KL, zonal and zonal-fast modes are
-  already orthogonal on the actuators; Zernike, Fourier and Hadamard modes sampled on a
-  discrete actuator grid are not, and orthonormalizing them improves the conditioning of
-  the interaction matrix.
+  Gram-Schmidt the modes in order before normalizing (``aobasis.orthonormalize_modes``).
+  KL, zonal and zonal-fast modes are already orthogonal on the actuators. Zernike, Fourier
+  and Hadamard modes sampled on a discrete actuator grid are not, and orthonormalizing
+  them improves the conditioning of the interaction matrix (with a Zernike basis on the
+  SPECULA SHWFS example, the closed-loop residual dropped from 4.9% to 1.0% of the
+  aberration). The default is ``true`` for ``zernike`` and ``fourier`` and ``false``
+  otherwise. Hadamard stays raw by default because orthonormalizing it destroys its
+  +/-1 patterns. Mode ``k`` of the result spans the same space as input modes
+  ``0..k``, so Noll or frequency order is kept.
 ``min_distance``
   ``zonal_fast`` only: minimum distance (metres) between actuators poked together.
   Default: twice the nearest-neighbour actuator spacing.
+``ignore_piston``
+  ``kl``, ``zernike`` and ``fourier``: leave out piston (default ``true``). A Fourier
+  basis without piston holds at most ``num_actuators - 1`` modes, and aobasis raises if
+  the grid cannot support ``num_modes`` independent Fourier modes (frequencies step by
+  one cycle per ``pupil_diameter``, so aliasing limits some grids).
 ``use_gpu``
   ``kl`` only: compute the covariance and eigen-decomposition with CuPy.
 

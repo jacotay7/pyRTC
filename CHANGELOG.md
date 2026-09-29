@@ -294,6 +294,19 @@ All notable changes to `pyrtcao` will be documented in this file.
 
 ### Changed
 
+- **Zernike and Fourier bases are orthonormalized by default** (#105).
+	Sampled on a discrete actuator grid, they are not orthogonal, and the raw
+	modes left the SPECULA SHWFS Zernike loop borderline (residual 4.9% of the
+	aberration, against 1.0% orthonormalized). `basis.orthonormalize` now
+	defaults to `true` for `zernike` and `fourier`; set it to `false` for the
+	raw modes. Hadamard stays raw so its +/-1 patterns survive. The M2C rank
+	check now runs on the raw modes, so orthonormalizing no longer hides a
+	rank-deficient basis.
+- **aobasis 1.1.0 is required.** It fixes the Zernike Noll order (several
+	modes swap index) and adds the Noll normalization (see its changelog), and
+	a Fourier basis is now always full rank or an error: without piston it
+	holds at most `num_actuators - 1` modes. Recalibrate IMs taken with
+	Zernike or Fourier bases.
 - **The Numba kernels are cached on disk** (`cache=True`, #92). Each new
 	process used to recompile every hot-path kernel on first use; now only the
 	first run after an install or source change compiles. The two hottest
