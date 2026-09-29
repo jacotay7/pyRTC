@@ -1,4 +1,5 @@
 import importlib
+import time
 
 import numpy as np
 import pyshmem
@@ -234,3 +235,250 @@ def test_conditioning_suggestion_tracks_knee():
     assert fit is not None
     assert fit["suggested_index"] == 4
     assert np.isclose(suggestion, 1.0 / singular_values[4])
+
+
+# --- Interaction-matrix calibration (#87 round-trip check, #102 Hadamard) ---
+
+
+class _FakeAOSystem:
+    """Corrector + sensor stand-in on real pyshmem streams.
+
+    A background thread publishes ``signal = true_im @ applied + noise`` at a
+    fixed frame period, stamped with frame ids. ``applied`` is the latest
+    ``wfc`` command, except that commands are ignored until ``startup_delay``
+    seconds after :meth:`start` (like a corrector whose worker is still
+    JIT-compiling) and reach the signal ``lag_frames`` frames late (a deeper
+    pipeline). With ``respond=False`` commands never land.
+    """
+
+    def __init__(
+        self,
+        true_im,
+        *,
+        frame_period=2e-3,
+        startup_delay=0.0,
+        lag_frames=0,
+        noise=0.0,
+        respond=True,
+        seed=0,
+    ):
+        import collections
+        import threading
+
+        self.true_im = np.asarray(true_im, dtype=np.float32)
+        num_signals, num_modes = self.true_im.shape
+        self.wfc = private_stream("wfc", (num_modes,), np.float32)
+        self.signal = private_stream("signal", (num_signals,), np.float32)
+        self.frame_period = frame_period
+        self.startup_delay = startup_delay
+        self.noise = noise
+        self.respond = respond
+        self.rng = np.random.default_rng(seed)
+        self.pending = collections.deque(
+            [np.zeros(num_modes, dtype=np.float32)] * (lag_frames + 1), maxlen=lag_frames + 1
+        )
+        self._stop = threading.Event()
+        self._thread = threading.Thread(target=self._run, daemon=True)
+
+    def loop_config(self, **overrides):
+        conf = {
+            "input_streams": {"signal": self.signal.name},
+            "output_streams": {"wfc": self.wfc.name},
+            "poke_amp": 0.1,
+            "num_iters_im": 2,
+            "im_timeout": 10.0,
+        }
+        conf.update(overrides)
+        return conf
+
+    def start(self):
+        self._start_time = time.monotonic()
+        self._thread.start()
+        return self
+
+    def stop(self):
+        self._stop.set()
+        self._thread.join(timeout=5.0)
+
+    def _run(self):
+        frame_id = 0
+        while not self._stop.is_set():
+            time.sleep(self.frame_period)
+            live = time.monotonic() - self._start_time >= self.startup_delay
+            if self.respond and live:
+                self.pending.append(np.array(self.wfc.read(), dtype=np.float32))
+            applied = self.pending[0]
+            frame = self.true_im @ applied
+            if self.noise > 0:
+                frame = frame + self.rng.normal(0.0, self.noise, frame.shape)
+            frame_id += 1
+            self.signal.write(frame.astype(np.float32), frame_id=frame_id)
+
+
+def _true_im(num_signals=12, num_modes=6, seed=87):
+    return np.random.default_rng(seed).normal(size=(num_signals, num_modes)).astype(np.float32)
+
+
+@pytest.fixture
+def fake_ao_system():
+    systems = []
+
+    def _make(*args, **kwargs):
+        system = _FakeAOSystem(*args, **kwargs)
+        systems.append(system)
+        return system
+
+    yield _make
+    for system in systems:
+        system.stop()
+
+
+def test_cold_start_im_matches_warm_im(fake_ao_system):
+    true_im = _true_im()
+    system = fake_ao_system(true_im, startup_delay=0.5).start()
+    loop = loop_mod.Loop(system.loop_config())
+
+    loop.compute_im()  # cold: the corrector ignores commands for 0.5 s
+    cold = loop.im.copy()
+    loop.compute_im()  # warm
+    warm = loop.im.copy()
+
+    np.testing.assert_allclose(cold, true_im, rtol=1e-4, atol=1e-5)
+    np.testing.assert_allclose(cold, warm, rtol=1e-4, atol=1e-5)
+    assert loop.last_round_trip_frames >= 1
+    # compute_im leaves the corrector flat.
+    assert np.array_equal(system.wfc.read(), np.zeros(true_im.shape[1], dtype=np.float32))
+
+
+def test_cold_start_without_round_trip_check_loses_leading_columns(fake_ao_system):
+    """The failure #87 fixes: calibrating before commands land zeroes columns."""
+    true_im = _true_im()
+    system = fake_ao_system(true_im, startup_delay=0.5, frame_period=5e-3).start()
+    loop = loop_mod.Loop(system.loop_config(im_round_trip_check=False))
+
+    loop.compute_im()
+
+    assert np.allclose(loop.im[:, 0], 0.0)
+    assert not np.allclose(loop.im, true_im, atol=1e-3)
+
+
+def test_round_trip_check_times_out_with_a_clear_error(fake_ao_system):
+    system = fake_ao_system(_true_im(), respond=False).start()
+    loop = loop_mod.Loop(system.loop_config())
+
+    with pytest.raises(TimeoutError, match="poke_amp"):
+        loop.check_round_trip(timeout=0.5)
+    loop.im_timeout = 0.5
+    with pytest.raises(TimeoutError, match="DM round-trip check"):
+        loop.compute_im()  # im_round_trip_check defaults to on
+
+
+def test_round_trip_check_tolerates_sensor_noise(fake_ao_system):
+    true_im = _true_im()
+    system = fake_ao_system(true_im, noise=0.02).start()
+    loop = loop_mod.Loop(system.loop_config())
+
+    assert loop.check_round_trip(timeout=10.0) >= 1
+
+
+def test_settle_frames_cover_pipeline_lag(fake_ao_system, caplog):
+    true_im = _true_im()
+    system = fake_ao_system(true_im, lag_frames=3).start()
+    loop = loop_mod.Loop(system.loop_config())
+
+    with caplog.at_level("WARNING", logger="pyrtc"):
+        loop.compute_im()
+    assert "im_settle_frames" in caplog.text
+    assert not np.allclose(loop.im, true_im, atol=1e-3)
+
+    loop.im_settle_frames = 5
+    loop.compute_im()
+    np.testing.assert_allclose(loop.im, true_im, rtol=1e-4, atol=1e-5)
+
+
+def _synchronous_loop(true_im, *, noise=0.0, num_iters_im=1, seed=0, method="push-pull"):
+    """A Loop whose signal is computed on read from the last command (no threads)."""
+    rng = np.random.default_rng(seed)
+    num_signals, num_modes = true_im.shape
+    loop = loop_mod.Loop.__new__(loop_mod.Loop)
+    loop.num_modes = num_modes
+    loop.signal_size = num_signals
+    loop.signal_dtype = np.dtype(np.float32)
+    loop.wfc_dtype = np.dtype(np.float32)
+    loop.flat = np.zeros(num_modes, dtype=np.float32)
+    loop.poke_amp = 0.1
+    loop.num_iters_im = num_iters_im
+    loop.im_settle_frames = 1
+    loop.hardware_delay = 0.0
+    loop.im_timeout = 1.0
+    loop.im_method = method
+    state = {"command": loop.flat.copy(), "frames": 0}
+
+    def _send(correction, slopes=None):
+        state["command"] = np.asarray(correction, dtype=np.float64).copy()
+
+    def _read(name, **_kwargs):
+        state["frames"] += 1
+        return true_im @ state["command"] + rng.normal(0.0, noise, num_signals)
+
+    loop.send_to_wfc = _send
+    loop.read_stream = _read
+    return loop, state
+
+
+@pytest.mark.parametrize("num_modes", [1, 2, 5, 8, 13])
+def test_hadamard_patterns_are_orthogonal(num_modes):
+    patterns = loop_mod.Loop.hadamard_patterns(num_modes)
+    order = patterns.shape[0]
+    assert order >= num_modes and order & (order - 1) == 0
+    assert order < 2 * num_modes or num_modes == 1
+    assert set(np.unique(patterns)) <= {-1.0, 1.0}
+    np.testing.assert_array_equal(patterns.T @ patterns, order * np.eye(num_modes))
+
+
+@pytest.mark.parametrize("num_modes", [6, 8])
+def test_hadamard_im_recovers_noise_free_im(num_modes):
+    true_im = _true_im(num_modes=num_modes)
+    loop, state = _synchronous_loop(true_im)
+
+    loop.hadamard_im()
+
+    np.testing.assert_allclose(loop.im, true_im, rtol=1e-5, atol=1e-5)
+    order = loop.hadamard_patterns(num_modes).shape[0]
+    assert state["frames"] == 2 * order * (loop.im_settle_frames + loop.num_iters_im)
+
+
+def test_hadamard_im_is_less_noisy_than_push_pull_at_equal_frames():
+    true_im = _true_im(num_signals=40, num_modes=16)
+    push_pull, pp_state = _synchronous_loop(true_im, noise=0.1, num_iters_im=4, seed=1)
+    push_pull.push_pull_im()
+    multiplexed, h_state = _synchronous_loop(true_im, noise=0.1, num_iters_im=4, seed=2)
+    multiplexed.hadamard_im()
+
+    assert pp_state["frames"] == h_state["frames"]  # 16 modes -> 16 patterns
+    pp_error = np.sqrt(np.mean((push_pull.im - true_im) ** 2))
+    h_error = np.sqrt(np.mean((multiplexed.im - true_im) ** 2))
+    # White noise drops by sqrt(num_modes) = 4; allow for sampling scatter.
+    assert h_error < 0.5 * pp_error
+
+
+def test_compute_im_dispatches_hadamard_and_rejects_unknown_methods(monkeypatch):
+    true_im = _true_im()
+    loop, _ = _synchronous_loop(true_im, method="Hadamard")
+    loop.im_round_trip_check = True
+    calls = []
+    monkeypatch.setattr(loop, "hadamard_im", lambda: calls.append("hadamard"))
+    monkeypatch.setattr(loop, "check_round_trip", lambda: calls.append("check") or 1)
+    monkeypatch.setattr(loop, "compute_cm", lambda: calls.append("cm"))
+    monkeypatch.setattr(loop, "flatten", lambda: calls.append("flat"))
+
+    loop.compute_im()
+    assert calls == ["check", "hadamard", "flat", "cm"]
+
+    calls.clear()
+    loop.compute_im(round_trip_check=False)
+    assert calls == ["hadamard", "flat", "cm"]
+
+    loop.im_method = "push_pull"
+    with pytest.raises(ValueError, match="Unsupported interaction-matrix method"):
+        loop.compute_im()

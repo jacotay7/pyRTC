@@ -6,6 +6,14 @@ All notable changes to `pyrtcao` will be documented in this file.
 
 ### Fixed
 
+- **Interaction-matrix calibration waits for a live pipeline** (#87).
+	Worker kernels JIT-compile on first use, so right after start-up the first
+	DM command reached the signal about a second late and a cold `compute_im()`
+	recorded zero or smeared IM columns (41% off in the SPECULA example).
+	`compute_im()` now first runs `Loop.check_round_trip()` (flatten, stable
+	frames, poke, response, flatten, return; `im_round_trip_check`,
+	`im_timeout`) and discards `im_settle_frames` frames after each poke. The
+	SPECULA examples use it instead of their own helper.
 - **`manager.latency()` no longer fails at random in soft-RTC mode.**
 	Closing the observer handles raised `cannot close shared memory while
 	another thread owns its lock` when a component thread was mid-write
@@ -141,6 +149,10 @@ All notable changes to `pyrtcao` will be documented in this file.
 
 ### Added
 
+- **Hadamard interaction-matrix calibration** (#102): `im_method: hadamard`
+	pokes all modes at once with +/-`poke_amp` Hadamard patterns and
+	demultiplexes, cutting white sensor noise in the IM by about
+	`sqrt(num_modes)` for the same number of frames.
 - **ALPAO adapter supports any actuator count** (#73). The layout is the
 	smallest centred-disk grid holding the mirror's actuator count (identical
 	to the previous DM97 layout), or an explicit `layout_file`. The SDK is

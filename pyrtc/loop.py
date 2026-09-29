@@ -9,8 +9,10 @@ integrators, and command dispatch all come together here.
 import math
 import numpy as np
 import time
+from collections import deque
 from typing import Any
 from numba import jit
+from scipy.linalg import hadamard
 
 from pyrtc.logging_utils import get_logger
 from pyrtc.manager import launch_component
@@ -121,7 +123,21 @@ class Loop(Component):
     delay : int, optional
         Delay for corrections. Default is 0.
     im_method : str, optional
-        Method for interaction matrix computation. Default is "push-pull".
+        Interaction-matrix calibration method: ``push-pull`` (one mode at a
+        time), ``hadamard`` (multiplexed push-pull over Hadamard patterns) or
+        ``docrime``. Default is "push-pull".
+    im_settle_frames : int, optional
+        Signal frames discarded after each calibration poke before averaging,
+        so frames exposed while the corrector was still moving are not used.
+        Default is 1.
+    im_round_trip_check : bool, optional
+        Run :meth:`check_round_trip` before :meth:`compute_im` calibrates, so
+        calibration only starts once a DM command visibly reaches the signal.
+        Default is True.
+    im_timeout : float, optional
+        Seconds :meth:`check_round_trip` may take, and the longest wait for
+        any single signal frame during push-pull or Hadamard calibration.
+        Default is 30.0.
     im_file : str, optional
         File to save the interaction matrix. Default is "".
     p_gain : float, optional
@@ -192,7 +208,15 @@ class Loop(Component):
     delay : int
         Delay for corrections.
     im_method : str
-        Method for interaction matrix computation.
+        Method for interaction matrix computation (lower case).
+    im_settle_frames : int
+        Frames discarded after each calibration poke.
+    im_round_trip_check : bool
+        Whether :meth:`compute_im` runs :meth:`check_round_trip` first.
+    im_timeout : float
+        Round-trip check budget and per-frame calibration timeout, in seconds.
+    last_round_trip_frames : int or None
+        Frame lag measured by the last :meth:`check_round_trip`.
     im_file : str
         File to save the interaction matrix.
     p_gain : float
@@ -227,6 +251,10 @@ class Loop(Component):
     control_output : numpy.ndarray
         Control output.
     """
+
+    SUPPORTED_IM_METHODS = ("push-pull", "hadamard", "docrime")
+    # Frames that must agree before check_round_trip treats the signal as settled.
+    _ROUND_TRIP_WINDOW = 5
 
     def __init__(self, conf) -> None:
         """
@@ -312,7 +340,15 @@ class Loop(Component):
             self.poke_amp = set_from_config(self.conf, "poke_amp", 1e-2)
             self.num_iters_im = set_from_config(self.conf, "num_iters_im", 100)
             self.delay = set_from_config(self.conf, "delay", 0)
-            self.im_method = set_from_config(self.conf, "im_method", "push-pull")
+            self.im_method = self._validate_im_method(
+                set_from_config(self.conf, "im_method", "push-pull")
+            )
+            self.im_settle_frames = int(set_from_config(self.conf, "im_settle_frames", 1))
+            if self.im_settle_frames < 0:
+                raise ValueError("im_settle_frames must be >= 0")
+            self.im_round_trip_check = bool(set_from_config(self.conf, "im_round_trip_check", True))
+            self.im_timeout = float(set_from_config(self.conf, "im_timeout", 30.0))
+            self.last_round_trip_frames = None
             self.im_file = set_from_config(self.conf, "im_file", "")
             self.cm_method = str(set_from_config(self.conf, "cm_method", "svd")).lower()
             conditioning = set_from_config(self.conf, "conditioning", None)
@@ -407,45 +443,259 @@ class Loop(Component):
             raise
         return
 
+    @classmethod
+    def _validate_im_method(cls, method) -> str:
+        normalized = str(method).lower()
+        if normalized not in cls.SUPPORTED_IM_METHODS:
+            raise ValueError(
+                f"Unsupported interaction-matrix method {method!r}; "
+                f"expected one of {cls.SUPPORTED_IM_METHODS}"
+            )
+        return normalized
+
+    def _next_signal(self, deadline=None, what="a new signal frame"):
+        """Consume the next signal frame as a flat float64 vector.
+
+        Waits at most until ``deadline`` (a ``time.monotonic()`` value), or
+        :attr:`im_timeout` seconds when no deadline is given, and raises
+        ``TimeoutError`` naming ``what`` was awaited.
+        """
+
+        if deadline is None:
+            timeout = self.im_timeout
+        else:
+            timeout = deadline - time.monotonic()
+        if timeout <= 0:
+            raise TimeoutError(f"timed out waiting for {what}")
+        try:
+            frame = self.read_stream("signal", timeout=timeout)
+        except TimeoutError as exc:
+            raise TimeoutError(f"timed out after {timeout:.1f}s waiting for {what}") from exc
+        if hasattr(frame, "detach"):  # GPU-attached signal stream (torch tensor)
+            frame = frame.detach().cpu().numpy()
+        return np.asarray(frame, dtype=np.float64).ravel()
+
+    @staticmethod
+    def _rms(vector) -> float:
+        return float(np.sqrt(np.mean(np.square(vector)))) if vector.size else 0.0
+
+    def _wait_for_stable_signal(self, deadline, what):
+        """Read until the last few signal frames agree; return their mean and noise.
+
+        A window of frames is *stable* when no frame strays from the window
+        mean by more than three times the median frame-to-frame change. The
+        test is relative to the sensor's own noise, so it works for noisy
+        sensors and for noise-free simulations alike, and rejects a window
+        that contains a step (for example a DM command landing).
+        """
+
+        frames = deque(maxlen=self._ROUND_TRIP_WINDOW)
+        while True:
+            frames.append(self._next_signal(deadline, what))
+            if len(frames) < frames.maxlen:
+                continue
+            stack = np.stack(frames)
+            mean = stack.mean(axis=0)
+            noise = float(np.median([self._rms(b - a) for a, b in zip(stack[:-1], stack[1:])]))
+            spread = max(self._rms(frame - mean) for frame in stack)
+            if spread <= 3.0 * noise + 1e-9 * self._rms(mean):
+                return mean, noise
+
+    def _round_trip_pattern(self) -> np.ndarray:
+        """Fixed +/-``poke_amp`` pattern over every mode used by :meth:`check_round_trip`."""
+
+        signs = np.random.default_rng(87).choice((-1.0, 1.0), size=self.num_modes)
+        return (self.flat + self.poke_amp * signs).astype(self.wfc_dtype)
+
+    def check_round_trip(self, timeout=None):
+        """Verify that a corrector command reaches the measured signal.
+
+        Worker kernels JIT-compile on first use, so right after start-up the
+        first DM command can take about a second to reach the signal stream.
+        Calibrating in that window records zero or smeared IM columns. This
+        check flattens the corrector, waits for stable frames, pokes every mode
+        by +/-``poke_amp`` (a fixed sign pattern, the same per-mode amplitude
+        a Hadamard calibration uses), waits for the signal to move and settle,
+        flattens again, and waits for the signal to return. Transient frames
+        (such as a stale frame from before the pipeline started) make it retry
+        the cycle until ``timeout``.
+
+        :meth:`compute_im` runs this first when ``im_round_trip_check`` is
+        true (the default). Call it directly before steps that need the live
+        pipeline but do not poke, such as taking reference slopes.
+
+        Parameters
+        ----------
+        timeout : float, optional
+            Seconds to allow in total. Defaults to ``im_timeout``.
+
+        Returns
+        -------
+        int
+            Frames read after the flattening command up to and including the
+            first one that shows it (1 means the next frame already did). Also
+            stored on :attr:`last_round_trip_frames`.
+
+        Raises
+        ------
+        TimeoutError
+            If the signal never responds to the poke (``poke_amp`` too small to
+            measure, corrector or sensor not running), never settles, or never
+            returns to the flat-DM signal within ``timeout``.
+        """
+
+        component_logger = getattr(self, "logger", logger)
+        timeout = self.im_timeout if timeout is None else float(timeout)
+        if self.poke_amp <= 0:
+            raise ValueError("poke_amp must be positive to check the DM round trip")
+        deadline = time.monotonic() + timeout
+        poke = self._round_trip_pattern()
+
+        try:
+            self.flatten()
+            # The first blocking read can return a payload published before the
+            # flat command (or before the producer ever ran); drop it.
+            self._next_signal(deadline, "a signal frame (is the WFS/slopes pipeline running?)")
+            attempt = 0
+            while True:
+                attempt += 1
+                baseline, noise = self._wait_for_stable_signal(
+                    deadline, "the signal to settle on the flat DM"
+                )
+                threshold = max(3.0 * noise, 1e-6 * self._rms(baseline), 1e-12)
+
+                self.send_to_wfc(poke)
+                response_frames = 0
+                while True:
+                    signal = self._next_signal(
+                        deadline,
+                        f"the signal to respond to a DM poke of +/-{self.poke_amp} on every mode "
+                        "(is poke_amp large enough to measure, and are the corrector and "
+                        "sensor running?)",
+                    )
+                    response_frames += 1
+                    if self._rms(signal - baseline) <= threshold:
+                        continue
+                    poked, _ = self._wait_for_stable_signal(
+                        deadline, "the signal to settle on the poked DM"
+                    )
+                    # A single noisy frame is not a response; the settled level must move.
+                    if self._rms(poked - baseline) > threshold:
+                        break
+                direction = poked - baseline
+                amplitude_sq = float(np.dot(direction, direction))
+
+                self.flatten()
+                limit = max(50, 2 * response_frames)
+                for frames in range(1, limit + 1):
+                    signal = self._next_signal(
+                        deadline, "the signal to return to its flat-DM value"
+                    )
+                    # Closer to the flat level than to the poked level.
+                    if np.dot(signal - baseline, direction) < 0.5 * amplitude_sq:
+                        # Leave the pipeline settled for whatever reads next
+                        # (reference slopes, calibration).
+                        self._wait_for_stable_signal(
+                            deadline, "the signal to settle back on the flat DM"
+                        )
+                        self.last_round_trip_frames = frames
+                        component_logger.info(
+                            "DM round trip confirmed: poke seen after %s frame(s), flat after %s "
+                            "frame(s) (attempt %s)",
+                            response_frames,
+                            frames,
+                            attempt,
+                        )
+                        return frames
+                component_logger.warning(
+                    "Signal did not return to its flat-DM value within %s frames after a DM "
+                    "round-trip poke; retrying",
+                    limit,
+                )
+        except TimeoutError as exc:
+            raise TimeoutError(
+                f"DM round-trip check did not complete within {timeout:.1f}s: {exc}"
+            ) from exc
+
+    def _average_signal(self, correction):
+        """Send ``correction``, drop ``im_settle_frames`` frames, and average ``num_iters_im``."""
+
+        self.send_to_wfc(np.asarray(correction, dtype=self.wfc_dtype))
+        if self.hardware_delay > 0:
+            time.sleep(self.hardware_delay)
+        for _ in range(self.im_settle_frames):
+            self._next_signal(what="a calibration frame")
+        total = np.zeros(self.signal_size, dtype=np.float64)
+        for _ in range(self.num_iters_im):
+            total += self._next_signal(what="a calibration frame")
+        return total / self.num_iters_im
+
+    def _push_pull_response(self, pattern):
+        """Signal response per unit command to ``pattern`` (push minus pull)."""
+
+        delta = self.poke_amp * np.asarray(pattern, dtype=np.float64)
+        plus = self._average_signal(self.flat + delta)
+        minus = self._average_signal(self.flat - delta)
+        return (plus - minus) / (2.0 * self.poke_amp)
+
     def push_pull_im(self):
         """
         Compute the interaction matrix using the push-pull method.
+
+        Each mode is poked to ``+poke_amp`` and ``-poke_amp`` in turn. After
+        each poke ``im_settle_frames`` frames are discarded and ``num_iters_im``
+        frames are averaged; the IM column is the difference over
+        ``2 * poke_amp``.
         """
-        # For each mode
+        if self.poke_amp <= 0:
+            raise ValueError("poke_amp must be positive for push-pull calibration")
+        im = np.zeros((self.signal_size, self.num_modes), dtype=np.float64)
         for i in range(self.num_modes):
-            # Reset the correction
-            correction = self.flat.copy()
-            # Plus amplitude
-            correction[i] = self.poke_amp
-            # Post a new shape to be made
-            self.send_to_wfc(correction)
-            # Add some delay to ensure one-to-one
-            time.sleep(self.hardware_delay)
-            # Burn the first new image since we were moving the DM during the exposure
-            self.read_stream("signal")
-            # Average out N new WFS frames
-            tmp_plus = np.zeros_like(self.im[:, i])
-            for n in range(self.num_iters_im):
-                tmp_plus += self.read_stream("signal")
-            tmp_plus /= self.num_iters_im
+            pattern = np.zeros(self.num_modes, dtype=np.float64)
+            pattern[i] = 1.0
+            im[:, i] = self._push_pull_response(pattern)
+        self.im = im.astype(self.signal_dtype)
+        return
 
-            # Minus amplitude
-            correction[i] = -self.poke_amp
-            # Post a new shape to be made
-            self.send_to_wfc(correction)
-            # Add some delay to ensure one-to-one
-            time.sleep(self.hardware_delay)
-            # Burn the first new image since we were moving the DM during the exposure
-            self.read_stream("signal")
-            # Average out N new WFS frames
-            tmp_minus = np.zeros_like(self.im[:, i])
-            for n in range(self.num_iters_im):
-                tmp_minus += self.read_stream("signal")
-            tmp_minus /= self.num_iters_im
+    @staticmethod
+    def hadamard_patterns(num_modes: int) -> np.ndarray:
+        """Return the +/-1 poke patterns used by :meth:`hadamard_im`.
 
-            # Compute the normalized difference
-            self.im[:, i] = (tmp_plus - tmp_minus) / (2 * self.poke_amp)
+        The patterns are the rows of the Sylvester Hadamard matrix of order
+        ``N``, the next power of two at or above ``num_modes``, truncated to
+        the first ``num_modes`` columns. The result has shape
+        ``(N, num_modes)`` and orthogonal columns (``P.T @ P == N * I``), so
+        responses to the patterns demultiplex exactly into per-mode columns.
+        """
 
+        num_modes = int(num_modes)
+        if num_modes < 1:
+            raise ValueError("num_modes must be positive")
+        order = 1 << (num_modes - 1).bit_length()
+        return hadamard(order).astype(np.float64)[:, :num_modes]
+
+    def hadamard_im(self):
+        """
+        Compute the interaction matrix with multiplexed (Hadamard) push-pull.
+
+        Every mode is poked at once with the +/-``poke_amp`` sign patterns
+        from :meth:`hadamard_patterns` (``N`` patterns, ``N`` the next power of
+        two at or above the number of modes), each measured with push-pull
+        like :meth:`push_pull_im`. The pattern responses ``S`` are
+        demultiplexed as ``IM = S @ P / N``. For the same number of frames
+        this averages each IM column over every measurement, cutting white
+        measurement noise by about ``sqrt(num_modes)`` compared with
+        push-pull. Every pattern moves all modes, so choose ``poke_amp`` small
+        enough that the sensor stays linear for the combined shape.
+        """
+        if self.poke_amp <= 0:
+            raise ValueError("poke_amp must be positive for Hadamard calibration")
+        patterns = self.hadamard_patterns(self.num_modes)
+        responses = np.zeros((self.signal_size, patterns.shape[0]), dtype=np.float64)
+        for k, pattern in enumerate(patterns):
+            responses[:, k] = self._push_pull_response(pattern)
+        im = responses @ patterns / patterns.shape[0]
+        self.im = im.astype(self.signal_dtype)
         return
 
     def docrime_im(self):
@@ -498,17 +748,50 @@ class Loop(Component):
 
         return
 
-    def compute_im(self):
+    def compute_im(self, round_trip_check=None):
         """
-        Compute the interaction matrix using the specified method. Method specified using im_method, default is push-pull.
+        Compute the interaction matrix using the configured ``im_method``.
+
+        ``push-pull`` (default) pokes one mode at a time, ``hadamard`` pokes
+        Hadamard patterns over all modes and demultiplexes, and ``docrime``
+        correlates random commands with the signal. Unless disabled,
+        :meth:`check_round_trip` runs first so calibration only starts once
+        the pipeline is live. The corrector is flattened afterwards and the
+        control matrix is recomputed.
+
+        Parameters
+        ----------
+        round_trip_check : bool, optional
+            Override ``im_round_trip_check`` for this call.
         """
         component_logger = getattr(self, "logger", logger)
         try:
-            component_logger.info("Computing interaction matrix using method=%s", self.im_method)
-            if self.im_method == "docrime":
-                self.docrime_im()
-            else:
-                self.push_pull_im()
+            method = self._validate_im_method(self.im_method)
+            check = self.im_round_trip_check if round_trip_check is None else round_trip_check
+            if check:
+                frames = self.check_round_trip()
+                if method != "docrime" and frames - 1 > self.im_settle_frames:
+                    component_logger.warning(
+                        "The DM round trip took %s frames but im_settle_frames=%s; the first "
+                        "averaged frames after each poke may predate it. Consider "
+                        "im_settle_frames >= %s.",
+                        frames,
+                        self.im_settle_frames,
+                        frames - 1,
+                    )
+            component_logger.info("Computing interaction matrix using method=%s", method)
+            try:
+                if method == "docrime":
+                    self.docrime_im()
+                elif method == "hadamard":
+                    self.hadamard_im()
+                else:
+                    self.push_pull_im()
+            finally:
+                try:
+                    self.flatten()
+                except Exception:
+                    component_logger.exception("Failed to flatten after calibration")
 
             self.compute_cm()
         except Exception:

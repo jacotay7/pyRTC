@@ -133,12 +133,24 @@ def validate_loop_config(conf: Any) -> None:
     _validate_optional_numeric(conf, "hardware_delay", component, minimum=0)
     _validate_optional_numeric(conf, "poke_amp", component, minimum=0)
     _validate_optional_numeric(conf, "num_iters_im", component, minimum=1)
+    _validate_optional_numeric(conf, "im_settle_frames", component, minimum=0)
+    _validate_optional_numeric(conf, "im_timeout", component, minimum=0)
     _validate_optional_numeric(conf, "delay", component, minimum=0)
     _validate_optional_numeric(conf, "p_gain", component)
     _validate_optional_numeric(conf, "i_gain", component)
     _validate_optional_numeric(conf, "d_gain", component)
     _validate_optional_numeric(conf, "derivative_filter", component)
     _validate_optional_numeric(conf, "tikhonov_reg", component, minimum=0)
+
+    if "im_method" in conf:
+        value = conf["im_method"]
+        supported = ("push-pull", "hadamard", "docrime")  # Loop.SUPPORTED_IM_METHODS
+        if not isinstance(value, str) or value.lower() not in supported:
+            raise ConfigValidationError(
+                f"{component}: 'im_method' must be one of {list(supported)}, got {value!r}"
+            )
+    if "im_round_trip_check" in conf and not isinstance(conf["im_round_trip_check"], bool):
+        raise ConfigValidationError(f"{component}: 'im_round_trip_check' must be a boolean")
 
     if "cm_method" in conf:
         value = conf["cm_method"]
