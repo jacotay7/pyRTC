@@ -14,6 +14,13 @@ Install the project from PyPI as `pyrtcao`:
 
 	pip install pyrtcao
 
+.. warning::
+
+   An unrelated WebRTC library is published on PyPI as ``pyrtc`` and also
+   installs a top-level ``pyrtc`` module. Install this project as
+   ``pyrtcao`` (``pip install pyrtc`` gets the WebRTC library) and don't
+   install both in the same environment.
+
 Import it in Python as `pyrtc`:
 
 .. code-block:: python

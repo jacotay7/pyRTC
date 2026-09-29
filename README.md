@@ -13,6 +13,11 @@ pip install pyrtcao
 import pyrtc
 ```
 
+> **Name clash:** an unrelated WebRTC library is published on PyPI as `pyrtc` and
+> also installs a top-level `pyrtc` module. Install this project as **`pyrtcao`**
+> (`pip install pyrtc` gets the WebRTC library), and don't install both in the
+> same environment: they overwrite each other's `pyrtc` package.
+
 Documentation: [https://pyrtc-ao.readthedocs.io/en/latest/](https://pyrtc-ao.readthedocs.io/en/latest/)
 
 Developer Guide: [https://pyrtc-ao.readthedocs.io/en/latest/guides/developers_guide.html](https://pyrtc-ao.readthedocs.io/en/latest/guides/developers_guide.html)
@@ -106,7 +111,7 @@ The project is designed for:
 - PyPI distribution name: `pyrtcao`
 - Python import name: `pyrtc`
 - CLI prefix: `pyrtc-*`
-- Primary supported release surface: Linux, Python 3.9-3.14
+- Primary supported release surface: Linux, Python 3.10-3.14
 - macOS and Windows: smoke-tested in GitHub Actions, but not part of the primary supported deployment story
 - Windows: soft-RTC only — Windows named shared memory is freed when the last handle closes, so streams do not survive their producer process and hard-RTC restart/reattach flows are unsupported there
 - GPU behavior: benchmark-validated on a Linux CUDA host for synthetic loop workloads, but still target-environment validation required for operational use

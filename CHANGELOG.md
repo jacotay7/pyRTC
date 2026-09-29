@@ -277,6 +277,10 @@ All notable changes to `pyrtcao` will be documented in this file.
 
 ### Changed
 
+- **Python 3.9 is no longer supported** (end of life since October 2025);
+	pyrtc requires Python 3.10 or newer.
+- The README and getting-started guide warn about the unrelated WebRTC
+	`pyrtc` package on PyPI, which installs the same import name (#52).
 - **The manager GUI and viewer run on Qt6 instead of PyQt5** (#51).
 	Qt5 reached end of life in 2025. `pyrtc-manager-gui` and `pyrtc-view`
 	now import Qt through `qtpy` and work with PySide6 or PyQt6; the `gui`
