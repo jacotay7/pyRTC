@@ -89,3 +89,29 @@ def test_missing_optional_extra_names_the_extra(monkeypatch):
         load_data("frame.fits")
     with pytest.raises(ImportError, match=r"pyrtcao\[optimize\]"):
         require_optional("pyrtc_no_such_module", "optimize", "Test feature")
+
+
+def test_import_pyrtc_keeps_the_gil_disabled_on_free_threaded_python():
+    """On a free-threaded build, no core import may turn the GIL back on (#66).
+
+    A C extension that does not declare free-threading support re-enables the
+    GIL process-wide when imported (astropy's erfa does), which would bring
+    back the thread contention the build removes.
+    """
+    import subprocess
+    import sys
+    import sysconfig
+
+    import pytest
+
+    if not sysconfig.get_config_var("Py_GIL_DISABLED"):
+        pytest.skip("not a free-threaded Python build")
+    code = (
+        "import sys, pyrtc, pyrtc.manager, pyrtc.loop, pyrtc.slopes_process, "
+        "pyrtc.wavefront_sensor, pyrtc.wavefront_corrector; print(sys._is_gil_enabled())"
+    )
+    env = {key: value for key, value in __import__("os").environ.items() if key != "PYTHON_GIL"}
+    out = subprocess.run(
+        [sys.executable, "-c", code], capture_output=True, text=True, env=env, check=True
+    )
+    assert out.stdout.strip() == "False", out.stderr

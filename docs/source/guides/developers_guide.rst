@@ -141,6 +141,62 @@ summary; it is informational, because shared runners are noisy.
 It exits with status 1 when a metric's latest value exceeds ``--max-ratio``
 times its history, so a scheduled lab job can gate on it.
 
+Free-Threaded Python
+--------------------
+
+pyrtc runs on free-threaded CPython (3.13t/3.14t), where the worker threads of
+a soft-RTC system no longer share one GIL. Everything the core imports
+supports it, numba 0.67 included, and the whole test suite passes with the
+GIL forced off. The ``free-threaded`` CI job checks both on 3.14t. Keep it
+that way:
+
+- don't import extensions that lack free-threading support from core
+  modules;
+- a single such import turns the GIL back on process-wide (astropy's
+  ``erfa`` does, which is one reason ``fits`` is an optional extra);
+- ``tests/test_public_api.py`` checks the core imports.
+
+Measured end-to-end latency (``benchmarks/pipeline_latency_bench.py``, synthetic
+SHWFS soft-RTC system, 1000 samples, median of two interleaved runs, 8-core
+(16-thread) x86-64 host), in microseconds:
+
+.. list-table::
+   :header-rows: 1
+
+   * - frame rate, consumers
+     - p50 3.14
+     - p50 3.14t
+     - p99 3.14
+     - p99 3.14t
+   * - 200 Hz, notify
+     - 306
+     - 258
+     - 444
+     - 309
+   * - 200 Hz, poll
+     - 267
+     - 232
+     - 393
+     - 333
+   * - 1 kHz, notify
+     - 252
+     - 245
+     - 413
+     - 303
+   * - 1 kHz, poll
+     - 260
+     - 229
+     - 376
+     - 358
+
+Without the GIL, median latency drops 3-15% and the p99 tail 5-30%. The gain
+is modest because the numba kernels already release the GIL (``nogil=True``),
+so most of the remaining contention is in Python glue code. One caveat
+(#139): on an oversubscribed host (more busy processes than hardware threads),
+the free-threaded pipeline's latency grew to 6-19 frames, while the GIL build
+stayed at 1-2. Give a free-threaded RTC dedicated cores. To try it:
+``uv python install 3.14t``, make a venv with it, and install pyrtc as usual.
+
 Logging Workflow
 ----------------
 

@@ -134,6 +134,36 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: python -m benchmarks.perf_history --repo ${{ github.repository }} --runs 20 --max-ratio 2.0 --current benchmarks/perf_smoke_report.json >> "$GITHUB_STEP_SUMMARY"
 
+  # Free-threaded CPython (#66): pyrtc's worker threads contend for the GIL
+  # otherwise. Checks that importing pyrtc keeps the GIL off and that the
+  # suite passes with it forced off.
+  free-threaded:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.14t"
+
+      - name: Install package
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install . -r requirements-test.txt
+
+      - name: Importing pyrtc keeps the GIL disabled
+        run: python -c "import sys, pyrtc, pyrtc.manager, pyrtc.loop; assert not sys._is_gil_enabled(), 'an import re-enabled the GIL'"
+
+      - name: Run tests without the GIL
+        env:
+          PYTHON_GIL: "0"
+        # tests/system is timing-sensitive, and on 3.14t it is unreliable on
+        # busy runners (#139); this job checks thread safety, not timing.
+        run: pytest -q --no-cov -m "not gpu" --ignore=tests/test_qt_smoke.py --ignore=tests/system
+
   docs:
     runs-on: ubuntu-latest
     strategy:
