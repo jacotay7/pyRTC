@@ -8,18 +8,23 @@ display controls rather than any AO-specific signal processing.
 
 from dataclasses import dataclass
 import logging
-from types import SimpleNamespace
 
 import numpy as np
 from matplotlib.colors import LogNorm, Normalize
+from matplotlib.figure import Figure
+
+from pyrtc.qt_compat import require_qt6, unavailable_qt_class
+
+_VIEWER_INSTALL_HINT = (
+    "pyrtc-view requires viewer dependencies (qtpy and a Qt6 binding). "
+    "Install with: pip install pyrtcao[viewer]"
+)
 
 try:
-    from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
-    from matplotlib.figure import Figure
-    from PyQt5.QtCore import Qt, QTimer
-    from PyQt5.QtGui import QKeySequence
-    from PyQt5.QtWidgets import (
-        QAction,
+    require_qt6()
+    from qtpy.QtCore import Qt, QTimer
+    from qtpy.QtGui import QAction, QKeySequence
+    from qtpy.QtWidgets import (
         QApplication,
         QFrame,
         QGridLayout,
@@ -36,43 +41,18 @@ try:
         QWidget,
     )
 
+    # Import after qtpy so matplotlib reuses the binding qtpy selected.
+    from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
+
     _VIEWER_BACKEND_IMPORT_ERROR = None
 except ImportError as exc:
     _VIEWER_BACKEND_IMPORT_ERROR = exc
-
-    class _QtUnavailableBase:
-        def __init__(self, *args, **kwargs):
-            raise ImportError(
-                "pyrtc-view requires viewer dependencies. Install with: pip install pyrtc[viewer]"
-            ) from _VIEWER_BACKEND_IMPORT_ERROR
-
-    class _UnavailableQSizePolicy:
-        Expanding = 0
-        Fixed = 0
-
-    class _UnavailableQKeySequence:
-        ZoomIn = "Ctrl++"
-        ZoomOut = "Ctrl+-"
-
-    FigureCanvas = _QtUnavailableBase
-    Figure = _QtUnavailableBase
-    QAction = QApplication = QFrame = QGridLayout = QHBoxLayout = QInputDialog = QLabel = (
-        QMainWindow
-    ) = QMenu = (  # type: ignore[assignment]
-        QPushButton
-    ) = QScrollArea = QToolButton = QVBoxLayout = QWidget = QTimer = _QtUnavailableBase
-    QSizePolicy = _UnavailableQSizePolicy()
-    QKeySequence = _UnavailableQKeySequence
-    Qt = SimpleNamespace(
-        AlignCenter=0,
-        AlignVCenter=0,
-        AlignHCenter=0,
-        AlignLeft=0,
-        RichText=0,
-        ScrollBarAsNeeded=0,
-        PreciseTimer=0,
-        WidgetWithChildrenShortcut=0,
-    )
+    _QtUnavailable = unavailable_qt_class(_VIEWER_INSTALL_HINT, exc)
+    FigureCanvas = QAction = QApplication = QFrame = QGridLayout = QHBoxLayout = QInputDialog = (
+        QKeySequence
+    ) = QLabel = QMainWindow = QMenu = QPushButton = QScrollArea = QSizePolicy = QToolButton = (
+        QVBoxLayout
+    ) = QWidget = QTimer = Qt = _QtUnavailable
 
 from .viewer_helpers import (
     StreamConnection,
@@ -134,9 +114,7 @@ THEMES = {
 
 def _require_viewer_backend() -> None:
     if _VIEWER_BACKEND_IMPORT_ERROR is not None:
-        raise ImportError(
-            "pyrtc-view requires viewer dependencies. Install with: pip install pyrtc[viewer]"
-        ) from _VIEWER_BACKEND_IMPORT_ERROR
+        raise ImportError(_VIEWER_INSTALL_HINT) from _VIEWER_BACKEND_IMPORT_ERROR
 
 
 class AddPlotPlaceholder(QFrame):
@@ -151,8 +129,8 @@ class AddPlotPlaceholder(QFrame):
         self.apply_theme(self.theme)
 
     def _build_ui(self):
-        self.setFrameShape(QFrame.StyledPanel)
-        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.setFrameShape(QFrame.Shape.StyledPanel)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(16, 16, 16, 16)
         layout.setSpacing(10)
@@ -162,7 +140,7 @@ class AddPlotPlaceholder(QFrame):
         self.add_button.clicked.connect(self.add_callback)
         layout.addWidget(self.add_button)
         self.label = QLabel("Add SHM")
-        self.label.setAlignment(Qt.AlignCenter)
+        self.label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self.label)
         layout.addStretch(1)
 
@@ -190,19 +168,19 @@ class UnavailableStreamPlaceholder(QFrame):
         self.apply_theme(self.theme)
 
     def _build_ui(self):
-        self.setFrameShape(QFrame.StyledPanel)
-        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.setFrameShape(QFrame.Shape.StyledPanel)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(16, 16, 16, 16)
         layout.setSpacing(10)
         layout.addStretch(1)
 
         self.title_label = QLabel(self.shm_name)
-        self.title_label.setAlignment(Qt.AlignCenter)
+        self.title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self.title_label)
 
         self.status_label = QLabel("Stream unavailable")
-        self.status_label.setAlignment(Qt.AlignCenter)
+        self.status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self.status_label)
 
         self.retry_button = QPushButton("Reconnect")
@@ -291,8 +269,8 @@ class Stream2DWidget(QFrame):
         self.refresh(force_draw=True)
 
     def _build_ui(self, frame):
-        self.setFrameShape(QFrame.StyledPanel)
-        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.setFrameShape(QFrame.Shape.StyledPanel)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
         outer_layout = QVBoxLayout(self)
         outer_layout.setContentsMargins(10, 10, 10, 10)
@@ -302,12 +280,12 @@ class Stream2DWidget(QFrame):
         header_layout.setContentsMargins(0, 0, 0, 0)
 
         self.title_label = QLabel(self.connection.display_name)
-        self.title_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        self.title_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         header_layout.addWidget(self.title_label)
 
         self.settings_button = QToolButton()
         self.settings_button.setText("Settings")
-        self.settings_button.setPopupMode(QToolButton.InstantPopup)
+        self.settings_button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
         self.settings_menu = QMenu(self)
         self.settings_button.setMenu(self.settings_menu)
         header_layout.addWidget(self.settings_button)
@@ -318,8 +296,8 @@ class Stream2DWidget(QFrame):
         self.axes = self.figure.add_subplot(111)
         self.axes.set_anchor("C")
         self.canvas = FigureCanvas(self.figure)
-        self.canvas.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        outer_layout.addWidget(self.canvas, stretch=1, alignment=Qt.AlignCenter)
+        self.canvas.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        outer_layout.addWidget(self.canvas, stretch=1, alignment=Qt.AlignmentFlag.AlignCenter)
 
         vmin, vmax = self._resolve_color_limits(frame)
         self.image = self.axes.imshow(
@@ -342,27 +320,27 @@ class Stream2DWidget(QFrame):
         stats_layout.setSpacing(8)
         fixed_width = 132
         self.min_label = QLabel("")
-        self.min_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        self.min_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         self.min_label.setFixedWidth(fixed_width)
-        self.min_label.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        self.min_label.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         self.min_label.setVisible(self.show_range)
-        stats_layout.addWidget(self.min_label, alignment=Qt.AlignLeft)
+        stats_layout.addWidget(self.min_label, alignment=Qt.AlignmentFlag.AlignLeft)
         stats_layout.addStretch(1)
 
         self.status_label = QLabel("")
-        self.status_label.setAlignment(Qt.AlignCenter)
+        self.status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.status_label.setFixedWidth(fixed_width)
-        self.status_label.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        self.status_label.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         self.status_label.setVisible(self.show_stats)
-        stats_layout.addWidget(self.status_label, alignment=Qt.AlignCenter)
+        stats_layout.addWidget(self.status_label, alignment=Qt.AlignmentFlag.AlignCenter)
         stats_layout.addStretch(1)
 
         self.max_label = QLabel("")
-        self.max_label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        self.max_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
         self.max_label.setFixedWidth(fixed_width)
-        self.max_label.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        self.max_label.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         self.max_label.setVisible(self.show_range)
-        stats_layout.addWidget(self.max_label, alignment=Qt.AlignRight)
+        stats_layout.addWidget(self.max_label, alignment=Qt.AlignmentFlag.AlignRight)
         outer_layout.addLayout(stats_layout)
 
         self._build_settings_menu()
@@ -639,7 +617,7 @@ class MosaicViewerWindow(QMainWindow):
 
         self.settings_button = QToolButton()
         self.settings_button.setText("Settings")
-        self.settings_button.setPopupMode(QToolButton.InstantPopup)
+        self.settings_button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
         self.settings_menu = QMenu(self)
         self.settings_button.setMenu(self.settings_menu)
         toolbar_layout.addWidget(self.settings_button)
@@ -648,8 +626,8 @@ class MosaicViewerWindow(QMainWindow):
 
         self.scroll_area = QScrollArea()
         self.scroll_area.setWidgetResizable(True)
-        self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-        self.scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         root_layout.addWidget(self.scroll_area, stretch=1)
 
         self.grid_host = QWidget()
@@ -671,7 +649,7 @@ class MosaicViewerWindow(QMainWindow):
         center_layout.addWidget(self.grid_frame, stretch=1)
         self.add_column_button = EdgeArrowButton("▶", self.add_column)
         self.add_column_button.setToolTip("Add column")
-        center_layout.addWidget(self.add_column_button, alignment=Qt.AlignVCenter)
+        center_layout.addWidget(self.add_column_button, alignment=Qt.AlignmentFlag.AlignVCenter)
         host_layout.addLayout(center_layout)
 
         bottom_layout = QHBoxLayout()
@@ -679,7 +657,7 @@ class MosaicViewerWindow(QMainWindow):
         bottom_layout.addStretch(1)
         self.add_row_button = EdgeArrowButton("▼", self.add_row)
         self.add_row_button.setToolTip("Add row")
-        bottom_layout.addWidget(self.add_row_button, alignment=Qt.AlignHCenter)
+        bottom_layout.addWidget(self.add_row_button, alignment=Qt.AlignmentFlag.AlignHCenter)
         bottom_layout.addStretch(1)
         host_layout.addLayout(bottom_layout)
 
@@ -698,7 +676,7 @@ class MosaicViewerWindow(QMainWindow):
         self.apply_theme(self.theme_name)
 
         self.timer = QTimer(self)
-        self.timer.setTimerType(Qt.PreciseTimer)
+        self.timer.setTimerType(Qt.TimerType.PreciseTimer)
         self.timer.timeout.connect(self.refresh_panels)
         self.timer.start(max(1, 1000 // self.fps))
 
@@ -734,27 +712,27 @@ class MosaicViewerWindow(QMainWindow):
         self.theme_action = QAction(f"Theme: {self.theme_name.title()}", self)
         self.theme_action.setShortcut(QKeySequence("Ctrl+T"))
         self.theme_action.triggered.connect(self.toggle_theme)
-        self.theme_action.setShortcutContext(Qt.WidgetWithChildrenShortcut)
+        self.theme_action.setShortcutContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
         self.addAction(self.theme_action)
         self._registered_actions.append(self.theme_action)
         self.settings_menu.addAction(self.theme_action)
 
         self.increase_font_action = QAction("Increase Font Size", self)
-        self.increase_font_action.setShortcut(QKeySequence.ZoomIn)
+        self.increase_font_action.setShortcut(QKeySequence.StandardKey.ZoomIn)
         self.increase_font_action.triggered.connect(
             lambda: self.set_font_size(min(22, self.font_size + 1))
         )
-        self.increase_font_action.setShortcutContext(Qt.WidgetWithChildrenShortcut)
+        self.increase_font_action.setShortcutContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
         self.addAction(self.increase_font_action)
         self._registered_actions.append(self.increase_font_action)
         self.settings_menu.addAction(self.increase_font_action)
 
         self.decrease_font_action = QAction("Decrease Font Size", self)
-        self.decrease_font_action.setShortcut(QKeySequence.ZoomOut)
+        self.decrease_font_action.setShortcut(QKeySequence.StandardKey.ZoomOut)
         self.decrease_font_action.triggered.connect(
             lambda: self.set_font_size(max(10, self.font_size - 1))
         )
-        self.decrease_font_action.setShortcutContext(Qt.WidgetWithChildrenShortcut)
+        self.decrease_font_action.setShortcutContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
         self.addAction(self.decrease_font_action)
         self._registered_actions.append(self.decrease_font_action)
         self.settings_menu.addAction(self.decrease_font_action)
@@ -771,7 +749,7 @@ class MosaicViewerWindow(QMainWindow):
         self.colorbar_all_action = QAction("Toggle Colorbars", self)
         self.colorbar_all_action.setShortcut(QKeySequence("Ctrl+Shift+C"))
         self.colorbar_all_action.triggered.connect(self.toggle_all_colorbars)
-        self.colorbar_all_action.setShortcutContext(Qt.WidgetWithChildrenShortcut)
+        self.colorbar_all_action.setShortcutContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
         self.addAction(self.colorbar_all_action)
         self._registered_actions.append(self.colorbar_all_action)
         self.settings_menu.addAction(self.colorbar_all_action)
@@ -779,7 +757,7 @@ class MosaicViewerWindow(QMainWindow):
         self.stats_all_action = QAction("Toggle Stats", self)
         self.stats_all_action.setShortcut(QKeySequence("Ctrl+Shift+S"))
         self.stats_all_action.triggered.connect(self.toggle_all_stats)
-        self.stats_all_action.setShortcutContext(Qt.WidgetWithChildrenShortcut)
+        self.stats_all_action.setShortcutContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
         self.addAction(self.stats_all_action)
         self._registered_actions.append(self.stats_all_action)
         self.settings_menu.addAction(self.stats_all_action)
@@ -787,7 +765,7 @@ class MosaicViewerWindow(QMainWindow):
         self.range_all_action = QAction("Toggle Value Range", self)
         self.range_all_action.setShortcut(QKeySequence("Ctrl+Shift+R"))
         self.range_all_action.triggered.connect(self.toggle_all_ranges)
-        self.range_all_action.setShortcutContext(Qt.WidgetWithChildrenShortcut)
+        self.range_all_action.setShortcutContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
         self.addAction(self.range_all_action)
         self._registered_actions.append(self.range_all_action)
         self.settings_menu.addAction(self.range_all_action)
@@ -797,7 +775,7 @@ class MosaicViewerWindow(QMainWindow):
         self.reset_action = QAction("Reset SHMs", self)
         self.reset_action.setShortcut(QKeySequence("F5"))
         self.reset_action.triggered.connect(self.reset_streams)
-        self.reset_action.setShortcutContext(Qt.WidgetWithChildrenShortcut)
+        self.reset_action.setShortcutContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
         self.addAction(self.reset_action)
         self._registered_actions.append(self.reset_action)
         self.settings_menu.addAction(self.reset_action)
@@ -807,7 +785,7 @@ class MosaicViewerWindow(QMainWindow):
         self.add_row_action = QAction("Add Row", self)
         self.add_row_action.setShortcut(QKeySequence("Ctrl+Down"))
         self.add_row_action.triggered.connect(self.add_row)
-        self.add_row_action.setShortcutContext(Qt.WidgetWithChildrenShortcut)
+        self.add_row_action.setShortcutContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
         self.addAction(self.add_row_action)
         self._registered_actions.append(self.add_row_action)
         self.settings_menu.addAction(self.add_row_action)
@@ -815,7 +793,7 @@ class MosaicViewerWindow(QMainWindow):
         self.add_column_action = QAction("Add Column", self)
         self.add_column_action.setShortcut(QKeySequence("Ctrl+Right"))
         self.add_column_action.triggered.connect(self.add_column)
-        self.add_column_action.setShortcutContext(Qt.WidgetWithChildrenShortcut)
+        self.add_column_action.setShortcutContext(Qt.ShortcutContext.WidgetWithChildrenShortcut)
         self.addAction(self.add_column_action)
         self._registered_actions.append(self.add_column_action)
         self.settings_menu.addAction(self.add_column_action)
@@ -997,7 +975,7 @@ def launch_mosaic_viewer(
     """Create the Qt application, size the window, and start the event loop."""
 
     _require_viewer_backend()
-    app = QApplication(argv)
+    app = QApplication.instance() or QApplication(argv)
     window = MosaicViewerWindow(
         shm_names,
         fps,
@@ -1014,4 +992,4 @@ def launch_mosaic_viewer(
         max_height = int(available.height() * 0.94)
         window.resize(min(window.width(), max_width), min(window.height(), max_height))
     window.show()
-    return app.exec_()
+    return app.exec()

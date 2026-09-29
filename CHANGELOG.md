@@ -197,6 +197,18 @@ All notable changes to `pyrtcao` will be documented in this file.
 
 ### Changed
 
+- **The manager GUI and viewer run on Qt6 instead of PyQt5** (#51).
+	Qt5 reached end of life in 2025. `pyrtc-manager-gui` and `pyrtc-view`
+	now import Qt through `qtpy` and work with PySide6 or PyQt6; the `gui`
+	and `viewer` extras install `qtpy` and PySide6 instead of PyQt5. With
+	both bindings installed PySide6 is used unless `QT_API=pyqt6` is set.
+	Qt5 bindings are rejected with an install hint, as is a missing binding
+	(`pyrtc-manager-gui` used to show a traceback there). The viewer draws
+	with matplotlib's `backend_qtagg` (matplotlib 3.5 or later), and
+	`launch_mosaic_viewer` reuses an existing `QApplication`. The install
+	hints now name the `pyrtcao` distribution. A new offscreen smoke test
+	(`tests/test_qt_smoke.py`) builds both windows and renders frames from a
+	pyshmem stream; it skips when no Qt6 binding is installed.
 - **Streams wake their consumers instead of being polled** (#63).
 	`create_stream` now creates pyshmem streams with `notify=True`, so a write
 	wakes consumers blocked in `read_stream` through a Linux futex instead of

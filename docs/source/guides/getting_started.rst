@@ -35,7 +35,13 @@ Optional extras:
 	pip install pyrtcao[aotpy]
 	pip install pyrtcao[docs]
 	pip install pyrtcao[gpu]
-	pip install pyrtcao[viewer]
+	pip install pyrtcao[viewer]   # pyrtc-view
+	pip install pyrtcao[gui]      # pyrtc-manager-gui
+
+The ``viewer`` and ``gui`` extras install Qt6 through `qtpy` with PySide6.
+PyQt6 works too: install ``qtpy`` and ``PyQt6`` yourself instead of the
+extra. If both bindings are installed, PySide6 is used unless ``QT_API=pyqt6``
+is set. Qt5 (PyQt5, PySide2) is not supported.
 
 Core Concepts
 -------------
@@ -224,7 +230,7 @@ Troubleshooting
 ---------------
 
 - If GPU mode is configured but PyTorch is unavailable, `pyrtc` falls back to CPU mode for supported paths.
-- If viewer commands fail, install the viewer extra: `pip install pyrtcao[viewer]`
+- If viewer commands fail, install the viewer extra: `pip install pyrtcao[viewer]` (or `pyrtcao[gui]` for `pyrtc-manager-gui`). Both need a Qt6 binding (PySide6 or PyQt6); PyQt5 is no longer used.
 - If a component fails at startup, check the YAML keys first; several components validate required config fields eagerly.
 - If a multi-process run is hard to diagnose, set `PYRTC_LOG_DIR=./logs` before launching so each process writes a separate file.
 - For first-time development, stay on Linux unless you have validated your target platform locally.

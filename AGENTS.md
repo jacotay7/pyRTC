@@ -53,7 +53,12 @@ aliases.
 - `pyrtc/hardware/` — reference adapters (cameras, DMs, simulators, synthetic
   systems). Vendor SDKs are optional and may be missing.
 - `pyrtc/gui/`, `pyrtc/scripts/` — manager GUI, viewer, and CLI entry points
-  (declared in `pyproject.toml` under `[project.scripts]`).
+  (declared in `pyproject.toml` under `[project.scripts]`). The GUI and viewer
+  use Qt6 through `qtpy` (PySide6 by default, PyQt6 also works), selected by
+  `pyrtc/qt_compat.py`. Import Qt from `qtpy`, never from a binding directly,
+  and use fully scoped enums (`Qt.AlignmentFlag.AlignCenter`), which PyQt6
+  requires. Without Qt the modules still import, with stand-in classes that
+  raise `ImportError` when a window is built.
 - `examples/` — runnable systems (start with `examples/synthetic_shwfs/`, no
   hardware needed). `benchmarks/` — perf smoke and benchmark scripts.
 - `docs/source/` — Sphinx docs; `guides/` holds the narrative guides
@@ -113,6 +118,10 @@ ruff check . && ruff format --check .    # lint, as in CI
   producer stamping frame ids through several streams), and `StaticStream`
   (republishes one frame, for telemetry). Prefer real pyshmem streams over new
   hand-written fakes.
+- `tests/test_qt_smoke.py` builds the manager GUI and the viewer on Qt's
+  `offscreen` platform (no display needed) and skips without a Qt6 binding,
+  which is the case in CI (`requirements-test.txt` has no Qt). Run it locally
+  after GUI or viewer changes, also with `QT_API=pyqt6` if PyQt6 is installed.
 - The closed-loop regression `tests/system/test_synthetic_convergence.py` is
   the best end-to-end check that stream semantics still work.
 - `benchmarks/pipeline_latency_bench.py` measures the running synthetic
