@@ -84,6 +84,9 @@ specula = [
 hcipy = [
 	"hcipy>=0.6",
 ]
+genicam = [
+	"harvesters>=1.4",
+]
 hardware = [
 	"pipython",
 	"rotpy",

@@ -137,3 +137,35 @@ Parameters
   :undoc-members:
   :show-inheritance:
   :no-index:
+
+GenICam Cameras (GigE Vision / USB3 Vision)
+-------------------------------------------
+
+``pyrtc.hardware.genicam_camera`` drives any GenICam camera through
+`Harvesters <https://github.com/genicam/harvesters>`_ and the vendor's GenTL
+producer (a ``.cti`` file). That covers Basler, Allied Vision, FLIR/Teledyne,
+IDS, Baumer and others (``pip install pyrtcao[genicam]``):
+
+.. code-block:: yaml
+
+  wfs:
+    class_name: pyrtc.hardware.genicam_camera.GenICamWFS
+    name: shwfs_cam
+    cti_file: /opt/vendor/lib/producer.cti   # or set GENICAM_GENTL64_PATH
+    serial: "12345678"                        # or device_index: 0
+    width: 640
+    height: 480
+    left: 0
+    top: 0
+    exposure: 500        # microseconds (ExposureTime)
+    gain: 0.0
+    bit_depth: 12        # PixelFormat Mono12
+    node_settings:       # any other GenICam nodes, applied last in order
+      AcquisitionFrameRateEnable: true
+      AcquisitionFrameRate: 1000
+    functions: [expose]
+
+``GenICamScienceCamera`` takes the same keys for the ``psf`` section. Frames
+are transposed into pyrtc's ``(width, height)`` stream shape, so ``width``
+and ``height`` mean the same as the camera's ``Width`` and ``Height`` nodes.
+

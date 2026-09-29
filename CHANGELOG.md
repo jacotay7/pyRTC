@@ -237,6 +237,13 @@ All notable changes to `pyrtcao` will be documented in this file.
 
 ### Added
 
+- **GenICam camera adapters** (#72). `GenICamWFS` and
+	`GenICamScienceCamera` drive GigE Vision / USB3 Vision cameras (Basler,
+	Allied Vision, FLIR, IDS, ...) through Harvesters and the vendor's GenTL
+	producer (`pip install pyrtcao[genicam]`). They apply exposure, gain, bit
+	depth, binning, ROI and arbitrary `node_settings`, and are tested against
+	a fake Harvesters API.
+
 - **Multiple correctors per loop** (#58). A `CorrectorSplitter` in the `wfc`
 	section splits the loop's modal command across several corrector
 	sections (woofer/tweeter, DM plus tip-tilt stage), so one IM calibrates

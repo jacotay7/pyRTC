@@ -7,6 +7,8 @@ _EXPORTS = {
     "HCIPyInterface": (".hcipy_interface", "HCIPyInterface"),
     "SpinnakerScienceCamera": (".spinnaker_science_cam", "SpinnakerScienceCamera"),
     "XIMEAWFS": (".ximea_wfs", "XIMEAWFS"),
+    "GenICamWFS": (".genicam_camera", "GenICamWFS"),
+    "GenICamScienceCamera": (".genicam_camera", "GenICamScienceCamera"),
     "PIModulator": (".pi_modulator", "PIModulator"),
     "NCPAOptimizer": (".ncpa_optimizer", "NCPAOptimizer"),
     "PIDOptimizer": (".pid_optimizer", "PIDOptimizer"),
