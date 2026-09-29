@@ -11,6 +11,7 @@ loop:
   num_dropped_modes: 0
   poke_amp: 2.0e-08
   num_iters_im: 5
+  im_settle_frames: 3          # margin for pokes that land late on a loaded host
   conditioning: 10
   im_method: push-pull
   class_name: Loop

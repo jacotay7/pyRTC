@@ -209,6 +209,12 @@ ruff check . && ruff format --check .    # lint, as in CI
   optical setup without a new DM command (atmosphere on/off) must refresh an
   input, and every step must advance the WFS and PSF branches together, or
   the WFS silently repeats a stale (or blank) frame.
+- Simulated systems run asynchronously: the loop iterates once per WFS frame,
+  so its delay in iterations is the DM-to-WFS round trip in frames, which
+  grows on a loaded CI runner. An integrator is stable only below
+  `2 sin(pi / (2 (2d + 1)))` for a delay of `d` frames (0.62 at 2, 0.29 at
+  5), so system tests use gains around 0.15. The HCIPy test diverged in CI at
+  0.3 while passing locally.
 - The synthetic example calibrates with DOCRIME (`im_method: docrime`,
   `num_iters_im: 800`). Do not shrink `num_iters_im` far in tests: at 50 the
   IM is noise and the loop diverges, which looks like a wiring bug (it cost a
