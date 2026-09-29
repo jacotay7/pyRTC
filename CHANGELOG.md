@@ -6,6 +6,11 @@ All notable changes to `pyrtcao` will be documented in this file.
 
 ### Fixed
 
+- **`manager.latency()` without `stream_path` follows renamed streams** (#119).
+	Path inference used the descriptors' logical stream names (`wfs`,
+	`signal`, `wfc`) instead of the shared-memory names configured in each
+	section's `input_streams`/`output_streams`. It failed on any system with
+	renamed streams.
 - **Components loaded from `class_file` work with the numba disk cache**
 	(follow-up to #92). Class files outside the loaded package were exec'd
 	under a per-process random name, without a `sys.modules` entry. numba then

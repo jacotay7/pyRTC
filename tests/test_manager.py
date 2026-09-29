@@ -249,6 +249,19 @@ def test_frame_ids_propagate_through_the_synthetic_chain(private_system):
     assert publications["strehl"].frame_id is not None
 
 
+def test_latency_infers_the_configured_stream_names(private_system):
+    """Without stream_path, latency() follows the renamed streams (#119)."""
+    config_path, names = private_system
+    with RTCManager.from_config_file(config_path) as manager:
+        manager.start()
+        report = manager.latency(samples=16, timeout_seconds=30.0)
+
+    assert report["inferred_path"] is True
+    assert report["stream_path"][0] == names["wfs"]
+    assert set(report["stream_path"]) <= set(names.values())
+    assert report["total"]["alignment"] == "frame_id"
+
+
 def test_reconcile_expected_output_shms_reuses_matching_streams(monkeypatch):
     config = read_system_config(SYNTHETIC_CONFIG_PATH, validate=False)
     specs = expected_output_shm_specs_for_config(config)
