@@ -319,6 +319,12 @@ All notable changes to `pyrtcao` will be documented in this file.
 
 ### Changed
 
+- **`import pyrtc` no longer imports torch** (0.47 s instead of 1.3 s with
+	torch installed). pyrtc probes torch lazily
+	(`streams.gpu_torch_available()`), and pyshmem 1.3.7, now required, does
+	the same. CPU-only component processes never load torch.
+	`requirements.txt` again matches the core dependencies.
+
 - **Heavy dependencies are optional extras** (#50). `pip install pyrtcao`
 	installs only the soft-RTC core. `matplotlib` moved to the `plot` extra,
 	`astropy` to `fits`, and `optuna`/`cmaes` to `optimize`. `numexpr`, which
