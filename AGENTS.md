@@ -290,6 +290,23 @@ ruff check . && ruff format --check .    # lint, as in CI
   a pyshmem that includes the fix (now `>=1.3.7`). Don't add retry workarounds for it.
 - Latency and handoff numbers on a shared host swing by 2x or more with load;
   compare notify on/off with interleaved `--repeats`, never single runs.
+  With a load-following CPU governor, busy neighbours also raise the clock,
+  so a system can run *faster* under load than idle. Compare configurations
+  only at the same load.
+- numpy and scipy each load their own OpenBLAS, with one worker thread per
+  core in the process affinity. The numpy-heavy simulators (HCIPy above all)
+  keep those pools spinning. In a 16-core cpuset the HCIPy example's pools used
+  about 15 cores while the pipeline threads used half of one, and
+  `OPENBLAS_NUM_THREADS=1` made the WFS faster (32 vs 23 frames/s) and the
+  HCIPy system test 2.5x shorter. Cap BLAS threads before timing or
+  load-testing a simulated system, or the BLAS pools are what you measure.
+  The Loop's control multiply (`np.dot` inside numba goes to scipy's
+  OpenBLAS) does use them for large matrices, so do not cap them blindly on a
+  real RTC.
+- numba's `workqueue` threading layer crashes the process when two threads
+  call `parallel=True` kernels at once; `omp` and `tbb` are safe. Only the WFS
+  thread runs one today (`rotate_image_jit`). A parallel kernel on a second
+  component thread must require a thread-safe layer (#104).
 
 ## Maintainer guidance
 

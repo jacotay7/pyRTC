@@ -92,6 +92,17 @@ Compare that with the kernel table, where a comparable 10x10 SHWFS iteration com
 
 Artifacts: `benchmarks/pipeline_latency_report.json`, `benchmarks/pipeline_latency_report_1khz.json`, and the single-handoff benchmark `benchmarks/stream_handoff_report.json` (`python -m benchmarks.stream_handoff_bench`).
 
+The same commands on an 80-core aarch64 server (Neoverse-N1, Linux 6.17, Python 3.13, pinned to 8 cores, default scheduling), mean / p50 / p99 in microseconds:
+
+| Mode | Stream notify | 200 Hz WFS (example) | 1 kHz WFS |
+| --- | --- | --- | --- |
+| soft-RTC (threads) | off | 2300 / 2155 / 6133 | 3623 / 2814 / 10054 |
+| soft-RTC (threads) | on (default) | 1718 / 1481 / 3116 | 3225 / 2661 / 11226 |
+| hard-RTC (processes) | off | 803 / 809 / 923 | 612 / 614 / 927 |
+| hard-RTC (processes) | on (default) | 822 / 838 / 953 | 647 / 660 / 900 |
+
+That is 4-10x the x86 numbers, and on this host the GIL-bound soft-RTC pipeline cannot keep up at 1 kHz. About half of the hard-RTC cost is the CPU waking from idle: the firmware advertises deep idle states with a ~3 ms exit latency, and cores enter them between frames. Keeping the cores busy with `SCHED_IDLE` spinners halved hard-RTC latency (notify on: ~320-380 µs p50). On a real system, limit idle states on the RTC cores instead (`cpupower idle-set`, or hold `/dev/cpu_dma_latency` at 0). Free-threaded Python fixes the soft-RTC case on this host: 843 µs p50 at 1 kHz instead of 6987 µs (see the developer guide). Artifacts: `benchmarks/pipeline_latency_report_aarch64.json` and `benchmarks/pipeline_latency_report_1khz_aarch64.json`.
+
 ## What It Is For
 
 Adaptive optics (AO) systems measure optical aberrations and apply corrections quickly enough to recover image quality in dynamic environments. `pyrtc` is aimed at the software layer that connects those measurements, reconstructions, and corrections.
