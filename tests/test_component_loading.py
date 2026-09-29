@@ -115,7 +115,7 @@ def test_resolve_class_symbol_falls_back_to_name_when_file_missing():
     assert resolved is Loop
 
 
-_CACHED_KERNEL = '''
+_CACHED_KERNEL = """
 import numpy as np
 from numba import jit
 
@@ -127,7 +127,7 @@ def double(x):
 
 class Thing:
     pass
-'''
+"""
 
 _CALL_KERNEL = (
     "import sys, numpy as np;"
