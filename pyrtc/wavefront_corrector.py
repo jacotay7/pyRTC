@@ -137,6 +137,10 @@ class WavefrontCorrector(Component):
                 gpu_device=self.gpu_device,
             )
             self.register_output_stream("wfc", self.correction_vector)
+            # The corrector also consumes the commands the loop writes to the
+            # same stream; as a registered input it forwards their frame id
+            # to ``wfc_2d``.
+            self.register_input_stream("wfc", self.correction_vector)
             # Pre-allocated hot-path read buffer (ignored for GPU streams).
             self._wfc_buffer = np.empty((self.num_modes,), dtype=np.float32)
             self.correction_vector_2d = None

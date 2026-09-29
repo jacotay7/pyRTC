@@ -194,6 +194,8 @@ class SyntheticSHWFS(WavefrontSensor):
             )
         except Exception:
             self.correction_shm = None
+            return
+        self.register_input_stream("wfc", self.correction_shm)
 
     def _modal_disturbance(self, elapsed_seconds):
         primary = np.sin(2.0 * np.pi * self.modal_frequencies * elapsed_seconds + self.modal_phases)
@@ -209,7 +211,7 @@ class SyntheticSHWFS(WavefrontSensor):
         if self.correction_shm is None:
             return np.zeros(self.num_modes, dtype=np.float32)
 
-        correction = np.asarray(self.correction_shm.read(), dtype=np.float32).ravel()
+        correction = np.asarray(self.read_stream("wfc", block=False), dtype=np.float32).ravel()
         if correction.size < self.num_modes:
             padded = np.zeros(self.num_modes, dtype=np.float32)
             padded[: correction.size] = correction
@@ -322,12 +324,14 @@ class SyntheticScienceCamera(ScienceCamera):
             self.signal_shm = open_stream(self.input_stream_name("signal"))
         except Exception:
             self.signal_shm = None
+            return
+        self.register_input_stream("signal", self.signal_shm)
 
     def _current_signal(self):
         self._ensure_signal_stream()
         if self.signal_shm is None:
             return np.zeros(1, dtype=np.float32)
-        return np.asarray(self.signal_shm.read(), dtype=np.float32).ravel()
+        return np.asarray(self.read_stream("signal", block=False), dtype=np.float32).ravel()
 
     def expose(self):
         self._sleep_for_frame_rate()
@@ -351,8 +355,8 @@ class SyntheticScienceCamera(ScienceCamera):
 
         self.strehl_ratio = float(np.clip(1.0 / (1.0 + 3.0 * residual_rms), 0.0, 1.0))
         self.peak_dist = float(np.hypot(tip, tilt))
-        self.strehl_shm.write(np.array([self.strehl_ratio], dtype=float))
-        self.tip_tilt_shm.write(np.array([self.peak_dist], dtype=float))
+        self.write_stream("strehl", np.array([self.strehl_ratio], dtype=float))
+        self.write_stream("tiptilt", np.array([self.peak_dist], dtype=float))
         self.data = np.clip(image, 0.0, np.iinfo(self.image_raw_dtype).max).astype(
             self.image_raw_dtype
         )

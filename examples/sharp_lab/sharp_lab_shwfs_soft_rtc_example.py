@@ -124,7 +124,8 @@ def main(argv=None) -> int:
     except KeyboardInterrupt:
         logger.info("Stopping SHARP lab SHWFS soft example")
     finally:
-        manager.stop()
+        # close() also ends the worker threads and releases stream handles.
+        manager.close()
 
     return 0
 

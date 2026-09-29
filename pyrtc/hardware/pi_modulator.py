@@ -77,11 +77,10 @@ class PIModulator(Modulator):
 
         return
 
-    def __del__(self):
-        self.logger.info("Destroying PI modulator")
-        super().__del__()
-
-        return
+    def close(self, *args, **kwargs):
+        if not getattr(self, "_closed", False):
+            self.logger.info("Closing PI modulator")
+        super().close(*args, **kwargs)
 
     def define_circle(self):
         try:

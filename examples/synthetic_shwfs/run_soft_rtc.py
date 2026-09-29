@@ -131,9 +131,13 @@ def stop_system(system: dict) -> None:
     except Exception:
         pass
 
-    for name in ("psf", "slopes", "wfs", "wfc"):
+    for name in ("loop", "psf", "slopes", "wfs", "wfc"):
+        if system.get(name) is None or not hasattr(system[name], "close"):
+            continue
         try:
-            system[name].stop()
+            # close() stops the component, ends its worker threads and
+            # releases its stream handles; stop() would only pause it.
+            system[name].close()
         except Exception:
             pass
 

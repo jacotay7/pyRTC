@@ -241,7 +241,8 @@ def main(argv=None) -> int:
     except KeyboardInterrupt:
         logger.info("Stopping synthetic SHWFS tutorial")
     finally:
-        manager.stop()
+        # close() also ends the worker threads and releases stream handles.
+        manager.close()
 
     return 0
 

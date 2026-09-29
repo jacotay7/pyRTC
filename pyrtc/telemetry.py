@@ -1053,6 +1053,18 @@ class Telemetry(Component):
         self.stop_ring_buffer()
         super().stop()
 
+    def close(self, *args, **kwargs):
+        """Stop the ring buffer (it can run while the component is stopped), then close."""
+
+        if not getattr(self, "_closed", False):
+            try:
+                self.stop_ring_buffer()
+            except Exception:
+                getattr(self, "logger", logger).exception(
+                    "Failed to stop the ring buffer while closing"
+                )
+        super().close(*args, **kwargs)
+
     def read(self, filename="", dtype=None, *, mmap_mode=None):
         """Read a telemetry save, one saved NumPy capture file, or a raw binary file.
 

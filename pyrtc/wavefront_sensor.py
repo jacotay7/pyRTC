@@ -377,8 +377,11 @@ class WavefrontSensor(Component):
 
         Each exposure gets the next frame id, which downstream components
         propagate so a correction can be traced back to its source frame.
+        The counter is the sensor's own, so reading an input stream (such as
+        a simulator peeking at ``wfc``) cannot reset or rewind it.
         """
-        self.frame_id = (self.frame_id or 0) + 1
+        self._exposure_frame_id = getattr(self, "_exposure_frame_id", 0) + 1
+        self.frame_id = self._exposure_frame_id
         self.write_stream("wfs_raw", self.data)
         img = self.data.astype(self.image_dtype)
 

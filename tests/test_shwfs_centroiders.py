@@ -8,6 +8,7 @@ import pytest
 from scipy.special import erf
 
 from pyrtc import slopes_process as sp
+from testsupport import bare_component
 from pyrtc.config_schema import read_system_config, validate_system_config
 from pyrtc.utils import ConfigValidationError
 
@@ -312,7 +313,7 @@ def test_wcog_gain_correction_values():
 
 
 def _shwfs_process(conf_extra=None, *, int_n=12, num_regions=4):
-    proc = sp.SlopesProcess.__new__(sp.SlopesProcess)
+    proc = bare_component(sp.SlopesProcess)
     proc.conf = {"type": "SHWFS", "signal_type": "slopes", **(conf_extra or {})}
     proc.signal_type = "slopes"
     proc.wfs_type = "shwfs"

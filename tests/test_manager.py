@@ -1,18 +1,19 @@
 import copy
 import socket
-import sys
+import time
 from pathlib import Path
 
 import numpy as np
 import pytest
 import yaml
 
-from testsupport import publishing_chain
+from testsupport import private_synthetic_config, publishing_chain
 from pyrtc.manager import HardComponentRuntime, RTCManager
 from pyrtc.rpc import _socket_read_json, _socket_send_json
 from pyrtc.streams import (
     clear_shms,
     create_stream,
+    open_stream,
     expected_output_shm_specs_for_config,
     reconcile_expected_output_shms,
 )
@@ -25,18 +26,6 @@ from pyrtc.hardware.synthetic_systems import (
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SYNTHETIC_CONFIG_PATH = REPO_ROOT / "examples" / "synthetic_shwfs" / "config.yaml"
-DEFAULT_STREAMS = [
-    "wfs",
-    "wfs_raw",
-    "wfc",
-    "wfc_2d",
-    "signal",
-    "signal_2d",
-    "psf_short",
-    "psf_long",
-    "strehl",
-    "tiptilt",
-]
 
 
 def _write_runtime_synthetic_config(tmp_path: Path) -> Path:
@@ -89,34 +78,50 @@ def _configure_hard_manager(
     return manager
 
 
-def test_manager_launches_soft_synthetic_system(tmp_path):
-    clear_shms(DEFAULT_STREAMS)
-    manager = RTCManager.from_config_file(_write_runtime_synthetic_config(tmp_path))
+@pytest.fixture(scope="module")
+def private_config_path(tmp_path_factory):
+    """The synthetic config with private stream names.
 
-    try:
+    ``build()`` reconciles (and may clear) every output stream the config
+    names, so tests never point it at the canonical names another system on
+    the host may be using.
+    """
+    config_path, _names = private_synthetic_config(tmp_path_factory.mktemp("manager_config"))
+    return config_path
+
+
+@pytest.fixture
+def private_system(tmp_path):
+    """Yield ``(config_path, names)`` for a runnable private synthetic system."""
+    config_path, names = private_synthetic_config(tmp_path)
+    streams = sorted(set(names.values()))
+    clear_shms(streams)
+    yield config_path, names
+    clear_shms(streams)
+
+
+def test_manager_launches_soft_synthetic_system(private_system):
+    config_path, _names = private_system
+
+    with RTCManager.from_config_file(config_path) as manager:
         manager.start()
         status = manager.status()
 
         assert status["state"] == "running"
         assert status["components"]["loop"]["state"] == "running"
         assert status["components"]["wfs"]["mode"] == "soft-rtc"
-    finally:
-        manager.stop()
-        clear_shms(DEFAULT_STREAMS)
+
+    assert manager.state == "closed"
+    assert manager.runtimes == {}
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="components from earlier tests keep handles open, which pins the "
-    "names on Windows (jacotay7/pyRTC#37)",
-)
-def test_manager_start_clears_stale_output_shms(tmp_path):
-    clear_shms(DEFAULT_STREAMS)
+def test_manager_start_clears_stale_output_shms(private_system):
+    config_path, names = private_system
     # Leave mismatched segments behind the way an exited run would: no handle
     # stays open (on Windows the names then vanish, as they would in practice).
-    create_stream("wfc", (1,), np.int8).close()
-    create_stream("signal", (1,), np.int8).close()
-    manager = RTCManager.from_config_file(_write_runtime_synthetic_config(tmp_path))
+    create_stream(names["wfc"], (1,), np.int8).close()
+    create_stream(names["signal"], (1,), np.int8).close()
+    manager = RTCManager.from_config_file(config_path)
 
     try:
         manager.start()
@@ -124,13 +129,12 @@ def test_manager_start_clears_stale_output_shms(tmp_path):
         assert status["state"] == "running"
         assert status["components"]["loop"]["state"] == "running"
     finally:
-        manager.stop()
-        clear_shms(DEFAULT_STREAMS)
+        manager.close()
 
 
-def test_manager_build_creates_components_before_start(tmp_path):
-    clear_shms(DEFAULT_STREAMS)
-    manager = RTCManager.from_config_file(_write_runtime_synthetic_config(tmp_path))
+def test_manager_build_creates_components_before_start(private_system):
+    config_path, _names = private_system
+    manager = RTCManager.from_config_file(config_path)
 
     try:
         status = manager.build()
@@ -147,8 +151,101 @@ def test_manager_build_creates_components_before_start(tmp_path):
         built_status = manager.status()
         assert built_status["state"] == "built"
     finally:
-        manager.stop()
-        clear_shms(DEFAULT_STREAMS)
+        manager.close()
+
+
+def _registered_handles(component):
+    return list(component._stream_inputs.values()) + list(component._stream_outputs.values())
+
+
+def test_manager_close_ends_workers_and_closes_stream_handles(private_system):
+    config_path, _names = private_system
+    manager = RTCManager.from_config_file(config_path)
+    manager.start()
+    components = {section: manager.get_component(section) for section in manager.runtimes}
+    threads = [thread for comp in components.values() for thread in comp.work_threads]
+    handles = [handle for comp in components.values() for handle in _registered_handles(comp)]
+    assert threads and all(thread.is_alive() for thread in threads)
+    assert handles
+
+    manager.stop()
+    # stop() only pauses: workers and handles stay alive for start().
+    assert all(thread.is_alive() for thread in threads)
+    assert all(comp.alive for comp in components.values())
+
+    manager.close()
+
+    assert manager.state == "closed"
+    assert manager.runtimes == {}
+    assert not any(thread.is_alive() for thread in threads)
+    assert not any(comp.alive for comp in components.values())
+    for handle in handles:
+        with pytest.raises(RuntimeError, match="closed shared memory"):
+            handle.read()
+    manager.close()  # idempotent
+    assert manager.state == "closed"
+
+
+def test_manager_close_releases_blocked_readers_while_running(private_system):
+    config_path, _names = private_system
+    manager = RTCManager.from_config_file(config_path)
+    manager.start()
+    loop = manager.get_component("loop")
+    # Stop the producers only: the loop's worker now blocks on the signal.
+    for section in ("wfs", "slopes"):
+        manager.stop_component(section)
+
+    started = time.monotonic()
+    manager.close()
+
+    assert time.monotonic() - started < 5.0
+    assert not any(thread.is_alive() for thread in loop.work_threads)
+
+
+def test_manager_can_start_again_after_close(private_system):
+    config_path, _names = private_system
+    manager = RTCManager.from_config_file(config_path)
+    manager.start()
+    first_loop = manager.get_component("loop")
+    manager.close()
+
+    try:
+        manager.start()
+        assert manager.status()["state"] == "running"
+        assert manager.get_component("loop") is not first_loop
+    finally:
+        manager.close()
+
+
+def test_frame_ids_propagate_through_the_synthetic_chain(private_system):
+    """Every registered input carries the WFS frame id down to the DM (#35)."""
+    config_path, names = private_system
+    with RTCManager.from_config_file(config_path) as manager:
+        manager.start()
+        report = manager.latency(
+            stream_path=[names["wfs"], names["signal"], names["wfc"]],
+            samples=32,
+            timeout_seconds=30.0,
+        )
+        observers = {name: open_stream(names[name], readonly=True) for name in names}
+        try:
+            # Read the WFS last: every downstream frame id was produced first.
+            order = sorted(observers, key=lambda name: name == "wfs")
+            publications = {name: observers[name].read_publication() for name in order}
+        finally:
+            for shm in observers.values():
+                shm.close()
+
+    assert report["total"]["alignment"] == "frame_id"
+    assert [segment["alignment"] for segment in report["segments"]] == ["frame_id", "frame_id"]
+    # Downstream streams carry ids of frames the WFS already produced.
+    wfs_id = publications["wfs"].frame_id
+    assert wfs_id is not None and wfs_id > 0
+    for name in ("wfs_raw", "signal", "signal_2d", "wfc", "wfc_2d"):
+        frame_id = publications[name].frame_id
+        assert frame_id is not None and 0 < frame_id <= wfs_id, name
+    # The science camera reads the signal (a registered input) and stamps it.
+    assert publications["strehl"].frame_id is not None
 
 
 def test_reconcile_expected_output_shms_reuses_matching_streams(monkeypatch):
@@ -279,7 +376,7 @@ def test_manager_latency_uses_explicit_pair_when_requested(monkeypatch, tmp_path
         assert report["total"]["target_shm"] == "wfc"
 
 
-def test_manager_stop_is_idempotent_for_soft_system():
+def test_manager_stop_is_idempotent_for_soft_system(private_config_path):
     class FakeRuntime:
         def __init__(self):
             self.calls = 0
@@ -290,7 +387,7 @@ def test_manager_stop_is_idempotent_for_soft_system():
         def status(self):
             return {"state": "stopped", "mode": "soft-rtc"}
 
-    manager = RTCManager.from_config_file(SYNTHETIC_CONFIG_PATH)
+    manager = RTCManager.from_config_file(private_config_path)
     runtime = FakeRuntime()
     manager.runtimes = {"wfs": runtime}
     manager.state = "running"
@@ -302,7 +399,7 @@ def test_manager_stop_is_idempotent_for_soft_system():
     assert runtime.calls == 2
 
 
-def test_manager_mode_override_uses_hard_runtime_with_short_alias(monkeypatch):
+def test_manager_mode_override_uses_hard_runtime_with_short_alias(monkeypatch, private_config_path):
     calls = []
 
     class FakeLauncher:
@@ -324,7 +421,7 @@ def test_manager_mode_override_uses_hard_runtime_with_short_alias(monkeypatch):
             return 1
 
     manager = RTCManager.from_config_file(
-        SYNTHETIC_CONFIG_PATH, mode="hard", launcher_cls=FakeLauncher
+        private_config_path, mode="hard", launcher_cls=FakeLauncher
     )
 
     manager.start()
@@ -374,7 +471,7 @@ def test_hard_runtime_stays_stopped_after_manual_stop():
     assert runtime.launcher is None
 
 
-def test_manager_uses_hard_runtime_with_launcher_integration(monkeypatch):
+def test_manager_uses_hard_runtime_with_launcher_integration(monkeypatch, private_config_path):
     calls = []
 
     class FakeLauncher:
@@ -395,7 +492,7 @@ def test_manager_uses_hard_runtime_with_launcher_integration(monkeypatch):
             calls.append(("shutdown", self.hardware_file, self.port))
             return 1
 
-    manager = RTCManager.from_config_file(SYNTHETIC_CONFIG_PATH, launcher_cls=FakeLauncher)
+    manager = RTCManager.from_config_file(private_config_path, launcher_cls=FakeLauncher)
     manager.config = copy.deepcopy(manager.config)
     manager.config["manager"] = {
         "mode": "hard-rtc",
@@ -475,7 +572,7 @@ def test_manager_requires_config_path_for_hard_mode_from_dict():
         manager.start()
 
 
-def test_manager_supports_explicit_manager_declared_sections():
+def test_manager_supports_explicit_manager_declared_sections(private_config_path):
     calls = []
 
     class FakeLauncher:
@@ -496,7 +593,7 @@ def test_manager_supports_explicit_manager_declared_sections():
             calls.append(("shutdown", self.hardware_file, self.port))
             return 1
 
-    manager = RTCManager.from_config_file(SYNTHETIC_CONFIG_PATH, launcher_cls=FakeLauncher)
+    manager = RTCManager.from_config_file(private_config_path, launcher_cls=FakeLauncher)
     manager.config = copy.deepcopy(manager.config)
     manager.config["modulator"] = {"name": "tutorial-modulator", "frequency": 300, "amplitude": 600}
     manager.config["manager"] = {
@@ -586,11 +683,13 @@ def test_manager_injects_shared_resources_into_soft_runtimes(tmp_path):
         assert isinstance(runtime.component.resource, FakeResource)
         assert runtime.state == "running"
     finally:
-        manager.stop()
+        manager.close()
+    assert manager.resources == {}
 
 
 def test_manager_injects_component_provider_resources_into_soft_runtimes(tmp_path):
     starts = []
+    closes = []
 
     class FakeProvider:
         def __init__(self, conf):
@@ -605,6 +704,9 @@ def test_manager_injects_component_provider_resources_into_soft_runtimes(tmp_pat
         def stop(self):
             self.running = False
 
+        def close(self):
+            closes.append("provider")
+
     class FakeConsumer:
         def __init__(self, conf, resource):
             self.conf = conf
@@ -618,6 +720,9 @@ def test_manager_injects_component_provider_resources_into_soft_runtimes(tmp_pat
 
         def stop(self):
             self.running = False
+
+        def close(self):
+            closes.append("consumer")
 
     manager = RTCManager.from_config(
         {
@@ -651,10 +756,12 @@ def test_manager_injects_component_provider_resources_into_soft_runtimes(tmp_pat
         assert isinstance(runtime.component.resource, FakeProvider)
         assert starts == ["provider", "consumer"]
     finally:
-        manager.stop()
+        manager.close()
+    # Consumers close before the provider they depend on.
+    assert closes == ["consumer", "provider"]
 
 
-def test_manager_status_includes_health_metadata_for_hard_runtime(tmp_path):
+def test_manager_status_includes_health_metadata_for_hard_runtime(tmp_path, private_config_path):
     class HealthLauncher:
         def __init__(self, hardware_file, config_file, port, timeout=None):
             self.hardware_file = hardware_file
@@ -687,7 +794,7 @@ def test_manager_status_includes_health_metadata_for_hard_runtime(tmp_path):
             }
 
     manager = _configure_hard_manager(
-        RTCManager.from_config_file(SYNTHETIC_CONFIG_PATH, launcher_cls=HealthLauncher),
+        RTCManager.from_config_file(private_config_path, launcher_cls=HealthLauncher),
         HealthLauncher,
         log_dir=tmp_path,
     )
@@ -710,7 +817,7 @@ def test_manager_status_includes_health_metadata_for_hard_runtime(tmp_path):
     assert loop_status["log_file"].endswith("pyrtc-loop_loop_12603.log")
 
 
-def test_manager_marks_component_degraded_when_health_check_fails():
+def test_manager_marks_component_degraded_when_health_check_fails(private_config_path):
     class DegradedLauncher:
         def __init__(self, hardware_file, config_file, port, timeout=None):
             self.port = port
@@ -745,7 +852,7 @@ def test_manager_marks_component_degraded_when_health_check_fails():
             }
 
     manager = _configure_hard_manager(
-        RTCManager.from_config_file(SYNTHETIC_CONFIG_PATH, launcher_cls=DegradedLauncher),
+        RTCManager.from_config_file(private_config_path, launcher_cls=DegradedLauncher),
         DegradedLauncher,
     )
 
@@ -761,7 +868,7 @@ def test_manager_marks_component_degraded_when_health_check_fails():
     assert "health check RPC failed" in status["components"]["loop"]["error"]
 
 
-def test_manager_restarts_failed_child_when_policy_is_on_failure():
+def test_manager_restarts_failed_child_when_policy_is_on_failure(private_config_path):
     class RestartingLauncher:
         launches = 0
         loop_failed_once = False
@@ -802,7 +909,7 @@ def test_manager_restarts_failed_child_when_policy_is_on_failure():
             }
 
     manager = _configure_hard_manager(
-        RTCManager.from_config_file(SYNTHETIC_CONFIG_PATH, launcher_cls=RestartingLauncher),
+        RTCManager.from_config_file(private_config_path, launcher_cls=RestartingLauncher),
         RestartingLauncher,
         manager_overrides={"restart_policy": "on-failure"},
     )
@@ -821,7 +928,9 @@ def test_manager_restarts_failed_child_when_policy_is_on_failure():
     assert RestartingLauncher.launches >= 6
 
 
-def test_manager_repeated_failures_increment_restart_count_and_preserve_last_error():
+def test_manager_repeated_failures_increment_restart_count_and_preserve_last_error(
+    private_config_path,
+):
     class FlappingLauncher:
         launches = 0
 
@@ -851,7 +960,7 @@ def test_manager_repeated_failures_increment_restart_count_and_preserve_last_err
             }
 
     manager = _configure_hard_manager(
-        RTCManager.from_config_file(SYNTHETIC_CONFIG_PATH, launcher_cls=FlappingLauncher),
+        RTCManager.from_config_file(private_config_path, launcher_cls=FlappingLauncher),
         FlappingLauncher,
         manager_overrides={"restart_policy": "on-failure"},
     )

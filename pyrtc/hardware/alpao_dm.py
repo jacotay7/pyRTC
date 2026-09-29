@@ -142,10 +142,12 @@ class ALPAODM(WavefrontCorrector):
         self.dm.Send(self.current_shape)
         return
 
-    def __del__(self):
+    def close(self, *args, **kwargs):
+        if getattr(self, "_closed", False):
+            return
         component_logger = getattr(self, "logger", logger)
         try:
-            super().__del__()
+            super().close(*args, **kwargs)
         finally:
             dm = getattr(self, "dm", None)
             if dm is not None:

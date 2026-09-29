@@ -12,6 +12,7 @@ from pathlib import Path
 
 import numpy as np
 
+from testsupport import private_synthetic_config
 from pyrtc import RTCManager, clear_shms, open_stream
 from pyrtc.config_schema import read_system_config
 from testsupport import prefix_system_streams
@@ -37,7 +38,8 @@ def test_synthetic_loop_converges_after_calibration(tmp_path):
     config["loop"]["im_file"] = str(tmp_path / "im.npy")
     np.save(config["loop"]["im_file"], np.zeros((98, 97), dtype=np.float32))
 
-    manager = RTCManager.from_config(config, config_path=str(SYNTHETIC_CONFIG_PATH), mode="soft")
+    manager = RTCManager.from_config(config, config_path=str(config_path), mode="soft")
+    signal_stream = None
     try:
         manager.start()
         time.sleep(0.5)
@@ -74,5 +76,5 @@ def test_synthetic_loop_converges_after_calibration(tmp_path):
             f"open-loop residual {open_loop_rms:.4f}"
         )
     finally:
-        manager.stop()
+        manager.close()
         clear_shms(streams)

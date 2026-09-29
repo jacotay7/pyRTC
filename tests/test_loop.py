@@ -5,7 +5,7 @@ import numpy as np
 import pyshmem
 import pytest
 
-from testsupport import private_stream
+from testsupport import bare_component, private_stream
 
 loop_mod = importlib.import_module("pyrtc.loop")
 
@@ -82,7 +82,7 @@ def test_gpu_integrator_matches_cpu(dropped):
 
 
 def test_loop_methods_without_full_init(tmp_path):
-    loop = loop_mod.Loop.__new__(loop_mod.Loop)
+    loop = bare_component(loop_mod.Loop)
     loop.num_modes = 4
     loop.num_dropped_modes = 1
     loop.num_active_modes = 3
@@ -160,6 +160,7 @@ def test_loop_methods_without_full_init(tmp_path):
 
     # send_to_wfc branch with CL DOCRIME
     loop.wfc_shm = private_stream("wfc", (4,), np.float32)
+    loop.register_output_stream("wfc", loop.wfc_shm)
     loop.flat = np.zeros(4, dtype=np.float32)
     loop.cl_docrime = True
     loop.poke_amp = 0.1
@@ -179,7 +180,7 @@ def test_loop_methods_without_full_init(tmp_path):
 
 
 def test_standard_integrator_uses_nonblocking_wfc_read():
-    loop = loop_mod.Loop.__new__(loop_mod.Loop)
+    loop = bare_component(loop_mod.Loop)
     loop.g_cm = np.eye(4, dtype=np.float32) * 0.25
     loop._correction_buffer = np.zeros(4, dtype=np.float32)
     loop.num_active_modes = 3
@@ -187,6 +188,8 @@ def test_standard_integrator_uses_nonblocking_wfc_read():
     sent = {}
     loop.signal_shm = private_stream("signal", (4,), np.float32)
     loop.wfc_shm = private_stream("wfc", (4,), np.float32)
+    loop.register_input_stream("signal", loop.signal_shm)
+    loop.register_output_stream("wfc", loop.wfc_shm)
     loop.signal_shm.write(np.ones(4, dtype=np.float32))
     loop._signal_buffer = np.empty(4, dtype=np.float32)
     loop._wfc_buffer = np.empty(4, dtype=np.float32)
@@ -208,7 +211,7 @@ def test_standard_integrator_uses_nonblocking_wfc_read():
 
 
 def test_loop_compute_cm_zero_matrix_without_failure():
-    loop = loop_mod.Loop.__new__(loop_mod.Loop)
+    loop = bare_component(loop_mod.Loop)
     loop.num_modes = 3
     loop.num_dropped_modes = 0
     loop.num_active_modes = 3

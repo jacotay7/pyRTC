@@ -30,7 +30,7 @@ class _Stream:
     def read_new(self, timeout=None):
         return self.value
 
-    def write(self, arr):
+    def write(self, arr, frame_id=None):
         self.writes.append(np.asarray(arr))
 
 

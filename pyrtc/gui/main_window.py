@@ -1627,6 +1627,12 @@ class ManagerMainWindow(QMainWindow):
             scrollbar.setValue(scrollbar.maximum())
 
     def closeEvent(self, event):
+        # Release the running system (threads, stream handles, hard-RTC
+        # children) instead of leaving it to process exit.
+        try:
+            self.adapter.close()
+        except Exception:
+            logger.exception("Failed to close the RTC manager on exit")
         try:
             get_logger().removeHandler(self._gui_log_handler)
         except Exception:
