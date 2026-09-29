@@ -113,3 +113,83 @@ def test_resolve_class_symbol_falls_back_to_name_when_file_missing():
 
     resolved = resolve_class_symbol("pyrtc.loop.Loop", "/nonexistent/path.py")
     assert resolved is Loop
+
+
+_CACHED_KERNEL = """
+import numpy as np
+from numba import jit
+
+
+@jit(nopython=True, cache=True)
+def double(x):
+    return x * 2.0
+
+
+class Thing:
+    pass
+"""
+
+_CALL_KERNEL = (
+    "import sys, numpy as np;"
+    "from pyrtc.component_loading import import_symbol_from_file;"
+    "Thing = import_symbol_from_file(sys.argv[1], 'Thing');"
+    "print(sys.modules[Thing.__module__].double(np.ones(3)).sum())"
+)
+
+
+def test_file_loaded_numba_cache_is_reusable_across_processes(tmp_path):
+    """A cache=True kernel in a class_file must load from cache in a new process.
+
+    Exec'ing the file without registering it in sys.modules made numba record
+    the module as '<dynamic>', so the second process crashed importing it.
+    """
+    import subprocess
+    import sys
+
+    module_file = tmp_path / "custom_kernels.py"
+    module_file.write_text(_CACHED_KERNEL)
+    for _ in range(2):  # the first run writes the cache, the second loads it
+        result = subprocess.run(
+            [sys.executable, "-c", _CALL_KERNEL, str(module_file)],
+            capture_output=True,
+            text=True,
+            cwd=tmp_path,
+        )
+        assert result.returncode == 0, result.stderr[-2000:]
+        assert result.stdout.strip() == "6.0"
+    assert list((tmp_path / "__pycache__").glob("custom_kernels.double-*.nbi"))
+
+
+def test_file_loaded_module_has_a_stable_registered_name(tmp_path):
+    import subprocess
+    import sys
+
+    module_file = tmp_path / "stable_name.py"
+    module_file.write_text("class Thing:\n    pass\n")
+    Thing = import_symbol_from_file(str(module_file), "Thing")
+    assert sys.modules[Thing.__module__].Thing is Thing
+    # Loading the same file again reuses the module instead of a second copy.
+    assert import_symbol_from_file(str(module_file), "Thing") is Thing
+    code = (
+        "import sys; from pyrtc.component_loading import import_symbol_from_file;"
+        "print(import_symbol_from_file(sys.argv[1], 'Thing').__module__)"
+    )
+    other = subprocess.run(
+        [sys.executable, "-c", code, str(module_file)], capture_output=True, text=True, check=True
+    )
+    assert other.stdout.strip() == Thing.__module__
+
+
+def test_identical_copy_of_a_pyrtc_module_resolves_to_the_installed_module(tmp_path):
+    """A source checkout next to an installed wheel reuses the installed module."""
+    from pyrtc.loop import Loop
+
+    copy = tmp_path / "checkout" / "pyrtc" / "loop.py"
+    copy.parent.mkdir(parents=True)
+    copy.write_bytes((_installed_pyrtc_root() / "loop.py").read_bytes())
+    assert import_symbol_from_file(str(copy), "Loop") is Loop
+
+    edited = tmp_path / "edited" / "pyrtc" / "loop.py"
+    edited.parent.mkdir(parents=True)
+    edited.write_bytes(copy.read_bytes() + b"\n# local edit\n")
+    assert import_symbol_from_file(str(edited), "Loop") is not Loop

@@ -6,6 +6,17 @@ All notable changes to `pyrtcao` will be documented in this file.
 
 ### Fixed
 
+- **Components loaded from `class_file` work with the numba disk cache**
+	(follow-up to #92). Class files outside the loaded package were exec'd
+	under a per-process random name, without a `sys.modules` entry. numba then
+	recorded their kernels' module as `<dynamic>` (or that random name), and
+	the next process to load the cache crashed importing it. This happened,
+	for example, when a wheel install ran the repo's example configs. Now:
+	- a `class_file` that is a byte-identical copy of an installed `pyrtc`
+	  module imports that module;
+	- other files load once under a stable name registered in `sys.modules`,
+	  so loading the same file again returns the same class.
+
 - **Latency reports align by frame id right after `start()`** (#112).
 	`manager.latency()` and `pyrtc-measure-latency` used to sample each
 	stream independently. While downstream workers were still starting, the
