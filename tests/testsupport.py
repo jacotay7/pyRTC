@@ -106,6 +106,25 @@ def publishing_chain(names, *, step_seconds=1e-3, stamp_frame_ids=True):
         worker.join()
 
 
+def prefix_system_streams(config, prefix):
+    """Rename every component stream in a normalized system config.
+
+    Gives a whole RTC private stream names so a test can run alongside other
+    tests or live systems. Returns the sorted list of new names (for cleanup).
+    """
+    names = set()
+    for conf in config.values():
+        if not isinstance(conf, dict):
+            continue
+        for key in ("input_streams", "output_streams"):
+            aliases = conf.get(key)
+            if not isinstance(aliases, dict):
+                continue
+            conf[key] = {logical: f"{prefix}{target}" for logical, target in aliases.items()}
+            names.update(conf[key].values())
+    return sorted(names)
+
+
 class StaticStream:
     """Stream stand-in that republishes one frame on every read.
 

@@ -15,7 +15,8 @@ wfs:
   spot_flux: 4200.0
   background_level: 120.0
   read_noise: 3.0
-  input_streams: {}
+  input_streams:
+    wfc: wfc
   output_streams:
     wfs_raw: wfs_raw
     wfs: wfs
@@ -80,7 +81,8 @@ psf:
   base_sigma_px: 1.8
   residual_blur_gain: 2.2
   class_name: SyntheticScienceCamera
-  input_streams: {}
+  input_streams:
+    signal: signal
   output_streams:
     psf_short: psf_short
     psf_long: psf_long
