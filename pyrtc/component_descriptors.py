@@ -545,6 +545,22 @@ BUILTIN_COMPONENT_DESCRIPTORS: tuple[ComponentDescriptor, ...] = (
                 minimum=0.0,
             ),
             ConfigFieldDescriptor(
+                "watchdog_timeout",
+                "float | None",
+                "Seconds without a new signal frame before the closed loop reports its input "
+                "stale; unset or 0 disables the watchdog.",
+                default=1.0,
+                minimum=0.0,
+            ),
+            ConfigFieldDescriptor(
+                "watchdog_action",
+                "str",
+                "What a stale loop input does: 'hold', 'open' (stop the loop) or 'flatten'.",
+                default="hold",
+                choices=("hold", "open", "flatten"),
+                case_sensitive=False,
+            ),
+            ConfigFieldDescriptor(
                 "im_file", "str", "Path to the interaction-matrix file.", default=""
             ),
             ConfigFieldDescriptor("p_gain", "float", "PID proportional gain.", default=0.1),
@@ -681,6 +697,13 @@ BUILTIN_COMPONENT_DESCRIPTORS: tuple[ComponentDescriptor, ...] = (
                 "float | None",
                 "Symmetric clip applied to zonal actuator commands; unset disables clipping.",
                 default=None,
+                minimum=0.0,
+            ),
+            ConfigFieldDescriptor(
+                "saturation_warn_fraction",
+                "float",
+                "Fraction of actuators at command_cap that triggers a saturation warning.",
+                default=0.05,
                 minimum=0.0,
             ),
             ConfigFieldDescriptor(

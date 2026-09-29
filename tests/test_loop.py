@@ -492,3 +492,93 @@ def test_compute_im_dispatches_hadamard_and_rejects_unknown_methods(monkeypatch)
     loop.im_method = "push_pull"
     with pytest.raises(ValueError, match="Unsupported interaction-matrix method"):
         loop.compute_im()
+
+
+def _watchdog_loop(action="hold", timeout=0.05):
+    signal = private_stream("wd_signal", (4,), "float32")
+    signal.write(np.ones(4, dtype=np.float32))
+    loop = bare_component(loop_mod.Loop, inputs={"signal": signal})
+    loop.watchdog_timeout = timeout
+    loop.watchdog_action = action
+    loop._stale_since = None
+    loop._stale_events = 0
+    loop._last_watchdog_action = None
+    loop._producer_alive = None
+    loop.running = True
+    loop.flattened = False
+    loop.flatten = lambda: setattr(loop, "flattened", True)
+    return loop, signal
+
+
+@pytest.mark.parametrize(
+    ("action", "running", "flattened"),
+    [("hold", True, False), ("open", False, False), ("flatten", False, True)],
+)
+def test_watchdog_flags_a_stale_signal_and_applies_its_action(action, running, flattened):
+    loop, signal = _watchdog_loop(action)
+    try:
+        assert loop._read_signal() is not None  # first read: the current frame
+        assert loop.safety_status()["input_stale"] is False
+        assert loop._read_signal() is None  # nothing new within watchdog_timeout
+        status = loop.safety_status()
+        assert status["input_stale"] is True
+        assert status["producer_alive"] is True  # this process created the stream
+        assert status["stale_events"] == 1
+        assert "signal stale" in status["alerts"][0] and "producer stalled" in status["alerts"][0]
+        assert loop.running is running
+        assert loop.flattened is flattened
+
+        # A second timeout in the same episode does not count again.
+        loop._read_signal()
+        assert loop.safety_status()["stale_events"] == 1
+
+        signal.write(np.full(4, 2.0, dtype=np.float32))
+        frame = loop._read_signal()
+        assert frame is not None and np.all(frame == 2.0)
+        status = loop.safety_status()
+        assert status["input_stale"] is False and status["alerts"] == []
+    finally:
+        loop.close()
+        signal.close()
+
+
+def test_watchdog_disabled_blocks_as_before():
+    loop, signal = _watchdog_loop(timeout=None)
+    try:
+        loop._read_signal()
+        with pytest.raises(TimeoutError):
+            # Without the watchdog the read is unbounded; bound it here to prove
+            # _read_signal did not add a timeout of its own.
+            loop.read_stream("signal", timeout=0.05)
+        assert loop.safety_status()["watchdog_timeout"] is None
+    finally:
+        loop.close()
+        signal.close()
+
+
+def test_standard_integrator_skips_the_iteration_when_the_signal_is_stale(monkeypatch):
+    loop, signal = _watchdog_loop()
+    sent = []
+    loop.send_to_wfc = lambda correction, slopes=None: sent.append(correction)
+    loop._signal_buffer = np.empty(4, dtype=np.float32)
+    try:
+        loop._read_signal()  # consume the current frame
+        loop.standard_integrator()
+        assert sent == []
+        assert loop.safety_status()["input_stale"] is True
+    finally:
+        loop.close()
+        signal.close()
+
+
+@pytest.mark.parametrize(
+    ("conf", "match"),
+    [({"watchdog_action": "explode"}, "watchdog_action"), ({"watchdog_timeout": -1}, ">= 0")],
+)
+def test_watchdog_config_is_validated(conf, match):
+    with pytest.raises(ValueError, match=match):
+        loop_mod.Loop._validate_watchdog(
+            conf.get("watchdog_timeout", 1.0), conf.get("watchdog_action", "hold")
+        )
+    assert loop_mod.Loop._validate_watchdog(0, "OPEN") == (None, "open")
+    assert loop_mod.Loop._validate_watchdog(None, "hold") == (None, "hold")

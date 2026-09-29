@@ -228,3 +228,30 @@ def test_launch_mosaic_viewer_runs_event_loop(qapp):
         ["pyrtc-view"], [stream.name], 30, "square", 12.0, None, None, "dark"
     )
     assert result == 0
+
+
+@requires_qt6
+def test_graph_node_shows_safety_alerts(qapp):
+    from pyrtc.gui.main_window import GraphNodeItem
+    from pyrtc.gui.models import GraphNodeModel
+    from pyrtc.gui.theme import get_theme
+
+    theme = get_theme("dark")
+    alerts = ("signal stale for 2.0 s (producer exited); action=open", "second alert")
+    node = GraphNodeModel("loop", "Loop", "loop", 0.0, 0.0, state="running", alerts=alerts)
+    item = GraphNodeItem(node, theme, lambda *_: None, lambda *_: None)
+
+    text = item.state_item.text()
+    assert text.startswith("RUNNING  ⚠ signal stale")
+    assert text.endswith("(+1)") and len(text) < 60
+    assert item.toolTip() == "\n".join(alerts)
+    assert item.state_item.brush().color().name() == theme.degraded.lower()
+
+    calm = GraphNodeItem(
+        GraphNodeModel("wfs", "WFS", "wfs", 0.0, 0.0, state="running"),
+        theme,
+        lambda *_: None,
+        lambda *_: None,
+    )
+    assert calm.state_item.text() == "RUNNING"
+    assert calm.toolTip() == ""

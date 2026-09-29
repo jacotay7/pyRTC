@@ -108,3 +108,29 @@ round trip never completes within ``im_timeout`` seconds (default 30), a
 ``TimeoutError`` explains why, e.g. a ``poke_amp`` too small to measure. Call
 ``check_round_trip()`` yourself before other steps that need the live
 pipeline, such as taking reference slopes.
+
+Safety Watchdog
+---------------
+
+While the loop is closed, each integrator waits at most ``watchdog_timeout``
+seconds (default 1.0) for a new ``signal`` frame. After that it declares the
+input stale, skips the iteration, logs a warning saying whether the signal's
+producer is still alive (stalled) or has exited, and applies
+``watchdog_action``:
+
+- ``hold`` (default): keep the last correction on the corrector and keep
+  waiting. The loop resumes by itself with the next frame.
+- ``open``: stop the loop. Start it again once the input is back.
+- ``flatten``: stop the loop and flatten the corrector.
+
+.. code-block:: yaml
+
+  loop:
+    watchdog_timeout: 0.5   # seconds; null or 0 disables the watchdog
+    watchdog_action: open
+
+``loop.safety_status()`` reports ``input_stale``, ``producer_alive``, the
+number of stale episodes, and human-readable ``alerts``. The manager includes
+it as ``safety`` in each component's status (soft and hard RTC), and the
+manager GUI shows alerts on the component's graph node.
+

@@ -218,6 +218,16 @@ See above for how to launch a soft-RTC equivalent.
 
   print(wfc.get_property("command_cap"))
 
+Actuator Saturation
+-------------------
+
+With ``command_cap`` set, the corrector counts the actuators at the cap in each
+command before clipping. ``wfc.safety_status()`` reports the count, the
+fraction, and how many commands saturated any actuator. When at least
+``saturation_warn_fraction`` of the actuators (default 0.05) are at the cap,
+it logs a warning (at most every 10 s) and reports an alert. The manager
+status (``safety``) and the manager GUI's graph node show it.
+
 Parameters
 ----------
 

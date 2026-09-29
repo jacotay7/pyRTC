@@ -1026,6 +1026,10 @@ class ManagerAdapter:
                     and component_info.get("state", "stopped") != "running",
                     can_stop=runtime_controls_enabled
                     and component_info.get("state", "stopped") == "running",
+                    alerts=tuple(
+                        str(alert)
+                        for alert in ((component_info.get("safety") or {}).get("alerts") or ())
+                    ),
                 )
             )
 

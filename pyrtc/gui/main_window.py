@@ -340,8 +340,10 @@ class GraphNodeItem(QGraphicsRectItem):
         self.subtitle_item = QGraphicsSimpleTextItem(node.subtitle, self)
         self.subtitle_item.setPos(14.0, 34.0)
 
-        self.state_item = QGraphicsSimpleTextItem(node.state.upper(), self)
+        self.state_item = QGraphicsSimpleTextItem(self._state_text(), self)
         self.state_item.setPos(14.0, 60.0)
+        if node.alerts:
+            self.setToolTip("\n".join(node.alerts))
 
         self.streams_item = QGraphicsSimpleTextItem(self._stream_text(), self)
         self.streams_item.setPos(14.0, 84.0)
@@ -367,6 +369,16 @@ class GraphNodeItem(QGraphicsRectItem):
 
         self.setPos(node.x, node.y)
         self.apply_theme(theme)
+
+    def _state_text(self) -> str:
+        state = self.node.state.upper()
+        if not self.node.alerts:
+            return state
+        alert = self.node.alerts[0]
+        if len(alert) > 34:
+            alert = alert[:33] + "\u2026"
+        extra = f" (+{len(self.node.alerts) - 1})" if len(self.node.alerts) > 1 else ""
+        return f"{state}  \u26a0 {alert}{extra}"
 
     def _stream_text(self) -> str:
         inputs = ", ".join(self.node.input_streams) or "-"
@@ -401,6 +413,8 @@ class GraphNodeItem(QGraphicsRectItem):
             "starting": theme.accent,
             "stopping": theme.degraded,
         }
+        if self.node.alerts and self.node.state == "running":
+            return theme.degraded
         return mapping.get(self.node.state, theme.subtext)
 
     def _fill_color(self, theme):

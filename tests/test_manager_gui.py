@@ -46,6 +46,28 @@ def test_manager_adapter_builds_graph_snapshot_from_synthetic_config():
     assert ("loop", "wfc", "wfc") in edges
 
 
+def test_graph_snapshot_carries_component_safety_alerts():
+    adapter = ManagerAdapter()
+    adapter.load_config(str(SYNTHETIC_CONFIG_PATH))
+    status = {
+        "state": "running",
+        "components": {
+            "loop": {
+                "state": "running",
+                "safety": {"alerts": ["signal stale for 2.0 s (producer exited); action=hold"]},
+            },
+            "wfc": {"state": "running", "safety": {"alerts": []}},
+        },
+    }
+
+    snapshot = adapter.build_graph_snapshot(status)
+    nodes = {node.section_name: node for node in snapshot.nodes}
+
+    assert nodes["loop"].alerts == ("signal stale for 2.0 s (producer exited); action=hold",)
+    assert nodes["wfc"].alerts == ()
+    assert nodes["wfs"].alerts == ()
+
+
 def test_manager_adapter_uses_persisted_graph_positions_from_config():
     adapter = ManagerAdapter()
     adapter.load_config(str(SYNTHETIC_CONFIG_PATH))

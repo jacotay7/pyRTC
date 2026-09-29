@@ -20,6 +20,7 @@ class GraphNodeModel:
     output_streams: tuple[str, ...] = ()
     can_start: bool = False
     can_stop: bool = False
+    alerts: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
