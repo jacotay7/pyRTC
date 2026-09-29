@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 import importlib
 
 wfc_mod = importlib.import_module("pyrtc.wavefront_corrector")
@@ -116,3 +117,54 @@ def test_wavefront_corrector_clears_wfc2d_outside_layout(monkeypatch):
     wfc2d = wfc.correction_vector_2d.read()
     assert np.all(wfc2d[~layout] == 0.0)
     assert np.array_equal(wfc2d[layout], np.arange(5, dtype=np.float32))
+
+
+def test_wavefront_corrector_reports_saturation(monkeypatch, caplog):
+    from testsupport import private_stream
+
+    monkeypatch.setattr(wfc_mod, "create_stream", private_stream)
+    wfc = wfc_mod.WavefrontCorrector(
+        {
+            "name": "wfc",
+            "num_actuators": 4,
+            "num_modes": 4,
+            "m2c_file": "",
+            "command_cap": 0.5,
+            "saturation_warn_fraction": 0.5,
+            "functions": [],
+        }
+    )
+    wfc.set_m2c(np.eye(4, dtype=np.float32))
+    try:
+        wfc.write(np.array([0.1, 0.2, -0.3, 0.4], dtype=np.float32))
+        wfc.send_to_hardware()
+        status = wfc.safety_status()
+        assert status["saturated_actuators"] == 0 and status["alerts"] == []
+
+        wfc.write(np.array([2.0, -0.75, 0.25, 0.1], dtype=np.float32))
+        wfc.send_to_hardware()
+        status = wfc.safety_status()
+        assert status["saturated_actuators"] == 2
+        assert status["saturated_fraction"] == pytest.approx(0.5)
+        assert status["saturated_frames"] == 1
+        assert status["alerts"] == ["2/4 actuators at command_cap=0.5"]
+        assert "2 of 4 actuators (50%) at command_cap=0.5" in caplog.text
+    finally:
+        wfc.close()
+
+
+def test_wavefront_corrector_without_cap_reports_no_saturation(monkeypatch):
+    from testsupport import private_stream
+
+    monkeypatch.setattr(wfc_mod, "create_stream", private_stream)
+    wfc = wfc_mod.WavefrontCorrector(
+        {"name": "wfc", "num_actuators": 2, "num_modes": 2, "m2c_file": "", "functions": []}
+    )
+    try:
+        wfc.set_m2c(np.eye(2, dtype=np.float32))
+        wfc.write(np.array([5.0, -5.0], dtype=np.float32))
+        wfc.send_to_hardware()
+        assert wfc.safety_status()["saturated_actuators"] == 0
+        assert wfc.safety_status()["alerts"] == []
+    finally:
+        wfc.close()

@@ -252,6 +252,47 @@ def test_frame_ids_propagate_through_the_synthetic_chain(private_system):
     assert publications["strehl"].frame_id is not None
 
 
+def test_status_reports_component_safety(private_system):
+    """Loop watchdog and corrector saturation appear in manager status (#60)."""
+    config_path, _names = private_system
+    with RTCManager.from_config_file(config_path) as manager:
+        manager.start()
+        components = manager.status()["components"]
+
+    loop_safety = components["loop"]["safety"]
+    assert loop_safety["watchdog_timeout"] == 1.0
+    assert loop_safety["watchdog_action"] == "hold"
+    assert loop_safety["alerts"] == []
+    assert "saturated_actuators" in components["wfc"]["safety"]
+    assert components["wfs"]["safety"] is None
+
+
+def test_hard_runtime_fetches_safety_over_rpc():
+    from pyrtc.loop import Loop
+    from pyrtc.manager import HardComponentRuntime
+
+    calls = []
+
+    class FakeLauncher:
+        def run(self, function, *args, timeout=None):
+            calls.append((function, timeout))
+            return {"alerts": [], "input_stale": False}
+
+    runtime = HardComponentRuntime.__new__(HardComponentRuntime)
+    runtime.component_class = Loop
+    runtime.launcher = FakeLauncher()
+    runtime.state = "running"
+    assert runtime._safety_status() == {"alerts": [], "input_stale": False}
+    assert calls == [("safety_status", 1.0)]
+
+    runtime.state = "stopped"
+    assert runtime._safety_status() is None
+    runtime.state = "running"
+    runtime.component_class = object  # no safety_status: never asks the child
+    assert runtime._safety_status() is None
+    assert len(calls) == 1
+
+
 def test_latency_infers_the_configured_stream_names(private_system):
     """Without stream_path, latency() follows the renamed streams (#119)."""
     config_path, names = private_system

@@ -6,6 +6,8 @@ and optional 2D layout views, while leaving hardware transport details to the
 concrete adapter subclasses.
 """
 
+import time
+
 import numpy as np
 from numba import jit
 
@@ -99,7 +101,12 @@ class WavefrontCorrector(Component):
         Frame delay.
     command_cap : float or None
         Optional absolute limit applied to actuator-space commands before they
-        are handed to the hardware adapter.
+        are handed to the hardware adapter. Actuators at the cap are counted
+        each frame (see :meth:`safety_status`).
+    saturation_warn_fraction : float
+        Fraction of actuators at ``command_cap`` above which the corrector
+        warns (at most every 10 s) and reports a saturation alert.
+        Default is 0.05.
     save_file : str
         File to save the shape.
     layout : numpy.ndarray or None
@@ -117,6 +124,12 @@ class WavefrontCorrector(Component):
     correction_vector_2d_template : numpy.ndarray
         Template for the 2D correction vector.
     """
+
+    # Saturation defaults; __init__ sets the configured values.
+    saturation_warn_fraction = 0.05
+    saturated_actuators = 0
+    _saturated_frames = 0
+    _last_saturation_warning = 0.0
 
     def __init__(self, conf) -> None:
         try:
@@ -152,6 +165,12 @@ class WavefrontCorrector(Component):
             self.current_shape = np.zeros_like(self.flat)
             self.flat_file = set_from_config(conf, "flat_file", "")
             self.command_cap = set_from_config(conf, "command_cap", None)
+            self.saturation_warn_fraction = float(
+                set_from_config(conf, "saturation_warn_fraction", 0.05)
+            )
+            self.saturated_actuators = 0
+            self._saturated_frames = 0
+            self._last_saturation_warning = 0.0
             self.load_flat()
 
             self.actuator_status = np.array([True] * self.num_actuators)
@@ -528,7 +547,12 @@ class WavefrontCorrector(Component):
             )
 
         if self.command_cap is not None:
-            self.current_shape = np.clip(self.current_shape, -self.command_cap, self.command_cap)
+            cap = self.command_cap
+            saturated = int(np.count_nonzero(self.current_shape >= cap)) + int(
+                np.count_nonzero(self.current_shape <= -cap)
+            )
+            self.current_shape = np.clip(self.current_shape, -cap, cap)
+            self._record_saturation(saturated)
 
         # If we have a 2D SHM instance, update it
         if self.correction_vector_2d is not None:
@@ -537,6 +561,47 @@ class WavefrontCorrector(Component):
             self.write_stream("wfc_2d", self.correction_vector_2d_template)
         # Overwrite with hardware instructions after this to send to hardware
         return
+
+    def _record_saturation(self, saturated: int) -> None:
+        self.saturated_actuators = saturated
+        if not saturated:
+            return
+        self._saturated_frames += 1
+        fraction = saturated / max(1, self.num_actuators)
+        now = time.monotonic()
+        if fraction >= self.saturation_warn_fraction and now - self._last_saturation_warning > 10.0:
+            self._last_saturation_warning = now
+            getattr(self, "logger", logger).warning(
+                "%s of %s actuators (%.0f%%) at command_cap=%s",
+                saturated,
+                self.num_actuators,
+                100.0 * fraction,
+                self.command_cap,
+            )
+
+    def safety_status(self) -> dict:
+        """Return actuator-saturation state for manager status and the GUI.
+
+        ``saturated_actuators`` counts actuators at ``command_cap`` in the last
+        command; ``saturated_frames`` counts commands with any. ``alerts``
+        lists human-readable problems (empty when healthy).
+        """
+
+        fraction = self.saturated_actuators / max(1, self.num_actuators)
+        alerts = []
+        if self.command_cap is not None and fraction >= self.saturation_warn_fraction:
+            alerts.append(
+                f"{self.saturated_actuators}/{self.num_actuators} actuators at "
+                f"command_cap={self.command_cap}"
+            )
+        return {
+            "command_cap": self.command_cap,
+            "saturated_actuators": self.saturated_actuators,
+            "saturated_fraction": fraction,
+            "saturated_frames": self._saturated_frames,
+            "saturation_warn_fraction": self.saturation_warn_fraction,
+            "alerts": alerts,
+        }
 
     def read(self, block=False):
         """

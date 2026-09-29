@@ -138,6 +138,15 @@ class Loop(Component):
         Seconds :meth:`check_round_trip` may take, and the longest wait for
         any single signal frame during push-pull or Hadamard calibration.
         Default is 30.0.
+    watchdog_timeout : float or None, optional
+        Seconds the closed loop waits for a new ``signal`` frame before it
+        declares its input stale (see :meth:`safety_status`). ``None`` or 0
+        disables the watchdog. Default is 1.0.
+    watchdog_action : str, optional
+        What a stale input does: ``hold`` (keep the last correction and keep
+        waiting), ``open`` (stop the loop) or ``flatten`` (stop the loop and
+        flatten the corrector). The loop does not close again by itself after
+        ``open`` or ``flatten``. Default is "hold".
     im_file : str, optional
         File to save the interaction matrix. Default is "".
     p_gain : float, optional
@@ -253,6 +262,14 @@ class Loop(Component):
     """
 
     SUPPORTED_IM_METHODS = ("push-pull", "hadamard", "docrime")
+    WATCHDOG_ACTIONS = ("hold", "open", "flatten")
+    # Watchdog defaults (disabled, healthy); __init__ sets the configured values.
+    watchdog_timeout = None
+    watchdog_action = "hold"
+    _stale_since = None
+    _stale_events = 0
+    _last_watchdog_action = None
+    _producer_alive = None
     # Frames that must agree before check_round_trip treats the signal as settled.
     _ROUND_TRIP_WINDOW = 5
 
@@ -348,6 +365,14 @@ class Loop(Component):
                 raise ValueError("im_settle_frames must be >= 0")
             self.im_round_trip_check = bool(set_from_config(self.conf, "im_round_trip_check", True))
             self.im_timeout = float(set_from_config(self.conf, "im_timeout", 30.0))
+            self.watchdog_timeout, self.watchdog_action = self._validate_watchdog(
+                set_from_config(self.conf, "watchdog_timeout", 1.0),
+                set_from_config(self.conf, "watchdog_action", "hold"),
+            )
+            self._stale_since = None
+            self._stale_events = 0
+            self._last_watchdog_action = None
+            self._producer_alive = None
             self.last_round_trip_frames = None
             self.im_file = set_from_config(self.conf, "im_file", "")
             self.cm_method = str(set_from_config(self.conf, "cm_method", "svd")).lower()
@@ -874,6 +899,20 @@ class Loop(Component):
             raise
         return
 
+    @classmethod
+    def _validate_watchdog(cls, timeout, action):
+        """Return ``(timeout, action)`` normalized; ``None`` or 0 disables the watchdog."""
+
+        timeout = None if timeout in (None, 0) else float(timeout)
+        if timeout is not None and not timeout > 0:
+            raise ValueError(f"watchdog_timeout must be >= 0, got {timeout}")
+        action = str(action).lower()
+        if action not in cls.WATCHDOG_ACTIONS:
+            raise ValueError(
+                f"watchdog_action must be one of {cls.WATCHDOG_ACTIONS}, got {action!r}"
+            )
+        return timeout, action
+
     @staticmethod
     def _validate_cm_method(method: str) -> str:
         normalized = str(method).lower()
@@ -1156,11 +1195,96 @@ class Loop(Component):
         # Update Command Vector c_n = g*CM*s_{POL} + (1 − g) c_{n-1}  https://arxiv.org/pdf/1903.12124.pdf Eq 3
         return (1 - self.gain) * correction - np.dot(self.g_cm, s_pol)
 
+    def _read_signal(self, out=None):
+        """Read the next ``signal`` frame, or return ``None`` if the input is stale.
+
+        With the watchdog enabled, waiting longer than ``watchdog_timeout``
+        for a new frame marks the input stale and applies
+        ``watchdog_action`` (see :meth:`safety_status`); the integrator then
+        skips this iteration. The next frame clears the stale state.
+        """
+
+        if self.watchdog_timeout is None:
+            return self.read_stream("signal", out=out)
+        try:
+            frame = self.read_stream("signal", out=out, timeout=self.watchdog_timeout)
+        except TimeoutError:
+            self._on_input_stale()
+            return None
+        if self._stale_since is not None:
+            self._on_input_recovered()
+        return frame
+
+    def _on_input_stale(self):
+        if self._stale_since is not None:
+            return
+        self._stale_since = time.time()
+        self._stale_events += 1
+        try:
+            self._producer_alive = bool(self._stream_object("signal").producer_alive())
+        except Exception:
+            self._producer_alive = None
+        cause = {True: "its producer is alive but stalled", False: "its producer has exited"}.get(
+            self._producer_alive, "producer state unknown"
+        )
+        component_logger = getattr(self, "logger", logger)
+        component_logger.warning(
+            "Loop input 'signal' is stale: no frame for %.3g s (%s); watchdog action=%s",
+            self.watchdog_timeout,
+            cause,
+            self.watchdog_action,
+        )
+        self._last_watchdog_action = self.watchdog_action
+        if self.watchdog_action in ("open", "flatten"):
+            self.stop()
+        if self.watchdog_action == "flatten":
+            try:
+                self.flatten()
+            except Exception:
+                component_logger.exception("Watchdog failed to flatten the corrector")
+
+    def _on_input_recovered(self):
+        stale_for = time.time() - self._stale_since
+        self._stale_since = None
+        self._producer_alive = None
+        getattr(self, "logger", logger).info(
+            "Loop input 'signal' recovered after %.3g s", stale_for
+        )
+
+    def safety_status(self) -> dict:
+        """Return the watchdog state for manager status and the GUI.
+
+        ``alerts`` lists human-readable problems (empty when healthy).
+        """
+
+        stale = self._stale_since is not None
+        alerts = []
+        if stale:
+            detail = {True: "producer stalled", False: "producer exited"}.get(
+                self._producer_alive, "no new frames"
+            )
+            alerts.append(
+                f"signal stale for {time.time() - self._stale_since:.1f} s ({detail}); "
+                f"action={self.watchdog_action}"
+            )
+        return {
+            "watchdog_timeout": self.watchdog_timeout,
+            "watchdog_action": self.watchdog_action,
+            "input_stale": stale,
+            "stale_since": self._stale_since,
+            "stale_events": self._stale_events,
+            "producer_alive": self._producer_alive,
+            "last_action": self._last_watchdog_action,
+            "alerts": alerts,
+        }
+
     def standard_integrator_pol(self):
         """
         Standard integrator using the pseudo open loop slopes.
         """
-        residual_slopes = self.read_stream("signal", out=self._signal_buffer)
+        residual_slopes = self._read_signal(out=self._signal_buffer)
+        if residual_slopes is None:
+            return
         current_correction = self.read_stream("wfc", block=False, out=self._wfc_buffer)
         # print(f'slopes: {residual_slopes.shape}, im: {self.im.shape}, corr: {current_correction.shape}')
 
@@ -1176,7 +1300,9 @@ class Loop(Component):
         """
         Standard integrator.
         """
-        slopes = self.read_stream("signal", out=self._signal_buffer)
+        slopes = self._read_signal(out=self._signal_buffer)
+        if slopes is None:
+            return
         new_correction = leaky_integrator_numba(
             slopes,
             self.g_cm,
@@ -1192,7 +1318,9 @@ class Loop(Component):
         """
         Leaky integrator.
         """
-        slopes = self.read_stream("signal", out=self._signal_buffer)
+        slopes = self._read_signal(out=self._signal_buffer)
+        if slopes is None:
+            return
         new_correction = leaky_integrator_numba(
             slopes,
             self.g_cm,
@@ -1208,7 +1336,9 @@ class Loop(Component):
         """
         PID integrator using the pseudo-open loop slopes.
         """
-        slopes = self.read_stream("signal", out=self._signal_buffer)
+        slopes = self._read_signal(out=self._signal_buffer)
+        if slopes is None:
+            return
         correction = self.read_stream("wfc", block=False, out=self._wfc_buffer)
         pol_slopes = slopes - self.f_im @ correction
         return self.pid_integrator(slopes=pol_slopes, correction=correction)
@@ -1225,7 +1355,9 @@ class Loop(Component):
             Current correction vector. If not provided, reads from shared memory.
         """
         if slopes is None:
-            slopes = self.read_stream("signal")
+            slopes = self._read_signal()
+            if slopes is None:
+                return
         if correction is None:
             correction = self.read_stream("wfc", block=False)
 

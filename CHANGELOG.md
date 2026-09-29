@@ -237,6 +237,17 @@ All notable changes to `pyrtcao` will be documented in this file.
 
 ### Added
 
+- **Safety watchdog and saturation reporting** (#60).
+	- The closed loop waits at most `watchdog_timeout` (default 1 s) for a
+	  new `signal` frame. On timeout it reports the input stale, including
+	  whether the producer is alive, and applies `watchdog_action`: `hold`
+	  (default), `open` or `flatten`.
+	- The wavefront corrector counts actuators at `command_cap` every frame
+	  and warns past `saturation_warn_fraction` (default 5%).
+	- Both are reported by `safety_status()`, included as `safety` in
+	  manager status for soft- and hard-RTC components, and shown as alerts
+	  on the manager GUI's graph nodes.
+
 - **Hadamard interaction-matrix calibration** (#102): `im_method: hadamard`
 	pokes all modes at once with +/-`poke_amp` Hadamard patterns and
 	demultiplexes, cutting white sensor noise in the IM by about

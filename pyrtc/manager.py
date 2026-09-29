@@ -156,6 +156,7 @@ class ComponentRuntimeStatus:
     restart_policy: str = "never"
     log_file: str | None = None
     desired_running: bool = False
+    safety: dict | None = None
 
     def to_dict(self) -> dict:
         return {
@@ -177,6 +178,7 @@ class ComponentRuntimeStatus:
             "restart_policy": self.restart_policy,
             "log_file": self.log_file,
             "desired_running": self.desired_running,
+            "safety": self.safety,
         }
 
 
@@ -280,10 +282,25 @@ class BaseComponentRuntime:
             restart_policy=self.restart_policy,
             log_file=self.log_file,
             desired_running=self.desired_running,
+            safety=self._safety_status(),
         ).to_dict()
+
+    def _safety_status(self) -> dict | None:
+        """Return the component's ``safety_status()`` (watchdog, saturation), if any."""
+
+        return None
 
 
 class SoftComponentRuntime(BaseComponentRuntime):
+    def _safety_status(self) -> dict | None:
+        safety_status = getattr(self.component, "safety_status", None)
+        if not callable(safety_status):
+            return None
+        try:
+            return safety_status()
+        except Exception as exc:
+            return {"alerts": [f"safety_status failed: {exc}"]}
+
     def __init__(
         self,
         section_name,
@@ -384,6 +401,20 @@ class SoftComponentRuntime(BaseComponentRuntime):
 
 
 class HardComponentRuntime(BaseComponentRuntime):
+    def _safety_status(self) -> dict | None:
+        # Ask the child only when its class reports safety; others would log a
+        # failed RPC on every status poll.
+        if not callable(getattr(self.component_class, "safety_status", None)):
+            return None
+        launcher = getattr(self, "launcher", None)
+        if launcher is None or self.state not in {"running", "degraded"}:
+            return None
+        try:
+            result = launcher.run("safety_status", timeout=1.0)
+        except Exception as exc:
+            return {"alerts": [f"safety_status failed: {exc}"]}
+        return result if isinstance(result, dict) else None
+
     def __init__(
         self,
         section_name,
