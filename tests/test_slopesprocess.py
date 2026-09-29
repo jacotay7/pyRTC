@@ -517,6 +517,16 @@ def _frame_producer(wfs, images):
         thread.join(timeout=5)
 
 
+def _wait_for_new_signals(proc, count, timeout=10.0):
+    """Wait until ``proc`` has published ``count`` more signal frames."""
+
+    target = proc.signal.count + count
+    deadline = time.monotonic() + timeout
+    while proc.signal.count < target:
+        assert time.monotonic() < deadline, "the slopes worker stopped publishing"
+        time.sleep(1e-3)
+
+
 def _expected_pywfs(proc, image):
     n = int(np.count_nonzero(proc.p1mask))
     buffers = {k: np.empty(n, dtype=np.float32) for k in ("p1", "p2", "p3", "p4", "tmp1", "tmp2")}
@@ -584,6 +594,10 @@ def _check_take_ref_slopes_live(gpu_device):
         proc.set_ref_slopes(np.full(proc.ref_slopes.shape, 0.5, dtype=np.float32))
         proc.ref_slope_count = 5
         with _frame_producer(wfs, [image]):
+            # take_ref_slopes averages the next signal frames; wait until the
+            # worker is past the setup image, or its last signal from that
+            # image can land in the average (seen on a loaded CI runner).
+            _wait_for_new_signals(proc, 3)
             proc.take_ref_slopes()
 
         # The reference is the zero-reference signal of the (constant) frame,
