@@ -146,7 +146,7 @@ Performed better compared to a numpy only implementation
 """
 
 
-@jit(nopython=True, nogil=True, cache=False, fastmath=True)
+@jit(nopython=True, nogil=True, cache=True, fastmath=True)
 def compute_slopes_pywfs_optim_numba(
     image: np.ndarray,
     p1_mask: np.ndarray,
@@ -217,7 +217,7 @@ allowing for non-integer spacing.
 """
 
 
-@jit(nopython=True, nogil=True, cache=False)
+@jit(nopython=True, nogil=True, cache=True)
 def compute_slopes_shwfs_optim_numba(
     image: np.ndarray,
     slopes: np.ndarray,
@@ -368,7 +368,7 @@ def wcog_gain_correction(weight_fwhm: float, spot_fwhm: float) -> float:
     return float(1.0 + (float(spot_fwhm) / float(weight_fwhm)) ** 2)
 
 
-@jit(nopython=True, nogil=True, cache=False)
+@jit(nopython=True, nogil=True, cache=True)
 def build_shwfs_wcog_weights_numba(
     coords: np.ndarray,
     weight_centers: np.ndarray,
@@ -398,7 +398,7 @@ def build_shwfs_wcog_weights_numba(
     return weights_x, weights_y
 
 
-@jit(nopython=True, nogil=True, cache=False)
+@jit(nopython=True, nogil=True, cache=True)
 def compute_slopes_shwfs_wcog_numba(
     image: np.ndarray,
     slopes: np.ndarray,
@@ -468,7 +468,7 @@ def compute_slopes_shwfs_wcog_numba(
     return slopes
 
 
-@jit(nopython=True, nogil=True, cache=False)
+@jit(nopython=True, nogil=True, cache=True)
 def build_shwfs_correlation_templates_numba(
     reference_image: np.ndarray,
     threshold: np.float32,
@@ -517,7 +517,7 @@ def build_shwfs_correlation_templates_numba(
     return templates, template_flux
 
 
-@jit(nopython=True, nogil=True, cache=False)
+@jit(nopython=True, nogil=True, cache=True)
 def _subpixel_minimum_3x3(scores, best_i, best_j, num_shifts):
     """Return the sub-pixel ``(dx, dy)`` offset of a score minimum.
 
@@ -565,7 +565,7 @@ def _subpixel_minimum_3x3(scores, best_i, best_j, num_shifts):
     return dx, dy
 
 
-@jit(nopython=True, nogil=True, cache=False, fastmath=True)
+@jit(nopython=True, nogil=True, cache=True, fastmath=True)
 def compute_slopes_shwfs_correlation_numba(
     image: np.ndarray,
     slopes: np.ndarray,

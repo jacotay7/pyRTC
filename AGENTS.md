@@ -36,7 +36,9 @@ aliases.
   registered streams for good).
 - Core components: `wavefront_sensor.py`, `slopes_process.py`, `loop.py`,
   `wavefront_corrector.py`, `science_camera.py`, `telemetry.py`,
-  `modulator.py`, `optimizer.py`.
+  `modulator.py`, `optimizer.py`. Hot loops are `@jit(..., cache=True)`
+  Numba kernels; the first call after a source change recompiles (about 1 s
+  each), so warm them before timing anything.
 - `pyrtc/streams.py` — pyrtc's policy on top of pyshmem: `create_stream`,
   `open_stream`, `clear_shms`, and planning of the output streams a config
   implies (`expected_output_shm_specs_for_config`).

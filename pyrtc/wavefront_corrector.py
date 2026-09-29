@@ -19,7 +19,7 @@ from pyrtc.utils import gaussian_2d_grid, pyplot, set_from_config
 logger = get_logger(__name__)
 
 
-@jit(nopython=True)
+@jit(nopython=True, cache=True)
 def ModaltoZonalWithFlat(
     correction=np.array([], dtype=np.float32),
     M2C=np.array([[]], dtype=np.float32),

@@ -289,6 +289,12 @@ All notable changes to `pyrtcao` will be documented in this file.
 
 ### Changed
 
+- **The Numba kernels are cached on disk** (`cache=True`, #92). Each new
+	process used to recompile every hot-path kernel on first use; now only the
+	first run after an install or source change compiles. The two hottest
+	kernels' first-call cost drops from about 0.7 s to 0.1 s. Caches live in
+	`__pycache__` next to the source, or numba's user cache directory when the
+	install is read-only (set `NUMBA_CACHE_DIR` to override).
 - **Python 3.9 is no longer supported** (end of life since October 2025);
 	pyrtc requires Python 3.10 or newer.
 - The README and getting-started guide warn about the unrelated WebRTC

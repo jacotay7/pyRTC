@@ -19,7 +19,7 @@ from pyrtc.utils import pyplot, set_from_config
 logger = get_logger(__name__)
 
 
-@jit(nopython=True, nogil=True, cache=False, fastmath=True)
+@jit(nopython=True, nogil=True, cache=True, fastmath=True)
 def downsample_int32_image_jit(image, N):
     """
     Numba-optimized function to downsample a 2D int32 NumPy array by a factor N, returning int32 output.
@@ -69,7 +69,7 @@ def downsample_int32_image_jit(image, N):
     return downsampled_image
 
 
-@jit(nopython=True, nogil=True, cache=False, fastmath=True, parallel=True)
+@jit(nopython=True, nogil=True, cache=True, fastmath=True, parallel=True)
 def rotate_image_jit(image, angle_rad):
     """
     Numba-optimized parallel bilinear interpolation rotation.

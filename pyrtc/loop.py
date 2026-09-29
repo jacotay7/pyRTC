@@ -25,7 +25,7 @@ logger = get_logger(__name__)
 COMMON_CONDITIONING_LINES = (10.0, 100.0, 1e3, 1e4, 1e5, 1e6)
 
 
-@jit(nopython=True, nogil=True, cache=False, fastmath=True)
+@jit(nopython=True, nogil=True, cache=True, fastmath=True)
 def leaky_integrator_numba(
     slopes: np.ndarray,
     reconstruction_matrix: np.ndarray,
@@ -72,14 +72,14 @@ def leak_integrator_gpu(
     return correction
 
 
-@jit(nopython=True, nogil=True, cache=False, fastmath=True)
+@jit(nopython=True, nogil=True, cache=True, fastmath=True)
 def comp_correction(cm=np.array([[]], dtype=np.float32), slopes=np.array([], dtype=np.float32)):
     """Apply a control matrix to a slope vector and return the correction."""
 
     return np.dot(cm, slopes)
 
 
-@jit(nopython=True, nogil=True, cache=False, fastmath=True)
+@jit(nopython=True, nogil=True, cache=True, fastmath=True)
 def update_correction(
     correction=np.array([], dtype=np.float32),
     g_cm=np.array([[]], dtype=np.float32),
