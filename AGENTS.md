@@ -171,8 +171,9 @@ ruff check . && ruff format --check .    # lint, as in CI
   CI job (`gui-smoke.yml`). Run it locally after GUI or viewer changes, also
   with `QT_API=pyqt6` if PyQt6 is installed.
 - Other CI jobs worth knowing:
-  - `free-threaded`: Python 3.14t with `PYTHON_GIL=0`; it skips `tests/system`
-    (#139).
+  - `free-threaded`: Python 3.14t with `PYTHON_GIL=0`, the whole suite
+    except the Qt smoke test. (It skipped `tests/system` until #139 was traced
+    to uncapped simulator BLAS pools.)
   - `aarch64`: the whole suite on an ARM64 runner (`ubuntu-24.04-arm`). ARM
     orders memory more weakly than x86, so pyshmem's cross-process publication
     takes a different (libatomic) path there.
