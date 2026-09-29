@@ -246,16 +246,16 @@ There the GIL build cannot keep up with a 1 kHz soft-RTC pipeline (the median
 latency exceeds the frame period, so frames queue), and the free-threaded build
 keeps up easily.
 
-One caveat (#139): on an oversubscribed 16-thread host (more busy processes
-than hardware threads), the free-threaded pipeline's latency grew to 6-19
-frames, while the GIL build stayed at 1-2. This did not reproduce on the
-aarch64 host (no SMT): 20 of 20 HCIPy system-test runs passed on both builds
-with 14 busy processes on 8 or 16 cores and with 30 on 16. Until it is
-understood, give a free-threaded RTC dedicated cores. When load-testing a
-simulated system, also cap its BLAS threads (``OPENBLAS_NUM_THREADS=1``): the
-simulator's OpenBLAS pools can otherwise occupy every core on their own. To
-try free-threading: ``uv python install 3.14t``, make a venv with it, and
-install pyrtc as usual.
+An apparent free-threading problem turned out to be BLAS threads (#139). On a
+16-thread x86 host with 14 busy processes, the free-threaded HCIPy system test
+let the loop delay grow to 6-19 frames and diverge, while the GIL build stayed
+at 1-2 frames. The cause was the simulator's OpenBLAS pools, which occupied
+nearly every core by themselves. With them capped at one thread, the same test
+passed 4 of 4 times under the same load. It never reproduced on an aarch64
+host. Cap BLAS threads (``OPENBLAS_NUM_THREADS=1``) when load-testing a
+simulated system, and give a real RTC dedicated cores either way. To try
+free-threading: ``uv python install 3.14t``, make a venv with it, and install
+pyrtc as usual.
 
 Logging Workflow
 ----------------

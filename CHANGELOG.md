@@ -246,8 +246,10 @@ All notable changes to `pyrtcao` will be documented in this file.
 	pipeline-latency section adds an 80-core Neoverse-N1 host
 	(`benchmarks/pipeline_latency_report*_aarch64.json`) and explains its
 	deep-idle wake-up cost. The developer guide adds free-threaded latency on
-	that host (8x lower soft-RTC p50 at 1 kHz) and the non-reproduction of
-	#139 there. The loop docs add fp16/bf16 control-matrix timings on Ampere
+	that host (8x lower soft-RTC p50 at 1 kHz). #139, the free-threaded
+	runaway on a loaded x86 host, was the HCIPy simulator's uncapped OpenBLAS
+	pools: with them capped it passes there under load, and the free-threaded
+	CI job runs `tests/system` again. The loop docs add fp16/bf16 control-matrix timings on Ampere
 	and Ada GPUs and why the reduced formats lose on small systems.
 - **ImageStreamIO (milk/CACAO) bridge** (#54). `pyrtc.isio_bridge.IsioBridge`
 	(and the `pyrtc-isio-bridge` CLI) mirrors a stream from pyrtc to ISIO, or

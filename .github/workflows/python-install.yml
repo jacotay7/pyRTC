@@ -160,9 +160,9 @@ jobs:
       - name: Run tests without the GIL
         env:
           PYTHON_GIL: "0"
-        # tests/system is timing-sensitive, and on 3.14t it is unreliable on
-        # busy runners (#139); this job checks thread safety, not timing.
-        run: pytest -q --no-cov -m "not gpu" --ignore=tests/test_qt_smoke.py --ignore=tests/system
+        # tests/system runs too: its #139 runaway was the HCIPy simulator's
+        # OpenBLAS pools oversubscribing the runner, and that test now caps them.
+        run: pytest -q --no-cov -m "not gpu" --ignore=tests/test_qt_smoke.py
 
   # aarch64: ARM orders memory more weakly than x86, so pyshmem's
   # cross-process publication uses libatomic acquire/release there instead of

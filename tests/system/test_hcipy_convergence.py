@@ -12,13 +12,13 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-from threadpoolctl import threadpool_limits
 
 from pyrtc import clear_shms
 from pyrtc.utils import read_yaml_file
 from testsupport import prefix_system_streams
 
 pytest.importorskip("hcipy")
+threadpool_limits = pytest.importorskip("threadpoolctl").threadpool_limits
 
 EXAMPLE = (
     Path(__file__).resolve().parents[2] / "examples" / "hcipy" / "hcipy_shwfs_soft_rtc_example.py"
