@@ -145,6 +145,7 @@ pip install pyrtcao[aotpy]
 pip install pyrtcao[docs]
 pip install pyrtcao[gpu]
 pip install pyrtcao[specula]
+pip install pyrtcao[hcipy]     # HCIPy simulator backend
 ```
 
 A feature whose extra is missing raises an `ImportError` naming the extra to install.
@@ -265,7 +266,14 @@ For no-hardware exploration, start with the synthetic SHWFS example. For a riche
 
 ### Simulator-Backed Examples
 
-`examples/pywfs/` (pyramid WFS) and `examples/shwfs/` (Shack-Hartmann WFS) each have an OOPAO and a SPECULA version. Both run in soft-RTC mode only.
+`examples/pywfs/` (pyramid WFS) and `examples/shwfs/` (Shack-Hartmann WFS) each have an OOPAO and a SPECULA version, and `examples/hcipy/` runs a Shack-Hartmann system on HCIPy. All run in soft-RTC mode.
+
+HCIPy is the quickest to install:
+
+```bash
+pip install pyrtcao[hcipy]
+python examples/hcipy/hcipy_shwfs_soft_rtc_example.py --duration 10 --atmosphere
+```
 
 SPECULA is on PyPI:
 

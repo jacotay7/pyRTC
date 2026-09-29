@@ -81,6 +81,9 @@ viewer = [
 specula = [
 	"specula>=1.0",
 ]
+hcipy = [
+	"hcipy>=0.6",
+]
 hardware = [
 	"pipython",
 	"rotpy",

@@ -1,0 +1,92 @@
+hcipy:
+  class_name: pyrtc.hardware.hcipy_interface.HCIPyInterface
+  class_file: ../../pyrtc/hardware/hcipy_interface.py
+  param_file: hcipy_shwfs_params.yaml
+  use_atmosphere: false
+  input_streams: {}
+  output_streams: {}
+loop:
+  gain: 0.3
+  leaky_gain: 0.01
+  num_dropped_modes: 0
+  poke_amp: 2.0e-08
+  num_iters_im: 5
+  conditioning: 10
+  im_method: push-pull
+  class_name: Loop
+  input_streams:
+    signal: signal
+  output_streams:
+    wfc: wfc
+  functions:
+  - leaky_integrator
+  class_file: ../../pyrtc/loop.py
+wfs:
+  name: HCIPySH
+  width: 120
+  height: 120
+  dark_count: 100
+  class_name: pyrtc.hardware.hcipy_interface.HCIPyWFSensor
+  resource: hcipy
+  input_streams: {}
+  output_streams:
+    wfs_raw: wfs_raw
+    wfs: wfs
+  functions:
+  - expose
+  class_file: ../../pyrtc/hardware/hcipy_interface.py
+slopes:
+  type: SHWFS
+  signal_type: slopes
+  contrast: 0.0
+  sub_ap_spacing: 12
+  sub_ap_offset_x: 0
+  sub_ap_offset_y: 0
+  class_name: SlopesProcess
+  input_streams:
+    wfs: wfs
+  output_streams:
+    signal: signal
+    signal_2d: signal_2d
+  functions:
+  - compute_signal
+  class_file: ../../pyrtc/slopes_process.py
+wfc:
+  name: HCIPyDM
+  num_actuators: 89
+  num_modes: 30               # a 10x10 SHWFS senses about this many KL modes well
+  basis:
+    type: kl
+  flat_file: ''
+  m2c_file: ''
+  frame_delay: 0
+  class_name: pyrtc.hardware.hcipy_interface.HCIPyWFCorrector
+  resource: hcipy
+  input_streams:
+    wfc: wfc
+  output_streams:
+    wfc: wfc
+    wfc_2d: wfc_2d
+  functions:
+  - send_to_hardware
+  class_file: ../../pyrtc/hardware/hcipy_interface.py
+psf:
+  name: HCIPyPSF
+  width: 128
+  height: 128
+  dark_count: 10
+  integration: 5
+  class_name: pyrtc.hardware.hcipy_interface.HCIPyScienceCamera
+  resource: hcipy
+  input_streams: {}
+  output_streams:
+    psf_short: psf_short
+    psf_long: psf_long
+    strehl: strehl
+    tiptilt: tiptilt
+  functions:
+  - expose
+  - integrate
+  class_file: ../../pyrtc/hardware/hcipy_interface.py
+manager:
+  mode: soft-rtc

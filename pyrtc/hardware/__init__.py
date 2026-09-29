@@ -4,6 +4,7 @@ from importlib import import_module
 _EXPORTS = {
     "ALPAODM": (".alpao_dm", "ALPAODM"),
     "SPECULAInterface": (".specula_interface", "SPECULAInterface"),
+    "HCIPyInterface": (".hcipy_interface", "HCIPyInterface"),
     "SpinnakerScienceCamera": (".spinnaker_science_cam", "SpinnakerScienceCamera"),
     "XIMEAWFS": (".ximea_wfs", "XIMEAWFS"),
     "PIModulator": (".pi_modulator", "PIModulator"),

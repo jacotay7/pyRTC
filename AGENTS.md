@@ -224,6 +224,13 @@ ruff check . && ruff format --check .    # lint, as in CI
   install is a clone on `PYTHONPATH` (recipe in `docs/source/examples/pywfs.rst`).
   Per the maintainer, don't file OOPAO issues upstream; the write-up is kept
   outside the repo for the maintainer.
+- `hcipy_interface` builds its whole system from a flat parameter mapping
+  (defaults in `DEFAULT_PARAMS`). HCIPy's Shack-Hartmann optics need the
+  pupil magnified to the physical microlens-array size (the interface uses
+  5 mm), or the "spots" are just the pupil image. Keep the sub-aperture size
+  near r0 and the number of controlled modes modest, or the loop runs away on
+  the atmosphere (see `docs/source/examples/hcipy.rst`). The atmosphere
+  advances only on WFS exposures with it enabled.
 - The interface targets current OOPAO propagation: `src ** tel * dm * wfs`,
   or `src ** atm * tel * dm * wfs` with atmosphere (`**` resets the source).
   DM commands are in metres. `tests/system/test_oopao_convergence.py` runs
