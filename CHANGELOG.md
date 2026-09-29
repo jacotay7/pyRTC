@@ -314,6 +314,13 @@ All notable changes to `pyrtcao` will be documented in this file.
 
 ### Changed
 
+- **Heavy dependencies are optional extras** (#50). `pip install pyrtcao`
+	installs only the soft-RTC core. `matplotlib` moved to the `plot` extra,
+	`astropy` to `fits`, and `optuna`/`cmaes` to `optimize`. `numexpr`, which
+	pyrtc never imported, is gone. Features that need a missing extra raise an
+	`ImportError` naming it (`pyrtc.utils.require_optional`), and
+	`import pyrtc` no longer imports optuna or astropy. Requires aobasis 1.2.0,
+	which made its own matplotlib dependency optional.
 - **Zernike and Fourier bases are orthonormalized by default** (#105).
 	Sampled on a discrete actuator grid, they are not orthogonal, and the raw
 	modes left the SPECULA SHWFS Zernike loop borderline (residual 4.9% of the

@@ -199,7 +199,7 @@ def test_optimizer_apply_next_and_reset_study(monkeypatch):
     def fake_create_study(direction, sampler):
         return FakeStudy()
 
-    monkeypatch.setattr(opt_mod.optuna, "create_study", fake_create_study)
+    monkeypatch.setattr(pytest.importorskip("optuna"), "create_study", fake_create_study)
 
     class TOptimizer(Optimizer):
         def __init__(self, conf):
@@ -369,7 +369,9 @@ def test_optimizer_base_methods_and_error_paths(monkeypatch):
             for _ in range(n_trials):
                 objective()
 
-    monkeypatch.setattr(opt_mod.optuna, "create_study", lambda direction, sampler: FakeStudy())
+    monkeypatch.setattr(
+        pytest.importorskip("optuna"), "create_study", lambda direction, sampler: FakeStudy()
+    )
 
     optimizer = Optimizer({"num_steps": 1, "functions": []})
     assert optimizer.objective() is None
@@ -391,7 +393,7 @@ def test_optimizer_base_methods_and_error_paths(monkeypatch):
         optimizer.apply_next()
 
     monkeypatch.setattr(
-        opt_mod.optuna,
+        pytest.importorskip("optuna"),
         "create_study",
         lambda direction, sampler: (_ for _ in ()).throw(RuntimeError("reset failed")),
     )
@@ -401,7 +403,7 @@ def test_optimizer_base_methods_and_error_paths(monkeypatch):
 
 def test_optimizer_init_failure_logs_and_raises(monkeypatch):
     monkeypatch.setattr(
-        opt_mod.optuna,
+        pytest.importorskip("optuna"),
         "create_study",
         lambda direction, sampler: (_ for _ in ()).throw(RuntimeError("study failed")),
     )

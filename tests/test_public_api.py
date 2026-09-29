@@ -55,3 +55,33 @@ def test_importing_pyrtc_does_not_import_pyplot():
         [sys.executable, "-c", code], capture_output=True, text=True, check=True
     )
     assert result.stdout.strip().splitlines()[-1] == "False"
+
+
+def test_import_pyrtc_does_not_import_optional_extras():
+    """The core install must work without the optimize/fits/plot extras (#50)."""
+    import subprocess
+    import sys
+
+    code = (
+        "import sys, pyrtc, pyrtc.utils, pyrtc.latency, pyrtc.optimizer;"
+        "print(sorted(m for m in ('optuna', 'astropy', 'matplotlib.pyplot', 'numexpr') "
+        "if m in sys.modules))"
+    )
+    out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, check=True)
+    assert out.stdout.strip() == "[]"
+
+
+def test_missing_optional_extra_names_the_extra(monkeypatch):
+    import sys
+
+    import pytest
+
+    from pyrtc.utils import load_data, require_optional
+
+    # A None entry in sys.modules makes the import raise ImportError.
+    for name in ("astropy", "astropy.io", "astropy.io.fits"):
+        monkeypatch.setitem(sys.modules, name, None)
+    with pytest.raises(ImportError, match=r"pyrtcao\[fits\]"):
+        load_data("frame.fits")
+    with pytest.raises(ImportError, match=r"pyrtcao\[optimize\]"):
+        require_optional("pyrtc_no_such_module", "optimize", "Test feature")

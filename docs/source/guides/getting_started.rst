@@ -35,16 +35,20 @@ If you are working from a source checkout instead of PyPI:
 	cd pyRTC
 	pip install .
 
-Optional extras:
+The base install is the soft-RTC core. Optional extras:
 
 .. code-block:: bash
 
+	pip install pyrtcao[plot]       # matplotlib: plotting helpers, pyrtc-shm-monitor
+	pip install pyrtcao[fits]       # astropy: .fits files
+	pip install pyrtcao[optimize]   # optuna + cmaes: pyrtc.Optimizer, hardware optimizers
 	pip install pyrtcao[aotpy]
 	pip install pyrtcao[docs]
 	pip install pyrtcao[gpu]
 	pip install pyrtcao[viewer]   # pyrtc-view
 	pip install pyrtcao[gui]      # pyrtc-manager-gui
 
+A feature whose extra is missing raises an ``ImportError`` naming the extra.
 The ``viewer`` and ``gui`` extras install Qt6 through `qtpy` with PySide6.
 PyQt6 works too: install ``qtpy`` and ``PyQt6`` yourself instead of the
 extra. If both bindings are installed, PySide6 is used unless ``QT_API=pyqt6``

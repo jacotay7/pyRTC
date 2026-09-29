@@ -133,15 +133,21 @@ The project is designed for:
 pip install pyrtcao
 ```
 
-Optional extras:
+The base install is the soft-RTC core. Optional extras:
 
 ```bash
+pip install pyrtcao[plot]      # matplotlib: plotting helpers, latency histograms, pyrtc-shm-monitor
+pip install pyrtcao[fits]      # astropy: reading .fits files
+pip install pyrtcao[optimize]  # optuna + cmaes: pyrtc.Optimizer and the hardware optimizers
+pip install pyrtcao[viewer]    # Qt viewer (includes matplotlib)
+pip install pyrtcao[gui]       # Qt manager GUI
 pip install pyrtcao[aotpy]
 pip install pyrtcao[docs]
 pip install pyrtcao[gpu]
 pip install pyrtcao[specula]
-pip install pyrtcao[viewer]
 ```
+
+A feature whose extra is missing raises an `ImportError` naming the extra to install.
 
 ### From Source
 
