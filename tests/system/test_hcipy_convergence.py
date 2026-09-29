@@ -12,6 +12,7 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+from threadpoolctl import threadpool_limits
 
 from pyrtc import clear_shms
 from pyrtc.utils import read_yaml_file
@@ -22,6 +23,15 @@ pytest.importorskip("hcipy")
 EXAMPLE = (
     Path(__file__).resolve().parents[2] / "examples" / "hcipy" / "hcipy_shwfs_soft_rtc_example.py"
 )
+
+
+@pytest.fixture(autouse=True)
+def _single_threaded_blas():
+    # numpy is imported before the example could set OPENBLAS_NUM_THREADS, so
+    # cap the pools at runtime. HCIPy keeps full OpenBLAS pools busy otherwise,
+    # which made this test 2.5x slower and piled load onto busy runners (#139).
+    with threadpool_limits(limits=1):
+        yield
 
 
 def _load_example():

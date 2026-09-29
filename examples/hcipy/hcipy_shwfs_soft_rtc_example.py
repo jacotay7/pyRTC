@@ -7,11 +7,25 @@ Needs ``pip install pyrtcao[hcipy]``.
 """
 
 import argparse
+import os
 import sys
 import time
 from pathlib import Path
 
-import numpy as np
+# One BLAS thread, as hard-RTC children get (see the architecture guide), unless
+# the environment already says otherwise. It must be set before numpy loads.
+# HCIPy's propagation otherwise keeps a full OpenBLAS pool per library busy: on
+# 16 cores the pools took about 15 of them and the WFS ran slower (#139).
+for _var in (
+    "OMP_NUM_THREADS",
+    "OPENBLAS_NUM_THREADS",
+    "MKL_NUM_THREADS",
+    "VECLIB_MAXIMUM_THREADS",
+    "NUMEXPR_NUM_THREADS",
+):
+    os.environ.setdefault(_var, "1")
+
+import numpy as np  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:

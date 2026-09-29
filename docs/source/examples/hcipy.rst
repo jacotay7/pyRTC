@@ -52,6 +52,14 @@ Two design rules keep the loop well behaved:
   SHWFS, poorly sensed high-order modes slowly ran away on the atmosphere; 30
   modes are stable.
 
+The example script sets ``OPENBLAS_NUM_THREADS`` and the related variables to
+``1`` before importing numpy, unless they are already set, just as hard-RTC
+children do. HCIPy's propagation otherwise keeps a full OpenBLAS thread pool
+busy (numpy and scipy each load one). On 16 cores those pools used about 15 of
+them, and the WFS ran slower (23 against 32 frames/s). If you build the system
+from your own script, set the variables before Python starts, or cap the pools
+with ``threadpoolctl.threadpool_limits(1)``.
+
 ``tests/system/test_hcipy_convergence.py`` runs this example. It nulls a
 static DM aberration and checks that closing the loop raises the Strehl on
 the atmosphere. On the reference machine, the H-band Strehl was 0.2-0.6 in
