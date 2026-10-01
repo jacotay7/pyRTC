@@ -396,4 +396,4 @@ The GitHub Actions publish workflow lives in `.github/workflows/publish-package.
 
 ## Contact
 
-For feedback, collaboration, and feature requests: `jtaylor@keck.hawaii.edu`
+For feedback, collaboration, and feature requests: `jacobataylor7@gmail.com`

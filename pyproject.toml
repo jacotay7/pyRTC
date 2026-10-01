@@ -11,7 +11,7 @@ requires-python = ">=3.10"
 license = "GPL-3.0-or-later"
 license-files = ["LICENSE"]
 authors = [
-	{ name = "Jacob Taylor", email = "jtaylor@keck.hawaii.edu" },
+	{ name = "Jacob Taylor", email = "jacobataylor7@gmail.com" },
 ]
 keywords = [
 	"adaptive optics",
