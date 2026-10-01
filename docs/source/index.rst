@@ -97,4 +97,4 @@ Contributor and maintainer workflow guidance is collected in the Developer Guide
 Contact
 ------------
 
-For feedback, collaboration, and feature requests you can contact me via e-mail at jtaylor@keck.hawaii.edu.
+For feedback, collaboration, and feature requests you can contact me via e-mail at jacobataylor7@gmail.com.
