@@ -191,7 +191,9 @@ ruff check . && ruff format --check .    # lint, as in CI
   next to other systems. They are not part of the CI perf gate.
 - Perf gate, as in CI:
   `python benchmarks/perf_smoke.py --output perf.json` then
-  `python benchmarks/check_perf_baseline.py --current perf.json --baseline benchmarks/perf_smoke_baseline.json --max-ratio 5.0`.
+  `python benchmarks/check_perf_baseline.py --current perf.json --baseline benchmarks/perf_smoke_baseline.json --max-ratio 5.0 --ignore-tail`.
+  CI does not gate on p95/p99: tail latency of microsecond kernels on shared
+  runners is scheduler noise (a 5 us kernel's p99 once came in at 11.8x).
 - Trends across CI runs: `python -m benchmarks.perf_history --repo <owner/repo>`
   (reads the uploaded perf artifacts; needs `GH_TOKEN`). CI runs only on pull
   requests into `dev`/`main` and pushes to `main`, so the history is PR runs.

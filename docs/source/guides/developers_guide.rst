@@ -91,8 +91,8 @@ GitHub Actions runs on pull requests into ``dev`` and ``main`` and on pushes to
   offscreen platform.
 - ``isio-bridge.yml``: builds ImageStreamIO and runs the ISIO bridge tests.
 - ``lint.yml``: ``ruff check`` and ``ruff format --check``.
-- ``publish-package.yml``: builds and publishes to TestPyPI/PyPI, on a release
-  or by hand.
+- ``publish-package.yml``: builds and publishes to PyPI, on a release or by
+  hand.
 
 The simulator system tests are timing-sensitive on busy runners; see the
 notes on loop delay in ``AGENTS.md`` before tightening their thresholds.
@@ -477,9 +477,8 @@ Before publishing a release candidate:
       python -m pyrtc.scripts.validate_dist_install --dist-dir dist
       cd docs/source && make html
 
-5. Upload to TestPyPI first.
-6. Validate installation from TestPyPI in a clean environment.
-7. Publish to PyPI only after the TestPyPI install passes.
+5. Publish a GitHub release; the publish workflow builds, validates the wheel
+   install in a clean environment, and uploads to PyPI.
 
 Publishing Workflow
 -------------------
@@ -488,7 +487,6 @@ The repository includes `.github/workflows/publish-package.yml`.
 
 Expected usage:
 
-- `workflow_dispatch` with `repository=testpypi` for pre-release uploads
-- a published GitHub release, or manual dispatch with `repository=pypi`, for production uploads
+- a published GitHub release, or a manual dispatch, uploads to PyPI
 
-This workflow assumes trusted publishing has been configured on both TestPyPI and PyPI.
+This workflow assumes trusted publishing has been configured on PyPI.

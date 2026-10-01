@@ -102,9 +102,12 @@ jobs:
       # The committed baseline comes from the fast lab host, so the ratio
       # threshold on shared GitHub runners is deliberately generous: it
       # catches order-of-magnitude hot-path regressions without flaking on
-      # runner variance. Use --max-ratio 1.5 when comparing on the lab host.
+      # runner variance. Tail metrics (p95/p99) are reported but not gated
+      # (--ignore-tail): for microsecond kernels they measure runner
+      # scheduling noise, not pyrtc. Use --max-ratio 1.5 without
+      # --ignore-tail when comparing on the lab host.
       - name: Compare against committed perf baseline
-        run: python benchmarks/check_perf_baseline.py --current benchmarks/perf_smoke_report.json --baseline benchmarks/perf_smoke_baseline.json --max-ratio 5.0
+        run: python benchmarks/check_perf_baseline.py --current benchmarks/perf_smoke_report.json --baseline benchmarks/perf_smoke_baseline.json --max-ratio 5.0 --ignore-tail
 
       - name: Upload performance smoke artifact
         uses: actions/upload-artifact@v7
