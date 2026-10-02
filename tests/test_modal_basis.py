@@ -135,7 +135,7 @@ def test_rank_deficient_basis_logs_warning(caplog):
     with caplog.at_level(logging.WARNING, logger="test_modal_basis"):
         build_m2c(
             parse_basis_config({"type": "zernike"}),
-            num_modes=97,
+            num_modes=96,  # 97 actuators, piston removed
             layout=_alpao97_layout(),
             logger=logger,
         )
