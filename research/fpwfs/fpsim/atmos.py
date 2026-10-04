@@ -43,8 +43,17 @@ def to_torch(array) -> torch.Tensor:
 class Turbulence:
     """One or more independent frozen-flow atmospheres stepped together."""
 
+    # Each ``seed`` owns a disjoint block of SEED_STRIDE atmospheres, so callers can use
+    # consecutive seeds for separate collections without sharing turbulence. (Before
+    # 2026-10-03 atmosphere i used seed + i: collections whose seeds differed by less
+    # than the batch size silently shared most of their atmospheres.)
+    SEED_STRIDE = 1000
+
     def __init__(self, cfg: KeckConfig, batch: int = 1, seed: int = 0, **kwargs):
-        self.atms = [make_atmosphere(cfg, seed=seed + i, **kwargs) for i in range(batch)]
+        if batch > self.SEED_STRIDE:
+            raise ValueError(f"batch must be <= {self.SEED_STRIDE}")
+        self.seeds = [seed * self.SEED_STRIDE + i for i in range(batch)]
+        self.atms = [make_atmosphere(cfg, seed=s, **kwargs) for s in self.seeds]
 
     def step(self, dt: float) -> torch.Tensor:
         """Advance by ``dt`` seconds; OPD (batch, n, n) in metres."""

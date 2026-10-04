@@ -177,18 +177,25 @@ hand-over.**
 **v3 (diverse turbulence, wider dither, warm start + 3 DAgger rounds): 23/24 hold.**
 - Leak 0.99, gain 0.4, 24 unseen atmospheres over 2 s: **23/24 hold (96 %), median H
   Strehl 0.72**. The tuned SH gives 0.70.
-- The single failure is still seed 4008. Its bulk statistics are ordinary (mid-ranked
-  in amplitude and rate of change), so a specific transient event drives it.
+- The single failure is still seed 4008 (old seed scheme). Its bulk statistics are
+  ordinary (mid-ranked in amplitude and rate of change), so a specific transient event
+  drives it.
 - **The maintenance goal is met in simulation:** the loop is held by the focal-plane
   camera alone, at SH-level or slightly better Strehl, in >= 95 % of atmospheres.
 
-**exp12: the bootstrap failure was a training problem, not physics.**
-- A network dedicated to the first 20 modes, with the same 1 rad defocus, estimates
-  them from a single open-loop frame at error/residual 0.17 (871 nm residual), and at
-  0.20-0.23 through the 2-, 5- and 10-mode stages.
-- exp11's single all-stage network was the problem.
-- exp14: bootstrap with stage-specific networks (A: 20 modes, B: 120 modes, then the
-  v3 maintenance network).
+**CORRECTION — exp12 was invalid (test-set leakage).**
+- `Turbulence(batch, seed)` used atmosphere seeds seed..seed+batch-1, and exp11/12/14
+  offset collections by 1, so train and "held-out" sets shared 14-15 of 16
+  atmospheres. exp12's open-loop ratio of 0.17 was memorisation.
+- On a genuinely new atmosphere, the stage-A network's open-loop ratio is 0.75. It has
+  ~no information on focus/astigmatism (282 nm error on 314 nm), consistent with exp11
+  and the literature. **Bootstrap from open loop remains unsolved.**
+- exp14 (stage-specific networks) failed in 24/24 atmospheres for the same reason.
+- The overlap also reduced the atmosphere diversity of the DAgger collections in exp10.
+  It did NOT leak into exp09/10/13 test sets, which used disjoint seeds.
+- Fixed: each `seed` now owns a disjoint block of 1000 atmospheres
+  (`Turbulence.SEED_STRIDE`). Atmosphere numbers quoted above (e.g. "seed 4008") use
+  the old scheme.
 
 **Open threads.**
 - exp04: multi-frame networks with DM-command diversity and DAgger.
