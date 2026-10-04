@@ -40,6 +40,7 @@ pyrtc is an open-source, community-driven Python package for real-time control o
   components/wfs
   components/wfc
   components/slopes
+  components/image_reconstructor
   components/loop
   components/optimizer
   components/scicam

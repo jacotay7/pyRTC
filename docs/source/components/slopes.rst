@@ -12,6 +12,10 @@ which contain the vectorized and 2D mapped images of the slopes respectively. It
 which contains the image stream from the wavefront sensor. The images are then be processed to compute the intermediate data product 
 used for wavefront reconstruction.
 
+To compute the signal with a PyTorch model instead (a neural or focal-plane
+reconstructor), put a :doc:`TorchImageReconstructor <image_reconstructor>` in
+the ``slopes`` section.
+
 Soft-RTC Example
 ----------------
 
