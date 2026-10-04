@@ -231,7 +231,19 @@ def expected_output_shm_specs_for_config(system_conf: dict) -> dict[str, dict[st
     if isinstance(slopes_conf, dict) and isinstance(wfs_conf, dict):
         output_aliases = stream_alias_map(slopes_conf.get("output_streams"))
         wfs_type = str(slopes_conf.get("type", "SHWFS")).lower()
-        if wfs_type == "shwfs":
+        if "signal_size" in slopes_conf and "type" not in slopes_conf:
+            # A component that declares its signal length (TorchImageReconstructor).
+            specs[output_aliases.get("signal", "signal")] = {
+                "shape": (int(slopes_conf["signal_size"]),),
+                "dtype": np.float32,
+            }
+            signal2d_shape = slopes_conf.get("signal_2d_shape")
+            if signal2d_shape:
+                specs[output_aliases.get("signal_2d", "signal_2d")] = {
+                    "shape": tuple(int(axis) for axis in signal2d_shape),
+                    "dtype": np.float32,
+                }
+        elif wfs_type == "shwfs":
             downsample = int(wfs_conf.get("downsample_factor", 0) or 0)
             width = int(wfs_conf.get("width", 1))
             if downsample > 0:

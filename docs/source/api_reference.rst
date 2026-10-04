@@ -27,6 +27,7 @@ Module Index
    component_loading
    modal_basis
    corrector_splitter
+   image_reconstructor
    modal_gains
    predictive
    latency
