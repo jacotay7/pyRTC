@@ -277,7 +277,10 @@ def _build_wfs(
         else None
     )
     slopes_conf = (resolved_config or {}).get("slopes", {})
-    slopes_type = str(slopes_conf.get("type", "SHWFS")).strip().lower()
+    # A slopes section declaring signal_size without a type (TorchImageReconstructor)
+    # publishes a generic signal, not x/y slopes.
+    default_type = "" if "signal_size" in slopes_conf else "SHWFS"
+    slopes_type = str(slopes_conf.get("type", default_type)).strip().lower()
 
     source = aotpy.NaturalGuideStar(uid=f"{uid_prefix}_NGS")
     detector = None

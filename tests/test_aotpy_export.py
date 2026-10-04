@@ -29,7 +29,7 @@ aotpy = pytest.importorskip("aotpy", reason="aotpy is not installed in this test
 RUN_AOTPY_ROUNDTRIP = os.environ.get("PYRTC_RUN_AOTPY_ROUNDTRIP") == "1"
 
 
-def _make_test_session(monkeypatch, tmp_path, *, include_science=True):
+def _make_test_session(monkeypatch, tmp_path, *, include_science=True, slopes_conf=None):
     telemetry_module = importlib.import_module("pyrtc.telemetry")
 
     streams = {
@@ -61,7 +61,7 @@ def _make_test_session(monkeypatch, tmp_path, *, include_science=True):
         semantic_tags=semantic_tags,
         config={
             "metadata": {"name": "Synthetic Export"},
-            "slopes": {"type": "SHWFS", "signal_type": "slopes"},
+            "slopes": slopes_conf or {"type": "SHWFS", "signal_type": "slopes"},
             "wfc": {"num_modes": 2},
             "loop": {"gain": 0.35},
         },
@@ -82,6 +82,19 @@ def test_telemetry_session_to_aotpy_maps_synthetic_streams(monkeypatch, tmp_path
     assert len(system.scoring_cameras) == 2
     assert system.wavefront_sensors[0].measurements.data.shape == (2, 2, 2)
     assert system.loops[0].commands.data.shape == (2, 2)
+
+
+def test_generic_signal_from_an_image_reconstructor_is_not_split_into_slopes(monkeypatch, tmp_path):
+    session_path = _make_test_session(
+        monkeypatch,
+        tmp_path,
+        slopes_conf={"class_name": "TorchImageReconstructor", "signal_size": 4},
+    )
+
+    system = aotpy_export.telemetry_session_to_aotpy(session_path)
+
+    # Four model outputs, not two x/y slope pairs.
+    assert system.wavefront_sensors[0].measurements.data.shape == (2, 1, 4)
 
 
 def test_ring_buffer_dump_exports_to_aotpy(monkeypatch, tmp_path):

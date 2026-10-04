@@ -47,6 +47,7 @@ from .streams import (
     normalize_gpu_device,
     open_stream,
 )
+from .image_reconstructor import TorchImageReconstructor
 from .science_camera import ScienceCamera
 from .slopes_process import SlopesProcess
 from .telemetry import (
@@ -76,6 +77,7 @@ __all__ = [
     "RTCManager",
     "ScienceCamera",
     "SlopesProcess",
+    "TorchImageReconstructor",
     "Telemetry",
     "list_telemetry_sessions",
     "load_telemetry_manifest",

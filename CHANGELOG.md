@@ -4,6 +4,26 @@ All notable changes to `pyrtcao` will be documented in this file.
 
 ## Unreleased
 
+### Added
+
+- **PyTorch image reconstructor.** `TorchImageReconstructor`
+	(`pyrtc.image_reconstructor`) publishes a PyTorch model's output on each
+	WFS image as the loop's `signal`, for neural and focal-plane
+	reconstructors. It sits in the `slopes` section in place of
+	`SlopesProcess`, so the loop and the rest of the pipeline are unchanged
+	(use an identity IM when the model outputs modes). Models come from a
+	`.pt2` (`torch.export`) or TorchScript `model_file`, or from a
+	`model_factory` plus an optional `state_dict_file`; `signal_size` is
+	checked against the model output at startup. Options: `device`
+	(CPU/CUDA), `dtype` (float32/float16), flux normalisation, square-root
+	stretch and a per-element output scale. On CUDA it uses pinned host
+	buffers, its own CUDA stream and a captured CUDA graph (with an eager
+	fallback); `timing_stats()` reports the per-frame compute time.
+	`benchmarks/image_reconstructor_bench.py` times it. Config validation
+	applies the `SlopesProcess` checks only to `SlopesProcess`-family
+	classes, and stream planning and the AOTPy export treat a typeless
+	`slopes` section with `signal_size` as a generic signal.
+
 ### Fixed
 
 - **The first frame after `start()` no longer stalls while numba compiles**
