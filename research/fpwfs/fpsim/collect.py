@@ -53,6 +53,7 @@ def collect(
     beta: float = 0.0,
     ideal_frames: int = 0,
     mode_mask: torch.Tensor | None = None,
+    probe_m: torch.Tensor | None = None,
 ) -> Trajectories:
     """Run B loops for ``steps`` frames and record (frame, applied, truth).
 
@@ -69,6 +70,10 @@ def collect(
     est = beta * ideal + (1 - beta) * behaviour. The first ``ideal_frames``
     frames use the (noisy) ideal estimate, to start from a converged loop.
     ``mode_mask`` (n_modes,) restricts the controller to a subset of modes.
+    ``probe_m`` (n_modes,) is a known modal DM probe applied with alternating sign
+    (+, -, +, ...) on top of the command (temporal phase diversity). It is recorded
+    in ``applied``; ``truth`` and the ideal estimate are probe-free (what the
+    controller must correct).
     """
     g = torch.Generator(device=pupil.device).manual_seed(seed)
     b = len(turbulence.atms)
@@ -89,10 +94,16 @@ def collect(
         if dither_modes_nm is not None:
             amp = dither_max * torch.rand(b, 1, device=dev, generator=g)
             applied = applied + amp * dither_modes_nm[None] * 1e-9 * torch.randn(b, n_modes, device=dev, generator=g)
+        probe = None
+        if probe_m is not None:
+            probe = (1.0 if k % 2 == 0 else -1.0) * probe_m[None]
+            applied = applied + probe
         hist.append(applied)
         hist = hist[-8:]
         residual = turbulence.step(dt) - dm.opd(applied)
         true_modes = proj(residual)  # metres
+        if probe is not None:
+            true_modes = true_modes + probe  # the probe is known: label the probe-free residual
         clean = sensor.frame(residual, noise=False)
         if k >= keep_from:
             frames.append(clean.half().cpu())

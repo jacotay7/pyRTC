@@ -197,6 +197,39 @@ hand-over.**
   (`Turbulence.SEED_STRIDE`). Atmosphere numbers quoted above (e.g. "seed 4008") use
   the old scheme.
 
+**exp15: acquisition on held-out atmospheres (clean seeds).**
+- Error/residual for the first 20 modes, by number of modes already controlled
+  (stage 0 = open loop):
+
+  | Modes already controlled | 0 | 2 | 5 | 10 | 20 |
+  | --- | --- | --- | --- | --- | --- |
+  | Single frame (1 rad fixed defocus) | 0.69 | 0.84 | 0.76 | 0.86 | 0.84 |
+  | Two frames with known +-1 rad focus probes | 0.66 | 0.83 | 0.76 | 0.89 | - |
+
+  The probe pair adds nothing.
+- Even with 20 modes already controlled, the single frame only reaches 0.84 on them,
+  because everything above mode 20 is uncorrected (hundreds of nm) and its coupling
+  swamps the low-order signal.
+- So during acquisition the limit is the **uncorrected high-order turbulence**, not
+  the even-mode sign ambiguity: low orders can't be sensed until high orders are partly
+  corrected, and vice versa.
+- The 2 / 4 rad probes are still running.
+
+**Real-time path (G1): pyRTC PR #156 (`TorchImageReconstructor`, into dev, not merged, CI green).**
+- A generic slopes-section component: WFS image -> torch model -> modal signal. CUDA
+  graph, pinned buffers, per-frame timing.
+- Full-path latency, 64x64 -> 120 outputs, RTX 4060 (shared host, also drives the display):
+
+  | Model | Median | p99 |
+  | --- | --- | --- |
+  | 14.8M CNN, fp16, CUDA graph | 0.38-0.56 ms | 1.1-2.5 ms |
+  | 1.1M MLP, CUDA graph | 0.09-0.18 ms | 0.36-0.51 ms |
+
+- The current maintenance network meets the median budget but **misses the G1 p99 target**.
+- Next for G1: distil it into a much smaller network, then measure on an idle GPU.
+- Side effects: two config/stream-planning bugs fixed in the PR; issue #155 filed
+  (component worker threads leak when __init__ fails).
+
 **Open threads.**
 - exp04: multi-frame networks with DM-command diversity and DAgger.
 - Whether a wider field of view (seeing the fitting halo) lets a nonlinear
