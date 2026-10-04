@@ -34,6 +34,17 @@ All notable changes to `pyrtcao` will be documented in this file.
 	half-built component. The threads now start on the first `start()`.
 	Construction starts none, and `stop()`/`start()` still pause and resume
 	the same threads.
+- **`Loop.pid_integrator_pol` is about 50x faster** (#158). Each frame ran
+	the pseudo open-loop product `f_im @ correction` in NumPy and the control
+	product in numba, which calls SciPy's OpenBLAS. The two libraries' thread
+	pools (one spinning worker per core each) then fought over the cores, so
+	a frame took 12 ms instead of 0.2 ms in a 16-core cpuset (signal 1600,
+	400 modes). Both products now run in numba
+	(`pyrtc.loop.pseudo_open_loop_slopes`).
+	- `pid_integrator_pol` also no longer fails with a numba `TypingError`
+	  on every frame when the interaction matrix is float64 (an `im_file`
+	  saved as float64). `Loop.f_im` is now kept in the control matrix's
+	  dtype.
 - **The first frame after `start()` no longer stalls while numba compiles**
 	(#157). `SlopesProcess`, `Loop` and `WavefrontCorrector` compiled their
 	per-frame numba kernels during the first real frame. That took 0.15 s

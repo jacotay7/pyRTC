@@ -148,6 +148,20 @@ def comp_correction(cm=np.array([[]], dtype=np.float32), slopes=np.array([], dty
 
 
 @jit(nopython=True, nogil=True, cache=True, fastmath=True)
+def pseudo_open_loop_slopes(slopes, f_im, correction):
+    """Return the pseudo open-loop slopes ``slopes - f_im @ correction``.
+
+    ``pid_integrator_pol`` computes this here rather than in NumPy so that
+    both of its products run on the BLAS numba calls (SciPy's OpenBLAS).
+    Alternating between NumPy's and SciPy's OpenBLAS every frame made their
+    two spinning thread pools fight over the cores, which cost about 30x on
+    a many-core host (#158). ``f_im`` and ``correction`` must share a dtype.
+    """
+
+    return slopes - np.dot(f_im, correction)
+
+
+@jit(nopython=True, nogil=True, cache=True, fastmath=True)
 def update_correction(
     correction=np.array([], dtype=np.float32),
     g_cm=np.array([[]], dtype=np.float32),
@@ -1345,7 +1359,9 @@ class Loop(Component):
             self.cm[: self.num_active_modes, :] = inverse
             self.cm[self.num_active_modes :, :] = 0
             self._update_gain_matrix()
-            self.f_im = np.copy(self.im)
+            # In the CM's dtype (an IM loaded from file or estimated by
+            # DOCRIME may be float64), so the numba POL product types match.
+            self.f_im = np.array(self.im, dtype=self.cm.dtype)
             self.f_im[:, self.num_active_modes :] = 0
             self.last_singular_values = singular_values
             self.last_retained_singular_mask = retained
@@ -1428,10 +1444,15 @@ class Loop(Component):
             ),
             # pid_integrator
             ("comp_correction", lambda: comp_correction(cm=self.cm, slopes=signal)),
-            # pid_integrator_pol: pseudo open-loop slopes may promote the dtype
+            # pid_integrator_pol
             (
-                "comp_correction (POL)",
-                lambda: comp_correction(cm=self.cm, slopes=signal - self.f_im @ wfc),
+                "pseudo_open_loop_slopes",
+                lambda: comp_correction(
+                    cm=self.cm,
+                    slopes=pseudo_open_loop_slopes(
+                        signal, self.f_im, wfc.astype(self.f_im.dtype, copy=False)
+                    ),
+                ),
             ),
         )
         for name, call in calls:
@@ -1684,7 +1705,10 @@ class Loop(Component):
         if slopes is None:
             return
         correction = self.read_stream("wfc", block=False, out=self._wfc_buffer)
-        pol_slopes = slopes - self.f_im @ correction
+        # numba, like comp_correction: one BLAS per frame (#158).
+        pol_slopes = pseudo_open_loop_slopes(
+            slopes, self.f_im, correction.astype(self.f_im.dtype, copy=False)
+        )
         return self.pid_integrator(slopes=pol_slopes, correction=correction)
 
     def pid_integrator(self, slopes=None, correction=None):

@@ -54,18 +54,24 @@ def _loop_streams(num_signals=12, num_modes=6):
     return signal, wfc, conf
 
 
+LOOP_KERNELS = ("leaky_integrator_numba", "comp_correction", "pseudo_open_loop_slopes")
+
+
 @pytest.mark.parametrize(
     "function", ["leaky_integrator", "standard_integrator", "pid_integrator", "pid_integrator_pol"]
 )
-def test_loop_warmup_compiles_what_the_integrator_calls(monkeypatch, function):
-    log = _record_kernels(monkeypatch, loop_mod, ("leaky_integrator_numba", "comp_correction"))
+@pytest.mark.parametrize("im_dtype", [np.float32, np.float64])
+def test_loop_warmup_compiles_what_the_integrator_calls(monkeypatch, function, im_dtype):
+    log = _record_kernels(monkeypatch, loop_mod, LOOP_KERNELS)
     signal, _, conf = _loop_streams()
     loop = loop_mod.Loop(conf)
     try:
         warmed = set(log)
-        assert {name for name, _ in warmed} == {"leaky_integrator_numba", "comp_correction"}
+        assert {name for name, _ in warmed} == set(LOOP_KERNELS)
         log.clear()
-        loop.im = np.random.default_rng(0).normal(size=(12, 6)).astype(np.float32)
+        # A float64 IM (np.load of a float64 file, DOCRIME) must not change
+        # the kernels' argument types.
+        loop.im = np.random.default_rng(0).normal(size=(12, 6)).astype(im_dtype)
         loop.compute_cm()
         signal.write(np.ones(12, dtype=np.float32))
 
