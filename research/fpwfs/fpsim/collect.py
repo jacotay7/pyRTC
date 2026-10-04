@@ -48,6 +48,11 @@ def collect(
     open_loop_frames: int = 0,
     seed: int = 0,
     keep_from: int = 0,
+    dither_modes_nm: torch.Tensor | None = None,
+    dither_max: float = 2.0,
+    beta: float = 0.0,
+    ideal_frames: int = 0,
+    mode_mask: torch.Tensor | None = None,
 ) -> Trajectories:
     """Run B loops for ``steps`` frames and record (frame, applied, truth).
 
@@ -57,6 +62,13 @@ def collect(
     so the dataset covers imperfect-sensor states. Gains are drawn per
     atmosphere from ``gains``. ``open_loop_frames`` keeps the loop open first
     (bootstrap data). ``dither_nm`` adds known random DM dithers (diversity).
+    ``dither_modes_nm`` (n_modes,) adds a known random modal offset each frame,
+    scaled per atmosphere and frame by U(0, ``dither_max``): it widens the state
+    distribution so every mode carries signal above the coupling noise.
+    With a ``behaviour``, ``beta`` mixes in the ideal estimate (DAgger):
+    est = beta * ideal + (1 - beta) * behaviour. The first ``ideal_frames``
+    frames use the (noisy) ideal estimate, to start from a converged loop.
+    ``mode_mask`` (n_modes,) restricts the controller to a subset of modes.
     """
     g = torch.Generator(device=pupil.device).manual_seed(seed)
     b = len(turbulence.atms)
@@ -74,6 +86,9 @@ def collect(
         applied = pending.pop(0)
         if dither_nm:
             applied = applied + dither_nm * 1e-9 * torch.randn(b, n_modes, device=dev, generator=g)
+        if dither_modes_nm is not None:
+            amp = dither_max * torch.rand(b, 1, device=dev, generator=g)
+            applied = applied + amp * dither_modes_nm[None] * 1e-9 * torch.randn(b, n_modes, device=dev, generator=g)
         hist.append(applied)
         hist = hist[-8:]
         residual = turbulence.step(dt) - dm.opd(applied)
@@ -85,12 +100,16 @@ def collect(
             truth.append((true_modes * 1e9).cpu())
         if k < open_loop_frames:
             est = torch.zeros_like(cmd)
-        elif behaviour is None:
+        elif behaviour is None or k < ideal_frames:
             rms = true_modes.pow(2).mean(-1, keepdim=True).sqrt()
             est = true_modes + noise * rms * torch.randn(b, n_modes, device=dev, generator=g)
         else:
             noisy = sensor.frame(residual, noise=True)
             est = behaviour(noisy, k, hist)
+            if beta > 0:
+                est = beta * true_modes + (1 - beta) * est
+        if mode_mask is not None:  # controller acts on these modes only
+            est = est * mode_mask
         cmd = cmd + gain * est
         pending.append(cmd.clone())
     return Trajectories(torch.stack(frames), torch.stack(applied_l), torch.stack(truth), sensor.cfg.photons)

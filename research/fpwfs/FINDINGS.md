@@ -74,6 +74,96 @@ figures live in `plots/` (untracked); start at `plots/README.md`.
 - Implication: beating it needs a non-linear estimator that sees the fitting halo,
   i.e. a wider field of view.
 
+- Controlling fewer modes does not rescue it. Under each loop's own states, the
+  error/residual ratio is:
+
+  | Modes controlled | 30 | 60 | 120 | 200 |
+  | --- | --- | --- | --- | --- |
+  | H | 1.51 | 1.37 | 1.09 | 1.13 |
+  | K | 1.65 | 1.31 | 1.00 | 1.01 |
+
+  The uncontrolled modes add their own coupling. A ratio >= 1 means no contraction.
+- **Conclusion: linear focal-plane sensing cannot run the legacy Keck loop.** Any
+  focal-plane method must beat the fitting-error coupling non-linearly (or with
+  temporal information), not just linearise around a reference.
+
+**exp09/10: a non-linear estimator beats the coupling, but not on every mode.**
+- A CNN trained on real closed-loop states (single defocused frame, 64 px, 1e5 photons)
+  reaches error/residual 0.62 in H and 0.64 in K on held-out closed-loop states. The
+  linear map gets 1.1-1.7. So the fitting-error coupling *can* be largely removed
+  non-linearly; the sensing band barely matters.
+- Adding known random modal DM offsets (dither) to the training states gives 0.53,
+  with the median per-mode slope rising from 0.30 to 0.57.
+- Hand-over still collapses ~100 frames after the switch, even after one DAgger round.
+- Trace (plots/exp10_dagger/handover_trace_300modes): modes 120-299 double within
+  10 frames, because the network has no usable information there (error = residual in
+  modes 200-300). The integrator then accumulates temporally correlated errors and
+  drags every mode out of distribution.
+- Fix being tested: control only the modes the sensor can see (N = 80 / 120), as an
+  SH system does. The ideal ceiling with 120 modes is H ~0.74, which is SH parity.
+
+**exp10 N = 120: holds, but not yet robustly.**
+- Control limited to the first 120 modes; network trained on dithered closed-loop states.
+- In the hand-over test (4 atmospheres, seed 100) it held H Strehl 0.713 for 900 frames
+  (rounds 0 and 1). The ideal ceiling for 120 modes is 0.74; the SH is 0.70 on 300 modes.
+  The median per-mode slope was 0.75, with none below 0.3.
+- **But** a third, fully on-policy DAgger round (beta = 0) made it worse: 2-3 of 4
+  atmospheres diverged (mean 0.28).
+- The good weights were overwritten (exp10 saved one file per run). The likely cause is
+  runaway states in the DAgger data dominating a batch-normalised loss.
+- Re-running with: per-round saves, runaway states filtered (> 6x the closed-loop rms),
+  per-sample relative loss, and 12 atmospheres in the stability test.
+- Not a robust result until that passes.
+
+**exp10 N = 80:** holds after hand-over at H Strehl 0.63 (ideal 80-mode ceiling ~0.66),
+flat for 1200 frames, rounds 0 and 1 (old code, 4 atmospheres).
+
+**exp11: staged bootstrap from open loop fails (12/12 atmospheres).**
+- Trace: at the very first stage (5 modes), the 1 rad-defocus frame carries no
+  information about open-loop focus/astigmatism (error 517 nm vs residual 529 nm), and
+  even tip/tilt is poor (348 vs 430 nm). They run away within ~10 frames.
+- Physics: in open loop, focus/astigmatism alone is ~1.9 rad at H, larger than the
+  1 rad diversity, so the sign ambiguity is effectively unbroken. This matches the
+  literature (single-shot capture range ~1.5-2 rad).
+- Next (exp12): a large *DM-applied* defocus during acquisition (no new hardware;
+  curvature-sensor regime), stepped down to 1 rad as the loop converges.
+
+**SH gain sweep (V = 8 / 10, 300 modes).**
+
+| Gain | 0.3 | 0.4 | 0.5 | 0.6 |
+| --- | --- | --- | --- | --- |
+| V = 8 | 0.65 | 0.68 | 0.70 | 0.70 |
+| V = 10 | 0.65 | 0.67 | 0.68 | 0.69 |
+
+The baseline is tuned; its best is H ~0.70.
+
+**exp10 v2 (N = 120, fixes applied), round 0, 12 atmospheres:** 10/12 held, median
+H Strehl 0.705 = SH parity. The other 2 diverged late (~800 frames after hand-over).
+That evaluation used leak 1.0; Keck runs leak 0.99. The N = 80 old-code run confirmed
+that unfiltered on-policy DAgger data poisons the network (ratio 0.68 -> 0.84).
+
+**exp13: robustness of the N = 120 network (v2 round 0), 12 fresh atmospheres, 2 s after
+hand-over.**
+
+| Leak | Gain | Held (of 12) | Median H Strehl |
+| --- | --- | --- | --- |
+| 1.0 | 0.3 | 7 | 0.61 |
+| 0.99 | 0.2 | 0 | — |
+| 0.99 | 0.3 | 9 | 0.70 |
+| 0.99 | 0.4 | 11 | 0.72 |
+| 0.99 | 0.5 | 10 | 0.73 |
+| 0.99 | 0.6 | 9 | 0.73 |
+| 0.995 | 0.3 | 9 | 0.71 |
+
+- With Keck's leaky integrator and gain 0.4-0.5 the focal-plane loop beats the tuned
+  SH (0.70) on the atmospheres where it holds.
+- Failures are abrupt cliffs at random times. Lower gain is worse (the residual sits
+  higher, outside the trained basin).
+- The open problem for both maintenance and bootstrap is the network's narrow capture
+  range (~2x the closed-loop residual). Mean time to failure is ~1-2 s, not acceptable.
+- Next: train for a wider basin (larger dither, a range of loop gains), and use a larger
+  fixed defocus if exp12 shows it widens capture.
+
 **Open threads.**
 - exp04: multi-frame networks with DM-command diversity and DAgger.
 - Whether a wider field of view (seeing the fitting halo) lets a nonlinear

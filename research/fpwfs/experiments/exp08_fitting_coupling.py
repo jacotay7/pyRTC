@@ -95,8 +95,9 @@ which includes the ~100 nm the 349-actuator DM cannot fit. Dashed: the same stat
 error removed (only the part the DM could correct). **What to look at:** with the fitting error
 removed a linear map is essentially exact (small-phase regime), so the whole problem is the second-order
 term of exp(i phi) in the *uncorrectable* error, which lands inside the control region. This is the
-focal-plane counterpart of Shack-Hartmann aliasing. It shrinks at longer wavelength (phase in radians
-falls as 1/lambda). This sets what any estimator must remove: a non-linear one could use the halo
+focal-plane counterpart of Shack-Hartmann aliasing. It shrinks only slowly with wavelength (83 -> 53 nm
+from I to K with defocus, weaker than 1/lambda) and stays above the residual being measured in every
+band. This sets what any estimator must remove: a non-linear one could use the halo
 outside the control radius, which carries first-order information about the fitting error.""",
        title="exp08: fitting-error coupling (focal-plane aliasing)")
 P.note("exp08_fitting_coupling", """Why linear focal-plane sensing fails on a real closed-loop residual: the uncorrectable

@@ -29,13 +29,14 @@ class FPNet(nn.Module):
     def __init__(self, in_ch: int, n_modes: int, npix: int = 64, width: int = 48, cond: int = 0):
         super().__init__()
         w = width
-        self.trunk = nn.Sequential(
-            nn.Conv2d(in_ch, w, 3, 1, 1), nn.BatchNorm2d(w), nn.GELU(), ResBlock(w),
-            nn.Conv2d(w, 2 * w, 3, 2, 1), nn.BatchNorm2d(2 * w), nn.GELU(), ResBlock(2 * w),
-            nn.Conv2d(2 * w, 4 * w, 3, 2, 1), nn.BatchNorm2d(4 * w), nn.GELU(), ResBlock(4 * w),
-            nn.Conv2d(4 * w, 4 * w, 3, 2, 1), nn.BatchNorm2d(4 * w), nn.GELU(), ResBlock(4 * w),
-        )
-        feat = 4 * w * (npix // 8) ** 2
+        layers = [nn.Conv2d(in_ch, w, 3, 1, 1), nn.BatchNorm2d(w), nn.GELU(), ResBlock(w)]
+        c, size = w, npix
+        while size > 8:  # stride-2 stages down to an 8x8 map, whatever the frame size
+            c_out = min(2 * c, 4 * w)
+            layers += [nn.Conv2d(c, c_out, 3, 2, 1), nn.BatchNorm2d(c_out), nn.GELU(), ResBlock(c_out)]
+            c, size = c_out, size // 2
+        self.trunk = nn.Sequential(*layers)
+        feat = c * size**2
         self.cond = cond
         self.head = nn.Sequential(
             nn.Flatten(), nn.Linear(feat + cond, 1024), nn.GELU(), nn.Linear(1024, n_modes)
