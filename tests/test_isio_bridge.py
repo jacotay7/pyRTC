@@ -58,11 +58,12 @@ def test_pyrtc_stream_mirrors_to_isio(isio_images):
         assert [int(n) for n in reader.md.size] == [3, 4]
         bridge.start()
         frame = np.arange(12, dtype=np.float32).reshape(3, 4)
-        start = int(reader.md.cnt0)
         source.write(frame)
-        _wait_for(lambda: int(reader.md.cnt0) > start)
-        # Same array on both sides, element for element.
-        np.testing.assert_array_equal(np.ascontiguousarray(reader.copy()), frame)
+        # The bridge's first read returns the current payload, so it may
+        # mirror the zeros written above before this frame: wait for the
+        # frame itself, not for any write. Same array on both sides,
+        # element for element.
+        _wait_for(lambda: np.array_equal(np.ascontiguousarray(reader.copy()), frame))
     finally:
         reader.close()
         bridge.close()

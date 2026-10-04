@@ -252,6 +252,12 @@ ruff check . && ruff format --check .    # lint, as in CI
   `COMPONENT_DESCRIPTOR`) in their class body. When an adapter starts reading
   a new config key, add it to `EXTRA_CONFIG_KEYS` (or to the descriptor for a
   built-in), or configs using it will warn.
+- A component's first blocking `read_stream` returns the current payload at
+  once. A test that pre-writes a frame, calls `start()`, writes another
+  frame and then waits for "any new output" can see the first frame
+  mirrored. Wait for the expected payload instead. `test_isio_bridge`
+  failed this way once worker threads started inside `start()` (#155),
+  since they no longer idle for up to 1 ms first.
 - Build components for method-level tests with `testsupport.bare_component`,
   not `Cls.__new__(Cls)`: the stream helpers assume the state that
   `Component._init_runtime_state` sets up (there is no lazy-init guard).
