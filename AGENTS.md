@@ -30,10 +30,11 @@ aliases.
 ## Code layout
 
 - `pyrtc/component.py` — `Component`, the base class for every runtime
-  component: config parsing, worker threads (one per entry in `functions`),
-  the stream helpers `read_stream` / `write_stream`, and the lifecycle
-  (`start`/`stop` pause and resume; `close` ends the workers and closes the
-  registered streams for good).
+  component: config parsing, worker threads (one per entry in `functions`,
+  started by the first `start()`, so a constructor that raises leaves none
+  behind), the stream helpers `read_stream` / `write_stream`, and the
+  lifecycle (`start`/`stop` pause and resume; `close` ends the workers and
+  closes the registered streams for good).
 - Core components: `wavefront_sensor.py`, `slopes_process.py`, `loop.py`,
   `wavefront_corrector.py`, `science_camera.py`, `telemetry.py`,
   `modulator.py`, `optimizer.py`. Hot loops are `@jit(..., cache=True)`
@@ -138,7 +139,7 @@ and docs. pyrtc must not reimplement transport features that pyshmem provides.
   component and closed by `Component.close()`.
 - Close what you build: `RTCManager.close()` (or `with RTCManager... as m`)
   and `Component.close()`. `stop()` only pauses; worker threads hold their
-  component, so garbage collection never ends them.
+  component, so garbage collection never ends a started component.
 - Observers (viewers, telemetry, latency, monitors) open streams with
   `open_stream(name, readonly=True)`.
 - Do not use `read_new()` in request/response or lock-step code. It is

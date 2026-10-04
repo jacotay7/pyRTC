@@ -66,7 +66,8 @@ class Component:
         When > 0, worker threads run under ``SCHED_FIFO`` at this priority
         (Linux, needs ``CAP_SYS_NICE``). Default 0 lowers the nice value only.
     functions : list
-        Bound method names to run in worker threads.
+        Bound method names to run in worker threads. The threads start on the
+        first :meth:`start`, so a constructor that fails leaves none behind.
     gpu_device : str, optional
         Requested GPU device identifier. When PyTorch is unavailable this is
         normalized back to CPU mode.
@@ -109,19 +110,11 @@ class Component:
             self.gpu_device = normalize_gpu_device(requested_gpu_device, self.__class__.__name__)
 
             functions_to_run = set_from_config(conf, "functions", [])
-
-            if isinstance(functions_to_run, list) and len(functions_to_run) > 0:
-                for i, function_name in enumerate(functions_to_run):
-                    thread_affinity = (
-                        None if self.affinity is None else (int(self.affinity) + i) % os.cpu_count()
-                    )
-                    work_thread = threading.Thread(
-                        target=work,
-                        args=(self, function_name, thread_affinity),
-                        daemon=True,
-                    )
-                    work_thread.start()
-                    self.work_threads.append(work_thread)
+            # The worker threads start on the first start(), not here: a
+            # subclass __init__ that fails after this point must not leave
+            # threads behind holding the half-built component (#155).
+            if isinstance(functions_to_run, list):
+                self.worker_functions = list(functions_to_run)
 
             self.logger.info(
                 "Initialized component affinity=%s gpu_device=%s functions=%s",
@@ -147,6 +140,8 @@ class Component:
         self.running = False
         self._closed = False
         self.work_threads = []
+        self.worker_functions = []
+        self._workers_lock = threading.Lock()
         self.section_name = conf.get("_sectionName")
         self.system_streams = dict(conf.get("_systemStreams", {}))
         self._stream_inputs = {}
@@ -457,17 +452,41 @@ class Component:
     def start(self):
         """
         Start the registered real-time functions.
+
+        The first call starts the worker threads (one per entry in
+        ``functions``); later calls resume them after :meth:`stop`.
         """
         component_logger = getattr(self, "logger", logger)
         if getattr(self, "_closed", False):
             raise RuntimeError(f"{self.__class__.__name__} is closed and cannot be restarted")
         try:
             self.running = True
+            self._start_workers()
             component_logger.info("Started component")
         except Exception:
             component_logger.exception("Failed to start component")
             raise
         return
+
+    def _start_workers(self) -> None:
+        """Start one worker thread per entry in ``functions``, once."""
+
+        if not getattr(self, "worker_functions", None):
+            return
+        with self._workers_lock:
+            if self.work_threads or getattr(self, "_closed", False):
+                return
+            for i, function_name in enumerate(self.worker_functions):
+                thread_affinity = (
+                    None if self.affinity is None else (int(self.affinity) + i) % os.cpu_count()
+                )
+                work_thread = threading.Thread(
+                    target=work,
+                    args=(self, function_name, thread_affinity),
+                    daemon=True,
+                )
+                work_thread.start()
+                self.work_threads.append(work_thread)
 
     def stop(self):
         """
