@@ -1,0 +1,75 @@
+# Focal-plane-only AO loop in pyRTC (template; run_demo.py fills the paths,
+# devices, stream prefix and run parameters, and writes the effective config
+# next to the results).
+resources:
+  fpsim:
+    class_name: FPSimContext
+    class_file: fprtc.py
+    device: cuda:0
+    seed: 4000
+    seeing: 0.6
+    frame_rate: 1000.0       # simulated: the atmosphere advances 1 ms per exposure
+    wall_rate: 0.0           # camera wall-clock rate (0: free-running)
+    atmosphere: precomputed  # or live (pyturb stepped inside every exposure)
+    max_frames: 6000
+    n_control: 120
+    photons: 1.0e+5
+    defocus_rad: 1.0
+    warm_frames: 300
+    warm_gain: 0.4
+    warm_leak: 0.99
+wfs:
+  name: FPCamera
+  class_name: FPCamera
+  class_file: fprtc.py
+  resource: fpsim
+  width: 64
+  height: 64
+  dark_count: 1
+  affinity: 20
+  input_streams: {}
+  output_streams: {wfs_raw: wfs_raw, wfs: wfs}
+  functions: [expose]
+slopes:
+  class_name: TorchImageReconstructor
+  signal_size: 120
+  model_factory: build_fpnet
+  model_factory_file: models.py
+  model_kwargs: {}
+  device: cuda:1
+  dtype: float16
+  cuda_graph: true
+  flux_normalization: sum
+  sqrt_stretch: true
+  output_scale_file: scale_m.npy
+  affinity: 22
+  input_streams: {wfs: wfs}
+  output_streams: {signal: signal}
+  functions: [compute_signal]
+loop:
+  class_name: Loop
+  im_file: identity_im.npy
+  gain: 0.4
+  leaky_gain: 0.01           # pyRTC leak convention: c <- (1 - 0.01) c - g CM s
+  num_dropped_modes: 0
+  watchdog_timeout: 1.0
+  affinity: 23
+  input_streams: {signal: signal}
+  output_streams: {wfc: wfc}
+  functions: [leaky_integrator]
+wfc:
+  name: FPDM
+  class_name: FPDM
+  class_file: fprtc.py
+  resource: fpsim
+  num_actuators: 349
+  num_modes: 120
+  flat_file: ''
+  m2c_file: ''
+  frame_delay: 0
+  affinity: 21
+  input_streams: {wfc: wfc}
+  output_streams: {wfc: wfc}
+  functions: [send_to_hardware]
+manager:
+  mode: soft-rtc
