@@ -213,7 +213,11 @@ hand-over.**
 - So during acquisition the limit is the **uncorrected high-order turbulence**, not
   the even-mode sign ambiguity: low orders can't be sensed until high orders are partly
   corrected, and vice versa.
-- The 2 / 4 rad probes are still running.
+- +-2 rad probes are no better (0.76 at open loop, 0.93 with 2 modes controlled), and
+  the 4 rad run was stopped. **Temporal phase diversity with focus probes does not
+  solve acquisition.**
+- exp16 is testing the alternative: close all 120 modes together, slowly, with a network
+  trained on the open-to-closed continuum.
 
 **Real-time path (G1): pyRTC PR #156 (`TorchImageReconstructor`, into dev, not merged, CI green).**
 - A generic slopes-section component: WFS image -> torch model -> modal signal. CUDA
@@ -226,9 +230,34 @@ hand-over.**
   | 1.1M MLP, CUDA graph | 0.09-0.18 ms | 0.36-0.51 ms |
 
 - The current maintenance network meets the median budget but **misses the G1 p99 target**.
-- Next for G1: distil it into a much smaller network, then measure on an idle GPU.
+- Slimmer networks (stride-2 first layer, narrower), fp16, CUDA graph, idle A400
+  (the steadier card), network compute only:
+
+  | Network | Median | p99 |
+  | --- | --- | --- |
+  | 14.8M (current) | 1.06 ms | 1.09 ms |
+  | 6.7M | 0.36 ms | 0.38 ms |
+  | 2.3M | 0.22 ms | 0.23 ms |
+
+  The slim ones meet G1 even on the A400. A 6.7M network is being trained with the v3
+  recipe to check that accuracy and robustness hold.
 - Side effects: two config/stream-planning bugs fixed in the PR; issue #155 filed
   (component worker threads leak when __init__ fails).
+
+**exp16: closing all 120 modes together from open loop also fails (0/24, rounds 0-1).**
+- Network trained on the open-to-closed continuum, gain ramp 0.1 -> 0.4, leak 0.99.
+- Neither mode staging (exp11/14) nor all-at-once closure bootstraps with a near-focus
+  (1 rad) frame. Next: clean exp12 (large defocus = curvature regime).
+
+**Slim maintenance network (6.7M parameters, stride-2 first layer, width 24).**
+- **24/24 atmospheres held**, median H Strehl 0.715 (gain 0.4, leak 0.99, new-seed
+  atmosphere sets, 2 s).
+- Network compute 0.36 ms median / 0.38 ms p99 on the idle A400 (fp16, CUDA graph),
+  so it meets the G1 latency target on the weaker card.
+- Like-for-like, the 14.8M network on the same atmospheres: 24/24, median 0.72.
+  Across all four 12-atmosphere test sets it holds 47/48.
+- **The slim network matches the full one** (24/24 vs 24/24, 0.715 vs 0.72) at a
+  third of the latency, so it is the candidate for the real-time demonstration.
 
 **Open threads.**
 - exp04: multi-frame networks with DM-command diversity and DAgger.

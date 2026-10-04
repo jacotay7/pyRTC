@@ -47,6 +47,9 @@ p.add_argument("--n-control", type=int, default=300, help="controlled modes (oth
 p.add_argument("--seeing-range", type=float, nargs=2, default=[0.6, 0.6], help="per-collection seeing (arcsec)")
 p.add_argument("--wind-range", type=float, nargs=2, default=[1.0, 1.0], help="per-collection wind scale")
 p.add_argument("--init", default=None, help="warm-start weights (with _scale)")
+p.add_argument("--width", type=int, default=48)
+p.add_argument("--stem-stride", type=int, default=1)
+p.add_argument("--head", type=int, default=1024)
 args = p.parse_args()
 torch.manual_seed(0)
 dev = "cuda"
@@ -173,7 +176,7 @@ for i in range(args.collections):
 scale = data.Y.std(0).to(dev)
 print(f"{len(data.X)} dithered closed-loop states, residual {data.Y.pow(2).sum(-1).mean().sqrt():.1f} nm "
       f"(undithered test {test.Y.pow(2).sum(-1).mean().sqrt():.1f} nm) [{time.perf_counter() - t0:.0f} s]", flush=True)
-net = FPNet(1, NC, npix=args.npix).to(dev)
+net = FPNet(1, NC, npix=args.npix, width=args.width, stem_stride=args.stem_stride, head=args.head).to(dev)
 if args.init:
     st = torch.load(args.init)
     scale = st.pop("_scale").to(dev)  # keep the warm-started network's output scaling

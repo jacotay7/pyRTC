@@ -28,6 +28,9 @@ p.add_argument("--settings", default="1.0:0.3,0.99:0.3,0.99:0.2,0.995:0.3", help
 p.add_argument("--steps", type=int, default=2300)
 p.add_argument("--seed", type=int, default=4000)
 p.add_argument("--tag", default="robustness")
+p.add_argument("--width", type=int, default=48)
+p.add_argument("--stem-stride", type=int, default=1)
+p.add_argument("--head", type=int, default=1024)
 args = p.parse_args()
 dev = "cuda"
 cfg = S.KeckConfig()
@@ -39,7 +42,7 @@ NC = args.n_control
 sensor = FocalPlaneSensor(FPSensorConfig(defocus_rad=1.0, photons=1e5), pupil, cfg.grid_m).to(dev)
 st = torch.load(args.weights)
 scale = st.pop("_scale").to(dev)
-net = FPNet(1, NC).to(dev)
+net = FPNet(1, NC, width=args.width, stem_stride=args.stem_stride, head=args.head).to(dev)
 net.load_state_dict(st)
 net.eval()
 mask = torch.zeros(300, device=dev)

@@ -26,11 +26,12 @@ class FPNet(nn.Module):
     previous DM increments in modal space) injected after the conv trunk.
     """
 
-    def __init__(self, in_ch: int, n_modes: int, npix: int = 64, width: int = 48, cond: int = 0):
+    def __init__(self, in_ch: int, n_modes: int, npix: int = 64, width: int = 48, cond: int = 0,
+                 stem_stride: int = 1, head: int = 1024):
         super().__init__()
         w = width
-        layers = [nn.Conv2d(in_ch, w, 3, 1, 1), nn.BatchNorm2d(w), nn.GELU(), ResBlock(w)]
-        c, size = w, npix
+        layers = [nn.Conv2d(in_ch, w, 3, stem_stride, 1), nn.BatchNorm2d(w), nn.GELU(), ResBlock(w)]
+        c, size = w, npix // stem_stride
         while size > 8:  # stride-2 stages down to an 8x8 map, whatever the frame size
             c_out = min(2 * c, 4 * w)
             layers += [nn.Conv2d(c, c_out, 3, 2, 1), nn.BatchNorm2d(c_out), nn.GELU(), ResBlock(c_out)]
@@ -39,7 +40,7 @@ class FPNet(nn.Module):
         feat = c * size**2
         self.cond = cond
         self.head = nn.Sequential(
-            nn.Flatten(), nn.Linear(feat + cond, 1024), nn.GELU(), nn.Linear(1024, n_modes)
+            nn.Flatten(), nn.Linear(feat + cond, head), nn.GELU(), nn.Linear(head, n_modes)
         )
         # cond is concatenated before the head's first layer
         self.flatten = nn.Flatten()
