@@ -26,6 +26,11 @@ class FPSensorConfig:
 class FocalPlaneSensor(torch.nn.Module):
     def __init__(self, cfg: FPSensorConfig, pupil: torch.Tensor, grid_m: float, diameter_m=10.95):
         super().__init__()
+        if cfg.sampling < 2.0:
+            # FocalPlaneImager point-samples the field; detector pixels integrate. Below
+            # Nyquist the point samples misrepresent the flux (~10 % captured at 0.5 px per
+            # lambda/D). Binned modes need rendering at >= Nyquist and summing pixels.
+            raise ValueError("sampling < 2 px per lambda/grid is not modelled (render at Nyquist and bin)")
         self.cfg = cfg
         lam = cfg.wavelength
         if cfg.bandwidth > 0 and cfg.n_wavelengths > 1:

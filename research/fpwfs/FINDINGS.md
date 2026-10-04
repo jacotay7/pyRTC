@@ -300,6 +300,23 @@ hand-over.**
   the A400 (to verify and file). pyRTC's Loop JIT-compiles its numba kernel on the
   first iteration after start (a 0.36 s stall), which the demo works around by priming.
 
+**exp17: defocus-ramp bootstrap (the user's chosen no-hardware direction) fails, 0/24.**
+- Schedule: 6 -> 4.5 -> 3 -> 2 -> 1.5 rad DM-applied defocus with 20 -> 120 controlled
+  modes, then the slim maintenance network. Stage networks, 2 DAgger rounds.
+- Held-out stage ratios after DAgger: 0.77, 0.97, 0.85, 0.73, 0.69.
+- The acquisition stage lifts median SE Strehl only to 0.09 (open loop 0.04-0.05).
+  The 40-mode stage has no information (0.97) and collapses every time.
+- **Why 6 rad was never the curvature regime:** at D/r0 ~ 15 (H, 0.6") the seeing blur
+  is ~15 lambda/D, and a 6 rad rms defocus makes a pupil image only ~26 lambda/D across,
+  i.e. < 2 resolution elements.
+  - A real curvature-sensing regime resolving ~10 elements needs a pupil image of
+    ~150 lambda/D, i.e. ~30 rad rms defocus (~8 um rms at H).
+  - That exceeds the Keck DM stroke (4 um PV), so it would need a WFS-camera focus
+    stage, or a longer sensing wavelength (smaller D/r0).
+  - Modelling it needs binned-pixel rendering (render at Nyquist, sum pixels) and a
+    finer pupil grid (30 rad of focus aliases at 120 samples). The imager now refuses
+    sub-Nyquist sampling, which it silently mis-modelled (~10 % flux).
+
 **Open threads.**
 - exp04: multi-frame networks with DM-command diversity and DAgger.
 - Whether a wider field of view (seeing the fitting halo) lets a nonlinear

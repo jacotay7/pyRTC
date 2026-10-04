@@ -30,6 +30,9 @@ p.add_argument("--defocus", type=float, nargs="+", default=[1.0, 2.0, 4.0, 6.0])
 p.add_argument("--n-out", type=int, default=20)
 p.add_argument("--steps", type=int, default=6000)
 p.add_argument("--photons", type=float, default=1e5)
+p.add_argument("--sampling", type=float, default=2.0, help="px per lambda/grid (2 = Nyquist; <2 = binned)")
+p.add_argument("--npix", type=int, default=64)
+p.add_argument("--tag", default="acquisition")
 args = p.parse_args()
 dev = "cuda"
 OUT = ROOT / "results" / "exp12"
@@ -43,7 +46,7 @@ STAGES = (0, 2, 5, 10, 20)
 NO = args.n_out
 rows = []
 for dfc in args.defocus:
-    scfg = FPSensorConfig(defocus_rad=dfc, photons=args.photons)
+    scfg = FPSensorConfig(defocus_rad=dfc, photons=args.photons, sampling=args.sampling, npix=args.npix)
     sensor = FocalPlaneSensor(scfg, pupil, cfg.grid_m).to(dev)
     t0 = time.perf_counter()
     train, test = [], []
@@ -57,7 +60,7 @@ for dfc in args.defocus:
     X = torch.cat([x for _, x, _ in train])
     Y = torch.cat([y for _, _, y in train])
     scale = Y.std(0).to(dev)
-    net = FPNet(1, NO).to(dev)
+    net = FPNet(1, NO, npix=args.npix).to(dev)
     opt = torch.optim.AdamW(net.parameters(), lr=1e-3, weight_decay=1e-4)
     sched = torch.optim.lr_scheduler.OneCycleLR(opt, 1e-3, total_steps=args.steps, pct_start=0.1)
     for step in range(args.steps):
@@ -86,7 +89,7 @@ for dfc in args.defocus:
         rows.append(dict(defocus=dfc, stage=n, true_nm=t, err_nm=e))
         print(f"defocus {dfc:3.1f} rad, loop controlling {n:2d} modes: first {NO} modes residual {t:6.0f} nm, "
               f"error {e:6.0f} nm, ratio {e / t:.2f} [{time.perf_counter() - t0:.0f} s]", flush=True)
-(OUT / "acquisition.json").write_text(json.dumps(rows))
+(OUT / f"{args.tag}.json").write_text(json.dumps(rows))
 
 fig, ax = P.plt.subplots(figsize=(6.4, 4.0))
 for i, dfc in enumerate(args.defocus):
@@ -99,7 +102,7 @@ ax.set_ylabel(f"error / residual, first {NO} modes")
 ax.set_ylim(0, 1.2)
 ax.set_title("Acquisition: more defocus, more capture range?")
 ax.legend(fontsize=8)
-P.save(fig, "exp12_acquisition", "ratio_vs_defocus",
+P.save(fig, "exp12_acquisition", f"ratio_vs_defocus_{args.tag}",
        f"""For each defocus (on a real system: the fixed 1 rad plus a temporary offset applied with the DM, so no new
 hardware), a CNN is trained to estimate the first {NO} DM-KL modes from one H-band frame
 ({args.photons:.0e} photons) on states from loops that control 0-20 modes, from open loop on (0.6").
