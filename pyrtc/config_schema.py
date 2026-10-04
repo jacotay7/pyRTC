@@ -686,7 +686,9 @@ def _validate_cross_component_consistency(conf: Mapping[str, Any]) -> None:
             f"loop: 'num_dropped_modes' ({dropped_modes}) must be less than wfc.num_modes ({num_modes})"
         )
 
-    slopes_type = str(slopes_conf["type"]).lower()
+    # Slopes-section components outside the SlopesProcess family (e.g. a
+    # TorchImageReconstructor) have no ``type``.
+    slopes_type = str(slopes_conf.get("type", "")).lower()
     if slopes_type == "shwfs":
         image_width, image_height = _processed_wfs_shape(wfs_conf)
         subap_spacing = float(slopes_conf["sub_ap_spacing"])
@@ -803,7 +805,8 @@ def validate_system_config(conf: Any, *, config_path: str | Path | None = None) 
                 raise ConfigValidationError(str(exc)) from exc
 
     validate_wfs_config(normalized["wfs"])
-    _validate_slopes_config(normalized["slopes"])
+    if _section_descriptor("slopes", normalized["slopes"])[1]:
+        _validate_slopes_config(normalized["slopes"])
     validate_loop_config(normalized["loop"])
     if _section_descriptor("wfc", normalized["wfc"])[1]:
         validate_wfc_config(normalized["wfc"])

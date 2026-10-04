@@ -71,6 +71,14 @@ aliases.
   (woofer/tweeter, offload); it sits in the `wfc` section.
   `pyrtc/isio_bridge.py` — mirrors a stream to or from ImageStreamIO
   (milk/CACAO).
+- `pyrtc/image_reconstructor.py` — `TorchImageReconstructor`, a PyTorch model
+  from WFS image to signal; it sits in the `slopes` section. The stream-free
+  `TorchModelRunner` holds the real-time path (pinned buffers, own CUDA
+  stream, CUDA graph with eager fallback), so it is tested and benchmarked
+  (`benchmarks/image_reconstructor_bench.py`) without streams. A `slopes`
+  section without `type` but with `signal_size` is how stream planning
+  (`expected_output_shm_specs_for_config`) and the AOTPy export recognise
+  such a generic signal producer.
 - `pyrtc/latency.py` — stream latency measurement. `pyrtc/exporters/` — AOTPy
   export of telemetry sessions.
 - `pyrtc/hardware/` — reference adapters:
@@ -252,10 +260,17 @@ ruff check . && ruff format --check .    # lint, as in CI
   IM is noise and the loop diverges, which looks like a wiring bug (it cost a
   debugging session). The system tests use 400.
 - A section's built-in checks (descriptor fields, `validate_wfc_config`,
-  default stream roles, worker functions) apply only when its class belongs to
-  that section's component family (`config_schema._section_descriptor`).
-  Otherwise the class's own descriptor is used, which is how a
-  `CorrectorSplitter` can sit in the `wfc` section.
+  `_validate_slopes_config`, default stream roles, worker functions) apply
+  only when its class belongs to that section's component family
+  (`config_schema._section_descriptor`). Otherwise the class's own descriptor
+  is used, which is how a `CorrectorSplitter` can sit in the `wfc` section
+  and a `TorchImageReconstructor` in the `slopes` section. Code that reads a
+  section's family-specific keys (`slopes.type`) must use `.get`.
+- torch 2.11 deprecates TorchScript (`torch.jit.script/save/load` warn).
+  `TorchImageReconstructor` also loads `torch.export` `.pt2` files; exported
+  modules raise `NotImplementedError` on `.eval()`. `nn.Module.to()` moves a
+  model in place, so a runner built on a caller's module moves that module
+  to its device and dtype.
 - The loop's IM method key is `im_method`; `method:` is ignored (it only
   produces an unknown-key warning).
   Calibrate only once the pipeline is live (worker kernels JIT-compile on
