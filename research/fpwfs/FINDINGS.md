@@ -259,6 +259,19 @@ hand-over.**
 - **The slim network matches the full one** (24/24 vs 24/24, 0.715 vs 0.72) at a
   third of the latency, so it is the candidate for the real-time demonstration.
 
+**exp12 (clean seeds): a large defocus widens capture but doesn't solve acquisition.**
+- Error/residual for the first 20 modes, by number of modes already controlled:
+
+  | Defocus | 0 | 2 | 5 | 10 | 20 |
+  | --- | --- | --- | --- | --- | --- |
+  | 1 rad | 0.70 | 0.87 | 0.81 | 0.86 | 0.87 |
+  | 3 rad | 0.64 | 0.69 | 0.76 | 0.84 | 0.98 |
+  | 6 rad | 0.57 | 0.57 | 0.63 | 0.70 | 0.93 |
+
+- The curvature regime helps capture but costs precision as the loop converges.
+- Every stage stays >= ~0.55, the regime where exp11/14/16 closures failed. A
+  defocus-stepping acquisition might work but is marginal.
+
 **Open threads.**
 - exp04: multi-frame networks with DM-command diversity and DAgger.
 - Whether a wider field of view (seeing the fitting halo) lets a nonlinear
