@@ -351,9 +351,13 @@ ruff check . && ruff format --check .    # lint, as in CI
   where numpy is already imported, uses `threadpoolctl.threadpool_limits`.
   The Loop's control multiply (`np.dot` inside numba goes to scipy's
   OpenBLAS) does use them for large matrices, so do not cap them blindly on a
-  real RTC. A per-frame path that alternates numpy products and numba
-  products makes the two pools fight. `pid_integrator_pol` takes 12 ms
-  instead of 0.4 ms per frame on an 80-core host (#158).
+  real RTC. Keep each per-frame path on one BLAS: alternating numpy products
+  and numba products makes the two spinning pools fight over the cores.
+  `pid_integrator_pol` did that and took 12 ms instead of 0.2 ms per frame
+  in a 16-core cpuset, until its POL product moved into numba
+  (`pseudo_open_loop_slopes`, #158). numba's `np.dot` also needs both
+  operands in one dtype, so cast matrices to the CM's dtype when building
+  them (`Loop.f_im`).
 - numba's `workqueue` threading layer crashes the process when two threads
   call `parallel=True` kernels at once; `omp` and `tbb` are safe. Only the WFS
   thread runs one today (`rotate_image_jit`). A parallel kernel on a second
