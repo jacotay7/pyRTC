@@ -14,6 +14,7 @@ import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
+import matplotlib.lines  # noqa: E402,F401
 import matplotlib.ticker  # noqa: E402,F401
 
 PLOTS = pathlib.Path(__file__).resolve().parent.parent / "plots"
@@ -58,6 +59,20 @@ plt.rcParams.update(
 )
 
 
+def _root_index() -> None:
+    """plots/README.md: one entry per experiment folder, in order."""
+    lines = ["# FPWFS experiment plots", "",
+             "One folder per experiment; each folder's README has every figure with a caption.", ""]
+    for folder in sorted(p for p in PLOTS.iterdir() if p.is_dir()):
+        index_path = folder / "index.json"
+        if not index_path.exists():
+            continue
+        index = json.loads(index_path.read_text())
+        summary = index.get("summary", "").split("\n\n")[0].replace("\n", " ")
+        lines += [f"- [{index['title']}]({folder.name}/README.md): {summary}"]
+    (PLOTS / "README.md").write_text("\n".join(lines) + "\n")
+
+
 def save(fig, experiment: str, name: str, caption: str, title: str | None = None) -> pathlib.Path:
     """Save ``fig`` to plots/<experiment>/<name>.png and index its caption."""
     folder = PLOTS / experiment
@@ -71,10 +86,11 @@ def save(fig, experiment: str, name: str, caption: str, title: str | None = None
         index["title"] = title
     index["figs"][name] = caption.strip()
     index_path.write_text(json.dumps(index, indent=1))
-    lines = [f"# {index['title']}", ""]
+    lines = [f"# {index['title']}", "", index.get("summary", ""), ""]
     for fig_name, cap in index["figs"].items():
         lines += [f"## {fig_name}", "", f"![{fig_name}]({fig_name}.png)", "", cap, ""]
     (folder / "README.md").write_text("\n".join(lines))
+    _root_index()
     return path
 
 

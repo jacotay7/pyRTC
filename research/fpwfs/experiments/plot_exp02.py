@@ -105,5 +105,10 @@ but its asymmetric structure is what tells the network the sign of even modes.""
 )
 P.note(EXP, """Can one focal-plane frame drive the Keck loop? A CNN maps a single H-band frame to
 the 300 DM-mode residual. In focus vs with a fixed 1 rad rms defocus (allowed: no new
-hardware). Trained on generated residuals, then used as the only WFS in closed loop.""",
+hardware). Trained on generated residuals, then used as the only WFS in closed loop.
+
+**Outcome:** neither single-frame network can hold the loop, even when handed a closed loop by
+the ideal sensor (collapse within ~100 frames, exp02b). Diagnosis in shadow_mode_sensitivity:
+the training distribution, not the information content, is the problem (exp06 has the
+information bound). Next: train on real closed-loop trajectories (exp04).""",
        title="exp02: single-frame focal-plane reconstructor")

@@ -55,3 +55,14 @@ Batch-1 reconstructor latency, median / p99 in microseconds:
 
 Training-data generation (128 px pupil, Nyquist, 4 frames per sample, FFT):
 ~8.5k samples/s on the 4060, i.e. 1 M samples in ~2 minutes.
+
+## State of sibling repos (2026-10-03)
+
+- `~/aosim/makewfs` is checked out on `fix/sh-lenslet-field-aliasing` (PR #6,
+  not merged), which fixes SH flux non-conservation for wide or undersampled
+  subapertures (issue #4). The editable install uses that branch. The research SH
+  model also sets 16 pupil samples per lenslet, so its results don't depend on the fix.
+- The OOPAO clone is newer than what makewfs's OOPAO validation test expects
+  (`wfs_measure` signature changed); that one makewfs test fails on `main` too.
+- Two GPUs: run training on the 4060 and independent sweeps on the A400 with
+  `CUDA_VISIBLE_DEVICES=1` (4 GB: keep data stores on CPU).

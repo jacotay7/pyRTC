@@ -66,7 +66,8 @@ class Store:
         self.frames = self.applied = self.truth = None
 
     def add(self, tr):
-        f, a, y = tr.frames.to(dev), tr.applied.to(dev), tr.truth.to(dev)
+        # pinned CPU memory: the GPU also holds the atmospheres and the network
+        f, a, y = tr.frames.cpu(), tr.applied.cpu(), tr.truth.cpu()
         if self.frames is None:
             self.frames, self.applied, self.truth = f, a, y
         else:
@@ -80,29 +81,29 @@ class Store:
 
 def make_batch(store, n, gen, photon_range=(0.3, 3.0)):
     t_len, b_len = store.frames.shape[:2]
-    t = torch.randint(K - 1, t_len, (n,), device=dev, generator=gen)
-    b = torch.randint(0, b_len, (n,), device=dev, generator=gen)
-    tk = t[:, None] + torch.arange(-K + 1, 1, device=dev)[None]  # (n, K)
-    clean = store.frames[tk, b[:, None]]  # (n, K, npix, npix)
-    a = store.applied[tk, b[:, None]]  # (n, K, n_modes) metres
+    t = torch.randint(K - 1, t_len, (n,), generator=gen)
+    b = torch.randint(0, b_len, (n,), generator=gen)
+    tk = t[:, None] + torch.arange(-K + 1, 1)[None]  # (n, K)
+    clean = store.frames[tk, b[:, None]].to(dev, non_blocking=True)  # (n, K, npix, npix)
+    a = store.applied[tk, b[:, None]].to(dev)  # (n, K, n_modes) metres
     c = ((a[:, -1:] - a[:, :-1]).reshape(n, -1) * 1e9) / scale.repeat(K - 1)
-    ph = log_uniform(n, *photon_range, dev, gen)[:, None, None, None]
-    e = noisy_frames(clean, scfg, args.photons, ph, generator=gen)
+    ph = log_uniform(n, *photon_range, dev)[:, None, None, None]
+    e = noisy_frames(clean, scfg, args.photons, ph)
     x = torch.stack([sensor.preprocess(e[:, k])[:, 0] for k in range(K)], 1)
-    return x, c, store.truth[t, b]
+    return x, c, store.truth[t, b].to(dev)
 
 
 def train(trajs, steps, lr=1e-3):
     opt = torch.optim.AdamW(net.parameters(), lr=lr, weight_decay=1e-4)
     sched = torch.optim.lr_scheduler.OneCycleLR(opt, lr, total_steps=steps, pct_start=0.1)
-    gen = torch.Generator(device=dev).manual_seed(len(trajs))
+    gen = torch.Generator().manual_seed(len(trajs))
     net.train()
     t0 = time.perf_counter()
     for step in range(steps):
         x, c, y = make_batch(trajs, args.batch, gen)
         with torch.autocast("cuda", dtype=torch.bfloat16):
             pred = net(x, c).float() * scale
-        loss = (((pred - y) ** 2).sum(-1) / ((y**2).sum(-1) + 100.0 * n_modes)).mean()
+        loss = (((pred - y) ** 2).sum(-1) / ((y**2).sum(-1) + 300.0)).mean()  # 17 nm rms floor
         opt.zero_grad(set_to_none=True)
         loss.backward()
         torch.nn.utils.clip_grad_norm_(net.parameters(), 1.0)

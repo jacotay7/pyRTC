@@ -60,13 +60,15 @@ being collected from published sources into
 
 | Item | Baseline (Tier 1): legacy Keck II | Stretch (Tier 2): Keck II HAKA |
 | --- | --- | --- |
-| Telescope | Keck pupil: 36 hexagonal segments, 10.95 m max, central shadow + 6 arms (fitted model in makewfs `examples/keck_haka`, ~72 m^2 clear) | same |
-| DM | Xinetics 349 actuators, 20 x 20 subapertures (Fried) | HAKA high-order DM, 57 x 57 SH |
-| Atmosphere | pyturb `keck` (KAON 303, L0 = 20 m) and `mauna-kea`; median ~0.6", sweep 0.4-1.0" | + fast-wind / LWE cases |
-| Loop | Keck operational rates from the camera-mode table (2 kHz bright, ~1 kHz at R = 10, 400 Hz at R = 12); delay per KECK_BASELINE | same |
-| SH baseline | 20 x 20 SH on OCAM2K (getframes `andor_ocam2k`, Keck-measured), visible WFS band | 57 x 57 SH (makewfs model already validated against RTC data) |
-| Focal-plane WFS | band is a trade variable: visible OCAM2K (same camera as SH) or NIR (eAPD) | same |
-| Science | NIRC2 H/K | same |
+| Telescope | 36 hexagonal segments, 10.95 m max (9.96 m equivalent), 2.48-2.6 m central shadow, 6 x 2.5 cm spiders; fitted model from makewfs `examples/keck_haka` (72.0 m^2 clear) | same |
+| DM | Xinetics 349 actuators, 21 x 21 Fried grid, 0.56 m pitch (model: 0.5625 m, 349 actuators inside 10.5 pitches); about 50 slaved actuators; true influence function is a difference of Gaussians (model: Gaussian, 0.15 coupling); 300 DM-KL modes controlled | HAKA high-order DM, 57 x 57 SH |
+| Atmosphere | pyturb `keck` (KAON 303 seven layers, L0 = 20 m); median r0 18-20 cm (0.5-0.6"), tau0 ~2.75 ms | + fast-wind / LWE cases |
+| SH baseline | 20 x 20 lenslets, 0.5-1.0 um, OCAM2K (getframes `andor_ocam2k`, Keck-measured): 4 x 4 px per lenslet unbinned (2 kHz), 2 x 2 binned quad cell (3.7 kHz); pixel scale assumed 0.8"/px (unverified for the OCAM2K era); 236 valid subapertures (Keck: 240 active) | 57 x 57 SH (makewfs model validated against RTC data) |
+| Controller | leaky integrator, leak 0.99, gain ~0.5; Keck uses a zonal MAP reconstructor (model: modal least squares) | same |
+| Latency | RTC 205 us (last pixel -> command) + readout 466 us, so about 1.7 frames at 1 kHz (model: 2 frames) | same |
+| Delivered | K-band Strehl ~0.56 (Br-gamma, 2025, OCAM2K era); 0.58 at R = 7, 0.50 at R = 13 (Keck table, CCD39 era) | |
+| Focal-plane WFS | band is a trade variable: visible OCAM2K (same camera as SH) or NIR (Keck II already runs a NIR pyramid WFS) | same |
+| Science | NIRC2 narrow camera, 9.942 mas/px, H/K | same |
 
 The makewfs HAKA example already fixes the pupil, the photon budget
 (mirrors, bench throughput, Mauna Kea extinction) and the OCAM2K model, all
