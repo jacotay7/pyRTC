@@ -126,7 +126,7 @@ and `psf_short` or `psf_long` become scoring-camera outputs.
 Minimal Component Example
 -------------------------
 
-The base component class starts configured functions in worker threads. A minimal configuration looks like:
+The base component class runs configured functions in worker threads, which start on the first ``start()``. A minimal configuration looks like:
 
 .. code-block:: python
 

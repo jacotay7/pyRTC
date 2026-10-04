@@ -30,10 +30,11 @@ aliases.
 ## Code layout
 
 - `pyrtc/component.py` — `Component`, the base class for every runtime
-  component: config parsing, worker threads (one per entry in `functions`),
-  the stream helpers `read_stream` / `write_stream`, and the lifecycle
-  (`start`/`stop` pause and resume; `close` ends the workers and closes the
-  registered streams for good).
+  component: config parsing, worker threads (one per entry in `functions`,
+  started by the first `start()`, so a constructor that raises leaves none
+  behind), the stream helpers `read_stream` / `write_stream`, and the
+  lifecycle (`start`/`stop` pause and resume; `close` ends the workers and
+  closes the registered streams for good).
 - Core components: `wavefront_sensor.py`, `slopes_process.py`, `loop.py`,
   `wavefront_corrector.py`, `science_camera.py`, `telemetry.py`,
   `modulator.py`, `optimizer.py`. Hot loops are `@jit(..., cache=True)`
@@ -138,7 +139,7 @@ and docs. pyrtc must not reimplement transport features that pyshmem provides.
   component and closed by `Component.close()`.
 - Close what you build: `RTCManager.close()` (or `with RTCManager... as m`)
   and `Component.close()`. `stop()` only pauses; worker threads hold their
-  component, so garbage collection never ends them.
+  component, so garbage collection never ends a started component.
 - Observers (viewers, telemetry, latency, monitors) open streams with
   `open_stream(name, readonly=True)`.
 - Do not use `read_new()` in request/response or lock-step code. It is
@@ -251,6 +252,12 @@ ruff check . && ruff format --check .    # lint, as in CI
   `COMPONENT_DESCRIPTOR`) in their class body. When an adapter starts reading
   a new config key, add it to `EXTRA_CONFIG_KEYS` (or to the descriptor for a
   built-in), or configs using it will warn.
+- A component's first blocking `read_stream` returns the current payload at
+  once. A test that pre-writes a frame, calls `start()`, writes another
+  frame and then waits for "any new output" can see the first frame
+  mirrored. Wait for the expected payload instead. `test_isio_bridge`
+  failed this way once worker threads started inside `start()` (#155),
+  since they no longer idle for up to 1 ms first.
 - Build components for method-level tests with `testsupport.bare_component`,
   not `Cls.__new__(Cls)`: the stream helpers assume the state that
   `Component._init_runtime_state` sets up (there is no lazy-init guard).

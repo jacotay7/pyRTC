@@ -26,6 +26,14 @@ All notable changes to `pyrtcao` will be documented in this file.
 
 ### Fixed
 
+- **A component whose constructor fails no longer leaks its worker threads**
+	(#155). `Component.__init__` started one worker thread per entry in
+	`functions` before the subclass finished its own setup, so a constructor
+	that then raised (a missing input stream, a bad calibration file) left
+	threads spinning for the life of the process, each holding the
+	half-built component. The threads now start on the first `start()`.
+	Construction starts none, and `stop()`/`start()` still pause and resume
+	the same threads.
 - **The first frame after `start()` no longer stalls while numba compiles**
 	(#157). `SlopesProcess`, `Loop` and `WavefrontCorrector` compiled their
 	per-frame numba kernels during the first real frame. That took 0.15 s
