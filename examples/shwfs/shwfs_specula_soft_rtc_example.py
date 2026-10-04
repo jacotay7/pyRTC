@@ -157,10 +157,9 @@ def prepare_loop(
         use_atmosphere = sim.use_atmosphere
         logger.info("Calibrating with the atmosphere removed")
         sim.remove_atmosphere()
-        # Worker kernels JIT-compile on first use, so the first DM command can
-        # take about a second to land. Reference slopes need the live pipeline
-        # too, so confirm a DM round trip before taking them (compute_im checks
-        # again on its own before poking).
+        # Reference slopes need the live pipeline (the simulator may still be
+        # starting), so confirm a DM round trip before taking them (compute_im
+        # checks again on its own before poking).
         loop.check_round_trip()
         logger.info("Taking reference slopes on the flat DM")
         slopes.take_ref_slopes()
