@@ -272,6 +272,34 @@ hand-over.**
 - Every stage stays >= ~0.55, the regime where exp11/14/16 closures failed. A
   defocus-stepping acquisition might work but is marginal.
 
+**Real-time pyRTC demonstration (phase 6) and a robustness correction.**
+- Setup: hard-RTC pyRTC system, simulated focal-plane camera + Keck DM as research
+  components, `TorchImageReconstructor` (PR #156) with the slim 6.7M network, pyRTC
+  leaky integrator (gain 0.4, leak 0.99). The loop is warm-started by the ideal sensor
+  for 300 frames, then held by the network alone. Code: `rtc/`, see `rtc/README.md`.
+- **The loop runs at ~1 kHz (982 Hz median), LE H Strehl 0.723**, identical to the
+  offline harness. Where the harness loses an atmosphere, pyRTC loses it on the same
+  frame (cross-validation of the harness timing model).
+- Latency (median / p99), reconstructor on the idle A400:
+
+  | Path | Median | p99 |
+  | --- | --- | --- |
+  | Reconstructor compute | 0.50 ms | 0.53 ms |
+  | WFS -> signal | 0.64 ms | 0.69 ms |
+  | WFS -> wfc | 0.79 ms | 0.93 ms |
+
+  - That fits a 1 ms frame but **misses G1's p99 <= 0.5 ms**. On the shared 4060 the
+    median is lower (0.33 ms) but p99 2.2 ms.
+  - SCHED_IDLE spinners on the pipeline cores were needed to avoid deep-idle wake-up
+    latency.
+- **Correction: robustness was measured over 2.3 s windows.** Over 10 s, 8-10 of 12
+  atmospheres hold. Failures come at random times 2.3-8.1 s in, a mean time to failure
+  of roughly 30-40 s per atmosphere. The "23/24" and "24/24" figures above are
+  2-second survival rates, not steady-state robustness.
+- Found along the way: pyturb gives different screens for the same seed on the 4060 and
+  the A400 (to verify and file). pyRTC's Loop JIT-compiles its numba kernel on the
+  first iteration after start (a 0.36 s stall), which the demo works around by priming.
+
 **Open threads.**
 - exp04: multi-frame networks with DM-command diversity and DAgger.
 - Whether a wider field of view (seeing the fitting halo) lets a nonlinear
