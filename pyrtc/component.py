@@ -443,6 +443,17 @@ class Component:
                 pass
         return
 
+    def warmup(self) -> None:
+        """Prepare the per-frame code path so the first frame runs at full speed.
+
+        numba kernels compile (or load from the on-disk cache) on their first
+        call, which stalls the first frame by 0.1 to 1 s. Components with
+        kernels on their worker path override this to call each kernel once
+        on scratch arrays typed like the real inputs, and call it at the end
+        of ``__init__``. A warm-up must not write any stream or change state
+        that a worker reads. The base implementation does nothing.
+        """
+
     def start(self):
         """
         Start the registered real-time functions.

@@ -182,6 +182,7 @@ class WavefrontCorrector(Component):
 
             self.save_file = set_from_config(conf, "save_file", "wfc_shape.npy")
             self.read_m2c()
+            self.warmup()
             self.logger.info(
                 "Initialized wavefront corrector name=%s actuators=%s modes=%s command_cap=%s",
                 self.name,
@@ -523,6 +524,28 @@ class WavefrontCorrector(Component):
         except Exception:
             self.logger.exception("Failed to build M2C from basis config")
             raise
+
+    def warmup(self) -> None:
+        """Compile (or load from the numba cache) the command kernel.
+
+        Runs at the end of ``__init__`` so the first :meth:`send_to_hardware`
+        does not stall while numba compiles ``ModaltoZonalWithFlat``. The
+        kernel runs once on a zero command typed like the ``wfc`` read
+        buffer; nothing is written to a stream or sent to the hardware, and
+        no corrector state changes.
+        """
+
+        start = time.perf_counter()
+        try:
+            ModaltoZonalWithFlat(np.zeros_like(self._wfc_buffer), self.f_M2C, self.flat)
+        except Exception:
+            self.logger.warning(
+                "Could not warm up ModaltoZonalWithFlat; its first real call will compile it",
+                exc_info=True,
+            )
+        self.logger.info(
+            "Warmed up wavefront corrector kernels in %.3f s", time.perf_counter() - start
+        )
 
     def send_to_hardware(self):
         """

@@ -502,6 +502,7 @@ class Loop(Component):
             self._wfc_buffer = np.empty(self.wfc_shape, dtype=self.wfc_dtype)
 
             self.load_im()
+            self.warmup()
             self.logger.info(
                 "Initialized loop signal_shape=%s wfc_shape=%s num_modes=%s",
                 self.signal_shape,
@@ -1393,6 +1394,56 @@ class Loop(Component):
         if gains.size != np.size(correction):
             gains = self.gain
         return (1 - gains) * correction - np.dot(self.g_cm, s_pol)
+
+    def warmup(self) -> None:
+        """Compile (or load from the numba cache) the integrators' kernels.
+
+        Runs at the end of ``__init__``, so the first iteration after
+        :meth:`start` runs at steady-state speed instead of stalling while
+        numba compiles (0.1 to 1 s, i.e. hundreds of frames at kHz rates).
+        Each kernel runs once on zero scratch arrays with the shapes and
+        dtypes of the hot path's buffers (the ``signal`` and ``wfc`` read
+        buffers and the control matrices), so numba builds the same
+        specialisation the integrators then call. Nothing is written to a
+        stream and no loop state changes, so it is safe to call again.
+        """
+
+        component_logger = getattr(self, "logger", logger)
+        start = time.perf_counter()
+        signal = np.zeros_like(self._signal_buffer)
+        wfc = np.zeros_like(self._wfc_buffer)
+        scratch = np.zeros_like(self._correction_buffer)
+        calls = (
+            # standard_integrator and leaky_integrator
+            (
+                "leaky_integrator_numba",
+                lambda: leaky_integrator_numba(
+                    signal,
+                    self.g_cm,
+                    wfc.squeeze(),
+                    scratch,
+                    np.float32(self.leaky_gain),
+                    self.num_active_modes,
+                ),
+            ),
+            # pid_integrator
+            ("comp_correction", lambda: comp_correction(cm=self.cm, slopes=signal)),
+            # pid_integrator_pol: pseudo open-loop slopes may promote the dtype
+            (
+                "comp_correction (POL)",
+                lambda: comp_correction(cm=self.cm, slopes=signal - self.f_im @ wfc),
+            ),
+        )
+        for name, call in calls:
+            try:
+                call()
+            except Exception:
+                component_logger.warning(
+                    "Could not warm up %s; its first real call will compile it",
+                    name,
+                    exc_info=True,
+                )
+        component_logger.info("Warmed up loop kernels in %.3f s", time.perf_counter() - start)
 
     def _read_signal(self, out=None):
         """Read the next ``signal`` frame, or return ``None`` if the input is stale.
