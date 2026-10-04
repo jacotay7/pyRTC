@@ -1,8 +1,8 @@
 # Focal-plane-only AO at > 500 Hz — plan and goals
 
 **Question.** Can a single focal-plane camera, with no Shack-Hartmann, pyramid, or
-other pupil-plane sensor, serve as the *only* wavefront sensor of an 8-m-class
-single-conjugate AO system, close the loop at >= 500 Hz (target 1 kHz),
+other pupil-plane sensor, serve as the *only* wavefront sensor of an 8-10 m
+class single-conjugate AO system (baseline: legacy Keck II NGS AO), close the loop at >= 500 Hz (target 1 kHz),
 bootstrap from seeing-limited conditions, and match a Shack-Hartmann's
 closed-loop performance?
 
@@ -36,9 +36,12 @@ GPU headroom.
 1. **Implementable on a real system.** Every input the reconstructor uses must exist in
    a real RTC at runtime: focal-plane frames, past DM commands, loop
    telemetry. No truth phase, no auxiliary WFS, not even for bootstrapping.
-2. **Single focal-plane camera.** A static optic in front of it (a pupil
-   mask or a fixed defocus in a dedicated WFS arm) is allowed, but it is a
-   design choice to be justified, not assumed.
+2. **Single focal-plane camera, no added hardware.** A fixed defocus is
+   allowed: it is a focus setting, not new hardware. Any added optic or
+   hardware (pupil mask, grating, vAPP, hologram, lantern, ...) changes the
+   bar. The system is then no longer simpler than the SH it replaces, so it
+   must *outperform* the SH baseline, not just match it, or show some other
+   concrete benefit.
 3. **Data-driven first.** Calibration should be something one can do on the
    bench or on-sky, the way you take an interaction matrix. Model-based pieces
    are acceptable when their parameters are easily calibrated.
@@ -47,39 +50,49 @@ GPU headroom.
 5. **Free choice of camera and band at first.** It is a trade-study
    variable, not fixed.
 
-## Reference system ("8-m class, representative")
+## Reference system: legacy Keck II NGS AO
 
-| Item | Baseline (Tier 1) | Stretch (Tier 2) |
+The maintainer has the most experience with Keck, so the baseline is an explicit model
+of the legacy Keck II NGS system: the 20 x 20 SH and the 349-actuator DM.
+The WFS camera is the OCAM2K (the CCD39 is retired at Keck). Parameters are
+being collected from published sources into
+[KECK_BASELINE.md](KECK_BASELINE.md), with a citation for each.
+
+| Item | Baseline (Tier 1): legacy Keck II | Stretch (Tier 2): Keck II HAKA |
 | --- | --- | --- |
-| Telescope | 8.0 m, 14 % central obscuration, 4 spiders (VLT-like) | same |
-| DM | 20 x 20 actuators (~ 320 valid, Keck-like), ~300 KL modes | 40 x 40 (SPHERE-like), ~1000-1200 modes |
-| Atmosphere | pyturb `paranal-median`, 0.8" at 500 nm, L0 = 25 m; sweeps 0.5-1.2" | + strong-wind / fast tau0 cases, LWE |
-| Loop | 1 kHz frame rate, 2-frame total delay, integrator/leaky + modal gains | 2 kHz |
-| Source | NGS on axis; magnitude sweep | |
-| Focal-plane WFS | NIR, narrowband (5-10 %), Nyquist at lambda_min, eAPD (C-RED One-class) via getframes | visible (OCAM2K-class EMCCD) |
-| SH baseline | 20 x 20 SH in R+I (OCAM2K-class), same DM/basis/delay/rate | 40 x 40 |
+| Telescope | Keck pupil: 36 hexagonal segments, 10.95 m max, central shadow + 6 arms (fitted model in makewfs `examples/keck_haka`, ~72 m^2 clear) | same |
+| DM | Xinetics 349 actuators, 20 x 20 subapertures (Fried) | HAKA high-order DM, 57 x 57 SH |
+| Atmosphere | pyturb `keck` (KAON 303, L0 = 20 m) and `mauna-kea`; median ~0.6", sweep 0.4-1.0" | + fast-wind / LWE cases |
+| Loop | Keck operational rates from the camera-mode table (2 kHz bright, ~1 kHz at R = 10, 400 Hz at R = 12); delay per KECK_BASELINE | same |
+| SH baseline | 20 x 20 SH on OCAM2K (getframes `andor_ocam2k`, Keck-measured), visible WFS band | 57 x 57 SH (makewfs model already validated against RTC data) |
+| Focal-plane WFS | band is a trade variable: visible OCAM2K (same camera as SH) or NIR (eAPD) | same |
+| Science | NIRC2 H/K | same |
 
-First-order numbers ([tools/budget.py](tools/budget.py)): r0(H) = 0.52 m,
-D/r0 = 15; open-loop phase 3.6 rad rms in H (2.7 in K) with tip/tilt removed,
-so acquisition is deep in the non-linear regime. Fitting error alone caps
-Strehl at 0.84 (H) / 0.47 (I) for 20 x 20. The focal-plane frame only needs
-~56 x 56 px (20 x 20) to ~104 x 104 px (40 x 40) to cover the control radius
-at Nyquist. Photons at 1 kHz with 0.3 throughput: H = 8 gives ~14 k ph/frame,
-H = 12 gives ~360.
+The makewfs HAKA example already fixes the pupil, the photon budget
+(mirrors, bench throughput, Mauna Kea extinction) and the OCAM2K model, all
+validated against real RTC data. The legacy baseline reuses those and changes
+only the SH geometry, the DM, and the control parameters.
+
+First-order numbers ([tools/budget.py](tools/budget.py), still for a generic
+8 m at 0.8"; to be redone for Keck): open-loop phase is several rad rms in
+H/K even with tip/tilt removed, so acquisition is deep in the non-linear
+regime. Fitting error alone caps Strehl at about 0.84 in H for a 20 x 20 DM.
+The focal-plane frame needs only ~56 x 56 px to cover the 10 lambda/D control
+radius at Nyquist.
 
 ## Goals and success criteria
 
 | ID | Goal | Pass criterion |
 | --- | --- | --- |
-| G1 | **Real time** | Reconstructor + control on GPU at 1 kHz: p99 compute <= 0.5 ms per frame (RTX 4060) for the Tier-1 system, measured inside pyRTC from WFS stream to DM stream; 2-frame total loop delay. |
-| G2 | **Parity with SH** | Tier 1, 0.8", bright NGS: long-exposure H-band Strehl of the focal-plane loop >= 90 % of the SH loop's (same DM, basis, rate, delay, photon budget per their own bands). |
+| G1 | **Real time** | Reconstructor + control on GPU at 1 kHz (and at Keck's 2 kHz bright-star rate as a stretch): p99 compute <= 0.5 ms per frame (RTX 4060) for the Tier-1 system, measured inside pyRTC from WFS stream to DM stream; 2-frame total loop delay. |
+| G2 | **Parity with SH** | Tier 1, median Mauna Kea seeing, bright NGS: long-exposure H- and K-band Strehl of the focal-plane loop >= 90 % of the Keck SH loop's (same DM, basis, delay, photon budget per their own bands). With any added hardware: strictly greater than the SH's. |
 | G3 | **Bootstrap** | From open loop with no other sensor, reach G2's steady state within 1 s (1000 frames) for >= 95 % of 100 atmosphere seeds; never diverge. |
 | G4 | **Robustness** | Strehl vs. guide-star magnitude and seeing within the same envelope as SH (report the magnitude where each loses 50 % of its bright-star Strehl); tolerant to +-10 % DM/pupil misregistration and 20 % bandwidth. |
 | G5 | **Data-driven calibration** | A reconstructor trained only on data a real system can collect (DM-commanded aberrations on a calibration source + closed-loop telemetry) reaches >= 95 % of the simulation-trained one; it transfers across simulators (train in our GPU sim, test in HCIPy / OOPAO / SPECULA) with < 5 % Strehl loss. |
 | G6 | **Beyond SH** | Show what SH cannot do: correct petal/LWE modes and NCPA in the same loop, with a measurable Strehl gain. |
 
-G1 + G2 + G3 together are the headline claim: *closes the loop at >500 Hz on an
-8-m system with only a focal-plane camera and matches SH*.
+G1 + G2 + G3 together are the headline claim: *closes the loop at >500 Hz on
+Keck with only a focal-plane camera and matches its Shack-Hartmann*.
 
 ## Technical approach
 
@@ -87,7 +100,9 @@ G1 + G2 + G3 together are the headline claim: *closes the loop at >500 Hz on an
 
 1. **Even-mode sign ambiguity.** A single in-focus image only fixes the
    odd part of the phase; the even part has a sign ambiguity. Diversity breaks
-   it. The candidates are ranked by how little hardware they need:
+   it. The candidates are ranked by how little hardware they need. D1, D1+ and
+   D3 need no new hardware. D2 and D4 add an optic, so they must beat the SH
+   (see constraint 2).
    - **D1 temporal / DM diversity** (the Fast & Furious principle [R11, R12],
      learned in PO4NCPA [R61]): the RTC knows every DM increment, so
      consecutive frames plus the commands between them resolve the sign. No
@@ -99,9 +114,10 @@ G1 + G2 + G3 together are the headline claim: *closes the loop at >500 Hz on an
      one spider) makes the pupil non-centro-symmetric, so the PSF encodes the
      sign linearly. A few % of throughput. The patch can be Fisher-optimised
      with differentiable optics [R57, R58].
-   - **D3 static aberration in a dedicated WFS arm** (a fixed defocus or
-     astigmatism). It costs nothing in science Strehl if the arm is separate,
-     but it rules out using the science camera itself.
+   - **D3 fixed defocus** (allowed: a focus offset, no new hardware). It
+     costs nothing in science Strehl if the WFS camera is separate, but it
+     rules out using the science camera itself. Classical phase-diversity
+     choice [R2, R49].
    - D4 holographic/vAPP (needs a custom optic): reference only.
 2. **Dynamic range / bootstrapping.**
    - Linearised focal-plane methods hold only to about 1-1.5 rad rms
@@ -182,14 +198,23 @@ Phases are ordered by dependency; each ends with a go/no-go check.
 **Phase 0 — Environment and baselines (this step).** Done: tools installed and
 checked, GPU headroom measured, literature reviewed, plan written.
 
-**Phase 1 — GPU simulation core** (`research/fpwfs/fpsim/`, torch).
-Pupil (VLT-like, spiders, optional asymmetric patch), DM (influence functions
-+ aobasis KL), atmosphere (pyturb on GPU via DLPack), polychromatic
-focal-plane imager (MFT, Nyquist-sampled), detector (getframes eAPD/EMCCD), SH
-baseline (makewfs on GPU), and a closed-loop harness in *simulated* time with
-exact frame delays. Batched mode for data generation.
-*Check:* PSF/Strehl agree with HCIPy to < 1 %; the SH loop reproduces
-OOPAO/SPECULA residuals for the same system within ~5 %.
+**Phase 1 — Keck simulation core.**
+- Pupil, photon budget and OCAM2K: reuse the validated makewfs/getframes Keck
+  models.
+- Legacy 20 x 20 SH: a makewfs configuration, checked against OOPAO/HCIPy SH
+  slopes.
+- Focal-plane imager: a new sensor kind in makewfs. It is a pure feature
+  (polychromatic, Nyquist-sampled, fixed defocus, getframes detector, GPU),
+  validated against HCIPy PSFs in makewfs's own tests.
+- Supporting pieces: a 349-actuator DM model with aobasis KL modes, and pyturb
+  `keck` atmosphere on the GPU.
+- Harness: a closed-loop simulation in *simulated* time with exact frame
+  delays, in `research/fpwfs/`. Its batched mode generates training data
+  (CuPy to torch via DLPack, zero copy).
+
+*Check:* PSF and Strehl agree with HCIPy to < 1 %. The Keck SH loop
+reproduces OOPAO residuals within ~5 % and lands in the published Keck II
+Strehl range for the same conditions.
 
 **Phase 2 — Baselines.** R0 and SH loops over the seeing/magnitude grid (this
 is the bar for G2/G4); R1 (F&F) and R2 started from an SH-closed state.
@@ -237,8 +262,15 @@ CM in the Loop). GPU streams, CUDA graph, 1 kHz run with `pyrtc.latency`.
   tooling, bug fixes) gets its own branch off `dev` and a PR following the
   repo conventions (CHANGELOG, tests, AGENTS.md). `fpwfs` then rebases onto
   `dev`.
-- Changes that belong in the maintainer's other packages (makewfs focal-plane
-  imager, pyturb, getframes, aobasis) go to those repositories.
+- Changes that belong in the maintainer's other packages (pyturb, makewfs,
+  getframes, aobasis, pyshmem) go to those repositories. Each is a pure
+  feature addition with its own tests and validation, independent of this
+  experiment. Bugs found in them get an issue and a fix. External tools
+  (HCIPy, OOPAO, SPECULA, torch) are used as they are.
+- No simulator is assumed correct, our own included. Every component is
+  cross-checked against at least one independent tool (PSF and Strehl against
+  HCIPy, SH loop against OOPAO/SPECULA, photon budget against the validated
+  HAKA model).
 
 ## Main risks
 
