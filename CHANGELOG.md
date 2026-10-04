@@ -24,6 +24,25 @@ All notable changes to `pyrtcao` will be documented in this file.
 	classes, and stream planning and the AOTPy export treat a typeless
 	`slopes` section with `signal_size` as a generic signal.
 
+### Fixed
+
+- **The first frame after `start()` no longer stalls while numba compiles**
+	(#157). `SlopesProcess`, `Loop` and `WavefrontCorrector` compiled their
+	per-frame numba kernels during the first real frame. That took 0.15 s
+	with a warm numba cache and up to 0.75 s cold, against 0.06 to 0.2 ms
+	per frame in steady state. A loop started on a live system therefore
+	held the DM still for hundreds of frames at kHz rates, enough to lose
+	lock.
+	- Each of these components now ends `__init__` with `warmup()`. It calls
+	  the kernels once on zero scratch arrays typed like the real buffers, or
+	  runs the torch PYWFS path when `gpu_device` is set. It writes no stream.
+	- The first iteration now takes about 0.5 ms (GPU PYWFS: 88 ms down to
+	  2 ms). Construction pays the compile time instead.
+	- `Component.warmup()` is a no-op hook that other components can
+	  override.
+	- `benchmarks/first_iteration_bench.py` compares first-call and
+	  steady-state latency with a cold and a warm numba cache.
+
 ## 1.1.0 - 2026-09-29
 
 ### Fixed

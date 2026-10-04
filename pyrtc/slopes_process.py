@@ -7,6 +7,7 @@ component that manages calibration data and SHM publication.
 """
 
 import threading
+import time
 
 import numpy as np
 from typing import Any
@@ -926,6 +927,7 @@ class SlopesProcess(Component):
                 self._configure_shwfs_centroider()
 
             self.load_ref_slopes()
+            self.warmup()
             self.logger.info(
                 "Initialized slopes process wfs_type=%s signal_type=%s image_shape=%s",
                 self.wfs_type,
@@ -1630,40 +1632,78 @@ class SlopesProcess(Component):
         # Hold the lock only while processing, not while waiting for a frame,
         # so set_pupils / set_ref_slopes never swap buffers mid-frame.
         with self._signal_lock:
-            if self.wfs_type == "pywfs":
-                if self.gpu_device is not None and gpu_torch_available():
-                    slope_signal = self._compute_slopes_pywfs_gpu(image)
-                else:
-                    slope_signal = compute_slopes_pywfs_optim_numba(
-                        image=image.ravel(),
-                        p1_mask=self.p1mask.ravel(),
-                        p2_mask=self.p2mask.ravel(),
-                        p3_mask=self.p3mask.ravel(),
-                        p4_mask=self.p4mask.ravel(),
-                        p1=self.p1,
-                        p2=self.p2,
-                        p3=self.p3,
-                        p4=self.p4,
-                        tmp1=self.tmp1,
-                        tmp2=self.tmp2,
-                        num_pixels_in_pupils=self.num_pixels_in_pupils,
-                        slopes=self.slopes_arr_1d,
-                        ref_slopes=self.ref_slopes_1d,
-                    )
-            elif self.wfs_type == "shwfs":
-                slope_signal = self._gather_valid_slopes(self._compute_slopes_shwfs(image))
-            if isinstance(slope_signal, np.ndarray):
-                signal_host = slope_signal
-            else:
-                # GPU PYWFS result: write the device tensor to a GPU-backed
-                # signal stream, NumPy otherwise; signal_2d is built on the host.
-                signal_host = slope_signal.cpu().numpy()
-                if getattr(self.signal, "gpu_device", None) is None:
-                    slope_signal = signal_host
+            slope_signal, signal_2d = self._process_image(image)
             self.write_stream("signal", slope_signal)
-            self.write_stream("signal_2d", self.compute_signal_2d(signal_host))
+            self.write_stream("signal_2d", signal_2d)
 
         return
+
+    def warmup(self) -> None:
+        """Run the per-frame processing once on a dark frame, without publishing.
+
+        Runs at the end of ``__init__``, so the first :meth:`compute_signal`
+        after :meth:`start` does not stall while numba compiles the
+        configured slope kernel (or while torch initialises the GPU path).
+        The frame is zeros with the shape and dtype of the ``wfs`` read
+        buffer, on the GPU when the ``wfs`` stream is GPU-attached, so the
+        kernels see the same types as real frames. Nothing is written to a
+        stream; the work buffers it fills are overwritten by the next frame.
+        Call it again after changing the centroider or reference image.
+        """
+
+        if self.signal_type != "slopes":
+            return
+        component_logger = getattr(self, "logger", logger)
+        start = time.perf_counter()
+        try:
+            image = np.zeros_like(self._image_buffer)
+            if getattr(self.wfs_shm, "gpu_device", None) is not None:
+                import torch
+
+                image = torch.from_numpy(image).to(self.gpu_device)
+            with self._signal_lock:
+                self._process_image(image)
+        except Exception:
+            component_logger.warning(
+                "Could not warm up the slope computation; the first frame will compile it",
+                exc_info=True,
+            )
+        component_logger.info("Warmed up slopes kernels in %.3f s", time.perf_counter() - start)
+
+    def _process_image(self, image):
+        """Return ``(signal, signal_2d)`` for one WFS image (caller holds the lock)."""
+
+        if self.wfs_type == "pywfs":
+            if self.gpu_device is not None and gpu_torch_available():
+                slope_signal = self._compute_slopes_pywfs_gpu(image)
+            else:
+                slope_signal = compute_slopes_pywfs_optim_numba(
+                    image=image.ravel(),
+                    p1_mask=self.p1mask.ravel(),
+                    p2_mask=self.p2mask.ravel(),
+                    p3_mask=self.p3mask.ravel(),
+                    p4_mask=self.p4mask.ravel(),
+                    p1=self.p1,
+                    p2=self.p2,
+                    p3=self.p3,
+                    p4=self.p4,
+                    tmp1=self.tmp1,
+                    tmp2=self.tmp2,
+                    num_pixels_in_pupils=self.num_pixels_in_pupils,
+                    slopes=self.slopes_arr_1d,
+                    ref_slopes=self.ref_slopes_1d,
+                )
+        elif self.wfs_type == "shwfs":
+            slope_signal = self._gather_valid_slopes(self._compute_slopes_shwfs(image))
+        if isinstance(slope_signal, np.ndarray):
+            signal_host = slope_signal
+        else:
+            # GPU PYWFS result: write the device tensor to a GPU-backed
+            # signal stream, NumPy otherwise; signal_2d is built on the host.
+            signal_host = slope_signal.cpu().numpy()
+            if getattr(self.signal, "gpu_device", None) is None:
+                slope_signal = signal_host
+        return slope_signal, self.compute_signal_2d(signal_host)
 
     def _gather_valid_slopes(self, slopes):
         """Return ``slopes[valid_sub_aps]`` in a reused buffer (no per-frame allocation).
