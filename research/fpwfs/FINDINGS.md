@@ -164,6 +164,32 @@ hand-over.**
 - Next: train for a wider basin (larger dither, a range of loop gains), and use a larger
   fixed defocus if exp12 shows it widens capture.
 
+**exp10 v2 round 3 (filtered on-policy DAgger) improves robustness.**
+- Same 12 fresh atmospheres as the round-0 test: **11/12 held** at every setting
+  (leak 1.0 / 0.99, gain 0.3-0.5), median H Strehl 0.70-0.73. Round 0 held 7-11.
+- The one failure is the same atmosphere every time (seed 4008), so it is a
+  turbulence-dependent weakness, not random.
+- Trace: the mid bands (modes 20-120) drift up within ~50 frames of the hand-over
+  and run away.
+- The training used only ~30 atmospheres, all at 0.6" and nominal wind. Next (v3):
+  seeing 0.45-0.85", wind x0.7-1.5, dither up to 3x, warm start from round 3.
+
+**v3 (diverse turbulence, wider dither, warm start + 3 DAgger rounds): 23/24 hold.**
+- Leak 0.99, gain 0.4, 24 unseen atmospheres over 2 s: **23/24 hold (96 %), median H
+  Strehl 0.72**. The tuned SH gives 0.70.
+- The single failure is still seed 4008. Its bulk statistics are ordinary (mid-ranked
+  in amplitude and rate of change), so a specific transient event drives it.
+- **The maintenance goal is met in simulation:** the loop is held by the focal-plane
+  camera alone, at SH-level or slightly better Strehl, in >= 95 % of atmospheres.
+
+**exp12: the bootstrap failure was a training problem, not physics.**
+- A network dedicated to the first 20 modes, with the same 1 rad defocus, estimates
+  them from a single open-loop frame at error/residual 0.17 (871 nm residual), and at
+  0.20-0.23 through the 2-, 5- and 10-mode stages.
+- exp11's single all-stage network was the problem.
+- exp14: bootstrap with stage-specific networks (A: 20 modes, B: 120 modes, then the
+  v3 maintenance network).
+
 **Open threads.**
 - exp04: multi-frame networks with DM-command diversity and DAgger.
 - Whether a wider field of view (seeing the fitting halo) lets a nonlinear

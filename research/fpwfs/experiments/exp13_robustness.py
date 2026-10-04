@@ -54,7 +54,8 @@ def recon(residual, k, hist):
 
 
 settings = [tuple(float(v) for v in s.split(":")) for s in args.settings.split(",")]
-fig, axes = P.plt.subplots(1, len(settings), figsize=(3.4 * len(settings), 3.6), sharey=True)
+fig, axes = P.plt.subplots(1, len(settings), figsize=(3.4 * len(settings), 3.6), sharey=True, squeeze=False)
+axes = axes[0]
 report = {"weights": args.weights}
 for ax, (leak, gain) in zip(axes, settings):
     r = run_loop(Turbulence(cfg, batch=12, seed=args.seed, seeing=0.6), dm, recon, h_band_science(pupil, cfg.grid_m),

@@ -108,3 +108,4 @@ def note(experiment: str, text: str, title: str | None = None) -> None:
     for fig_name, cap in index["figs"].items():
         lines += [f"## {fig_name}", "", f"![{fig_name}]({fig_name}.png)", "", cap, ""]
     (folder / "README.md").write_text("\n".join(lines))
+    _root_index()

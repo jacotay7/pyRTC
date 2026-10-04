@@ -44,6 +44,9 @@ p.add_argument("--batch", type=int, default=128)
 p.add_argument("--gain", type=float, default=0.3)
 p.add_argument("--tag", default="run")
 p.add_argument("--n-control", type=int, default=300, help="controlled modes (others left uncorrected)")
+p.add_argument("--seeing-range", type=float, nargs=2, default=[0.6, 0.6], help="per-collection seeing (arcsec)")
+p.add_argument("--wind-range", type=float, nargs=2, default=[1.0, 1.0], help="per-collection wind scale")
+p.add_argument("--init", default=None, help="warm-start weights (with _scale)")
 args = p.parse_args()
 torch.manual_seed(0)
 dev = "cuda"
@@ -61,6 +64,17 @@ sci = h_band_science(pupil, cfg.grid_m)
 NC = args.n_control
 mask = torch.zeros(n_modes, device=dev)
 mask[:NC] = 1
+
+
+_rng = torch.Generator().manual_seed(1234)
+
+
+def atmosphere(batch, seed):
+    """Atmospheres for one collection: seeing and wind drawn from the configured ranges."""
+    u = torch.rand(2, generator=_rng).tolist()
+    seeing = args.seeing_range[0] + u[0] * (args.seeing_range[1] - args.seeing_range[0])
+    wind = args.wind_range[0] + u[1] * (args.wind_range[1] - args.wind_range[0])
+    return Turbulence(cfg, batch=batch, seed=seed, seeing=seeing, wind_scale=wind)
 
 
 class Data:
@@ -153,20 +167,24 @@ test = Data()
 test.add(pilot)
 data = Data()
 for i in range(args.collections):
-    data.add(collect(Turbulence(cfg, batch=args.atm, seed=3000 + 100 * i, seeing=0.6), dm, pupil, sensor,
+    data.add(collect(atmosphere(args.atm, 3000 + 100 * i), dm, pupil, sensor,
                      args.collect_steps, gains=(0.25, 0.6), est_noise=(0.0, 0.6), seed=i, keep_from=300,
                      dither_modes_nm=cl_std, dither_max=args.dither_max, mode_mask=mask))
 scale = data.Y.std(0).to(dev)
 print(f"{len(data.X)} dithered closed-loop states, residual {data.Y.pow(2).sum(-1).mean().sqrt():.1f} nm "
       f"(undithered test {test.Y.pow(2).sum(-1).mean().sqrt():.1f} nm) [{time.perf_counter() - t0:.0f} s]", flush=True)
 net = FPNet(1, NC, npix=args.npix).to(dev)
-train(data, args.steps, 1e-3)
+if args.init:
+    st = torch.load(args.init)
+    scale = st.pop("_scale").to(dev)  # keep the warm-started network's output scaling
+    net.load_state_dict(st)
+train(data, args.steps, 3e-4 if args.init else 1e-3)
 report = dict(args=vars(args), rounds=[evaluate("round 0: dithered expert data")])
 torch.save({**net.state_dict(), "_scale": scale.cpu()}, OUT / f"{args.tag}_r0.pt")
 for r_i in range(args.rounds):
     beta = max(0.0, 0.5 * (1 - r_i / max(args.rounds - 1, 1)))
     for j in range(2):
-        data.add(collect(Turbulence(cfg, batch=args.atm, seed=7000 + 100 * r_i + j, seeing=0.6), dm, pupil, sensor,
+        data.add(collect(atmosphere(args.atm, 7000 + 100 * r_i + j), dm, pupil, sensor,
                          1500, behaviour=policy, beta=beta, ideal_frames=300, gains=(args.gain, args.gain),
                          seed=500 + 10 * r_i + j, keep_from=300, dither_modes_nm=cl_std, dither_max=0.5,
                          mode_mask=mask), max_nm=6 * float(test.Y.pow(2).sum(-1).mean().sqrt()))

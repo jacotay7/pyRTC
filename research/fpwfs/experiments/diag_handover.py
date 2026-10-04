@@ -22,6 +22,8 @@ p.add_argument("--gain", type=float, default=0.3)
 p.add_argument("--n-control", type=int, default=300)
 p.add_argument("--tag", default="handover_trace")
 p.add_argument("--steps", type=int, default=520)
+p.add_argument("--seed", type=int, default=100)
+p.add_argument("--batch", type=int, default=4)
 args = p.parse_args()
 dev = "cuda"
 cfg = S.KeckConfig()
@@ -57,7 +59,7 @@ def recon(residual, k, hist):
     t = proj(residual.mean(0)) * 1e9
     with torch.no_grad():
         est = torch.nn.functional.pad(net(sensor.preprocess(sensor.frame(residual))) * scale, (0, 300 - NC))
-    if k >= 250 and k % 5 == 0:
+    if k >= 250 and k % 25 == 0:
         bt = [t[:, a:b].norm(dim=-1).mean().item() for a, b in bands]
         be = [(est - t)[:, a:b].norm(dim=-1).mean().item() for a, b in bands]
         cos = ((est * t).sum(-1) / (est.norm(dim=-1) * t.norm(dim=-1))).mean().item()
@@ -65,7 +67,7 @@ def recon(residual, k, hist):
     return (t * mask if k < 300 else est) * 1e-9
 
 
-res = run_loop(Turbulence(cfg, batch=4, seed=100, seeing=0.6), dm, recon, h_band_science(pupil, cfg.grid_m), pupil,
+res = run_loop(Turbulence(cfg, batch=args.batch, seed=args.seed, seeing=0.6), dm, recon, h_band_science(pupil, cfg.grid_m), pupil,
                1000, args.steps, gain=args.gain, delay=2, settle=0)
 print("frame | residual per band " + str(bands) + " | error per band | cos")
 for k, bt, be, cos in rows:
