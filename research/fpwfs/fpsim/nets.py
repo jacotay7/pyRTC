@@ -35,7 +35,7 @@ class FPNet(nn.Module):
         while size > 8:  # stride-2 stages down to an 8x8 map, whatever the frame size
             c_out = min(2 * c, 4 * w)
             layers += [nn.Conv2d(c, c_out, 3, 2, 1), nn.BatchNorm2d(c_out), nn.GELU(), ResBlock(c_out)]
-            c, size = c_out, size // 2
+            c, size = c_out, (size + 1) // 2  # stride-2, padding-1 conv: ceil(n / 2)
         self.trunk = nn.Sequential(*layers)
         feat = c * size**2
         self.cond = cond
