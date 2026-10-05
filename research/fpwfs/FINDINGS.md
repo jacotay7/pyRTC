@@ -487,6 +487,23 @@ atmospheres x 10 s).**
 - **Biggest remaining lever:** maintenance robustness (loss rate), then a faster and
   more reliable re-acquisition.
 
+**DM-kick recovery training of the maintenance network (exp10 `--kick-every 150`).**
+- Warm start from the v7 maintenance network; the DAgger collections apply a random,
+  persistent modal DM kick (up to 4x the closed-loop modal std) every 150 frames, so
+  the training covers states near the edge of the basin and the recovery from them.
+  Seeing 0.45-0.85", wind x0.7-1.5.
+- The per-round 1.4 s hand-over test does not see the change: 12/12 held and LE median
+  ~0.72 every round. The 10 s supervised test on the same exp21 atmospheres does:
+
+  | Maintenance network | Losses | Time locked | Effective SE H Strehl | Atm. locked > 95 % |
+  | --- | --- | --- | --- | --- |
+  | v7 (before) | 33 | 95.5 % | 0.682 | 14/24 |
+  | kick round 2 | 21 | 97.2 % | 0.691 | 19/24 |
+  | **kick round 3** | **13** | **98.6 %** | **0.700** | **22/24** |
+
+- This is a 2.5x lower loss rate (one per ~18 atmosphere-seconds). Acquisition networks
+  and supervisor are unchanged (threshold 0.1099).
+
 **Open threads.**
 - exp04: multi-frame networks with DM-command diversity and DAgger.
 - Whether a wider field of view (seeing the fitting halo) lets a nonlinear

@@ -39,6 +39,8 @@ p.add_argument("--gain", type=float, default=0.3)
 p.add_argument("--loss-threshold", type=float, default=None, help="core-flux metric; default: calibrated")
 p.add_argument("--loss-frames", type=int, default=20)
 p.add_argument("--no-supervisor", action="store_true")
+p.add_argument("--acq", type=int, nargs=3, default=[100, 200, 100], metavar=("CENT", "S1", "S2"),
+               help="frames of each acquisition step (centroid TT, 60-mode net, 120-mode net)")
 p.add_argument("--tag", default="supervised")
 args = p.parse_args()
 dev = "cuda"
@@ -52,7 +54,7 @@ PH = 1e5
 far = FocalPlaneSensor(FPSensorConfig(defocus_rad=25.0, photons=PH, npix=88, binning=4), pupil_fine, cfg.grid_m).to(dev)
 near = FocalPlaneSensor(FPSensorConfig(defocus_rad=1.0, photons=PH), pupil, cfg.grid_m).to(dev)
 # acquisition schedule within ACQUIRE: (estimator, controlled modes, frames)
-ACQ = [("cent", 2, 100), ("s1", 60, 200), ("s2", 120, 100)]
+ACQ = [("cent", 2, args.acq[0]), ("s1", 60, args.acq[1]), ("s2", 120, args.acq[2])]
 ACQ_LEN = sum(f for _, _, f in ACQ)
 
 saved = torch.load(ROOT / args.nets)

@@ -26,6 +26,8 @@ p.add_argument("--steps", type=int, default=1500)
 p.add_argument("--batch", type=int, default=4)
 p.add_argument("--gain", type=float, default=0.5)
 p.add_argument("--seeing", type=float, default=0.6)
+p.add_argument("--seeds", type=int, nargs="+", default=[100], help="atmosphere seed blocks (batch atmospheres each)")
+p.add_argument("--settle", type=int, default=500)
 p.add_argument("--tag", default="mag_sweep")
 args = p.parse_args()
 dev = "cuda"
@@ -56,17 +58,23 @@ for mag in args.mags:
 
     row = dict(mag=mag, photons_per_frame=photons, rate=args.rate, gain=args.gain)
     for band, imager in sci.items():
-        turb = Turbulence(cfg, batch=args.batch, seed=100, seeing=args.seeing)
         t0 = time.perf_counter()
-        r = run_loop(turb, dm, recon, imager, pupil, args.rate, args.steps, gain=args.gain, leak=0.99, delay=2, settle=500)
+        runs = [
+            run_loop(Turbulence(cfg, batch=args.batch, seed=seed, seeing=args.seeing), dm, recon, imager, pupil,
+                     args.rate, args.steps, gain=args.gain, leak=0.99, delay=2, settle=args.settle)
+            for seed in args.seeds
+        ]
+        le = torch.cat([r.strehl_le for r in runs])
+        se = torch.cat([r.strehl_se for r in runs], 1)[args.settle:]  # (T, B) after settling
+        res = torch.cat([r.residual_nm for r in runs], 1)[args.settle:]
         row[band] = dict(
-            strehl_le=r.strehl_le.tolist(), se_traj=r.strehl_se.mean(1)[::10].tolist(),
-            residual_nm=float(r.residual_nm[500:].mean()),
+            strehl_le=le.tolist(), se_traj=se.mean(1)[::10].tolist(), residual_nm=float(res.mean()),
+            se_mean=float(se.mean()), locked_frac=float((se > 0.5).float().mean()),
         )
         print(
-            f"V={mag:4.1f} ({photons:9.0f} ph/frame) {band}: LE Strehl {r.strehl_le.mean():.3f} "
-            f"+- {r.strehl_le.std():.3f}, residual {r.residual_nm[500:].mean():.0f} nm "
-            f"[{time.perf_counter() - t0:.0f} s]",
+            f"V={mag:4.1f} ({photons:9.0f} ph/frame) {band}: LE Strehl {le.mean():.3f} "
+            f"+- {le.std():.3f}, mean SE Strehl {se.mean():.3f}, SE > 0.5 {(se > 0.5).float().mean() * 100:.1f} %, "
+            f"residual {res.mean():.0f} nm [{time.perf_counter() - t0:.0f} s]",
             flush=True,
         )
     results.append(row)
