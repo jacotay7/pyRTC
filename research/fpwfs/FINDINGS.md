@@ -398,6 +398,27 @@ hand-over.**
 - The coarse-binned 8 rad intermediate stage of v2 was the wrong sensor: 4x4-binned
   pixels on a small pupil image. Stepping 25 rad -> 1 rad directly works better.
 
+**Faint stars (G4, first look): slim maintenance network, not retrained.**
+- Trained at 1e5 photons with 0.5-2x augmentation. Gain 0.4, leak 0.99, 12 atmospheres,
+  2.3 s:
+
+  | Photons / frame | 1e5 | 3e4 | 1e4 | 3e3 |
+  | --- | --- | --- | --- | --- |
+  | Held (of 12) | 12 | 11 | 11 | 0 |
+  | Median H Strehl | 0.718 | 0.714 | 0.699 | - |
+
+- It degrades gracefully down to 1e4 (~V 10.5 for a G star in H, same throughput
+  assumptions as before; the SH gives 0.68 at V = 10). It is lost at 3e3 (~V 12;
+  the SH gives 0.60 at V = 12).
+- 3e3 is 33x below the training range; per-photon-level training is needed before
+  drawing a limiting-magnitude conclusion.
+
+**exp20 short-schedule evaluation (v4 networks, 48 atmospheres):** 37/48 (77 %).
+Shortening the 25 rad stages moved the failures to just after the hand-over (frames
+250-500): the hand-over state (Strehl ~0.55) sits at the edge of the maintenance
+network's basin. v5 (running) fine-tunes the maintenance network on post-hand-over
+states with DAgger.
+
 **Open threads.**
 - exp04: multi-frame networks with DM-command diversity and DAgger.
 - Whether a wider field of view (seeing the fitting halo) lets a nonlinear
