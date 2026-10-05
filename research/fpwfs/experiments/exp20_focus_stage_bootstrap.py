@@ -43,6 +43,8 @@ p.add_argument("--gain", type=float, default=0.3)
 p.add_argument("--tag", default="focus_stage")
 p.add_argument("--width", type=int, default=24, help="stage-network width")
 p.add_argument("--stem-stride", type=int, default=2, help="stage-network first-layer stride")
+p.add_argument("--load", default=None, help="evaluate saved stage networks (skip data and training)")
+p.add_argument("--eval-seeds", type=int, nargs="+", default=[950, 951])
 p.add_argument("--schedule", default="cent:15:2:100,net:15:60:300,net:3:120:300,maint:1:120:600")
 args = p.parse_args()
 torch.manual_seed(0)
@@ -139,21 +141,27 @@ def run_schedule(turb, policy=None, est_noise=(0.0, 0.0), gain=None, record=True
 # ---- data: noisy-ideal schedule trajectories -------------------------------------------
 t0 = time.perf_counter()
 data = [[[], []] for _ in STAGES]
-for i in range(args.collections):
+for i in range(0 if args.load else args.collections):
     per_stage, _ = run_schedule(atmosphere(args.atm, 700 + i), est_noise=tuple(args.est_noise), seed=i)
     for s, (x, y) in enumerate(per_stage):
         data[s][0].append(x)
         data[s][1].append(y)
-test, _ = run_schedule(atmosphere(args.atm, 799, diverse=False), est_noise=tuple(args.est_noise), seed=99)
+test = None if args.load else run_schedule(atmosphere(args.atm, 799, diverse=False),
+                                           est_noise=tuple(args.est_noise), seed=99)[0]
 print(f"collected {args.collections} x {args.atm} schedule trajectories [{time.perf_counter() - t0:.0f} s]", flush=True)
 
 nets, scales = {}, {}
 for s, (d, n, _) in enumerate(STAGES):
     if KINDS[s] != "net":
         continue
-    Y = torch.cat(data[s][1])[:, :n]
-    scales[s] = Y.std(0).to(dev)
     nets[s] = FPNet(1, n, npix=sensors[s].cfg.npix, width=args.width, stem_stride=args.stem_stride).to(dev)
+    if args.load:
+        st_s = torch.load(ROOT / args.load)[f"stage{s}"]
+        scales[s] = st_s.pop("_scale").to(dev)
+        nets[s].load_state_dict(st_s)
+        nets[s].eval()
+    else:
+        scales[s] = torch.cat(data[s][1])[:, :n].std(0).to(dev)
 
 
 # ---- centroid tip/tilt: data-driven 2x2 calibration by pokes --------------------------
@@ -235,19 +243,22 @@ def policy(s, e):
 
 def evaluate(label):
     held, ses = 0, []
-    for seed in (950, 951):
+    for seed in args.eval_seeds:
         _, se = run_schedule(Turbulence(cfg, batch=12, seed=seed, seeing=0.6), policy=policy, record=False, seed=seed)
         final = se[-300:].mean(0)
         held += int((final > 0.5).sum())
         ses.append(se)
     se = torch.cat(ses, 1)
     at_stage_end = [round(float(se[starts[i] + STAGES[i][2] - 1].median()), 2) for i in range(len(STAGES))]
-    print(f"[{label}] BOOTSTRAP converged {held}/24; median SE Strehl at end of each stage {at_stage_end}", flush=True)
+    print(f"[{label}] BOOTSTRAP converged {held}/{12 * len(args.eval_seeds)}; median SE Strehl at end of each stage {at_stage_end}", flush=True)
     return held, se
 
 
 report = {"args": vars(args), "stages": STAGES, "rounds": []}
-for r in range(args.rounds + 1):
+if args.load:  # evaluation only
+    held, se = evaluate("loaded networks")
+    report["rounds"].append(dict(held=held))
+for r in range(0 if args.load else args.rounds + 1):
     ratios = [train_stage(s, args.steps if r == 0 else args.steps // 2, 1e-3 if r == 0 else 3e-4)
               for s in range(len(STAGES))]
     print(f"round {r}: held-out error/residual per stage {[round(x, 2) for x in ratios]}", flush=True)
@@ -275,7 +286,7 @@ for i, (d, n, _) in enumerate(STAGES):
 ax.set_xlabel("frame (1 kHz) from open loop")
 ax.set_ylabel("short-exposure H Strehl")
 ax.set_ylim(0, 1)
-ax.set_title(f"Focus-stage bootstrap: {held}/24 converge")
+ax.set_title(f"Focus-stage bootstrap: {held}/{12 * len(args.eval_seeds)} converge")
 P.save(fig, "exp20_focus_stage", args.tag,
        f"""Bootstrap from seeing-limited (0.6", 1 kHz) with only the focal-plane camera and its focus stage. Schedule
 (dotted lines: estimator, defocus, controlled modes): {args.schedule}. 'cent' = tip/tilt from the image centroid

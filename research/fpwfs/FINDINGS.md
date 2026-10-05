@@ -378,6 +378,26 @@ hand-over.**
   is also running.
 - 35 rad gives no gain over 25 rad (0.69 / 0.48 / 0.42 / 0.42 / 0.74).
 
+**exp20 v4: first end-to-end bootstrap from seeing-limited conditions (focus stage).**
+- Schedule:
+  1. centroid tip/tilt at 25 rad (100 frames);
+  2. 25 rad network, 60 modes (300);
+  3. 25 rad network, 120 modes (400);
+  4. focus stage back to 1 rad, slim maintenance network (600).
+  Slim stage networks, 3 DAgger rounds, 24 unseen atmospheres, gain 0.3, leak 0.99.
+- Converged atmospheres by round: 0/24 -> **14/24 -> 18/24 -> 18/24 (75 %)**.
+- Stage medians: 0.05 -> 0.39 -> 0.56 -> **0.70 H Strehl**, i.e. the maintenance level.
+- Failure anatomy (plots/exp20_focus_stage/fs25_v4.png):
+  - acquisition works in all 24;
+  - 5 of the 6 failures happen *during* the 25 rad / 120-mode stage at random times
+    (500-700 frames), the same stochastic-excursion failure as in maintenance;
+  - 1 happens at the hand-over;
+  - every atmosphere that reaches the maintenance network holds.
+- Both 25 rad stages plateau within ~30 frames, so shortening them (less exposure to
+  excursions) is the next test, using the saved networks on 48 fresh atmospheres.
+- The coarse-binned 8 rad intermediate stage of v2 was the wrong sensor: 4x4-binned
+  pixels on a small pupil image. Stepping 25 rad -> 1 rad directly works better.
+
 **Open threads.**
 - exp04: multi-frame networks with DM-command diversity and DAgger.
 - Whether a wider field of view (seeing the fitting halo) lets a nonlinear
