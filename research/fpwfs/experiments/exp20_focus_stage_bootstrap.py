@@ -41,6 +41,8 @@ p.add_argument("--rounds", type=int, default=2)
 p.add_argument("--est-noise", type=float, nargs=2, default=[0.3, 0.8])
 p.add_argument("--gain", type=float, default=0.3)
 p.add_argument("--tag", default="focus_stage")
+p.add_argument("--width", type=int, default=24, help="stage-network width")
+p.add_argument("--stem-stride", type=int, default=2, help="stage-network first-layer stride")
 p.add_argument("--schedule", default="cent:15:2:100,net:15:60:300,net:3:120:300,maint:1:120:600")
 args = p.parse_args()
 torch.manual_seed(0)
@@ -149,7 +151,7 @@ for s, (d, n, _) in enumerate(STAGES):
         continue
     Y = torch.cat(data[s][1])[:, :n]
     scales[s] = Y.std(0).to(dev)
-    nets[s] = FPNet(1, n, npix=sensors[s].cfg.npix, width=24, stem_stride=2).to(dev)
+    nets[s] = FPNet(1, n, npix=sensors[s].cfg.npix, width=args.width, stem_stride=args.stem_stride).to(dev)
 
 
 # ---- centroid tip/tilt: data-driven 2x2 calibration by pokes --------------------------

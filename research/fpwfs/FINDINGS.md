@@ -357,6 +357,27 @@ hand-over.**
 - exp20 (running): centroid TT -> 25 rad network on 60 modes -> 3 rad network on 120
   modes -> 1 rad maintenance network.
 
+**exp20 v1: first real acquisition (focus stage).**
+- Schedule: centroid TT at 25 rad -> 60-mode network at 25 rad -> 120-mode network at
+  3 rad -> maintenance network at 1 rad. Slim networks, 2 DAgger rounds, 24 unseen
+  atmospheres.
+- After DAgger, **the 25 rad stage alone takes the loop from seeing-limited (median SE
+  H Strehl 0.05) to 0.36 in 0.3 s**; round 0 reached 0.11, round 1 0.26. The science path
+  is unaffected by the WFS focus offset.
+- The hand-over to the 3 rad / 120-mode stage collapses (0/24 converge).
+- Stage-2 information test (states with 60 modes controlled, 120-mode estimate):
+
+  | Defocus | 1 rad | 3 rad | 25 rad |
+  | --- | --- | --- | --- |
+  | Error/residual | 0.85 | 0.73 | 0.67 |
+
+  Large defocus remains the most informative there, so the step straight to near
+  focus is what fails.
+- exp20 v2 (running): gentler descent, 25 rad (60) -> 25 rad (120) -> 8 rad (120) ->
+  3 rad (120) -> 1 rad maintenance, 3 DAgger rounds. A full-width-network variant of v1
+  is also running.
+- 35 rad gives no gain over 25 rad (0.69 / 0.48 / 0.42 / 0.42 / 0.74).
+
 **Open threads.**
 - exp04: multi-frame networks with DM-command diversity and DAgger.
 - Whether a wider field of view (seeing the fitting halo) lets a nonlinear
