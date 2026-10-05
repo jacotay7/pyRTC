@@ -9,8 +9,8 @@ Schedule (``--schedule``, ``kind:defocus_rad:modes:frames`` per stage):
   net   - a stage network trained on the states that stage visits (+ DAgger);
   maint - the slim maintenance network (1 rad, 64 px).
 
-Large-defocus stages (>= 8 rad) use 88 px binned 4x4 on a 240-sample pupil; others
-use 64 px at Nyquist on the 120-sample pupil.
+Large-defocus stages (>= 15 rad) use 88 px binned 4x4 on a 240-sample pupil;
+intermediate (4-15 rad) 96 px at Nyquist; near focus 64 px at Nyquist.
 """
 
 import argparse
@@ -67,9 +67,11 @@ pupil_fine = torch.tensor(S.keck_pupil(dataclasses.replace(cfg, n_pupil=2 * cfg.
 
 
 def make_sensor(d):
-    if d >= 8.0:  # focus-stage acquisition: binned pixels, finer pupil (no phase aliasing)
+    if d >= 15.0:  # focus-stage acquisition: binned pixels, finer pupil (no phase aliasing)
         c = FPSensorConfig(defocus_rad=d, photons=PH, npix=88, binning=4)
         return FocalPlaneSensor(c, pupil_fine, cfg.grid_m).to(dev)
+    if d >= 4.0:  # intermediate focus: full resolution, wider field for the pupil image (+-24 lambda/D)
+        return FocalPlaneSensor(FPSensorConfig(defocus_rad=d, photons=PH, npix=96), pupil, cfg.grid_m).to(dev)
     return FocalPlaneSensor(FPSensorConfig(defocus_rad=d, photons=PH), pupil, cfg.grid_m).to(dev)
 
 
