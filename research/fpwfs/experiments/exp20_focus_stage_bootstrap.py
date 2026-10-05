@@ -44,6 +44,7 @@ p.add_argument("--tag", default="focus_stage")
 p.add_argument("--width", type=int, default=24, help="stage-network width")
 p.add_argument("--stem-stride", type=int, default=2, help="stage-network first-layer stride")
 p.add_argument("--init", default=None, help="warm-start 'net' stages from saved stage networks, then train")
+p.add_argument("--freeze", action="store_true", help="with --init: keep warm-started 'net' stages fixed")
 p.add_argument("--load", default=None, help="evaluate saved stage networks (skip data and training)")
 p.add_argument("--eval-seeds", type=int, nargs="+", default=[950, 951])
 p.add_argument("--schedule", default="cent:15:2:100,net:15:60:300,net:3:120:300,maint:1:120:600")
@@ -200,7 +201,7 @@ for s, kind in enumerate(KINDS):
 
 
 def train_stage(s, steps, lr):
-    if KINDS[s] not in ("net", "mtrain"):
+    if KINDS[s] not in ("net", "mtrain") or (args.freeze and KINDS[s] == "net"):
         return float("nan")
     if KINDS[s] == "mtrain" or (args.init and s in nets and KINDS[s] == "net"):
         lr = min(lr, 3e-4)  # fine-tuning a warm-started network

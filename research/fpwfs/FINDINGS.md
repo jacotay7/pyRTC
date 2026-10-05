@@ -419,6 +419,16 @@ Shortening the 25 rad stages moved the failures to just after the hand-over (fra
 network's basin. v5 (running) fine-tunes the maintenance network on post-hand-over
 states with DAgger.
 
+**Faint stars, retrained (3e3 photons/frame, about V 12 in H).**
+- A slim network retrained at 3e3 photons is information-starved:
+  - 120 modes: error/residual 0.88, median per-mode slope 0.17;
+  - 60 modes: 0.97 / 0.27.
+  Hand-over holds 0/12 in both cases.
+- At 1 kHz the single-frame focal-plane sensor runs out of photons near V ~12 in H. The
+  SH still gives 0.60 there, with its broadband visible photons.
+- Fair faint-star comparison (todo): lower the frame rate as Keck's camera table does
+  (400 Hz at R = 12). ~300 Hz gives ~1e4 photons/frame, where the network works.
+
 **Open threads.**
 - exp04: multi-frame networks with DM-command diversity and DAgger.
 - Whether a wider field of view (seeing the fitting halo) lets a nonlinear
