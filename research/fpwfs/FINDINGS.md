@@ -317,6 +317,24 @@ hand-over.**
     finer pupil grid (30 rad of focus aliases at 120 samples). The imager now refuses
     sub-Nyquist sampling, which it silently mis-modelled (~10 % flux).
 
+**exp19: 10 s robustness and RTC-side safeguards (slim network, gain 0.4, leak 0.99).**
+
+| Safeguard | Survive 10 s (of 12) |
+| --- | --- |
+| None | 9 |
+| Clip the update at 2.5x the typical norm | 8 |
+| Hold estimates above 4x typical | 9 (never triggered) |
+
+- Survivors run at H Strehl 0.716. The failures are not outlier estimates.
+- Re-running the earliest-failing atmosphere with different photon-noise draws does not
+  fail through frame 800 (exp19 lost it at ~771).
+- So failures are **stochastic excursions**: a noise-driven random walk occasionally
+  crosses the edge of the network's narrow basin (~2x the closed-loop residual).
+  Typical estimate statistics give no warning, so controller-side guards cannot catch
+  them.
+- **Robustness and bootstrap are the same problem: capture range.** A working
+  focus-stage acquisition would double as automatic re-acquisition after a loss.
+
 **Open threads.**
 - exp04: multi-frame networks with DM-command diversity and DAgger.
 - Whether a wider field of view (seeing the fitting halo) lets a nonlinear
