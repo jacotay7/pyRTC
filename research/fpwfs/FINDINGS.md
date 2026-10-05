@@ -429,6 +429,28 @@ states with DAgger.
 - Fair faint-star comparison (todo): lower the frame rate as Keck's camera table does
   (400 Hz at R = 12). ~300 Hz gives ~1e4 photons/frame, where the network works.
 
+**exp20 v5-v7: fixing the hand-over (48 unseen atmospheres each).**
+- Baseline: v4 networks with shortened 25 rad stages, untouched slim maintenance
+  network: 37/48.
+- v5: fine-tune everything on schedule data (warm start from v4): 26-28/48. Fine-tuning
+  on noisy-ideal data undid the acquisition networks' DAgger.
+- v6: freeze acquisition, fine-tune the maintenance network on schedule data only:
+  5/48 at round 0. **The maintenance network forgets steady-state closed loop.**
+- v7: freeze acquisition, fine-tune maintenance on schedule data **plus a replay buffer**
+  of 6 exp10-style dithered closed-loop collections:
+
+  | Round | 0 | 1 | 2 | 3 |
+  | --- | --- | --- | --- | --- |
+  | Converged (of 48) | 24 | 38 | **41 (85 %)** | 40 |
+
+  Median final H Strehl 0.70.
+- Remaining v7 failures are mostly inside the frozen 25 rad / 120-mode stage (the
+  weakest estimator, ratio 0.84), plus ~1-2 at hand-over and 1 late excursion.
+
+**333 Hz faint-star test:** a slim network trained at 333 Hz with 1e4 photons/frame
+(the same V ~12 star) has normal estimation statistics (ratio 0.54, median slope 0.61)
+but loses the hand-over within ~100 frames, even after DAgger. Cause unknown; to diagnose.
+
 **Open threads.**
 - exp04: multi-frame networks with DM-command diversity and DAgger.
 - Whether a wider field of view (seeing the fitting halo) lets a nonlinear

@@ -50,6 +50,7 @@ p.add_argument("--init", default=None, help="warm-start weights (with _scale)")
 p.add_argument("--width", type=int, default=48)
 p.add_argument("--stem-stride", type=int, default=1)
 p.add_argument("--head", type=int, default=1024)
+p.add_argument("--rate", type=float, default=1000.0, help="loop frame rate [Hz] for collection and evaluation")
 args = p.parse_args()
 torch.manual_seed(0)
 dev = "cuda"
@@ -150,7 +151,7 @@ def evaluate(label):
             return proj(residual.mean(0)) * mask
         return policy(sensor.frame(residual), k, hist)
 
-    r = run_loop(Turbulence(cfg, batch=12, seed=100, seeing=0.6), dm, recon, sci, pupil, 1000, 1500,
+    r = run_loop(Turbulence(cfg, batch=12, seed=100, seeing=0.6), dm, recon, sci, pupil, args.rate, 1500,
                  gain=args.gain, delay=2, settle=600)
     held = int((r.strehl_le > 0.5).sum())
     traj = r.strehl_se.mean(1)
@@ -163,14 +164,14 @@ def evaluate(label):
 
 t0 = time.perf_counter()
 # pilot: per-mode closed-loop residual std (sets the dither scale and output scaling)
-pilot = collect(Turbulence(cfg, batch=8, seed=1999, seeing=0.6), dm, pupil, sensor, 700, gains=(0.3, 0.5),
+pilot = collect(Turbulence(cfg, batch=8, seed=1999, seeing=0.6), dm, pupil, sensor, rate_hz=args.rate, steps= 700, gains=(0.3, 0.5),
                 est_noise=(0.0, 0.3), seed=99, keep_from=300, mode_mask=mask)
 cl_std = pilot.truth.flatten(0, 1).std(0).to(dev) * mask  # dither only controlled modes
 test = Data()
 test.add(pilot)
 data = Data()
 for i in range(args.collections):
-    data.add(collect(atmosphere(args.atm, 3000 + 100 * i), dm, pupil, sensor,
+    data.add(collect(atmosphere(args.atm, 3000 + 100 * i), dm, pupil, sensor, rate_hz=args.rate, steps=
                      args.collect_steps, gains=(0.25, 0.6), est_noise=(0.0, 0.6), seed=i, keep_from=300,
                      dither_modes_nm=cl_std, dither_max=args.dither_max, mode_mask=mask))
 scale = data.Y.std(0).to(dev)
@@ -187,7 +188,7 @@ torch.save({**net.state_dict(), "_scale": scale.cpu()}, OUT / f"{args.tag}_r0.pt
 for r_i in range(args.rounds):
     beta = max(0.0, 0.5 * (1 - r_i / max(args.rounds - 1, 1)))
     for j in range(2):
-        data.add(collect(atmosphere(args.atm, 7000 + 100 * r_i + j), dm, pupil, sensor,
+        data.add(collect(atmosphere(args.atm, 7000 + 100 * r_i + j), dm, pupil, sensor, rate_hz=args.rate, steps=
                          1500, behaviour=policy, beta=beta, ideal_frames=300, gains=(args.gain, args.gain),
                          seed=500 + 10 * r_i + j, keep_from=300, dither_modes_nm=cl_std, dither_max=0.5,
                          mode_mask=mask), max_nm=6 * float(test.Y.pow(2).sum(-1).mean().sqrt()))
