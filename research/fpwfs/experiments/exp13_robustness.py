@@ -32,6 +32,7 @@ p.add_argument("--width", type=int, default=48)
 p.add_argument("--stem-stride", type=int, default=1)
 p.add_argument("--head", type=int, default=1024)
 p.add_argument("--photons", type=float, default=1e5)
+p.add_argument("--rate", type=float, default=1000.0, help="loop frame rate [Hz]")
 args = p.parse_args()
 dev = "cuda"
 cfg = S.KeckConfig()
@@ -63,7 +64,7 @@ axes = axes[0]
 report = {"weights": args.weights}
 for ax, (leak, gain) in zip(axes, settings):
     r = run_loop(Turbulence(cfg, batch=12, seed=args.seed, seeing=0.6), dm, recon, h_band_science(pupil, cfg.grid_m),
-                 pupil, 1000, args.steps, gain=gain, leak=leak, delay=2, settle=600)
+                 pupil, args.rate, args.steps, gain=gain, leak=leak, delay=2, settle=600)
     held = int((r.strehl_le > 0.5).sum())
     report[f"leak{leak}_gain{gain}"] = dict(held=held, strehl_le=r.strehl_le.tolist())
     print(f"leak {leak} gain {gain}: held {held}/12, LE Strehl median {r.strehl_le.median():.3f} "

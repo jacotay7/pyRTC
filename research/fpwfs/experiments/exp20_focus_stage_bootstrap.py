@@ -45,6 +45,8 @@ p.add_argument("--width", type=int, default=24, help="stage-network width")
 p.add_argument("--stem-stride", type=int, default=2, help="stage-network first-layer stride")
 p.add_argument("--init", default=None, help="warm-start 'net' stages from saved stage networks, then train")
 p.add_argument("--freeze", action="store_true", help="with --init: keep warm-started 'net' stages fixed")
+p.add_argument("--mtrain-replay", type=int, default=0,
+               help="dithered closed-loop collections (exp10 recipe) added to 'mtrain' data, against forgetting")
 p.add_argument("--load", default=None, help="evaluate saved stage networks (skip data and training)")
 p.add_argument("--eval-seeds", type=int, nargs="+", default=[950, 951])
 p.add_argument("--schedule", default="cent:15:2:100,net:15:60:300,net:3:120:300,maint:1:120:600")
@@ -151,6 +153,24 @@ for i in range(0 if args.load else args.collections):
 test = None if args.load else run_schedule(atmosphere(args.atm, 799, diverse=False),
                                            est_noise=tuple(args.est_noise), seed=99)[0]
 print(f"collected {args.collections} x {args.atm} schedule trajectories [{time.perf_counter() - t0:.0f} s]", flush=True)
+
+# replay buffer for the trainable maintenance stage: exp10-style dithered closed-loop states
+if args.mtrain_replay and "mtrain" in KINDS:
+    from fpsim.collect import collect  # noqa: E402
+
+    s_m = KINDS.index("mtrain")
+    n_m = STAGES[s_m][1]
+    mmask = mask_for(n_m)
+    pilot = collect(atmosphere(8, 1999), dm, pupil, sensors[s_m], 700, gains=(0.3, 0.5), est_noise=(0.0, 0.3),
+                    seed=98, keep_from=300, mode_mask=mmask)
+    cl_std = pilot.truth.flatten(0, 1).std(0).to(dev) * mmask
+    for i in range(args.mtrain_replay):
+        tr = collect(atmosphere(args.atm, 1500 + i), dm, pupil, sensors[s_m], 1500, gains=(0.25, 0.6),
+                     est_noise=(0.0, 0.6), seed=1500 + i, keep_from=300, dither_modes_nm=cl_std, dither_max=3.0,
+                     mode_mask=mmask)
+        data[s_m][0].append(tr.frames.flatten(0, 1))
+        data[s_m][1].append(tr.truth.flatten(0, 1))
+    print(f"replay: {args.mtrain_replay} dithered closed-loop collections added to stage {s_m}", flush=True)
 
 nets, scales = {}, {}
 for s, (d, n, _) in enumerate(STAGES):
