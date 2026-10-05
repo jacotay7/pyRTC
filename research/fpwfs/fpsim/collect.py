@@ -54,6 +54,9 @@ def collect(
     ideal_frames: int = 0,
     mode_mask: torch.Tensor | None = None,
     probe_m: torch.Tensor | None = None,
+    kick_every: int = 0,
+    kick_scale_nm: torch.Tensor | None = None,
+    kick_max: float = 4.0,
 ) -> Trajectories:
     """Run B loops for ``steps`` frames and record (frame, applied, truth).
 
@@ -74,6 +77,10 @@ def collect(
     (+, -, +, ...) on top of the command (temporal phase diversity). It is recorded
     in ``applied``; ``truth`` and the ideal estimate are probe-free (what the
     controller must correct).
+    ``kick_every`` > 0 adds, every that many frames (after ``ideal_frames``), a random
+    persistent modal offset to the command, ``U(1, kick_max) x kick_scale_nm`` per mode:
+    the loop is pushed toward the edge of its basin and the states on the way back
+    are recorded (recovery training).
     """
     g = torch.Generator(device=pupil.device).manual_seed(seed)
     b = len(turbulence.atms)
@@ -122,6 +129,9 @@ def collect(
         if mode_mask is not None:  # controller acts on these modes only
             est = est * mode_mask
         cmd = cmd + gain * est
+        if kick_every and k >= ideal_frames and k % kick_every == 0 and kick_scale_nm is not None:
+            amp = 1.0 + (kick_max - 1.0) * torch.rand(b, 1, device=dev, generator=g)
+            cmd = cmd + amp * kick_scale_nm[None] * 1e-9 * torch.randn(b, n_modes, device=dev, generator=g)
         pending.append(cmd.clone())
     return Trajectories(torch.stack(frames), torch.stack(applied_l), torch.stack(truth), sensor.cfg.photons)
 
