@@ -53,6 +53,10 @@ p.add_argument("--head", type=int, default=1024)
 p.add_argument("--rate", type=float, default=1000.0, help="loop frame rate [Hz] for collection and evaluation")
 p.add_argument("--kick-every", type=int, default=0, help="DAgger collections: random DM kick every N frames")
 p.add_argument("--kick-max", type=float, default=4.0)
+p.add_argument("--photon-range", type=float, nargs=2, default=[0.5, 2.0],
+               help="training noise: flux per sample, log-uniform, x --photons")
+p.add_argument("--collect-photon-range", type=float, nargs=2, default=None,
+               help="DAgger collections: flux per atmosphere, log-uniform, x --photons (default: nominal)")
 args = p.parse_args()
 torch.manual_seed(0)
 dev = "cuda"
@@ -98,7 +102,7 @@ class Data:
         self.X, self.Y = torch.cat(self.x), torch.cat(self.y)
 
 
-def batch(X, Y, idx, photon_range=(0.5, 2.0)):
+def batch(X, Y, idx, photon_range=tuple(args.photon_range)):
     clean = X[idx].to(dev)
     ph = log_uniform(len(idx), *photon_range, dev)[:, None, None]
     return sensor.preprocess(noisy_frames(clean, scfg, args.photons, ph)), Y[idx].to(dev)
@@ -193,7 +197,8 @@ for r_i in range(args.rounds):
         data.add(collect(atmosphere(args.atm, 7000 + 100 * r_i + j), dm, pupil, sensor, rate_hz=args.rate, steps=
                          1500, behaviour=policy, beta=beta, ideal_frames=300, gains=(args.gain, args.gain),
                          seed=500 + 10 * r_i + j, keep_from=300, dither_modes_nm=cl_std, dither_max=0.5,
-                         mode_mask=mask, kick_every=args.kick_every, kick_scale_nm=cl_std, kick_max=args.kick_max), max_nm=6 * float(test.Y.pow(2).sum(-1).mean().sqrt()))
+                         mode_mask=mask, kick_every=args.kick_every, kick_scale_nm=cl_std, kick_max=args.kick_max,
+                         photon_scale=None if args.collect_photon_range is None else tuple(args.collect_photon_range)), max_nm=6 * float(test.Y.pow(2).sum(-1).mean().sqrt()))
     print(f"DAgger round {r_i + 1}: beta {beta:.2f}, {len(data.X)} states", flush=True)
     train(data, args.round_steps, 3e-4)
     report["rounds"].append(evaluate(f"round {r_i + 1}: DAgger beta {beta:.2f}"))

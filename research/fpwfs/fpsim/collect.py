@@ -57,6 +57,7 @@ def collect(
     kick_every: int = 0,
     kick_scale_nm: torch.Tensor | None = None,
     kick_max: float = 4.0,
+    photon_scale: tuple[float, float] | None = None,
 ) -> Trajectories:
     """Run B loops for ``steps`` frames and record (frame, applied, truth).
 
@@ -81,6 +82,9 @@ def collect(
     persistent modal offset to the command, ``U(1, kick_max) x kick_scale_nm`` per mode:
     the loop is pushed toward the edge of its basin and the states on the way back
     are recorded (recovery training).
+    ``photon_scale`` (lo, hi) draws a flux per atmosphere, log-uniform in lo..hi x the
+    sensor's photons, for the frames the ``behaviour`` sees (stored frames stay clean),
+    so DAgger visits the states the network reaches at other star magnitudes.
     """
     g = torch.Generator(device=pupil.device).manual_seed(seed)
     b = len(turbulence.atms)
@@ -89,6 +93,7 @@ def collect(
     proj = ModalProjector(dm, pupil)
     gain = gains[0] + (gains[1] - gains[0]) * torch.rand(b, 1, device=dev, generator=g)
     noise = est_noise[0] + (est_noise[1] - est_noise[0]) * torch.rand(b, 1, device=dev, generator=g)
+    flux = None if photon_scale is None else log_uniform(b, *photon_scale, dev, g)[:, None, None]
     dt = 1.0 / rate_hz
     cmd = torch.zeros(b, n_modes, device=dev)
     pending = [torch.zeros(b, n_modes, device=dev) for _ in range(delay)]
@@ -122,7 +127,10 @@ def collect(
             rms = true_modes.pow(2).mean(-1, keepdim=True).sqrt()
             est = true_modes + noise * rms * torch.randn(b, n_modes, device=dev, generator=g)
         else:
-            noisy = sensor.frame(residual, noise=True)
+            if flux is None:
+                noisy = sensor.frame(residual, noise=True)
+            else:
+                noisy = noisy_frames(clean, sensor.cfg, sensor.cfg.photons, flux)
             est = behaviour(noisy, k, hist)
             if beta > 0:
                 est = beta * true_modes + (1 - beta) * est

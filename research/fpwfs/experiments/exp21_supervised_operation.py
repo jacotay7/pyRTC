@@ -41,6 +41,7 @@ p.add_argument("--loss-frames", type=int, default=20)
 p.add_argument("--no-supervisor", action="store_true")
 p.add_argument("--acq", type=int, nargs=3, default=[100, 200, 100], metavar=("CENT", "S1", "S2"),
                help="frames of each acquisition step (centroid TT, 60-mode net, 120-mode net)")
+p.add_argument("--photons", type=float, default=1e5, help="photons per frame on the focal-plane camera")
 p.add_argument("--tag", default="supervised")
 args = p.parse_args()
 dev = "cuda"
@@ -50,7 +51,7 @@ pupil = torch.tensor(sysd["pupil"], device=dev)
 pupil_fine = torch.tensor(S.keck_pupil(dataclasses.replace(cfg, n_pupil=2 * cfg.n_pupil)), device=dev)
 dm = DM(torch.tensor(sysd["ifs"], device=dev), torch.tensor(sysd["m2c"], device=dev), cfg.n_pupil)
 n_modes = dm.surfaces.shape[0]
-PH = 1e5
+PH = args.photons
 far = FocalPlaneSensor(FPSensorConfig(defocus_rad=25.0, photons=PH, npix=88, binning=4), pupil_fine, cfg.grid_m).to(dev)
 near = FocalPlaneSensor(FPSensorConfig(defocus_rad=1.0, photons=PH), pupil, cfg.grid_m).to(dev)
 # acquisition schedule within ACQUIRE: (estimator, controlled modes, frames)

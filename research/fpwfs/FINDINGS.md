@@ -503,6 +503,31 @@ atmospheres x 10 s).**
 
 - This is a 2.5x lower loss rate (one per ~18 atmosphere-seconds). Acquisition networks
   and supervisor are unchanged (threshold 0.1099).
+- A shorter re-acquisition (`--acq 50 100 100`, 0.25 s instead of 0.4 s) helps too.
+  Kick r3 + fast acquisition: **5 losses, 99.6 % locked, effective 0.705, 24/24**. Three
+  more kick rounds (6 total) did not improve on it (9 losses, 0.702; within noise).
+- These were selected on the exp21 atmospheres (seeds 980/981), so the final
+  configuration was re-run on **48 held-out atmospheres (seeds 960-963, never used for
+  training or tuning)**: **99.7 % locked, effective SE H Strehl 0.704, 11 losses in 480
+  atmosphere-seconds (one per ~44 s), 48/48 locked > 95 % of the time.**
+
+**SH on the same atmospheres, same metric** (exp03 `--seeds 980 981 --steps 10000
+--settle 600`, V = 9.45 = 1e5 photons/frame, mean SE H Strehl after frame 600):
+gain 0.5: 0.693, gain 0.6: 0.696 (LE equals mean SE for the SH: little image motion).
+The focal-plane system's effective Strehl (0.70) is **at parity with the tuned SH**,
+including every acquisition and loss, on unseen atmospheres.
+
+**Fainter stars, full system (kick r3 + fast acquisition, trained at 1e5 only):**
+
+| Photons/frame | ~V | Time locked | Effective SE H Strehl | Losses (240 atm-s) |
+| --- | --- | --- | --- | --- |
+| 1e5 | 9.45 | 99.6 % | 0.705 | 5 |
+| 3e4 | 10.8 | 98.9 % | 0.695 | 13 |
+| 1e4 | 12.0 | 86.6 % | 0.620 | 136 |
+
+- At 1e4 the maintenance network loses lock every ~1.8 s. Its training noise only spans
+  0.5-2x the nominal flux, and the DAgger collections run at nominal flux. Next:
+  kick training over 1e4-1e5 (`--photon-range 0.08 2 --collect-photon-range 0.1 1`).
 
 **Open threads.**
 - exp04: multi-frame networks with DM-command diversity and DAgger.
