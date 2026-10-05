@@ -24,6 +24,44 @@ All notable changes to `pyrtcao` will be documented in this file.
 	classes, and stream planning and the AOTPy export treat a typeless
 	`slopes` section with `signal_size` as a generic signal.
 
+### Fixed
+
+- **A component whose constructor fails no longer leaks its worker threads**
+	(#155). `Component.__init__` started one worker thread per entry in
+	`functions` before the subclass finished its own setup, so a constructor
+	that then raised (a missing input stream, a bad calibration file) left
+	threads spinning for the life of the process, each holding the
+	half-built component. The threads now start on the first `start()`.
+	Construction starts none, and `stop()`/`start()` still pause and resume
+	the same threads.
+- **`Loop.pid_integrator_pol` is about 50x faster** (#158). Each frame ran
+	the pseudo open-loop product `f_im @ correction` in NumPy and the control
+	product in numba, which calls SciPy's OpenBLAS. The two libraries' thread
+	pools (one spinning worker per core each) then fought over the cores, so
+	a frame took 12 ms instead of 0.2 ms in a 16-core cpuset (signal 1600,
+	400 modes). Both products now run in numba
+	(`pyrtc.loop.pseudo_open_loop_slopes`).
+	- `pid_integrator_pol` also no longer fails with a numba `TypingError`
+	  on every frame when the interaction matrix is float64 (an `im_file`
+	  saved as float64). `Loop.f_im` is now kept in the control matrix's
+	  dtype.
+- **The first frame after `start()` no longer stalls while numba compiles**
+	(#157). `SlopesProcess`, `Loop` and `WavefrontCorrector` compiled their
+	per-frame numba kernels during the first real frame. That took 0.15 s
+	with a warm numba cache and up to 0.75 s cold, against 0.06 to 0.2 ms
+	per frame in steady state. A loop started on a live system therefore
+	held the DM still for hundreds of frames at kHz rates, enough to lose
+	lock.
+	- Each of these components now ends `__init__` with `warmup()`. It calls
+	  the kernels once on zero scratch arrays typed like the real buffers, or
+	  runs the torch PYWFS path when `gpu_device` is set. It writes no stream.
+	- The first iteration now takes about 0.5 ms (GPU PYWFS: 88 ms down to
+	  2 ms). Construction pays the compile time instead.
+	- `Component.warmup()` is a no-op hook that other components can
+	  override.
+	- `benchmarks/first_iteration_bench.py` compares first-call and
+	  steady-state latency with a cold and a warm numba cache.
+
 ## 1.1.0 - 2026-09-29
 
 ### Fixed

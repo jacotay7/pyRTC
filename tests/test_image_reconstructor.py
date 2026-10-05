@@ -1,5 +1,6 @@
 """TorchImageReconstructor: a PyTorch model in the slopes section."""
 
+import threading
 import time
 import uuid
 
@@ -379,18 +380,13 @@ def test_component_reads_frames_into_the_runner_buffer(make_reconstructor):
     assert reconstructor.signal_2d is None
 
 
-def test_component_rejects_a_model_with_the_wrong_output_size(make_reconstructor, monkeypatch):
-    closed = []
-    original_close = TorchImageReconstructor.close
-    monkeypatch.setattr(
-        TorchImageReconstructor,
-        "close",
-        lambda self, *a, **k: closed.append(self) or original_close(self, *a, **k),
-    )
+def test_component_rejects_a_model_with_the_wrong_output_size(make_reconstructor):
+    before = {thread for thread in threading.enumerate() if thread.name.endswith("(work)")}
     with pytest.raises(ValueError, match="signal_size is 5"):
-        make_reconstructor(model=tiny_net(), signal_size=5)
-    # The half-built component is closed: no worker threads or handles leak.
-    assert closed and not closed[0].alive
+        make_reconstructor(model=tiny_net(), signal_size=5, functions=["compute_signal"])
+    # Worker threads start on start(), so the failed build leaves none (#155).
+    after = {thread for thread in threading.enumerate() if thread.name.endswith("(work)")}
+    assert after == before
 
 
 @pytest.mark.filterwarnings("ignore:`torch.jit:DeprecationWarning")

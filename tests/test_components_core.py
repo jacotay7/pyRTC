@@ -280,12 +280,90 @@ def test_pyrtc_component_creates_worker_threads(monkeypatch):
     monkeypatch.setattr(component_module.os, "cpu_count", lambda: 8)
 
     component = DummyComponent({"affinity": 3, "functions": ["first", "second"]})
+    # Construction starts no threads; the first start() does (#155).
+    assert created == []
+    assert component.work_threads == []
+
+    component.start()
 
     assert len(component.work_threads) == 2
     assert [thread.args[1] for thread in created] == ["first", "second"]
     assert [thread.args[2] for thread in created] == [3, 4]
     assert all(thread.daemon for thread in created)
     assert all(thread.started for thread in created)
+
+    # Resuming after a pause reuses the threads.
+    component.stop()
+    component.start()
+    assert len(created) == 2
+
+
+def _work_threads():
+    return {thread for thread in threading.enumerate() if thread.name.endswith("(work)")}
+
+
+class FailingComponent(Component):
+    built = []
+
+    def __init__(self, conf):
+        super().__init__(conf)
+        FailingComponent.built.append(self)
+        raise ValueError("bad calibration file")
+
+    def tick(self):
+        time.sleep(1e-3)
+
+
+def test_a_failed_constructor_leaves_no_worker_threads():
+    before = _work_threads()
+
+    with pytest.raises(ValueError, match="bad calibration file"):
+        FailingComponent({"functions": ["tick", "tick"]})
+
+    assert FailingComponent.built[-1].work_threads == []
+    assert _work_threads() == before
+
+
+def test_slopes_process_with_a_missing_wfs_stream_leaves_no_worker_threads():
+    from pyrtc.slopes_process import SlopesProcess
+
+    before = _work_threads()
+    conf = {
+        "type": "SHWFS",
+        "signal_type": "slopes",
+        "sub_ap_spacing": 4,
+        "functions": ["compute_signal"],
+        "input_streams": {"wfs": f"no_such_stream_{time.time_ns()}"},
+    }
+
+    with pytest.raises(FileNotFoundError):
+        SlopesProcess(conf)
+
+    assert _work_threads() == before
+
+
+def test_worker_threads_start_once_and_end_on_close():
+    comp = DummyComponent({"functions": ["start_marker"]})
+    comp.start_marker = lambda: time.sleep(1e-3)
+    before = _work_threads()
+
+    comp.start()
+    comp.start()
+    threads = list(comp.work_threads)
+    assert len(threads) == 1 and threads[0].is_alive()
+    assert _work_threads() - before == set(threads)
+
+    comp.close()
+    assert not threads[0].is_alive()
+    with pytest.raises(RuntimeError, match="closed"):
+        comp.start()
+    assert comp.work_threads == threads
+
+
+def test_closing_an_unstarted_component_starts_no_threads():
+    comp = DummyComponent({"functions": ["anything"]})
+    comp.close()
+    assert comp.work_threads == []
 
 
 def test_pyrtc_component_main_invokes_launch_component(monkeypatch):

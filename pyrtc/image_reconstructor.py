@@ -623,9 +623,6 @@ class TorchImageReconstructor(Component):
             )
         except Exception:
             self.logger.exception("Failed to initialize torch image reconstructor")
-            # Component.__init__ already started the worker threads; end them
-            # so a failed build does not leak them (#155).
-            self.close()
             raise
 
     # -- configuration ---------------------------------------------------------

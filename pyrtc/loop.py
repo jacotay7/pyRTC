@@ -148,6 +148,20 @@ def comp_correction(cm=np.array([[]], dtype=np.float32), slopes=np.array([], dty
 
 
 @jit(nopython=True, nogil=True, cache=True, fastmath=True)
+def pseudo_open_loop_slopes(slopes, f_im, correction):
+    """Return the pseudo open-loop slopes ``slopes - f_im @ correction``.
+
+    ``pid_integrator_pol`` computes this here rather than in NumPy so that
+    both of its products run on the BLAS numba calls (SciPy's OpenBLAS).
+    Alternating between NumPy's and SciPy's OpenBLAS every frame made their
+    two spinning thread pools fight over the cores, which cost about 30x on
+    a many-core host (#158). ``f_im`` and ``correction`` must share a dtype.
+    """
+
+    return slopes - np.dot(f_im, correction)
+
+
+@jit(nopython=True, nogil=True, cache=True, fastmath=True)
 def update_correction(
     correction=np.array([], dtype=np.float32),
     g_cm=np.array([[]], dtype=np.float32),
@@ -502,6 +516,7 @@ class Loop(Component):
             self._wfc_buffer = np.empty(self.wfc_shape, dtype=self.wfc_dtype)
 
             self.load_im()
+            self.warmup()
             self.logger.info(
                 "Initialized loop signal_shape=%s wfc_shape=%s num_modes=%s",
                 self.signal_shape,
@@ -1344,7 +1359,9 @@ class Loop(Component):
             self.cm[: self.num_active_modes, :] = inverse
             self.cm[self.num_active_modes :, :] = 0
             self._update_gain_matrix()
-            self.f_im = np.copy(self.im)
+            # In the CM's dtype (an IM loaded from file or estimated by
+            # DOCRIME may be float64), so the numba POL product types match.
+            self.f_im = np.array(self.im, dtype=self.cm.dtype)
             self.f_im[:, self.num_active_modes :] = 0
             self.last_singular_values = singular_values
             self.last_retained_singular_mask = retained
@@ -1393,6 +1410,61 @@ class Loop(Component):
         if gains.size != np.size(correction):
             gains = self.gain
         return (1 - gains) * correction - np.dot(self.g_cm, s_pol)
+
+    def warmup(self) -> None:
+        """Compile (or load from the numba cache) the integrators' kernels.
+
+        Runs at the end of ``__init__``, so the first iteration after
+        :meth:`start` runs at steady-state speed instead of stalling while
+        numba compiles (0.1 to 1 s, i.e. hundreds of frames at kHz rates).
+        Each kernel runs once on zero scratch arrays with the shapes and
+        dtypes of the hot path's buffers (the ``signal`` and ``wfc`` read
+        buffers and the control matrices), so numba builds the same
+        specialisation the integrators then call. Nothing is written to a
+        stream and no loop state changes, so it is safe to call again.
+        """
+
+        component_logger = getattr(self, "logger", logger)
+        start = time.perf_counter()
+        signal = np.zeros_like(self._signal_buffer)
+        wfc = np.zeros_like(self._wfc_buffer)
+        scratch = np.zeros_like(self._correction_buffer)
+        calls = (
+            # standard_integrator and leaky_integrator
+            (
+                "leaky_integrator_numba",
+                lambda: leaky_integrator_numba(
+                    signal,
+                    self.g_cm,
+                    wfc.squeeze(),
+                    scratch,
+                    np.float32(self.leaky_gain),
+                    self.num_active_modes,
+                ),
+            ),
+            # pid_integrator
+            ("comp_correction", lambda: comp_correction(cm=self.cm, slopes=signal)),
+            # pid_integrator_pol
+            (
+                "pseudo_open_loop_slopes",
+                lambda: comp_correction(
+                    cm=self.cm,
+                    slopes=pseudo_open_loop_slopes(
+                        signal, self.f_im, wfc.astype(self.f_im.dtype, copy=False)
+                    ),
+                ),
+            ),
+        )
+        for name, call in calls:
+            try:
+                call()
+            except Exception:
+                component_logger.warning(
+                    "Could not warm up %s; its first real call will compile it",
+                    name,
+                    exc_info=True,
+                )
+        component_logger.info("Warmed up loop kernels in %.3f s", time.perf_counter() - start)
 
     def _read_signal(self, out=None):
         """Read the next ``signal`` frame, or return ``None`` if the input is stale.
@@ -1633,7 +1705,10 @@ class Loop(Component):
         if slopes is None:
             return
         correction = self.read_stream("wfc", block=False, out=self._wfc_buffer)
-        pol_slopes = slopes - self.f_im @ correction
+        # numba, like comp_correction: one BLAS per frame (#158).
+        pol_slopes = pseudo_open_loop_slopes(
+            slopes, self.f_im, correction.astype(self.f_im.dtype, copy=False)
+        )
         return self.pid_integrator(slopes=pol_slopes, correction=correction)
 
     def pid_integrator(self, slopes=None, correction=None):

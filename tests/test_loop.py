@@ -23,6 +23,9 @@ def test_loop_helper_functions(monkeypatch):
     assert np.array_equal(loop_mod.comp_correction(cm, slopes), slopes)
     upd = loop_mod.update_correction(np.array([1.0, 1.0], dtype=np.float32), cm, slopes)
     assert np.array_equal(upd, np.array([0.0, -1.0], dtype=np.float32))
+    f_im = np.array([[1.0, 0.0], [2.0, 1.0]], dtype=np.float32)
+    pol = loop_mod.pseudo_open_loop_slopes(slopes, f_im, old)
+    np.testing.assert_allclose(pol, slopes - f_im @ old)
 
     monkeypatch.setattr(loop_mod, "gpu_torch_available", lambda: False)
     try:
@@ -635,3 +638,43 @@ def test_gpu_integrator_with_reduced_precision_matrix(dtype):
     gpu = loop_mod.leak_integrator_gpu(slopes, matrix, old, 0.05, num_active)
     tolerance = 5e-3 if dtype == "float16" else 3e-2
     np.testing.assert_allclose(gpu, cpu, rtol=tolerance, atol=tolerance * np.abs(cpu).max())
+
+
+@pytest.mark.parametrize("im_dtype", [np.float32, np.float64])
+def test_pid_integrator_pol_matches_numpy_reference(im_dtype):
+    num_signals, num_modes = 12, 6
+    signal = private_stream("signal", (num_signals,), np.float32)
+    wfc = private_stream("wfc", (num_modes,), np.float32)
+    loop = loop_mod.Loop(
+        {
+            "input_streams": {"signal": signal.name},
+            "output_streams": {"wfc": wfc.name},
+            "num_dropped_modes": 1,
+        }
+    )
+    try:
+        rng = np.random.default_rng(3)
+        # np.load of a float64 IM file used to make the POL product float64,
+        # which numba's np.dot rejected against the float32 CM.
+        loop.im = rng.normal(size=(num_signals, num_modes)).astype(im_dtype)
+        loop.compute_cm()
+        assert loop.f_im.dtype == loop.cm.dtype
+        command = rng.normal(size=num_modes).astype(np.float32)
+        wfc.write(command)
+        slopes = rng.normal(size=num_signals).astype(np.float32)
+        signal.write(slopes)
+        sent = {}
+        loop.pid_integrator = lambda slopes, correction: sent.update(
+            slopes=slopes, correction=correction
+        )
+
+        loop.pid_integrator_pol()
+
+        f_im = loop.im.astype(np.float64)
+        f_im[:, loop.num_active_modes :] = 0
+        expected = slopes - f_im @ command
+        assert sent["slopes"].dtype == np.float32
+        np.testing.assert_allclose(sent["slopes"], expected, rtol=1e-4, atol=1e-4)
+        np.testing.assert_array_equal(sent["correction"], command)
+    finally:
+        loop.close()

@@ -71,8 +71,8 @@ Component Lifecycle
 
 A component moves through three states:
 
-- **Constructed**: ``__init__`` opens its streams and starts one worker thread per entry in ``functions``. The workers idle until the component is started.
-- **Running / stopped**: ``start()`` and ``stop()`` only flip ``running``. ``stop()`` is a pause: the worker threads and stream handles stay alive, so ``start()`` resumes immediately.
+- **Constructed**: ``__init__`` opens its streams. It starts no threads, so a constructor that raises (a missing stream, a bad calibration file) leaves nothing running. The built-in ``SlopesProcess``, ``Loop`` and ``WavefrontCorrector`` end ``__init__`` with ``warmup()``, which runs their per-frame numba kernels (and the GPU slopes path) once on scratch arrays, without writing any stream. Without it, the first frame after ``start()`` waited 0.15 s (warm numba cache) to 0.7 s (cold) while the kernels compiled, hundreds of frames at kHz rates. Construction takes that time instead.
+- **Running / stopped**: the first ``start()`` starts one worker thread per entry in ``functions``; after that ``start()`` and ``stop()`` only flip ``running``. ``stop()`` is a pause: the worker threads and stream handles stay alive, so ``start()`` resumes immediately.
 - **Closed**: ``close()`` stops the component, clears ``alive`` so every worker leaves its loop, joins the workers (with a timeout), and closes every registered stream handle. It is idempotent and final: a closed component cannot be started again. A worker blocked in ``read_stream`` notices within ``pyrtc.component.STREAM_WAIT_SLICE`` (0.1 s); the streams themselves are not unlinked, so viewers keep the last frames.
 
 ``RTCManager`` follows the same split. ``manager.stop()`` pauses soft-RTC components (and, as before, shuts down hard-RTC child processes). ``manager.close()`` stops everything, closes every soft-RTC component and shared resource, and shuts down the hard-RTC children; afterwards ``build()`` or ``start()`` constructs fresh components from the config. The manager is a context manager:
@@ -83,7 +83,7 @@ A component moves through three states:
        manager.start()
        ...
 
-Long-lived processes (the manager GUI, notebooks, benchmarks, test suites) must close a manager they are done with. Worker threads keep a reference to their component, so garbage collection alone never ends them, and on Windows an open handle keeps a shared-memory name alive, which blocks rebuilding that stream with a new shape.
+Long-lived processes (the manager GUI, notebooks, benchmarks, test suites) must close a manager they are done with. Worker threads keep a reference to their started component, so garbage collection alone never ends them, and on Windows an open handle keeps a shared-memory name alive, which blocks rebuilding that stream with a new shape.
 
 Shared Memory
 -------------
