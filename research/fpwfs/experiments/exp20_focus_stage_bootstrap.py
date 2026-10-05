@@ -43,6 +43,7 @@ p.add_argument("--gain", type=float, default=0.3)
 p.add_argument("--tag", default="focus_stage")
 p.add_argument("--width", type=int, default=24, help="stage-network width")
 p.add_argument("--stem-stride", type=int, default=2, help="stage-network first-layer stride")
+p.add_argument("--init", default=None, help="warm-start 'net' stages from saved stage networks, then train")
 p.add_argument("--load", default=None, help="evaluate saved stage networks (skip data and training)")
 p.add_argument("--eval-seeds", type=int, nargs="+", default=[950, 951])
 p.add_argument("--schedule", default="cent:15:2:100,net:15:60:300,net:3:120:300,maint:1:120:600")
@@ -152,11 +153,22 @@ print(f"collected {args.collections} x {args.atm} schedule trajectories [{time.p
 
 nets, scales = {}, {}
 for s, (d, n, _) in enumerate(STAGES):
+    if KINDS[s] == "mtrain":  # trainable maintenance network, warm-started from --maintenance
+        nets[s] = FPNet(1, n, width=24, stem_stride=2).to(dev)
+        if args.load:
+            st_s = torch.load(ROOT / args.load)[f"stage{s}"]
+        else:
+            st_s = torch.load(ROOT / args.maintenance)
+        scales[s] = st_s.pop("_scale").to(dev)
+        nets[s].load_state_dict(st_s)
+        nets[s].eval()
+        continue
     if KINDS[s] != "net":
         continue
     nets[s] = FPNet(1, n, npix=sensors[s].cfg.npix, width=args.width, stem_stride=args.stem_stride).to(dev)
-    if args.load:
-        st_s = torch.load(ROOT / args.load)[f"stage{s}"]
+    src = args.load or args.init
+    if src and f"stage{s}" in torch.load(ROOT / src):
+        st_s = torch.load(ROOT / src)[f"stage{s}"]
         scales[s] = st_s.pop("_scale").to(dev)
         nets[s].load_state_dict(st_s)
         nets[s].eval()
@@ -188,8 +200,10 @@ for s, kind in enumerate(KINDS):
 
 
 def train_stage(s, steps, lr):
-    if KINDS[s] != "net":
+    if KINDS[s] not in ("net", "mtrain"):
         return float("nan")
+    if KINDS[s] == "mtrain" or (args.init and s in nets and KINDS[s] == "net"):
+        lr = min(lr, 3e-4)  # fine-tuning a warm-started network
     d, n, _ = STAGES[s]
     X, Y = torch.cat(data[s][0]), torch.cat(data[s][1])[:, :n]
     net, scale = nets[s], scales[s]
@@ -231,7 +245,7 @@ net_m.eval()
 
 def policy(s, e):
     with torch.no_grad():
-        if KINDS[s] == "maint":
+        if KINDS[s] == "maint":  # frozen maintenance network
             est = net_m(sensors[s].preprocess(e)) * scale_m
         elif KINDS[s] == "cent":
             inv, ref = cent_cal[s]
