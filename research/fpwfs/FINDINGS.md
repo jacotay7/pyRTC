@@ -335,6 +335,28 @@ hand-over.**
 - **Robustness and bootstrap are the same problem: capture range.** A working
   focus-stage acquisition would double as automatic re-acquisition after a loss.
 
+**Focus-stage acquisition (user-approved; a WFS focus stage counts as standard equipment).**
+- New sensor modes:
+  - binned detector: render at Nyquist, sum 4x4 pixels into 88 px;
+  - 240-sample pupil, since 30 rad of focus aliases at 120 samples.
+  The imager now refuses sub-Nyquist point sampling, which had silently lost ~90 % of
+  the flux.
+- exp12, 60-mode error/residual on held-out atmospheres, by modes already controlled:
+
+  | Defocus | 0 | 2 | 10 | 30 | 60 |
+  | --- | --- | --- | --- | --- | --- |
+  | 15 rad | 0.70 | 0.49 | 0.55 | 0.54 | 0.74 |
+  | 25 rad | 0.64 | 0.43 | 0.43 | 0.44 | 0.73 |
+  | 1 rad (20 modes only, for comparison) | 0.70 | 0.87 | 0.86 | - | 0.87 (20 ctrl) |
+
+- **Once tip/tilt is controlled, a large defocus gives one frame real information about
+  60 modes**, the first estimator well below 1 through every acquisition stage. It loses
+  precision near convergence (0.73), so the defocus is stepped down there.
+- Tip/tilt itself comes from the image centroid: classical, poke-calibrated, exact for
+  any defocus.
+- exp20 (running): centroid TT -> 25 rad network on 60 modes -> 3 rad network on 120
+  modes -> 1 rad maintenance network.
+
 **Open threads.**
 - exp04: multi-frame networks with DM-command diversity and DAgger.
 - Whether a wider field of view (seeing the fitting halo) lets a nonlinear
