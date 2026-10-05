@@ -20,9 +20,13 @@ p.add_argument("--npix", type=int, default=64)
 p.add_argument("--wavelength", type=float, default=1.65e-6)
 p.add_argument("--gain", type=float, default=0.3)
 p.add_argument("--n-control", type=int, default=300)
+p.add_argument("--width", type=int, default=48)
+p.add_argument("--stem-stride", type=int, default=1)
 p.add_argument("--tag", default="handover_trace")
 p.add_argument("--steps", type=int, default=520)
 p.add_argument("--seed", type=int, default=100)
+p.add_argument("--rate", type=float, default=1000.0)
+p.add_argument("--photons", type=float, default=1e5)
 p.add_argument("--batch", type=int, default=4)
 args = p.parse_args()
 dev = "cuda"
@@ -31,12 +35,12 @@ sysd = S.build(cfg)
 pupil = torch.tensor(sysd["pupil"], device=dev)
 dm = DM(torch.tensor(sysd["ifs"], device=dev), torch.tensor(sysd["m2c"], device=dev), cfg.n_pupil)
 proj = ModalProjector(dm, pupil)
-sensor = FocalPlaneSensor(FPSensorConfig(defocus_rad=1.0, photons=1e5, wavelength=args.wavelength, npix=args.npix),
+sensor = FocalPlaneSensor(FPSensorConfig(defocus_rad=1.0, photons=args.photons, wavelength=args.wavelength, npix=args.npix),
                           pupil, cfg.grid_m).to(dev)
 NC = args.n_control
 mask = torch.zeros(300, device=dev)
 mask[:NC] = 1
-net = FPNet(1, NC, npix=args.npix).to(dev)
+net = FPNet(1, NC, npix=args.npix, width=args.width, stem_stride=args.stem_stride).to(dev)
 state = torch.load(args.weights)
 if "_scale" in state:
     scale = state.pop("_scale").to(dev)
@@ -68,7 +72,7 @@ def recon(residual, k, hist):
 
 
 res = run_loop(Turbulence(cfg, batch=args.batch, seed=args.seed, seeing=0.6), dm, recon, h_band_science(pupil, cfg.grid_m), pupil,
-               1000, args.steps, gain=args.gain, delay=2, settle=0)
+               args.rate, args.steps, gain=args.gain, delay=2, settle=0)
 print("frame | residual per band " + str(bands) + " | error per band | cos")
 for k, bt, be, cos in rows:
     print(f"{k:4d} | {' '.join(f'{v:6.1f}' for v in bt)} | {' '.join(f'{v:6.1f}' for v in be)} | {cos:5.2f}")

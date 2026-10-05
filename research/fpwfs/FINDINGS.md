@@ -447,9 +447,40 @@ states with DAgger.
 - Remaining v7 failures are mostly inside the frozen 25 rad / 120-mode stage (the
   weakest estimator, ratio 0.84), plus ~1-2 at hand-over and 1 late excursion.
 
-**333 Hz faint-star test:** a slim network trained at 333 Hz with 1e4 photons/frame
-(the same V ~12 star) has normal estimation statistics (ratio 0.54, median slope 0.61)
-but loses the hand-over within ~100 frames, even after DAgger. Cause unknown; to diagnose.
+**333 Hz faint-star test:**
+- A slim network trained at 333 Hz with 1e4 photons/frame (the same V ~12 star) has
+  normal overall statistics (ratio 0.54, median slope 0.61). It still loses every
+  hand-over (0/12) within ~100 frames, even after 3 DAgger rounds.
+- Band trace (plots/exp10_dagger/handover_trace_333hz): already under the ideal sensor,
+  its error on modes 60-120 is 42 nm against a 48 nm residual (ratio ~0.87). That band
+  blows up first after the hand-over (48 -> 114 nm in 25 frames).
+- This is the same mechanism as controlling 300 modes at 1 kHz: at this flux and the
+  larger 333 Hz residual, only ~60 modes are sensed.
+- Next: 60 controlled modes for faint stars (an SH also reduces modes and gain there).
+
+**exp20 v7, stage 2 shortened to 100 frames (saved networks, 72 atmospheres): bootstrap
+63/72 (87.5 %).** Median H Strehl 0.70 is reached ~1.4 s after starting from
+seeing-limited conditions.
+
+**exp21: operating the loop with only the focal-plane camera + focus stage (24 unseen
+atmospheres x 10 s).**
+- Supervisor: loss is detected from the 1 rad frame alone (flux fraction in the
+  brightest 3x3 core). Locked frames are > 0.20 at the 0.1st percentile; lost frames
+  are < 0.017 at the 99th, so the threshold at 0.11 has a wide margin. On loss: flatten
+  the DM, focus stage to 25 rad, re-acquire.
+
+  | | Time locked | Effective SE H Strehl | Atmospheres locked > 95 % |
+  | --- | --- | --- | --- |
+  | **Supervised** | **95.5 %** | **0.682** | 14/24 |
+  | No supervisor | 44.7 % | 0.315 | 7/24 |
+
+- Effective Strehl counts every acquisition, loss and recovery. The supervised system
+  delivers **97 % of the tuned SH's 0.70**, inside the G2 bar.
+- The supervised run had 33 losses in 240 atmosphere-seconds (~1 per 6.5 s). That is more
+  frequent than the 30-40 s estimate; it includes immediate re-losses after
+  re-acquisition (~87 % success per attempt).
+- **Biggest remaining lever:** maintenance robustness (loss rate), then a faster and
+  more reliable re-acquisition.
 
 **Open threads.**
 - exp04: multi-frame networks with DM-command diversity and DAgger.
