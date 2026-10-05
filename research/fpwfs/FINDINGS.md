@@ -456,7 +456,12 @@ states with DAgger.
   blows up first after the hand-over (48 -> 114 nm in 25 frames).
 - This is the same mechanism as controlling 300 modes at 1 kHz: at this flux and the
   larger 333 Hz residual, only ~60 modes are sensed.
-- Next: 60 controlled modes for faint stars (an SH also reduces modes and gain there).
+- With only 60 controlled modes at 333 Hz / 1e4 photons: ratio 0.58, median slope
+  0.68, every mode sensed. The hand-over still fails (0/12) after 2 DAgger rounds,
+  decaying more slowly.
+- So faint-star operation at a reduced frame rate is not just a mode-count problem.
+  It is open; candidates are lower gain with prediction for the larger temporal error,
+  and per-rate retuning of dither/kicks.
 
 **exp20 v7, stage 2 shortened to 100 frames (saved networks, 72 atmospheres): bootstrap
 63/72 (87.5 %).** Median H Strehl 0.70 is reached ~1.4 s after starting from
