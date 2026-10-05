@@ -56,13 +56,19 @@ Batch-1 reconstructor latency, median / p99 in microseconds:
 Training-data generation (128 px pupil, Nyquist, 4 frames per sample, FFT):
 ~8.5k samples/s on the 4060, i.e. 1 M samples in ~2 minutes.
 
-## State of sibling repos (2026-10-03)
+## State of sibling repos (updated 2026-10-05)
 
-- `~/aosim/makewfs` is checked out on `fix/sh-lenslet-field-aliasing` (PR #6,
-  not merged), which fixes SH flux non-conservation for wide or undersampled
-  subapertures (issue #4). The editable install uses that branch. The research SH
+- makewfs `main` includes the SH lenslet-field aliasing fix (PR #6). The research SH
   model also sets 16 pupil samples per lenslet, so its results don't depend on the fix.
+- pyturb `main` includes PR #37: GPU random streams no longer depend on the CUDA device.
+  **Screens for a given seed changed versus runs before 2026-10-05** (the statistics are
+  unchanged). Earlier experiments are not bit-reproducible with current pyturb.
+- pyRTC `dev` (merged into `fpwfs`) includes `TorchImageReconstructor` (#156), the
+  kernel warm-up at construction (#159, so the real-time demo's Loop priming is no longer
+  needed), lazy worker threads (#160) and the single-BLAS POL integrator (#161).
 - The OOPAO clone is newer than what makewfs's OOPAO validation test expects
   (`wfs_measure` signature changed); that one makewfs test fails on `main` too.
 - Two GPUs: run training on the 4060 and independent sweeps on the A400 with
   `CUDA_VISIBLE_DEVICES=1` (4 GB: keep data stores on CPU).
+- Atmosphere seeds in `fpsim.atmos.Turbulence` own disjoint blocks (`SEED_STRIDE`);
+  before 2026-10-03 consecutive seeds shared atmospheres.

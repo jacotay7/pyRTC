@@ -32,6 +32,9 @@ p.add_argument("--steps", type=int, default=6000)
 p.add_argument("--photons", type=float, default=1e5)
 p.add_argument("--sampling", type=float, default=2.0, help="px per lambda/grid (2 = Nyquist; <2 = binned)")
 p.add_argument("--npix", type=int, default=64)
+p.add_argument("--binning", type=int, default=1)
+p.add_argument("--pupil-up", type=int, default=1, help="render on a pupil grid this many times finer")
+p.add_argument("--stages", type=int, nargs="+", default=[0, 2, 5, 10, 20])
 p.add_argument("--tag", default="acquisition")
 args = p.parse_args()
 dev = "cuda"
@@ -42,12 +45,18 @@ sysd = S.build(cfg)
 pupil = torch.tensor(sysd["pupil"], device=dev)
 dm = DM(torch.tensor(sysd["ifs"], device=dev), torch.tensor(sysd["m2c"], device=dev), cfg.n_pupil)
 n_modes = dm.surfaces.shape[0]
-STAGES = (0, 2, 5, 10, 20)
+STAGES = tuple(args.stages)
+pupil_render = pupil
+if args.pupil_up > 1:
+    import dataclasses
+
+    pupil_render = torch.tensor(S.keck_pupil(dataclasses.replace(cfg, n_pupil=cfg.n_pupil * args.pupil_up)), device=dev)
 NO = args.n_out
 rows = []
 for dfc in args.defocus:
-    scfg = FPSensorConfig(defocus_rad=dfc, photons=args.photons, sampling=args.sampling, npix=args.npix)
-    sensor = FocalPlaneSensor(scfg, pupil, cfg.grid_m).to(dev)
+    scfg = FPSensorConfig(defocus_rad=dfc, photons=args.photons, sampling=args.sampling, npix=args.npix,
+                          binning=args.binning)
+    sensor = FocalPlaneSensor(scfg, pupil_render, cfg.grid_m).to(dev)
     t0 = time.perf_counter()
     train, test = [], []
     for i, n in enumerate(STAGES):
