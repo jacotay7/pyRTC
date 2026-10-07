@@ -308,6 +308,10 @@ def generate_circular_aperture_mask(N, R, ratio):
     Returns:
     numpy.ndarray: Binary mask with the circular aperture.
     """
+    # Not aocore.Pupil.circular: these samples are N / (N - 1) apart rather
+    # than 1 pixel, so the edge pixels differ. The PYWFS valid-pixel count
+    # (the signal size) comes from this mask, and changing it would invalidate
+    # saved reference slopes and interaction matrices.
     r = R * ratio
     x = np.linspace(-N / 2, N / 2, N)
     xx, yy = np.meshgrid(x, x)
@@ -386,6 +390,14 @@ def get_tmp_filepath(file_path, unique_str="tmp"):
 
 
 def centroid(array):
+    """Return the intensity centroid ``[x, y]`` in pixel indices from pixel ``(0, 0)``.
+
+    ``x`` is the column (axis 1) and ``y`` the row (axis 0). This differs from
+    :func:`aocore.centroid`, which returns ``(y, x)`` measured from the array
+    centre ``(n - 1) / 2`` and raises on an image without flux. Here a small
+    constant in the denominator makes a dark frame return ``[0, 0]`` instead of
+    raising, since the science camera calls this on live frames.
+    """
     arr = np.asarray(array, dtype=np.float64)
     total = np.add.reduce(arr.ravel(), dtype=np.float64) + 1e-4
     y_indices, x_indices = np.indices(arr.shape, dtype=np.float64)
@@ -505,6 +517,14 @@ def clean_image_for_strehl(img, median_filter_size=3, gaussian_sigma=1):
 
 
 def gaussian_2d_grid(i, j, sigma, grid_size):
+    """Return Gaussian weights on a ``grid_size`` square grid around cell ``(i, j)``.
+
+    ``i`` is the row (axis 0) and ``j`` the column (axis 1). The centre cell is
+    0 and the weights sum to 1: they spread a floating actuator's command over
+    its neighbours. This is not an influence function, so it does not use
+    :func:`aobasis.gaussian_influence_functions` (1 at the actuator, not
+    normalized).
+    """
     i = int(np.asarray(i).reshape(-1)[0])
     j = int(np.asarray(j).reshape(-1)[0])
     sigma = float(np.asarray(sigma).reshape(-1)[0])

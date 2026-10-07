@@ -251,15 +251,14 @@ def actuator_positions_from_layout(
     ``layout[layout]``.
     """
 
+    from aobasis import positions_from_mask
+
     layout = np.asarray(layout) > 0
     if layout.ndim != 2:
         raise ValueError(f"layout must be 2D to derive actuator positions, got {layout.shape}")
-    rows, cols = np.nonzero(layout)
     side = max(layout.shape)
     pitch = float(pupil_diameter) / (side - 1) if side > 1 else float(pupil_diameter)
-    x = (cols - 0.5 * (layout.shape[1] - 1)) * pitch
-    y = (rows - 0.5 * (layout.shape[0] - 1)) * pitch
-    return np.column_stack((x, y)).astype(np.float64)
+    return positions_from_mask(layout, pitch)
 
 
 def load_actuator_positions(filename: str) -> np.ndarray:
@@ -292,21 +291,22 @@ def normalize_modes(modes: np.ndarray, how: str) -> np.ndarray:
     """Scale each column of ``modes`` to unit peak, RMS, or L2 norm.
 
     All-zero columns are left untouched. ``how="none"`` returns the input.
+    The scaling is :func:`aobasis.normalize_modes`; this wrapper keeps
+    pyrtc's config spelling (``"none"``, any case) and a floating input's dtype.
     """
+
+    from aobasis import normalize_modes as _aobasis_normalize_modes
 
     how = how.lower()
     if how == "none":
         return modes
-    if how == "peak":
-        scale = np.max(np.abs(modes), axis=0)
-    elif how == "rms":
-        scale = np.sqrt(np.mean(modes**2, axis=0))
-    elif how == "l2":
-        scale = np.linalg.norm(modes, axis=0)
-    else:
+    if how not in NORMALIZATIONS:
         raise ValueError(f"unknown normalization '{how}'")
-    scale = np.where(scale > 0, scale, 1.0)
-    return modes / scale
+    modes = np.asarray(modes)
+    out = _aobasis_normalize_modes(modes, how)
+    if np.issubdtype(modes.dtype, np.floating):
+        out = out.astype(modes.dtype, copy=False)
+    return out
 
 
 def generate_modes(

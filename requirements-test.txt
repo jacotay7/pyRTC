@@ -4,6 +4,7 @@ ruff
 build
 twine
 aotpy>=3.2
+aocore>=0.1.2,<0.2  # conventions conformance checks (tests/test_conformance.py)
 # Optional extras exercised by the test suite (optimize, fits, plot).
 optuna
 cmaes

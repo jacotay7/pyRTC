@@ -62,6 +62,29 @@ All notable changes to `pyrtcao` will be documented in this file.
 	- `benchmarks/first_iteration_bench.py` compares first-call and
 	  steady-state latency with a cold and a warm numba cache.
 
+### Changed
+
+- **pyrtc requires aobasis 2.0** (`aobasis>=2.0.0`, was `>=1.2.0`). Two pyrtc
+	helpers now call aobasis instead of repeating it:
+	`pyrtc.modal_basis.normalize_modes` wraps `aobasis.normalize_modes`, and
+	`actuator_positions_from_layout` wraps `aobasis.positions_from_mask`.
+	Both keep their signatures and results (`normalize_modes` still accepts
+	`"none"` and keeps a floating input's dtype). Upgrading from aobasis 1.x
+	changes some modes. KL modes follow a fixed sign and rotation convention,
+	with the same eigenvalues and subspaces. Zernike, Fourier and Hadamard
+	modes with `ignore_piston` (pyrtc's default) are exactly zero-mean.
+	Re-measure interaction matrices that were built on 1.x modes; see the
+	aobasis 2.0.0 changelog.
+- **Conventions conformance tests.** `tests/test_conformance.py` runs the AO
+	stack's convention checks (`aocore.conformance`, now a test requirement)
+	against pyrtc. The checks cover SHWFS slope sign and the blocked
+	`[sx..., sy...]` layout, actuator positions, the centroid helper, and the
+	Zernike modes pyrtc requests from aobasis. Two known deviations are
+	tracked as strict xfails. Image streams are `(width, height)`, so SHWFS
+	slope x/y follow the camera's y/x axes (#162). SHWFS sub-aperture pixel
+	coordinates are centred at `n // 2` rather than `(n - 1) / 2` (#163).
+	Behaviour is unchanged for now.
+
 ## 1.1.0 - 2026-09-29
 
 ### Fixed
