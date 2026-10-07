@@ -2,6 +2,15 @@
 
 All notable changes to `pyrtcao` will be documented in this file.
 
+## Unreleased
+
+### Fixed
+
+- `test_hardware_launcher_inherits_logging_env` failed when the caller
+  exported a thread count (e.g. `OPENBLAS_NUM_THREADS=16` on a benchmark
+  host). The launcher keeps such settings on purpose, so the test now clears
+  them before checking the single-thread defaults.
+
 ## 2.0.0 - 2026-10-06
 
 ### Breaking changes
