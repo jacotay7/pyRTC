@@ -148,8 +148,12 @@ For one-off use there is also a CLI:
 ``pyrtc-isio-bridge from-isio dm00disp dm_from_cacao``. It needs ImageStreamIO's
 Python module: ``pip install git+https://github.com/milk-org/ImageStreamIO``.
 
-- Shapes carry over as they are: a pyrtc ``(a, b)`` stream is an ISIO image
-  with ``size = [a, b]``, stored column-major, as ISIO expects.
+- Axes are reversed, so images keep their orientation: pyrtc arrays are
+  row-major ``[y, x]``, ISIO images column-major with ``size = [x, y]``. A
+  pyrtc ``(height, width)`` stream is an ISIO image with
+  ``size = [width, height]`` (the same bytes), and an ISIO ``[nx, ny]`` image
+  a pyrtc ``(ny, nx)`` stream. (pyrtc 1.x kept the shape, which matched milk
+  while its streams were ``(width, height)``.)
 - ISIO-to-pyrtc frames carry the ISIO ``cnt0`` as their ``frame_id``.
 - The bridge waits by polling ISIO's semaphore (about 0.1 ms latency),
   because the ISIO module's blocking waits hold the GIL (#138).

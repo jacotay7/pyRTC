@@ -152,13 +152,16 @@ def private_synthetic_config(workdir, *, prefix=None, include_psf=True):
         key: _absolute(value) for key, value in manager_conf.get("component_files", {}).items()
     }
 
-    num_regions = int(config["wfs"]["width"]) // int(config["slopes"]["sub_ap_spacing"])
+    side = min(int(config["wfs"]["width"]), int(config["wfs"]["height"]))
+    num_regions = side // int(config["slopes"]["sub_ap_spacing"])
     layout = _default_wfc_layout(int(config["wfc"]["num_actuators"]))
     response = build_synthetic_shwfs_response_matrix(
         num_regions, int(config["wfc"]["num_modes"]), layout
     )
     im_path = workdir / f"{prefix}_im.npy"
-    _np().save(im_path, response.astype(_np().float32))
+    from pyrtc.calibration import save_calibration
+
+    save_calibration(im_path, response.astype(_np().float32), "interaction_matrix")
     config["loop"]["im_file"] = str(im_path)
 
     config_path = workdir / f"{prefix}_config.yaml"
@@ -298,3 +301,102 @@ def unique_name():
         return f"{prefix[:8]}_{short}"
 
     return _make
+
+
+# -- frame orientation (#162) -------------------------------------------------
+
+#: A non-square camera frame (rows, columns) and an asymmetric feature in it.
+ORIENTATION_FRAME_SHAPE = (24, 32)
+ORIENTATION_HOT_PIXEL = (5, 21)  # (row, column) = (y, x)
+ORIENTATION_SUBAP = 8  # 3 x 3 sub-apertures of 8 x 8 pixels in a 24 x 32 frame
+
+
+def hot_pixel_frame(shape=ORIENTATION_FRAME_SHAPE, hot=ORIENTATION_HOT_PIXEL, dtype="uint16"):
+    """A camera frame ``(height, width)`` that is dark except one pixel at ``hot`` (row, col)."""
+
+    np = _np()
+    frame = np.full(shape, 10, dtype=dtype)
+    frame[hot] = 1000
+    return frame
+
+
+def shwfs_spot_frame(shift_x, shift_y, shape=ORIENTATION_FRAME_SHAPE, spacing=ORIENTATION_SUBAP):
+    """A Shack-Hartmann camera frame ``[y, x]`` with every spot moved by ``(shift_x, shift_y)`` px.
+
+    x is the column and y the row. The spots are Gaussians centred on their
+    sub-aperture's centre ``(spacing - 1) / 2`` plus the shift, so an
+    unshifted frame reads zero slopes (CONVENTIONS 1.2).
+    """
+
+    np = _np()
+    height, width = shape
+    rows, cols = np.indices(shape, dtype=np.float64)
+    centre = (spacing - 1) / 2.0
+    dy = (rows % spacing) - centre - shift_y
+    dx = (cols % spacing) - centre - shift_x
+    frame = 50.0 + 5000.0 * np.exp(-(dx**2 + dy**2) / (2.0 * 0.9**2))
+    return np.rint(frame).astype(np.uint16)
+
+
+def shwfs_slopes_from_stream(wfs_stream_name, spacing=ORIENTATION_SUBAP, **slopes_conf):
+    """``(sx, sy)`` per sub-aperture from a real SHWFS ``SlopesProcess`` on ``wfs_stream_name``.
+
+    Zero reference slopes, so the slopes are raw spot positions in pixels.
+    """
+
+    np = _np()
+    from pyrtc.slopes_process import SlopesProcess
+    from pyrtc.streams import clear_shms
+
+    suffix = uuid.uuid4().hex[:8]
+    outputs = {"signal": f"sig_{suffix}", "signal_2d": f"sig2d_{suffix}"}
+    conf = {
+        "type": "SHWFS",
+        "signal_type": "slopes",
+        "sub_ap_spacing": spacing,
+        "sub_ap_offset_x": 0,
+        "sub_ap_offset_y": 0,
+        "image_noise": 1.0,
+        "contrast": 100.0,  # threshold 100 counts: background off, spots on
+        "functions": [],
+        "input_streams": {"wfs": wfs_stream_name},
+        "output_streams": outputs,
+        **slopes_conf,
+    }
+    proc = SlopesProcess(conf)
+    try:
+        proc.compute_signal()
+        signal = np.array(proc.read(block=False), dtype=np.float64)
+    finally:
+        proc.close()
+        clear_shms(list(outputs.values()))
+    half = signal.size // 2
+    return signal[:half], signal[half:]
+
+
+def assert_wfs_follows_camera_axes(wfs, set_camera_frame):
+    """Check a WFS adapter publishes camera frames as ``[y, x]`` with the right slope signs.
+
+    ``set_camera_frame(frame)`` makes the fake SDK return ``frame``, a
+    ``(height, width)`` array, on the next ``wfs.expose()``.
+    """
+
+    np = _np()
+    frame = hot_pixel_frame()
+    set_camera_frame(frame)
+    wfs.expose()
+    raw = np.asarray(wfs._stream_object("wfs_raw").read())
+    assert raw.shape == ORIENTATION_FRAME_SHAPE  # (height, width)
+    assert np.unravel_index(np.argmax(raw), raw.shape) == ORIENTATION_HOT_PIXEL
+    processed = np.asarray(wfs._stream_object("wfs").read())
+    assert np.unravel_index(np.argmax(processed), processed.shape) == ORIENTATION_HOT_PIXEL
+
+    wfs_name = wfs._stream_object("wfs").name
+    for shift_x, shift_y in ((1.0, 0.0), (0.0, 1.0)):
+        set_camera_frame(shwfs_spot_frame(shift_x, shift_y))
+        wfs.expose()
+        sx, sy = shwfs_slopes_from_stream(wfs_name)
+        assert sx.size == sy.size == 9  # 3 x 3 sub-apertures
+        # A spot moved along +x (columns) gives +sx and no sy, and vice versa.
+        np.testing.assert_allclose(sx, shift_x, atol=0.02)
+        np.testing.assert_allclose(sy, shift_y, atol=0.02)

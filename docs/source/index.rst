@@ -40,6 +40,7 @@ pyrtc is an open-source, community-driven Python package for real-time control o
   components/wfs
   components/wfc
   components/slopes
+  components/image_reconstructor
   components/loop
   components/optimizer
   components/scicam
@@ -51,6 +52,7 @@ pyrtc is an open-source, community-driven Python package for real-time control o
   guides/getting_started
   guides/architecture
   guides/streams
+  guides/migration_2_0
   guides/telemetry_aotpy_export
   guides/developers_guide
 
@@ -97,4 +99,4 @@ Contributor and maintainer workflow guidance is collected in the Developer Guide
 Contact
 ------------
 
-For feedback, collaboration, and feature requests you can contact me via e-mail at jtaylor@keck.hawaii.edu.
+For feedback, collaboration, and feature requests you can contact me via e-mail at jacobataylor7@gmail.com.

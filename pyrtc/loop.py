@@ -14,6 +14,13 @@ from typing import Any
 from numba import jit
 from scipy.linalg import hadamard
 
+from pyrtc.calibration import (
+    CalibrationError,
+    interaction_matrix_from_legacy,
+    load_component_calibration,
+    normalize_legacy_calibration,
+    save_calibration,
+)
 from pyrtc.logging_utils import get_logger
 from pyrtc.manager import launch_component
 from pyrtc.streams import gpu_torch_available, open_stream
@@ -148,6 +155,20 @@ def comp_correction(cm=np.array([[]], dtype=np.float32), slopes=np.array([], dty
 
 
 @jit(nopython=True, nogil=True, cache=True, fastmath=True)
+def pseudo_open_loop_slopes(slopes, f_im, correction):
+    """Return the pseudo open-loop slopes ``slopes - f_im @ correction``.
+
+    ``pid_integrator_pol`` computes this here rather than in NumPy so that
+    both of its products run on the BLAS numba calls (SciPy's OpenBLAS).
+    Alternating between NumPy's and SciPy's OpenBLAS every frame made their
+    two spinning thread pools fight over the cores, which cost about 30x on
+    a many-core host (#158). ``f_im`` and ``correction`` must share a dtype.
+    """
+
+    return slopes - np.dot(f_im, correction)
+
+
+@jit(nopython=True, nogil=True, cache=True, fastmath=True)
 def update_correction(
     correction=np.array([], dtype=np.float32),
     g_cm=np.array([[]], dtype=np.float32),
@@ -234,6 +255,11 @@ class Loop(Component):
         ``open`` or ``flatten``. Default is "hold".
     im_file : str, optional
         File to save the interaction matrix. Default is "".
+    legacy_calibration : str, optional
+        How to read a pyrtc 1.x ``im_file``: ``"yx"`` or ``"as_is"`` load it
+        unchanged; an ``"xy"`` matrix needs its rows reordered and is
+        refused, with directions to ``pyrtc-migrate-calibration`` (see
+        :mod:`pyrtc.calibration`). Unset, 1.x files are refused.
     p_gain : float, optional
         Proportional gain for PID integrator. Default is 0.1.
     i_gain : float, optional
@@ -467,6 +493,9 @@ class Loop(Component):
             self._producer_alive = None
             self.last_round_trip_frames = None
             self.im_file = set_from_config(self.conf, "im_file", "")
+            self.legacy_calibration = normalize_legacy_calibration(
+                set_from_config(self.conf, "legacy_calibration", None)
+            )
             self.cm_method = str(set_from_config(self.conf, "cm_method", "svd")).lower()
             conditioning = set_from_config(self.conf, "conditioning", None)
             self.conditioning = None if conditioning is None else float(conditioning)
@@ -502,6 +531,7 @@ class Loop(Component):
             self._wfc_buffer = np.empty(self.wfc_shape, dtype=self.wfc_dtype)
 
             self.load_im()
+            self.warmup()
             self.logger.info(
                 "Initialized loop signal_shape=%s wfc_shape=%s num_modes=%s",
                 self.signal_shape,
@@ -886,6 +916,10 @@ class Loop(Component):
         the first ``num_modes`` columns. The result has shape
         ``(N, num_modes)`` and orthogonal columns (``P.T @ P == N * I``), so
         responses to the patterns demultiplex exactly into per-mode columns.
+
+        These are sign patterns over modes, not a basis over actuators, so they
+        come from :func:`scipy.linalg.hadamard` rather than
+        ``aobasis.HadamardBasisGenerator`` (which needs actuator positions).
         """
 
         num_modes = int(num_modes)
@@ -1043,7 +1077,7 @@ class Loop(Component):
                 filename = self.im_file
             if filename == "":
                 raise ValueError("No interaction matrix filename provided")
-            np.save(filename, self.im)
+            save_calibration(filename, self.im, "interaction_matrix")
             component_logger.info("Saved interaction matrix to %s", filename)
         except Exception:
             component_logger.exception(
@@ -1068,7 +1102,22 @@ class Loop(Component):
                 self.im = np.zeros_like(self.im)
                 component_logger.info("No interaction matrix file configured; using zeros")
             else:
-                self.im = np.load(filename)
+                im = load_component_calibration(
+                    filename,
+                    "interaction_matrix",
+                    getattr(self, "legacy_calibration", None),
+                    lambda data, frame: interaction_matrix_from_legacy(
+                        data, frame, path=str(filename)
+                    ),
+                    component_logger,
+                )
+                expected = tuple(np.shape(self.im))
+                if tuple(im.shape) != expected:
+                    raise CalibrationError(
+                        f"Interaction matrix {filename} has shape {im.shape}; this loop "
+                        f"needs (signal_size, num_modes) = {expected}"
+                    )
+                self.im = im
                 component_logger.info("Loaded interaction matrix from %s", filename)
             self.compute_cm()
         except Exception:
@@ -1344,7 +1393,9 @@ class Loop(Component):
             self.cm[: self.num_active_modes, :] = inverse
             self.cm[self.num_active_modes :, :] = 0
             self._update_gain_matrix()
-            self.f_im = np.copy(self.im)
+            # In the CM's dtype (an IM loaded from file or estimated by
+            # DOCRIME may be float64), so the numba POL product types match.
+            self.f_im = np.array(self.im, dtype=self.cm.dtype)
             self.f_im[:, self.num_active_modes :] = 0
             self.last_singular_values = singular_values
             self.last_retained_singular_mask = retained
@@ -1393,6 +1444,61 @@ class Loop(Component):
         if gains.size != np.size(correction):
             gains = self.gain
         return (1 - gains) * correction - np.dot(self.g_cm, s_pol)
+
+    def warmup(self) -> None:
+        """Compile (or load from the numba cache) the integrators' kernels.
+
+        Runs at the end of ``__init__``, so the first iteration after
+        :meth:`start` runs at steady-state speed instead of stalling while
+        numba compiles (0.1 to 1 s, i.e. hundreds of frames at kHz rates).
+        Each kernel runs once on zero scratch arrays with the shapes and
+        dtypes of the hot path's buffers (the ``signal`` and ``wfc`` read
+        buffers and the control matrices), so numba builds the same
+        specialisation the integrators then call. Nothing is written to a
+        stream and no loop state changes, so it is safe to call again.
+        """
+
+        component_logger = getattr(self, "logger", logger)
+        start = time.perf_counter()
+        signal = np.zeros_like(self._signal_buffer)
+        wfc = np.zeros_like(self._wfc_buffer)
+        scratch = np.zeros_like(self._correction_buffer)
+        calls = (
+            # standard_integrator and leaky_integrator
+            (
+                "leaky_integrator_numba",
+                lambda: leaky_integrator_numba(
+                    signal,
+                    self.g_cm,
+                    wfc.squeeze(),
+                    scratch,
+                    np.float32(self.leaky_gain),
+                    self.num_active_modes,
+                ),
+            ),
+            # pid_integrator
+            ("comp_correction", lambda: comp_correction(cm=self.cm, slopes=signal)),
+            # pid_integrator_pol
+            (
+                "pseudo_open_loop_slopes",
+                lambda: comp_correction(
+                    cm=self.cm,
+                    slopes=pseudo_open_loop_slopes(
+                        signal, self.f_im, wfc.astype(self.f_im.dtype, copy=False)
+                    ),
+                ),
+            ),
+        )
+        for name, call in calls:
+            try:
+                call()
+            except Exception:
+                component_logger.warning(
+                    "Could not warm up %s; its first real call will compile it",
+                    name,
+                    exc_info=True,
+                )
+        component_logger.info("Warmed up loop kernels in %.3f s", time.perf_counter() - start)
 
     def _read_signal(self, out=None):
         """Read the next ``signal`` frame, or return ``None`` if the input is stale.
@@ -1633,7 +1739,10 @@ class Loop(Component):
         if slopes is None:
             return
         correction = self.read_stream("wfc", block=False, out=self._wfc_buffer)
-        pol_slopes = slopes - self.f_im @ correction
+        # numba, like comp_correction: one BLAS per frame (#158).
+        pol_slopes = pseudo_open_loop_slopes(
+            slopes, self.f_im, correction.astype(self.f_im.dtype, copy=False)
+        )
         return self.pid_integrator(slopes=pol_slopes, correction=correction)
 
     def pid_integrator(self, slopes=None, correction=None):

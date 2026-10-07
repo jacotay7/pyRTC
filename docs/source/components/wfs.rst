@@ -131,12 +131,16 @@ See above for how to launch a soft-RTC equivalent.
 Image Shape Convention
 ----------------------
 
-pyrtc image streams have shape ``(width, height)``: ``width`` is the first
-array axis. Camera SDKs return frames as ``(Height, Width)`` (rows,
-columns), so an adapter must transpose each frame (``frame.T``) before
-publishing it. Then ``width``/``height`` in the config mean the same as the
-camera's own settings. The GenICam and Micro-Manager adapters do this. The
-XIMEA and Spinnaker adapters don't yet, so use square ROIs with them (#130).
+pyrtc image streams have shape ``(height, width)`` and are indexed
+``[y, x]``: rows are the camera's y axis and columns its x axis (aocore
+CONVENTIONS 1.1). That is the layout camera SDKs return, so adapters publish
+frames as they come, without transposing them, and ``width``/``height`` in
+the config mean the same as the camera's own settings. Slope x and y follow
+the image columns and rows.
+
+pyrtc 1.x declared streams ``(width, height)`` and some adapters transposed
+frames into them (#162, #130). Calibration files saved with 1.x need
+``legacy_calibration`` or a re-measurement; see :doc:`../guides/migration_2_0`.
 
 Parameters
 ----------
@@ -176,7 +180,7 @@ IDS, Baumer and others (``pip install pyrtcao[genicam]``):
     functions: [expose]
 
 ``GenICamScienceCamera`` takes the same keys for the ``psf`` section. Frames
-are transposed into pyrtc's ``(width, height)`` stream shape, so ``width``
+are published as the camera returns them, ``(Height, Width)``, so ``width``
 and ``height`` mean the same as the camera's ``Width`` and ``Height`` nodes.
 
 Micro-Manager Cameras

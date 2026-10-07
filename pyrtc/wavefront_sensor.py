@@ -9,6 +9,13 @@ its SHM publication, dark handling, and optional geometric pre-processing.
 import numpy as np
 from numba import jit, prange
 
+from pyrtc.calibration import (
+    CalibrationError,
+    image_from_legacy,
+    load_component_calibration,
+    normalize_legacy_calibration,
+    save_calibration,
+)
 from pyrtc.logging_utils import get_logger
 from pyrtc.manager import launch_component
 from pyrtc.streams import create_stream
@@ -145,18 +152,22 @@ class WavefrontSensor(Component):
     name : str
         The name of the wavefront sensor. Default "wavefrontSensor"
     width : int
-        The width of the wavefront sensor image. Required.
+        The width of the wavefront sensor image (columns, x). Required.
     height : int
-        The width of the wavefront sensor image.  Required.
+        The height of the wavefront sensor image (rows, y). Required.
     dark_count : int
         Number of dark frames to average. Default 1000.
     dark_file : str
         Path to the dark frame file. Default, empty string.
+    legacy_calibration : str, optional
+        How to read a pyrtc 1.x ``dark_file``: ``"yx"``, ``"xy"`` or
+        ``"as_is"`` (see :mod:`pyrtc.calibration`). Unset, 1.x files are
+        refused.
 
     Attributes
     ----------
     image_shape : tuple
-        The shape of the image (width, height).
+        The shape of the processed image, ``(height, width)``.
     image_raw_dtype : data-type
         The data type for raw image.
     image_dtype : data-type
@@ -238,11 +249,15 @@ class WavefrontSensor(Component):
             self.dark_file = set_from_config(conf, "dark_file", "")
             self.downsample_factor = set_from_config(conf, "downsample_factor", 0)
             self.rotation_angle = set_from_config(conf, "rotation_angle", 0.0)
+            self.legacy_calibration = normalize_legacy_calibration(
+                set_from_config(conf, "legacy_calibration", None)
+            )
 
-            self.image_raw_shape = [self.width, self.height]
+            # Streams are (height, width) = [y, x] (CONVENTIONS 1.1, #162).
+            self.image_raw_shape = [self.height, self.width]
             self.image_raw_dtype = np.uint16
             self.image_dtype = np.int32
-            self.image_shape = [self.width, self.height]
+            self.image_shape = [self.height, self.width]
             if self.downsample_factor > 0:
                 self.image_shape[0] = self.image_shape[0] // self.downsample_factor
                 self.image_shape[1] = self.image_shape[1] // self.downsample_factor
@@ -470,7 +485,7 @@ class WavefrontSensor(Component):
                 filename = self.dark_file
             if filename == "":
                 raise ValueError("No dark frame filename provided")
-            np.save(filename, self.dark)
+            save_calibration(filename, self.dark, "wfs_dark")
             self.logger.info("Saved dark frame to %s", filename)
         except Exception:
             self.logger.exception("Failed to save dark frame to %s", filename or self.dark_file)
@@ -480,6 +495,9 @@ class WavefrontSensor(Component):
     def load_dark(self, filename=""):
         """
         Loads the dark frame from a file.
+
+        A pyrtc 1.x file is converted according to ``legacy_calibration``, or
+        refused when that is unset (:mod:`pyrtc.calibration`).
 
         Parameters
         ----------
@@ -494,7 +512,19 @@ class WavefrontSensor(Component):
                 self.dark = np.zeros_like(self.dark)
                 self.logger.info("No dark frame file configured; using zeros")
             else:
-                self.dark = np.load(filename)
+                dark = load_component_calibration(
+                    filename,
+                    "wfs_dark",
+                    getattr(self, "legacy_calibration", None),
+                    image_from_legacy,
+                    self.logger,
+                )
+                if tuple(dark.shape) != tuple(self.image_raw_shape):
+                    raise CalibrationError(
+                        f"Dark frame {filename} has shape {dark.shape}; the raw image is "
+                        f"(height, width) = {tuple(self.image_raw_shape)}"
+                    )
+                self.dark = dark
                 self.logger.info("Loaded dark frame from %s", filename)
         except Exception:
             self.logger.exception("Failed to load dark frame from %s", filename or self.dark_file)

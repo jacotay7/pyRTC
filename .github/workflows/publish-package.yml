@@ -2,15 +2,6 @@ name: Publish Package
 
 on:
   workflow_dispatch:
-    inputs:
-      repository:
-        description: "Package index target"
-        required: true
-        default: testpypi
-        type: choice
-        options:
-          - testpypi
-          - pypi
   release:
     types:
       - published
@@ -51,31 +42,7 @@ jobs:
           name: python-package-dist
           path: dist/*
 
-  publish-testpypi:
-    if: github.event_name == 'workflow_dispatch' && github.event.inputs.repository == 'testpypi'
-    needs: build
-    runs-on: ubuntu-latest
-    permissions:
-      id-token: write
-
-    environment:
-      name: testpypi
-      url: https://test.pypi.org/p/pyrtcao
-
-    steps:
-      - name: Download dist artifacts
-        uses: actions/download-artifact@v8
-        with:
-          name: python-package-dist
-          path: dist
-
-      - name: Publish to TestPyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          repository-url: https://test.pypi.org/legacy/
-
   publish-pypi:
-    if: github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && github.event.inputs.repository == 'pypi')
     needs: build
     runs-on: ubuntu-latest
     permissions:

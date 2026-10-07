@@ -4,14 +4,14 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pyrtcao"
-version = "1.1.0"
+version = "2.0.0"
 description = "Adaptive optics real-time control software written in Python."
 readme = { file = "README.md", content-type = "text/markdown" }
 requires-python = ">=3.10"
 license = "GPL-3.0-or-later"
 license-files = ["LICENSE"]
 authors = [
-	{ name = "Jacob Taylor", email = "jtaylor@keck.hawaii.edu" },
+	{ name = "Jacob Taylor", email = "jacobataylor7@gmail.com" },
 ]
 keywords = [
 	"adaptive optics",
@@ -36,7 +36,7 @@ classifiers = [
 dependencies = [
 	"numpy>=1.26",
 	"pyshmem>=1.3.8",
-	"aobasis>=1.2.0",
+	"aobasis>=2.0.0",
 	"PyYAML",
 	"numba",
 	"scipy",
@@ -109,6 +109,7 @@ pyrtc-shm-monitor = "pyrtc.scripts.shm_monitor:main"
 pyrtc-view-launch-all = "pyrtc.scripts.view_launch_all:main"
 pyrtc-measure-latency = "pyrtc.scripts.measure_latency:main"
 pyrtc-validate-config = "pyrtc.scripts.validate_config:main"
+pyrtc-migrate-calibration = "pyrtc.scripts.migrate_calibration:main"
 pyrtc-export-aotpy = "pyrtc.scripts.export_aotpy:main"
 pyrtc-isio-bridge = "pyrtc.isio_bridge:main"
 pyrtc-manager-gui = "pyrtc.scripts.manager_gui:main"

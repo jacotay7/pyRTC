@@ -2,6 +2,139 @@
 
 All notable changes to `pyrtcao` will be documented in this file.
 
+## 2.0.0 - 2026-10-06
+
+### Breaking changes
+
+pyrtc 2.0 follows the AO stack's axis and pixel conventions (aocore
+`CONVENTIONS.md` 1.1, 1.2, 7.1). Saved 1.x calibrations need converting or
+re-measuring; the docs page "Migrating to pyrtc 2.0" walks through it.
+
+- **Image streams are `(height, width)`, indexed `[y, x]`** (#162, #130).
+	`wfs_raw`, `wfs`, `psf_short` and `psf_long` were declared
+	`(width, height)`, and the GenICam and Micro-Manager adapters transposed
+	camera frames into them, so the slope pyrtc called x followed the
+	camera's y axis and sub-apertures were ordered column-major in camera
+	terms.
+	- Camera adapters publish frames as the SDK returns them; GenICam and
+	  Micro-Manager no longer transpose. XIMEA and Spinnaker, which never
+	  did, now work with non-square ROIs (#130).
+	- Slope x/y follow the image columns/rows. SHWFS sub-apertures are
+	  ordered row-major over `(subap_y, subap_x)`.
+	- PYWFS `pupils` entries are `"x,y"` = column,row, as documented (1.x
+	  parsed them as row,column of its stream). Configs written for an
+	  adapter that did not transpose (XIMEA, the simulators) must swap each
+	  string. The default pupil layout follows the image's width and height.
+	- A non-square SHWFS image gets `min(height, width) // sub_ap_spacing`
+	  sub-apertures per side, in `SlopesProcess` and in stream planning.
+	- The ISIO bridge reverses the axes: a pyrtc `(height, width)` stream is
+	  an ISIO image of `size = [width, height]`, so milk still sees x as the
+	  fast axis.
+- **SHWFS sub-aperture pixel `k` sits at `k - (n - 1) / 2`** (#163), not
+	`k - n // 2` (`shwfs_subaperture_coords`, `SlopesProcess.xvals`). A spot
+	on the optical axis of an even sub-aperture now reads 0 instead of
+	-0.5 px; raw slopes of even sub-apertures move by +0.5 px. Residual
+	slopes (against reference slopes) are unchanged. The WCoG weight without
+	a reference image is now centred on the sub-aperture.
+- **Calibration files are versioned.** WFS and science-camera darks, model
+	PSFs, SHWFS reference images, valid sub-aperture masks, reference slopes
+	and interaction matrices are saved by `pyrtc.calibration.save_calibration`:
+	an `.npz` archive (under the configured file name) with the array and a
+	`pyrtc_calibration` record (format 2, kind). Loading a plain `.npy`
+	(pyrtc 1.x) file fails with a message explaining the options, unless the
+	section sets `legacy_calibration`:
+	- `yx` (the 1.x adapter published frames unchanged: XIMEA, Spinnaker,
+	  the simulators): arrays load unchanged, SHWFS reference slopes of even
+	  sub-apertures move by +0.5 px;
+	- `xy` (it transposed them: GenICam, Micro-Manager): images transpose,
+	  slope maps and valid masks swap and transpose their x/y halves;
+	- `as_is`: the file already follows the 2.0 conventions.
+
+	Every conversion is exact; the inexact case (WCoG reference slopes
+	without a reference image) is refused. An `xy` interaction matrix needs
+	the 1.x valid mask to reorder its rows and is converted offline with the
+	new `pyrtc-migrate-calibration` CLI. Corrector files (flat, M2C, layouts)
+	are unchanged. The NCPA optimizer reads and writes 2.0 files.
+
+### Added
+
+- **PyTorch image reconstructor.** `TorchImageReconstructor`
+	(`pyrtc.image_reconstructor`) publishes a PyTorch model's output on each
+	WFS image as the loop's `signal`, for neural and focal-plane
+	reconstructors. It sits in the `slopes` section in place of
+	`SlopesProcess`, so the loop and the rest of the pipeline are unchanged
+	(use an identity IM when the model outputs modes). Models come from a
+	`.pt2` (`torch.export`) or TorchScript `model_file`, or from a
+	`model_factory` plus an optional `state_dict_file`; `signal_size` is
+	checked against the model output at startup. Options: `device`
+	(CPU/CUDA), `dtype` (float32/float16), flux normalisation, square-root
+	stretch and a per-element output scale. On CUDA it uses pinned host
+	buffers, its own CUDA stream and a captured CUDA graph (with an eager
+	fallback); `timing_stats()` reports the per-frame compute time.
+	`benchmarks/image_reconstructor_bench.py` times it. Config validation
+	applies the `SlopesProcess` checks only to `SlopesProcess`-family
+	classes, and stream planning and the AOTPy export treat a typeless
+	`slopes` section with `signal_size` as a generic signal.
+
+### Fixed
+
+- **A component whose constructor fails no longer leaks its worker threads**
+	(#155). `Component.__init__` started one worker thread per entry in
+	`functions` before the subclass finished its own setup, so a constructor
+	that then raised (a missing input stream, a bad calibration file) left
+	threads spinning for the life of the process, each holding the
+	half-built component. The threads now start on the first `start()`.
+	Construction starts none, and `stop()`/`start()` still pause and resume
+	the same threads.
+- **`Loop.pid_integrator_pol` is about 50x faster** (#158). Each frame ran
+	the pseudo open-loop product `f_im @ correction` in NumPy and the control
+	product in numba, which calls SciPy's OpenBLAS. The two libraries' thread
+	pools (one spinning worker per core each) then fought over the cores, so
+	a frame took 12 ms instead of 0.2 ms in a 16-core cpuset (signal 1600,
+	400 modes). Both products now run in numba
+	(`pyrtc.loop.pseudo_open_loop_slopes`).
+	- `pid_integrator_pol` also no longer fails with a numba `TypingError`
+	  on every frame when the interaction matrix is float64 (an `im_file`
+	  saved as float64). `Loop.f_im` is now kept in the control matrix's
+	  dtype.
+- **The first frame after `start()` no longer stalls while numba compiles**
+	(#157). `SlopesProcess`, `Loop` and `WavefrontCorrector` compiled their
+	per-frame numba kernels during the first real frame. That took 0.15 s
+	with a warm numba cache and up to 0.75 s cold, against 0.06 to 0.2 ms
+	per frame in steady state. A loop started on a live system therefore
+	held the DM still for hundreds of frames at kHz rates, enough to lose
+	lock.
+	- Each of these components now ends `__init__` with `warmup()`. It calls
+	  the kernels once on zero scratch arrays typed like the real buffers, or
+	  runs the torch PYWFS path when `gpu_device` is set. It writes no stream.
+	- The first iteration now takes about 0.5 ms (GPU PYWFS: 88 ms down to
+	  2 ms). Construction pays the compile time instead.
+	- `Component.warmup()` is a no-op hook that other components can
+	  override.
+	- `benchmarks/first_iteration_bench.py` compares first-call and
+	  steady-state latency with a cold and a warm numba cache.
+
+### Changed
+
+- **pyrtc requires aobasis 2.0** (`aobasis>=2.0.0`, was `>=1.2.0`). Two pyrtc
+	helpers now call aobasis instead of repeating it:
+	`pyrtc.modal_basis.normalize_modes` wraps `aobasis.normalize_modes`, and
+	`actuator_positions_from_layout` wraps `aobasis.positions_from_mask`.
+	Both keep their signatures and results (`normalize_modes` still accepts
+	`"none"` and keeps a floating input's dtype). Upgrading from aobasis 1.x
+	changes some modes. KL modes follow a fixed sign and rotation convention,
+	with the same eigenvalues and subspaces. Zernike, Fourier and Hadamard
+	modes with `ignore_piston` (pyrtc's default) are exactly zero-mean.
+	Re-measure interaction matrices that were built on 1.x modes; see the
+	aobasis 2.0.0 changelog.
+- **Conventions conformance tests.** `tests/test_conformance.py` runs the AO
+	stack's convention checks (`aocore.conformance`, now a test requirement)
+	against pyrtc. The checks cover SHWFS slope sign and the blocked
+	`[sx..., sy...]` layout, actuator positions, the centroid helper, and the
+	Zernike modes pyrtc requests from aobasis, and a camera frame published
+	through a `WavefrontSensor`. The two deviations they found (#162, #163)
+	are fixed in this release (see Breaking changes).
+
 ## 1.1.0 - 2026-09-29
 
 ### Fixed

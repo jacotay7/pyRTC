@@ -13,7 +13,9 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Mapping, Type
 
+from pyrtc.calibration import LEGACY_CALIBRATION_CHOICES
 from pyrtc.corrector_splitter import CorrectorSplitter
+from pyrtc.image_reconstructor import TorchImageReconstructor
 from pyrtc.isio_bridge import IsioBridge
 from pyrtc.loop import Loop
 from pyrtc.science_camera import ScienceCamera
@@ -228,6 +230,22 @@ class ComponentDescriptor:
         return payload
 
 
+def _legacy_calibration_field() -> ConfigFieldDescriptor:
+    """The ``legacy_calibration`` key of the sections that load frame-dependent files."""
+
+    return ConfigFieldDescriptor(
+        "legacy_calibration",
+        "str | None",
+        "How to read pyrtc 1.x calibration files: 'yx' (adapter published frames "
+        "unchanged), 'xy' (adapter transposed them), 'as_is' (already 2.0); unset "
+        "refuses them. See pyrtc.calibration.",
+        default=None,
+        choices=LEGACY_CALIBRATION_CHOICES,
+        allow_none=True,
+        case_sensitive=False,
+    )
+
+
 BUILTIN_COMPONENT_DESCRIPTORS: tuple[ComponentDescriptor, ...] = (
     ComponentDescriptor(
         section_name="wfs",
@@ -256,6 +274,7 @@ BUILTIN_COMPONENT_DESCRIPTORS: tuple[ComponentDescriptor, ...] = (
             ConfigFieldDescriptor(
                 "dark_file", "str", "Path to a persisted dark frame.", default=""
             ),
+            _legacy_calibration_field(),
             ConfigFieldDescriptor(
                 "downsample_factor",
                 "int",
@@ -296,15 +315,15 @@ BUILTIN_COMPONENT_DESCRIPTORS: tuple[ComponentDescriptor, ...] = (
                 "wfs_raw",
                 "output",
                 dtype="uint16",
-                shape="(width, height)",
-                description="Raw WFS image stream.",
+                shape="(height, width)",
+                description="Raw WFS image stream, indexed [y, x].",
             ),
             StreamDescriptor(
                 "wfs",
                 "output",
                 dtype="int32",
-                shape="(processed_width, processed_height)",
-                description="Dark-subtracted processed WFS image stream.",
+                shape="(processed_height, processed_width)",
+                description="Dark-subtracted processed WFS image stream, indexed [y, x].",
             ),
         ),
         supports_hard_rtc=True,
@@ -348,7 +367,10 @@ BUILTIN_COMPONENT_DESCRIPTORS: tuple[ComponentDescriptor, ...] = (
                 "flat_norm", "bool", "Whether to normalize the PYWFS flat.", default=True
             ),
             ConfigFieldDescriptor(
-                "pupils", "list[str]", "Pupil centers for PYWFS in 'x,y' form.", default=[]
+                "pupils",
+                "list[str]",
+                "PYWFS pupil centres as 'x,y' = 'column,row' of the WFS image.",
+                default=[],
             ),
             ConfigFieldDescriptor(
                 "pupils_radius",
@@ -417,6 +439,7 @@ BUILTIN_COMPONENT_DESCRIPTORS: tuple[ComponentDescriptor, ...] = (
             ConfigFieldDescriptor(
                 "ref_slopes_file", "str", "Path to the reference slopes file.", default=""
             ),
+            _legacy_calibration_field(),
             ConfigFieldDescriptor(
                 "functions", "list[str]", "Worker methods started in component threads.", default=[]
             ),
@@ -443,7 +466,7 @@ BUILTIN_COMPONENT_DESCRIPTORS: tuple[ComponentDescriptor, ...] = (
                 "wfs",
                 "input",
                 dtype="int32",
-                shape="(processed_width, processed_height)",
+                shape="(processed_height, processed_width)",
                 description="Processed wavefront-sensor image stream.",
             ),
         ),
@@ -465,6 +488,175 @@ BUILTIN_COMPONENT_DESCRIPTORS: tuple[ComponentDescriptor, ...] = (
         ),
         supports_hard_rtc=True,
         calibration_artifacts=("valid_sub_aps_file", "ref_slopes_file", "reference_image_file"),
+    ),
+    ComponentDescriptor(
+        section_name="image_reconstructor",
+        category="slopes_process",
+        component_class=TorchImageReconstructor,
+        description=(
+            "Publishes a PyTorch model's output on each WFS image as the loop's signal "
+            "(neural or focal-plane reconstructor). Goes in the slopes section."
+        ),
+        required_fields=(
+            ConfigFieldDescriptor(
+                "signal_size",
+                "int",
+                "Number of model outputs (the signal length); checked against the model.",
+                required=True,
+                minimum=1,
+            ),
+        ),
+        optional_fields=(
+            ConfigFieldDescriptor(
+                "model_file", "str", "TorchScript model file (torch.jit.save).", default=""
+            ),
+            ConfigFieldDescriptor(
+                "model_factory",
+                "str",
+                "'module:function' returning an nn.Module (a function name with "
+                "model_factory_file).",
+                default="",
+            ),
+            ConfigFieldDescriptor(
+                "model_factory_file",
+                "str",
+                "Python file defining model_factory.",
+                default="",
+            ),
+            ConfigFieldDescriptor(
+                "model_kwargs",
+                "dict | None",
+                "Keyword arguments for model_factory.",
+                default=None,
+            ),
+            ConfigFieldDescriptor(
+                "state_dict_file",
+                "str",
+                "State dict loaded strictly into the model.",
+                default="",
+            ),
+            ConfigFieldDescriptor(
+                "device", "str", "Model device: cpu, cuda or cuda:N.", default="cpu"
+            ),
+            ConfigFieldDescriptor(
+                "dtype",
+                "str",
+                "Model precision (float16 needs CUDA); outputs are float32.",
+                default="float32",
+                choices=("float32", "float16"),
+                case_sensitive=False,
+            ),
+            ConfigFieldDescriptor(
+                "input_shape",
+                "list[int] | None",
+                "Shape the model takes; default [1, 1, *image_shape].",
+                default=None,
+            ),
+            ConfigFieldDescriptor(
+                "flux_normalization",
+                "str",
+                "Divide the image by its total ('sum') or mean pixel ('mean') flux.",
+                default="none",
+                choices=("none", "sum", "mean"),
+                case_sensitive=False,
+            ),
+            ConfigFieldDescriptor(
+                "sqrt_stretch",
+                "bool",
+                "Square-root stretch after normalisation (negative pixels clipped to 0).",
+                default=False,
+            ),
+            ConfigFieldDescriptor(
+                "output_scale_file",
+                "str",
+                ".npy file of signal_size factors multiplied into the output.",
+                default="",
+            ),
+            ConfigFieldDescriptor(
+                "signal_2d_shape",
+                "list[int] | None",
+                "Shape of an optional signal_2d display stream (signal_size elements).",
+                default=None,
+            ),
+            ConfigFieldDescriptor(
+                "cuda_graph",
+                "bool",
+                "Capture the model in a CUDA graph on CUDA devices (eager fallback).",
+                default=True,
+            ),
+            ConfigFieldDescriptor(
+                "warmup_iters",
+                "int",
+                "Forward passes run before CUDA-graph capture.",
+                default=10,
+                minimum=0,
+            ),
+            ConfigFieldDescriptor(
+                "cpu_threads",
+                "int | None",
+                "torch.set_num_threads for CPU models (process-wide).",
+                default=None,
+                minimum=1,
+            ),
+            ConfigFieldDescriptor(
+                "timing_window",
+                "int",
+                "Recent per-frame compute times kept for timing_stats().",
+                default=1000,
+                minimum=1,
+            ),
+            ConfigFieldDescriptor(
+                "functions", "list[str]", "Worker methods started in component threads.", default=[]
+            ),
+            ConfigFieldDescriptor(
+                "affinity",
+                "int | None",
+                "Base CPU core; worker threads are pinned to consecutive cores when set.",
+                default=None,
+            ),
+            ConfigFieldDescriptor(
+                "realtime_priority",
+                "int",
+                "SCHED_FIFO priority for worker threads (Linux; 0 keeps normal scheduling).",
+                default=0,
+                minimum=0,
+            ),
+            ConfigFieldDescriptor(
+                "gpu_device",
+                "str | None",
+                "Attach the wfs input on the GPU and create GPU-backed outputs.",
+                default=None,
+            ),
+        ),
+        worker_functions=("compute_signal",),
+        input_streams=(
+            StreamDescriptor(
+                "wfs",
+                "input",
+                shape="(processed_height, processed_width)",
+                description="Processed wavefront-sensor image stream.",
+            ),
+        ),
+        output_streams=(
+            StreamDescriptor(
+                "signal",
+                "output",
+                dtype="float32",
+                shape="(signal_size,)",
+                description="Model output, one value per signal element.",
+            ),
+            StreamDescriptor(
+                "signal_2d",
+                "output",
+                dtype="float32",
+                shape="signal_2d_shape",
+                optional=True,
+                description="The output reshaped for display (only with signal_2d_shape).",
+            ),
+        ),
+        supports_hard_rtc=True,
+        external_dependencies=("torch",),
+        calibration_artifacts=("model_file", "state_dict_file", "output_scale_file"),
     ),
     ComponentDescriptor(
         section_name="loop",
@@ -584,6 +776,7 @@ BUILTIN_COMPONENT_DESCRIPTORS: tuple[ComponentDescriptor, ...] = (
             ConfigFieldDescriptor(
                 "im_file", "str", "Path to the interaction-matrix file.", default=""
             ),
+            _legacy_calibration_field(),
             ConfigFieldDescriptor("p_gain", "float", "PID proportional gain.", default=0.1),
             ConfigFieldDescriptor("i_gain", "float", "PID integral gain.", default=0.0),
             ConfigFieldDescriptor("d_gain", "float", "PID derivative gain.", default=0.0),
@@ -818,6 +1011,7 @@ BUILTIN_COMPONENT_DESCRIPTORS: tuple[ComponentDescriptor, ...] = (
                 "dark_file", "str", "Path to a persisted dark frame.", default=""
             ),
             ConfigFieldDescriptor("model_file", "str", "Path to a model PSF file.", default=""),
+            _legacy_calibration_field(),
             ConfigFieldDescriptor(
                 "functions", "list[str]", "Worker methods started in component threads.", default=[]
             ),
@@ -845,15 +1039,15 @@ BUILTIN_COMPONENT_DESCRIPTORS: tuple[ComponentDescriptor, ...] = (
                 "psf_short",
                 "output",
                 dtype="int32",
-                shape="(width, height)",
-                description="Short-exposure PSF image stream.",
+                shape="(height, width)",
+                description="Short-exposure PSF image stream, indexed [y, x].",
             ),
             StreamDescriptor(
                 "psf_long",
                 "output",
                 dtype="float64",
-                shape="(width, height)",
-                description="Long-exposure PSF image stream.",
+                shape="(height, width)",
+                description="Long-exposure PSF image stream, indexed [y, x].",
             ),
             StreamDescriptor(
                 "strehl",

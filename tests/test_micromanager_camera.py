@@ -6,7 +6,13 @@ import types
 import numpy as np
 import pytest
 
-from testsupport import private_stream
+from testsupport import (
+    ORIENTATION_FRAME_SHAPE,
+    ORIENTATION_HOT_PIXEL,
+    assert_wfs_follows_camera_axes,
+    hot_pixel_frame,
+    private_stream,
+)
 
 
 class _Core:
@@ -117,8 +123,8 @@ def test_wfs_loads_config_applies_settings_and_streams_the_newest_frame(mm):
         new = np.arange(12, dtype=np.uint16).reshape(3, 4)
         core.queue = [old, new]
         wfs.expose()
-        np.testing.assert_array_equal(wfs.data, new.T)  # newest frame, as (width, height)
-        np.testing.assert_array_equal(wfs._stream_object("wfs_raw").read(), new.T)
+        np.testing.assert_array_equal(wfs.data, new)  # newest frame, as (height, width)
+        np.testing.assert_array_equal(wfs._stream_object("wfs_raw").read(), new)
         assert core.queue == []
 
         with pytest.raises(TimeoutError, match="no frame"):
@@ -150,7 +156,42 @@ def test_science_camera_and_default_camera(mm):
         assert camera.camera_label == "Camera"
         core.queue = [np.ones((3, 4), dtype=np.uint16)]
         camera.expose()
-        assert camera.data.shape == (4, 3)
+        assert camera.data.shape == (3, 4)
+    finally:
+        camera.close()
+
+
+def test_wfs_frames_follow_camera_axes(mm):
+    """#162: a camera frame lands at [y, x], and a spot moved along +x gives +sx."""
+
+    height, width = ORIENTATION_FRAME_SHAPE
+    wfs = mm.MicroManagerWFS(_conf(width=width, height=height))
+    core = _Core.instances[-1]
+    try:
+        assert_wfs_follows_camera_axes(wfs, lambda frame: core.queue.append(frame))
+    finally:
+        wfs.close()
+
+
+def test_science_camera_frames_follow_camera_axes(mm):
+    height, width = ORIENTATION_FRAME_SHAPE
+    camera = mm.MicroManagerScienceCamera(
+        {
+            "name": "psf",
+            "width": width,
+            "height": height,
+            "dark_count": 1,
+            "integration": 1,
+            "functions": [],
+            "mm_config": "/lab/rig.cfg",
+        }
+    )
+    try:
+        _Core.instances[-1].queue.append(hot_pixel_frame())
+        camera.expose()
+        short = np.asarray(camera._stream_object("psf_short").read())
+        assert short.shape == ORIENTATION_FRAME_SHAPE
+        assert np.unravel_index(np.argmax(short), short.shape) == ORIENTATION_HOT_PIXEL
     finally:
         camera.close()
 

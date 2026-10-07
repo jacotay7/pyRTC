@@ -13,6 +13,7 @@ import time
 
 import numpy as np
 
+from pyrtc.calibration import read_calibration_array, save_calibration
 from pyrtc.logging_utils import get_logger
 from pyrtc.optimizer import Optimizer
 from pyrtc.rpc import Listener
@@ -102,7 +103,7 @@ class NCPAOptimizer(Optimizer):
                 ref_slopes_adjust = np.zeros_like(self.orig_ref_slopes)
                 ref_slopes_adjust[self.valid_sub_aps] = self.im @ modal_coefs
                 ref_slopes = self.orig_ref_slopes + ref_slopes_adjust
-                np.save(self.new_ref_slopes_file, ref_slopes)
+                save_calibration(self.new_ref_slopes_file, ref_slopes, "ref_slopes")
                 self.slopes.set_property("ref_slopes_file", self.new_ref_slopes_file)
                 self.slopes.run("load_ref_slopes")
                 self.slopes.set_property("ref_slopes_file", self.ref_slopes_file)
@@ -127,10 +128,10 @@ class NCPAOptimizer(Optimizer):
                 ref_slopes_adjust[self.valid_sub_aps] = self.im @ modal_coefs
                 ref_slopes = self.orig_ref_slopes + ref_slopes_adjust
                 if overwrite:
-                    np.save(self.ref_slopes_file, ref_slopes)
+                    save_calibration(self.ref_slopes_file, ref_slopes, "ref_slopes")
                     self.slopes.set_property("ref_slopes_file", self.ref_slopes_file)
                 else:
-                    np.save(self.new_ref_slopes_file, ref_slopes)
+                    save_calibration(self.new_ref_slopes_file, ref_slopes, "ref_slopes")
                     self.slopes.set_property("ref_slopes_file", self.new_ref_slopes_file)
 
                 self.slopes.run("load_ref_slopes")
@@ -152,10 +153,16 @@ class NCPAOptimizer(Optimizer):
             self.ref_slopes_file = self.slopes.get_property("ref_slopes_file")
             self.is_cl = self.loop.get_property("running")
             if self.is_cl:
-                self.valid_sub_aps = np.load(self.slopes.get_property("valid_sub_aps_file"))
-                self.im = np.load(self.loop.get_property("im_file"))
+                # Raw reads of the components' files: these must be pyrtc
+                # 2.0 calibrations (a 1.x file is refused, not converted).
+                self.valid_sub_aps = read_calibration_array(
+                    self.slopes.get_property("valid_sub_aps_file"), "valid_sub_aps"
+                )
+                self.im = read_calibration_array(
+                    self.loop.get_property("im_file"), "interaction_matrix"
+                )
 
-                self.orig_ref_slopes = np.load(self.ref_slopes_file)
+                self.orig_ref_slopes = read_calibration_array(self.ref_slopes_file, "ref_slopes")
                 self.new_ref_slopes_file = get_tmp_filepath(self.ref_slopes_file)
 
             self.logger.info("Starting NCPA optimization closed_loop=%s", self.is_cl)

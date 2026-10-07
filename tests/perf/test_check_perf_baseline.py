@@ -118,6 +118,26 @@ def test_find_ratio_regressions_flags_slow_latency_and_low_throughput():
     assert set(regressions) == {"a.mean_s", "a.p99_hz"}
 
 
+def test_find_ratio_regressions_can_ignore_tail_metrics():
+    from benchmarks.check_perf_baseline import find_ratio_regressions
+
+    comparison = {
+        "a.mean_s": {"current": 2.0, "baseline": 1.0, "ratio": 2.0},
+        "a.median_s": {"current": 1.0, "baseline": 1.0, "ratio": 1.0},
+        "a.p95_s": {"current": 10.0, "baseline": 1.0, "ratio": 10.0},
+        "a.p99_s": {"current": 10.0, "baseline": 1.0, "ratio": 10.0},
+        "a.p99_hz": {"current": 100.0, "baseline": 1000.0, "ratio": 0.1},
+    }
+
+    assert set(find_ratio_regressions(comparison, max_ratio=1.5)) == {
+        "a.mean_s",
+        "a.p95_s",
+        "a.p99_s",
+        "a.p99_hz",
+    }
+    assert set(find_ratio_regressions(comparison, max_ratio=1.5, ignore_tail=True)) == {"a.mean_s"}
+
+
 def test_find_ratio_regressions_rejects_invalid_threshold():
     import pytest
 

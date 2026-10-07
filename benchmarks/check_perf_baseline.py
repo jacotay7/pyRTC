@@ -38,6 +38,15 @@ def _build_parser() -> argparse.ArgumentParser:
             "presence-only check."
         ),
     )
+    parser.add_argument(
+        "--ignore-tail",
+        action="store_true",
+        help=(
+            "Exclude tail metrics (p95_s/p99_s/p99_hz) from the --max-ratio "
+            "gate; they are still reported. Tail latency of microsecond "
+            "kernels on shared CI runners is dominated by scheduler noise."
+        ),
+    )
     add_logging_cli_args(parser)
     return parser
 
@@ -161,12 +170,16 @@ def compare_against_baseline(current: Dict, baseline: Dict):
     return missing, comparison
 
 
-def find_ratio_regressions(comparison: Dict, max_ratio: float):
+TAIL_METRICS = ("p95_s", "p99_s", "p99_hz")
+
+
+def find_ratio_regressions(comparison: Dict, max_ratio: float, ignore_tail: bool = False):
     """Return comparison entries that regress beyond ``max_ratio``.
 
     Latency metrics (``*_s``, lower is better) regress when
     ``current / baseline > max_ratio``; throughput metrics (``*_hz``, higher
-    is better) regress when ``current / baseline < 1 / max_ratio``.
+    is better) regress when ``current / baseline < 1 / max_ratio``. With
+    ``ignore_tail``, the tail metrics in ``TAIL_METRICS`` are not gated.
     """
 
     if max_ratio <= 1.0:
@@ -176,6 +189,8 @@ def find_ratio_regressions(comparison: Dict, max_ratio: float):
     for key, entry in comparison.items():
         ratio = entry.get("ratio")
         if ratio is None:
+            continue
+        if ignore_tail and key.rsplit(".", 1)[-1] in TAIL_METRICS:
             continue
         if key.endswith("_hz"):
             if ratio < 1.0 / max_ratio:
@@ -217,7 +232,7 @@ def main(argv=None) -> int:
         raise SystemExit("Missing baseline metrics for comparison:\n" + "\n".join(sorted(missing)))
 
     if args.max_ratio is not None:
-        regressions = find_ratio_regressions(comparison, args.max_ratio)
+        regressions = find_ratio_regressions(comparison, args.max_ratio, args.ignore_tail)
         if regressions:
             lines = [
                 f"{key}: current={entry['current']:.6g} baseline={entry['baseline']:.6g} ratio={entry['ratio']:.3f}"

@@ -30,15 +30,27 @@ aliases.
 ## Code layout
 
 - `pyrtc/component.py` — `Component`, the base class for every runtime
-  component: config parsing, worker threads (one per entry in `functions`),
-  the stream helpers `read_stream` / `write_stream`, and the lifecycle
-  (`start`/`stop` pause and resume; `close` ends the workers and closes the
-  registered streams for good).
+  component: config parsing, worker threads (one per entry in `functions`,
+  started by the first `start()`, so a constructor that raises leaves none
+  behind), the stream helpers `read_stream` / `write_stream`, and the
+  lifecycle (`start`/`stop` pause and resume; `close` ends the workers and
+  closes the registered streams for good).
 - Core components: `wavefront_sensor.py`, `slopes_process.py`, `loop.py`,
   `wavefront_corrector.py`, `science_camera.py`, `telemetry.py`,
   `modulator.py`, `optimizer.py`. Hot loops are `@jit(..., cache=True)`
   Numba kernels; the first call after a source change recompiles (about 1 s
   each), so warm them before timing anything.
+- Components warm their worker kernels at the end of `__init__` with
+  `warmup()` (a no-op hook on `Component`; overridden by `SlopesProcess`,
+  `Loop`, `WavefrontCorrector`). A numba kernel's first call in a process
+  costs 0.15 s with a warm cache and up to 0.75 s cold, which stalled the
+  first frame after `start()` (#157). When you add a kernel to a worker
+  path, call it from that component's `warmup()` with arguments of exactly
+  the real call's dtype, ndim, layout and writability. Otherwise numba
+  compiles a second specialisation on the first frame anyway.
+  `tests/test_warmup.py` records the argument types of both calls and
+  compares them. A warm-up must not write a stream or change state that a
+  worker reads.
 - `pyrtc/streams.py` — pyrtc's policy on top of pyshmem: `create_stream`,
   `open_stream`, `clear_shms`, and planning of the output streams a config
   implies (`expected_output_shm_specs_for_config`).
@@ -56,6 +68,19 @@ aliases.
   worked around here. Since aobasis 1.1, Zernikes carry the Noll factor, and
   pyrtc orthonormalizes Zernike and Fourier bases by default, so a test that
   expects raw values must set `orthonormalize: false`.
+- AO stack conventions: [aocore](https://github.com/jacotay7/aocore)'s
+  `CONVENTIONS.md` is the contract shared with the sibling packages (axes,
+  units, Zernikes, slope layouts; pyrtc's slope vectors are *blocked*,
+  `[sx..., sy...]`). `tests/test_conformance.py` runs its `aocore.conformance`
+  checks against pyrtc; aocore is a test requirement only, since no runtime
+  code imports it. Track a known deviation as a strict xfail that links its
+  issue, and drop the xfail with the fix (as #162 and #163 were in 2.0).
+  Image streams are `(height, width)`, indexed `[y, x]` (x = columns), slope
+  x/y follow columns/rows, and SHWFS sub-aperture pixel `k` sits at
+  `k - (n - 1) / 2`. Some look-alikes of aocore/aobasis helpers stay local
+  on purpose, and each says why next to the code
+  (`utils.generate_circular_aperture_mask`, `utils.centroid`,
+  `utils.gaussian_2d_grid`, `Loop.hadamard_patterns`).
 - Dependencies: keep `[project] dependencies` to what the soft-RTC core
   needs. Anything else goes in an extra and is imported lazily through
   `pyrtc.utils.require_optional(module, extra, feature)`, which names the
@@ -71,6 +96,24 @@ aliases.
   (woofer/tweeter, offload); it sits in the `wfc` section.
   `pyrtc/isio_bridge.py` — mirrors a stream to or from ImageStreamIO
   (milk/CACAO).
+- `pyrtc/image_reconstructor.py` — `TorchImageReconstructor`, a PyTorch model
+  from WFS image to signal; it sits in the `slopes` section. The stream-free
+  `TorchModelRunner` holds the real-time path (pinned buffers, own CUDA
+  stream, CUDA graph with eager fallback), so it is tested and benchmarked
+  (`benchmarks/image_reconstructor_bench.py`) without streams. A `slopes`
+  section without `type` but with `signal_size` is how stream planning
+  (`expected_output_shm_specs_for_config`) and the AOTPy export recognise
+  such a generic signal producer.
+- `pyrtc/calibration.py` — versioned calibration files. Frame-dependent
+  calibrations (WFS/PSF darks, model PSF, SHWFS reference image, valid
+  sub-aperture masks, reference slopes, interaction matrices) are saved with
+  `save_calibration` and loaded through `load_component_calibration`, which
+  converts pyrtc 1.x files per the section's `legacy_calibration`
+  (`yx`/`xy`/`as_is`) or refuses them. `pyrtc-migrate-calibration`
+  (`pyrtc/scripts/migrate_calibration.py`) converts files offline. A new
+  frame-dependent calibration file must go through this module too, and a
+  change to image or slope conventions needs a new `CALIBRATION_FORMAT` and
+  conversion. Corrector files (flat, M2C, layouts) stay plain `.npy`.
 - `pyrtc/latency.py` — stream latency measurement. `pyrtc/exporters/` — AOTPy
   export of telemetry sessions.
 - `pyrtc/hardware/` — reference adapters:
@@ -82,8 +125,10 @@ aliases.
   Vendor SDKs are optional and may be missing. New adapters import them
   inside `__init__` (`require_optional`), not at module load, so the module
   imports and documents without the SDK. Camera frames come as
-  `(Height, Width)` and pyrtc streams are `(width, height)`, so transpose
-  (#130).
+  `(Height, Width)`, the shape of pyrtc's image streams, so publish them
+  without transposing (#162). Test a new camera adapter's orientation with
+  `testsupport.assert_wfs_follows_camera_axes` (a hot pixel and a spot shift
+  through its fake SDK).
 - `pyrtc/gui/`, `pyrtc/scripts/` — manager GUI, viewer, and CLI entry points
   (declared in `pyproject.toml` under `[project.scripts]`). The GUI and viewer
   use Qt6 through `qtpy` (PySide6 by default, PyQt6 also works), selected by
@@ -119,7 +164,7 @@ and docs. pyrtc must not reimplement transport features that pyshmem provides.
   component and closed by `Component.close()`.
 - Close what you build: `RTCManager.close()` (or `with RTCManager... as m`)
   and `Component.close()`. `stop()` only pauses; worker threads hold their
-  component, so garbage collection never ends them.
+  component, so garbage collection never ends a started component.
 - Observers (viewers, telemetry, latency, monitors) open streams with
   `open_stream(name, readonly=True)`.
 - Do not use `read_new()` in request/response or lock-step code. It is
@@ -189,9 +234,17 @@ ruff check . && ruff format --check .    # lint, as in CI
   notify on/off; `benchmarks/stream_handoff_bench.py` measures one stream
   handoff. Both use private stream-name prefixes, so they are safe to run
   next to other systems. They are not part of the CI perf gate.
+  `benchmarks/first_iteration_bench.py` times each worker method's first
+  call after construction against its steady state. It runs every case in
+  a fresh interpreter with a cold and then a warm `NUMBA_CACHE_DIR`. Tests
+  of first-call latency must use a fresh interpreter in the same way
+  (`run_case_in_subprocess`): inside pytest, earlier tests have already
+  compiled the kernels, so the test would pass whatever the code does.
 - Perf gate, as in CI:
   `python benchmarks/perf_smoke.py --output perf.json` then
-  `python benchmarks/check_perf_baseline.py --current perf.json --baseline benchmarks/perf_smoke_baseline.json --max-ratio 5.0`.
+  `python benchmarks/check_perf_baseline.py --current perf.json --baseline benchmarks/perf_smoke_baseline.json --max-ratio 5.0 --ignore-tail`.
+  CI does not gate on p95/p99: tail latency of microsecond kernels on shared
+  runners is scheduler noise (a 5 us kernel's p99 once came in at 11.8x).
 - Trends across CI runs: `python -m benchmarks.perf_history --repo <owner/repo>`
   (reads the uploaded perf artifacts; needs `GH_TOKEN`). CI runs only on pull
   requests into `dev`/`main` and pushes to `main`, so the history is PR runs.
@@ -224,6 +277,12 @@ ruff check . && ruff format --check .    # lint, as in CI
   `COMPONENT_DESCRIPTOR`) in their class body. When an adapter starts reading
   a new config key, add it to `EXTRA_CONFIG_KEYS` (or to the descriptor for a
   built-in), or configs using it will warn.
+- A component's first blocking `read_stream` returns the current payload at
+  once. A test that pre-writes a frame, calls `start()`, writes another
+  frame and then waits for "any new output" can see the first frame
+  mirrored. Wait for the expected payload instead. `test_isio_bridge`
+  failed this way once worker threads started inside `start()` (#155),
+  since they no longer idle for up to 1 ms first.
 - Build components for method-level tests with `testsupport.bare_component`,
   not `Cls.__new__(Cls)`: the stream helpers assume the state that
   `Component._init_runtime_state` sets up (there is no lazy-init guard).
@@ -250,14 +309,23 @@ ruff check . && ruff format --check .    # lint, as in CI
   IM is noise and the loop diverges, which looks like a wiring bug (it cost a
   debugging session). The system tests use 400.
 - A section's built-in checks (descriptor fields, `validate_wfc_config`,
-  default stream roles, worker functions) apply only when its class belongs to
-  that section's component family (`config_schema._section_descriptor`).
-  Otherwise the class's own descriptor is used, which is how a
-  `CorrectorSplitter` can sit in the `wfc` section.
+  `_validate_slopes_config`, default stream roles, worker functions) apply
+  only when its class belongs to that section's component family
+  (`config_schema._section_descriptor`). Otherwise the class's own descriptor
+  is used, which is how a `CorrectorSplitter` can sit in the `wfc` section
+  and a `TorchImageReconstructor` in the `slopes` section. Code that reads a
+  section's family-specific keys (`slopes.type`) must use `.get`.
+- torch 2.11 deprecates TorchScript (`torch.jit.script/save/load` warn).
+  `TorchImageReconstructor` also loads `torch.export` `.pt2` files; exported
+  modules raise `NotImplementedError` on `.eval()`. `nn.Module.to()` moves a
+  model in place, so a runner built on a caller's module moves that module
+  to its device and dtype.
 - The loop's IM method key is `im_method`; `method:` is ignored (it only
   produces an unknown-key warning).
-  Calibrate only once the pipeline is live (worker kernels JIT-compile on
-  first use, so the first DM command can take about a second to land).
+  Calibrate only once the pipeline is live. A simulator or camera may still
+  be starting, and the DM round trip can be several frames, so
+  `compute_im()` runs `check_round_trip()` first. Kernel compilation is no
+  longer a cause: components warm their kernels when built (#157).
 - Windows frees named shared memory when the last handle closes, so streams do
   not outlive their producer there. Treat Windows as soft-RTC only.
 - OOPAO (not on PyPI) has two packaging bugs. Its `__init__` looks for a
@@ -308,7 +376,24 @@ ruff check . && ruff format --check .    # lint, as in CI
   where numpy is already imported, uses `threadpoolctl.threadpool_limits`.
   The Loop's control multiply (`np.dot` inside numba goes to scipy's
   OpenBLAS) does use them for large matrices, so do not cap them blindly on a
-  real RTC.
+  real RTC. Keep each per-frame path on one BLAS: alternating numpy products
+  and numba products makes the two spinning pools fight over the cores.
+  `pid_integrator_pol` did that and took 12 ms instead of 0.2 ms per frame
+  in a 16-core cpuset, until its POL product moved into numba
+  (`pseudo_open_loop_slopes`, #158). numba's `np.dot` also needs both
+  operands in one dtype, so cast matrices to the CM's dtype when building
+  them (`Loop.f_im`).
+- Calibration files written by pyrtc are `.npz` archives under whatever name
+  the config gives (often `*.npy`), so `np.load` returns an `NpzFile`.
+  A test or example that writes a calibration with `np.save` (an identity IM,
+  a mask, a dark) gets refused as a pyrtc 1.x file; write it with
+  `pyrtc.calibration.save_calibration`. `Loop.load_im` also checks the
+  matrix shape against `(signal_size, num_modes)`.
+- What a pyrtc 1.x calibration (or PYWFS `pupils` string) means depends on
+  the 1.x adapter: GenICam and Micro-Manager transposed frames into
+  `(width, height)` streams, while XIMEA, Spinnaker and the simulators wrote
+  `[y, x]` arrays into them unchanged (square ROIs only). That is why
+  `legacy_calibration` must be set by the user and is never guessed.
 - numba's `workqueue` threading layer crashes the process when two threads
   call `parallel=True` kernels at once; `omp` and `tbb` are safe. Only the WFS
   thread runs one today (`rotate_image_jit`). A parallel kernel on a second
