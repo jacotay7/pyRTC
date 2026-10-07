@@ -105,6 +105,109 @@ def compute_slopes_pywfs_torch(
     return torch.where(dark, torch.zeros_like(normalized), normalized)
 
 
+class _PywfsCudaGraph:
+    """:func:`compute_slopes_pywfs_torch` captured as one CUDA graph.
+
+    Eagerly, the torch PYWFS path issues about 15 small kernel launches per
+    frame, and their host-side cost (20-30 us each on an Arm host) dwarfed
+    the GPU work (#64 removed the uploads, not the launches). Replaying one
+    graph runs the same kernels, so the slopes are bit-identical; capture
+    checks that on a random frame and raises otherwise, so the caller can
+    fall back to the eager path.
+
+    The graph owns its input, scratch and reference buffers and is tied to
+    the pupil indices, the image shape and dtype, and the device. New
+    reference slopes are copied into its reference buffer (no recapture).
+    Work runs on a private CUDA stream; :meth:`run` makes the caller's
+    current stream wait for it, so results can be used (``.cpu()``, stream
+    writes) as usual. The returned tensor is the graph's static output and is
+    overwritten by the next :meth:`run`.
+    """
+
+    WARMUP_ITERS = 3
+
+    def __init__(self, torch, device, image_shape, image_dtype, indices, num_pixels_in_pupils):
+        self._torch = torch
+        self.device = torch.device(device)
+        self._indices = indices
+        self._num_pixels = int(num_pixels_in_pupils)
+        self._stream = torch.cuda.Stream(device=self.device)
+        self._static_in = torch.zeros(image_shape, dtype=image_dtype, device=self.device)
+        self._host_in = None
+        self._host_copied = None
+        self._slopes = torch.zeros(2 * self._num_pixels, dtype=torch.float32, device=self.device)
+        self._ref = torch.zeros_like(self._slopes)
+        self._ref_source = None
+
+        def forward():
+            return compute_slopes_pywfs_torch(
+                self._static_in.reshape(-1),
+                *self._indices,
+                self._num_pixels,
+                self._slopes,
+                self._ref,
+            )
+
+        with torch.cuda.device(self.device):
+            # Warm up on the side stream, as torch.cuda.graphs requires.
+            self._stream.wait_stream(torch.cuda.current_stream(self.device))
+            with torch.cuda.stream(self._stream):
+                for _ in range(self.WARMUP_ITERS):
+                    forward()
+            self._stream.synchronize()
+            graph = torch.cuda.CUDAGraph()
+            # thread_local: other threads (soft-RTC components) may use CUDA
+            # while this one captures.
+            with torch.cuda.graph(graph, stream=self._stream, capture_error_mode="thread_local"):
+                self._out = forward()
+            # The graph freezes host-side control flow; check that it
+            # reproduces the eager result exactly before trusting it.
+            probe = (torch.rand(image_shape, device=self.device) * 1000.0).to(image_dtype)
+            self._ref.copy_(torch.rand_like(self._ref))
+            with torch.cuda.stream(self._stream):
+                self._static_in.copy_(probe)
+                graph.replay()
+                replayed = self._out.clone()
+                eager = forward()
+            self._stream.synchronize()
+            self._ref.zero_()
+        if not torch.equal(replayed, eager):
+            raise RuntimeError("the captured PYWFS graph does not reproduce the eager slopes")
+        self._graph = graph
+
+    def run(self, image, ref_slopes):
+        """Queue the slopes of ``image`` (NumPy array or tensor); return the output tensor."""
+
+        torch = self._torch
+        current = torch.cuda.current_stream(self.device)
+        with torch.cuda.device(self.device), torch.cuda.stream(self._stream):
+            # Readers of the previous output (stream writes) go first.
+            self._stream.wait_stream(current)
+            if ref_slopes is not self._ref_source:
+                self._ref.copy_(ref_slopes)
+                self._ref_source = ref_slopes
+            if isinstance(image, torch.Tensor):
+                if image.is_cuda:
+                    self._stream.wait_stream(torch.cuda.current_stream(image.device))
+                self._static_in.copy_(image.reshape(self._static_in.shape), non_blocking=True)
+            else:
+                if self._host_in is None:
+                    self._host_in = torch.empty(
+                        self._static_in.shape, dtype=self._static_in.dtype, pin_memory=True
+                    )
+                elif self._host_copied is not None:
+                    # The previous upload must be done before its pinned
+                    # source is overwritten (normally it is: the caller
+                    # synchronised on the previous result).
+                    self._host_copied.synchronize()
+                np.copyto(self._host_in.numpy(), np.asarray(image).reshape(self._static_in.shape))
+                self._static_in.copy_(self._host_in, non_blocking=True)
+                self._host_copied = self._stream.record_event()
+            self._graph.replay()
+        current.wait_stream(self._stream)
+        return self._out
+
+
 """
 Optimized for best performance with numpy only
 All memory is preallocated.
@@ -157,6 +260,53 @@ Performed better compared to a numpy only implementation
 
 
 @jit(nopython=True, nogil=True, cache=True, fastmath=True)
+def _pywfs_slopes_from_pupils(
+    p1: np.ndarray,
+    p2: np.ndarray,
+    p3: np.ndarray,
+    p4: np.ndarray,
+    tmp1: np.ndarray,
+    tmp2: np.ndarray,
+    num_pixels_in_pupils: int,
+    pupil_count: int,
+    slopes: np.ndarray,
+    ref_slopes: np.ndarray,
+):
+    """Fill ``slopes`` from the four extracted pupil images (shared PYWFS tail).
+
+    ``pupil_count`` is the number of pixels extracted into ``p1``; the flux
+    normalization divides by it.
+    """
+
+    # Sum Pupils, Saving partial sums to avoid recomputing later
+    total_sum = 0.0
+    for i in range(num_pixels_in_pupils):  # Assuming all counts are equal
+        tmp1[i] = p1[i] + p2[i]
+        tmp2[i] = p3[i] + p4[i]
+        total_sum += tmp1[i] + tmp2[i]
+    if pupil_count == 0:
+        for i in range(2 * num_pixels_in_pupils):
+            slopes[i] = 0.0
+        return slopes
+
+    mean_value = total_sum / pupil_count
+    if np.abs(mean_value) <= PYWFS_NORMALIZATION_EPS:
+        for i in range(2 * num_pixels_in_pupils):
+            slopes[i] = 0.0
+        return slopes
+
+    for i in range(num_pixels_in_pupils):
+        # X slopes: pupils 1 + 2 against pupils 3 + 4
+        slopes[i] = (tmp1[i] - tmp2[i]) / mean_value - ref_slopes[i]
+        # Y slopes: pupils 1 + 3 against pupils 2 + 4
+        slopes[num_pixels_in_pupils + i] = (
+            (p1[i] + p3[i]) - (p2[i] + p4[i])
+        ) / mean_value - ref_slopes[num_pixels_in_pupils + i]
+
+    return slopes
+
+
+@jit(nopython=True, nogil=True, cache=True, fastmath=True)
 def compute_slopes_pywfs_optim_numba(
     image: np.ndarray,
     p1_mask: np.ndarray,
@@ -173,7 +323,12 @@ def compute_slopes_pywfs_optim_numba(
     slopes: np.ndarray,
     ref_slopes: np.ndarray,
 ):
-    """Compute pyramid-WFS slopes using a Numba-optimized CPU kernel."""
+    """Compute pyramid-WFS slopes using a Numba-optimized CPU kernel.
+
+    ``p*_mask`` are boolean masks over the flattened image.
+    :func:`compute_slopes_pywfs_indexed_numba` gives the same result from
+    pixel indices, about 3x faster; ``SlopesProcess`` uses that one.
+    """
 
     # Mask Pupils out of image and convert to floats
     p1_count, p2_count, p3_count, p4_count = 0, 0, 0, 0
@@ -191,32 +346,46 @@ def compute_slopes_pywfs_optim_numba(
             p4[p4_count] = np.float32(image[i])
             p4_count += 1
 
-    # Sum Pupils, Saving partial sums to avoid recomputing later
-    total_sum = 0.0
-    for i in range(num_pixels_in_pupils):  # Assuming all counts are equal
-        tmp1[i] = p1[i] + p2[i]
-        tmp2[i] = p3[i] + p4[i]
-        total_sum += tmp1[i] + tmp2[i]
-    if p1_count == 0:
-        for i in range(2 * num_pixels_in_pupils):
-            slopes[i] = 0.0
-        return slopes
+    return _pywfs_slopes_from_pupils(
+        p1, p2, p3, p4, tmp1, tmp2, num_pixels_in_pupils, p1_count, slopes, ref_slopes
+    )
 
-    mean_value = total_sum / p1_count
-    if np.abs(mean_value) <= PYWFS_NORMALIZATION_EPS:
-        for i in range(2 * num_pixels_in_pupils):
-            slopes[i] = 0.0
-        return slopes
 
-    for i in range(num_pixels_in_pupils):
-        # X slopes: pupils 1 + 2 against pupils 3 + 4
-        slopes[i] = (tmp1[i] - tmp2[i]) / mean_value - ref_slopes[i]
-        # Y slopes: pupils 1 + 3 against pupils 2 + 4
-        slopes[num_pixels_in_pupils + i] = (
-            (p1[i] + p3[i]) - (p2[i] + p4[i])
-        ) / mean_value - ref_slopes[num_pixels_in_pupils + i]
+@jit(nopython=True, nogil=True, cache=True, fastmath=True)
+def compute_slopes_pywfs_indexed_numba(
+    image: np.ndarray,
+    p1_indices: np.ndarray,
+    p2_indices: np.ndarray,
+    p3_indices: np.ndarray,
+    p4_indices: np.ndarray,
+    p1: np.ndarray,
+    p2: np.ndarray,
+    p3: np.ndarray,
+    p4: np.ndarray,
+    tmp1: np.ndarray,
+    tmp2: np.ndarray,
+    num_pixels_in_pupils: int,
+    slopes: np.ndarray,
+    ref_slopes: np.ndarray,
+):
+    """Compute pyramid-WFS slopes from the pupils' flat pixel indices.
 
-    return slopes
+    Same result as :func:`compute_slopes_pywfs_optim_numba` with
+    ``p*_indices = np.flatnonzero(p*_mask)``, but it visits only the pupil
+    pixels instead of testing four masks at every pixel of the frame (about
+    3x faster on a 240 x 240 frame). The four index arrays must have the
+    same length, ``num_pixels_in_pupils``; nothing is bounds-checked.
+    """
+
+    for k in range(p1_indices.size):
+        p1[k] = np.float32(image[p1_indices[k]])
+        p2[k] = np.float32(image[p2_indices[k]])
+        p3[k] = np.float32(image[p3_indices[k]])
+        p4[k] = np.float32(image[p4_indices[k]])
+
+    return _pywfs_slopes_from_pupils(
+        p1, p2, p3, p4, tmp1, tmp2, num_pixels_in_pupils, p1_indices.size, slopes, ref_slopes
+    )
 
 
 """
@@ -227,7 +396,18 @@ allowing for non-integer spacing.
 """
 
 
-@jit(nopython=True, nogil=True, cache=True)
+# Floating-point flags of the per-pixel SHWFS centroid kernels. "reassoc"
+# lets LLVM split each sub-aperture sum over SIMD lanes and "contract" fuses
+# multiply-adds; with a select in place of the threshold branch they halve
+# the CoG kernel's time (see the CHANGELOG). Only the order of the additions
+# changes: integer frames (the int32 ``wfs`` stream) give bit-identical
+# slopes, since their sums are exact, and float frames agree to float32
+# rounding. No "nnan"/"ninf": NaN pixels must still fail the threshold test.
+# numba wants a ``set`` here, so each kernel gets its own copy.
+_CENTROID_FASTMATH = ("reassoc", "contract")
+
+
+@jit(nopython=True, nogil=True, cache=True, fastmath=set(_CENTROID_FASTMATH))
 def compute_slopes_shwfs_optim_numba(
     image: np.ndarray,
     slopes: np.ndarray,
@@ -244,20 +424,28 @@ def compute_slopes_shwfs_optim_numba(
     The image is traversed lenslet by lenslet, thresholded locally, and reduced
     into x/y centroid offsets relative to the unaberrated reference slopes.
 
-    Pixels are converted to float32 as they are read, so the kernel allocates
-    nothing and ``slopes`` can be reused across frames. Every entry of
-    ``slopes`` is written: sub-apertures without flux above threshold, or
-    falling outside the image, are set to 0.
+    Pixels are converted to float32 as they are read, so the kernel only
+    allocates a transposed copy of ``xvals`` and ``slopes`` can be reused
+    across frames. Every entry of ``slopes`` is written: sub-apertures without
+    flux above threshold, or falling outside the image, are set to 0.
     """
 
     # Compute the number of sub-apertures
     num_regions = unaberrated_slopes.shape[1]
+    height, width = image.shape
+    zero = np.float32(0)
+
+    # Row m of xvals_t is column m of xvals, so the y weights of an image row
+    # are contiguous like the x weights and the row loop vectorizes.
+    xvals_t = np.empty((int_n, int_n), dtype=np.float32)
+    for m in range(int_n):
+        for n in range(int_n):
+            xvals_t[m, n] = xvals[n, m]
 
     # Loop over all regions
     for i in range(num_regions):
+        start_i = int(round(spacing * i)) + offset_y
         for j in range(num_regions):
-            # Compute where to start
-            start_i = int(round(spacing * i)) + offset_y
             start_j = int(round(spacing * j)) + offset_x
 
             # Sub-apertures without flux (or outside the image) read 0
@@ -265,26 +453,25 @@ def compute_slopes_shwfs_optim_numba(
             slopes[i + num_regions, j] = 0.0
 
             # Ensure we stay within the bounds of the image
-            if start_j + int_n > image.shape[1] or start_i + int_n > image.shape[0]:
+            if start_i < 0 or start_j < 0 or start_j + int_n > width or start_i + int_n > height:
                 continue
 
-            # A view of the lenslet's sub-image (no copy)
-            sub_im = image[start_i : start_i + int_n, start_j : start_j + int_n]
-
-            # loop through the sub image
-            norm = np.float32(0)
-            weight_x = np.float32(0)
-            weight_y = np.float32(0)
+            norm = zero
+            weight_x = zero
+            weight_y = zero
             for m in range(int_n):
+                row = image[start_i + m, start_j : start_j + int_n]
+                x_weights = xvals[m]
+                y_weights = xvals_t[m]
                 for n in range(int_n):
-                    value = np.float32(sub_im[m, n])
-                    # If we are counting the pixel
-                    if value > threshold:
-                        # Add it to the normalization
-                        norm += value
-                        # Compute the X and Y centroids (before normalization)
-                        weight_x += xvals[m, n] * value
-                        weight_y += xvals[n, m] * value
+                    value = np.float32(row[n])
+                    # Pixels at or below threshold add 0. A select instead of
+                    # a branch: background pixels sit near the threshold, so
+                    # a branch mispredicts often and blocks vectorization.
+                    value = value if value > threshold else zero
+                    norm += value
+                    weight_x += x_weights[n] * value
+                    weight_y += y_weights[n] * value
 
             # If we have flux in the sub aperture
             if norm > 0:
@@ -412,7 +599,7 @@ def build_shwfs_wcog_weights_numba(
     return weights_x, weights_y
 
 
-@jit(nopython=True, nogil=True, cache=True)
+@jit(nopython=True, nogil=True, cache=True, fastmath=set(_CENTROID_FASTMATH))
 def compute_slopes_shwfs_wcog_numba(
     image: np.ndarray,
     slopes: np.ndarray,
@@ -445,29 +632,34 @@ def compute_slopes_shwfs_wcog_numba(
     """
 
     num_regions = unaberrated_slopes.shape[1]
+    height, width = image.shape
+    zero = np.float32(0)
     for i in range(num_regions):
+        start_i = int(round(spacing * i)) + offset_y
         for j in range(num_regions):
-            start_i = int(round(spacing * i)) + offset_y
             start_j = int(round(spacing * j)) + offset_x
             slopes[i, j] = 0.0
             slopes[i + num_regions, j] = 0.0
-            if start_j + int_n > image.shape[1] or start_i + int_n > image.shape[0]:
+            if start_i < 0 or start_j < 0 or start_j + int_n > width or start_i + int_n > height:
                 continue
 
             cx = weight_centers[i, j]
             cy = weight_centers[i + num_regions, j]
+            x_weights = weights_x[i, j]
             norm = 0.0
             sum_x = 0.0
             sum_y = 0.0
             for m in range(int_n):
+                row = image[start_i + m, start_j : start_j + int_n]
                 row_norm = 0.0
                 row_x = 0.0
                 for n in range(int_n):
-                    value = np.float32(image[start_i + m, start_j + n])
-                    if value > threshold:
-                        weighted = value * weights_x[i, j, n]
-                        row_norm += weighted
-                        row_x += weighted * coords[n]
+                    value = np.float32(row[n])
+                    # Select, not branch (see compute_slopes_shwfs_optim_numba).
+                    value = value if value > threshold else zero
+                    weighted = value * x_weights[n]
+                    row_norm += weighted
+                    row_x += weighted * coords[n]
                 row_weight = weights_y[i, j, m]
                 norm += row_weight * row_norm
                 sum_x += row_weight * row_x
@@ -1123,7 +1315,10 @@ class SlopesProcess(Component):
         try:
             with self._signal_lock:
                 self.valid_sub_aps = valid_sub_aps.astype(bool)
-                self.cur_signal_2d = np.zeros(valid_sub_aps.shape)
+                # In the stream's dtype, so publishing it needs no conversion.
+                self.cur_signal_2d = np.zeros(
+                    valid_sub_aps.shape, dtype=getattr(self, "signal_dtype", np.float32)
+                )
             component_logger.info("Set valid sub-aperture mask shape=%s", valid_sub_aps.shape)
         except Exception:
             component_logger.exception("Failed to set valid sub-aperture mask")
@@ -1424,6 +1619,45 @@ class SlopesProcess(Component):
 
         return masks["indices"], masks["slopes"], ref["tensor"]
 
+    def _pywfs_cuda_graph(self, torch, image, indices):
+        """Return the CUDA graph of the PYWFS slopes for ``image``, or ``None``.
+
+        Built on first use (``warmup`` does that at construction) and rebuilt
+        when the pupil indices, the image shape or dtype, or the device
+        change. Non-CUDA devices, and images or devices the capture fails on,
+        get ``None`` and the eager path; a failed key is not retried.
+        """
+
+        device = torch.device(self.gpu_device)
+        if device.type != "cuda":
+            return None
+        if isinstance(image, torch.Tensor):
+            dtype = image.dtype
+        else:
+            try:
+                dtype = torch.from_numpy(np.empty(0, dtype=np.asarray(image).dtype)).dtype
+            except TypeError:
+                return None
+        key = (device, tuple(image.shape), dtype)
+        cached = self.__dict__.get("_pywfs_graph")
+        if (
+            cached is not None
+            and cached[0] == key
+            and all(a is b for a, b in zip(cached[1], indices))
+        ):
+            return cached[2]
+        graph = None
+        try:
+            graph = _PywfsCudaGraph(
+                torch, device, tuple(image.shape), dtype, indices, self.num_pixels_in_pupils
+            )
+        except Exception as exc:
+            getattr(self, "logger", logger).warning(
+                "PYWFS CUDA graph capture failed (%s); computing the slopes eagerly", exc
+            )
+        self._pywfs_graph = (key, indices, graph)
+        return graph
+
     def _compute_slopes_pywfs_gpu(self, image):
         """Run the torch PYWFS kernel on ``gpu_device`` and return a device tensor.
 
@@ -1434,9 +1668,12 @@ class SlopesProcess(Component):
 
         import torch
 
+        (p1, p2, p3, p4), slopes, ref_slopes = self._gpu_pywfs_tensors()
+        graph = self._pywfs_cuda_graph(torch, image, (p1, p2, p3, p4))
+        if graph is not None:
+            return graph.run(image, ref_slopes)
         if isinstance(image, np.ndarray):
             image = torch.as_tensor(image, device=self.gpu_device)
-        (p1, p2, p3, p4), slopes, ref_slopes = self._gpu_pywfs_tensors()
         return compute_slopes_pywfs_torch(
             image.reshape(-1),
             p1_mask=p1,
@@ -1796,21 +2033,22 @@ class SlopesProcess(Component):
             if self.gpu_device is not None and gpu_torch_available():
                 slope_signal = self._compute_slopes_pywfs_gpu(image)
             else:
-                slope_signal = compute_slopes_pywfs_optim_numba(
-                    image=image.ravel(),
-                    p1_mask=self.p1mask.ravel(),
-                    p2_mask=self.p2mask.ravel(),
-                    p3_mask=self.p3mask.ravel(),
-                    p4_mask=self.p4mask.ravel(),
-                    p1=self.p1,
-                    p2=self.p2,
-                    p3=self.p3,
-                    p4=self.p4,
-                    tmp1=self.tmp1,
-                    tmp2=self.tmp2,
-                    num_pixels_in_pupils=self.num_pixels_in_pupils,
-                    slopes=self.slopes_arr_1d,
-                    ref_slopes=self.ref_slopes_1d,
+                p1_indices, p2_indices, p3_indices, p4_indices = self._pywfs_pupil_indices()
+                slope_signal = compute_slopes_pywfs_indexed_numba(
+                    image.ravel(),
+                    p1_indices,
+                    p2_indices,
+                    p3_indices,
+                    p4_indices,
+                    self.p1,
+                    self.p2,
+                    self.p3,
+                    self.p4,
+                    self.tmp1,
+                    self.tmp2,
+                    self.num_pixels_in_pupils,
+                    self.slopes_arr_1d,
+                    self.ref_slopes_1d,
                 )
         elif self.wfs_type == "shwfs":
             slope_signal = self._gather_valid_slopes(self._compute_slopes_shwfs(image))
@@ -1823,6 +2061,21 @@ class SlopesProcess(Component):
             if getattr(self.signal, "gpu_device", None) is None:
                 slope_signal = signal_host
         return slope_signal, self.compute_signal_2d(signal_host)
+
+    def _pywfs_pupil_indices(self):
+        """Return the flat pixel indices of the four PYWFS pupils.
+
+        Cached on the identity of the ``p*mask`` arrays, which
+        ``compute_pupils_mask`` replaces (``set_pupils`` validates their
+        sizes), so the indices are rebuilt only when the geometry changes.
+        """
+
+        masks = (self.p1mask, self.p2mask, self.p3mask, self.p4mask)
+        cache = self.__dict__.get("_pywfs_index_cache")
+        if cache is None or any(a is not b for a, b in zip(cache[0], masks)):
+            cache = (masks, tuple(np.flatnonzero(mask) for mask in masks))
+            self._pywfs_index_cache = cache
+        return cache[1]
 
     def _gather_valid_slopes(self, slopes):
         """Return ``slopes[valid_sub_aps]`` in a reused buffer (no per-frame allocation).
@@ -2026,6 +2279,34 @@ class SlopesProcess(Component):
         image_ax.set_title("Pupil Mask * Image")
         return fig
 
+    def _signal_2d_targets(self, valid_sub_aps):
+        """Return the flat ``signal_2d`` index of each signal entry, or ``None``.
+
+        Cached for the current ``valid_sub_aps`` array (replaced, never
+        edited in place, by ``set_valid_sub_aps``); other masks get ``None``
+        and the boolean-mask path. For PYWFS the first half of the signal
+        fills the left half of the map and the second half the right half,
+        both in row-major order of the slope mask.
+        """
+
+        if valid_sub_aps is not self.valid_sub_aps:
+            return None
+        cache = self.__dict__.get("_signal_2d_cache")
+        if cache is not None and cache[0] is valid_sub_aps and cache[1] == self.wfs_type:
+            return cache[2]
+        targets = None
+        if self.wfs_type == "pywfs":
+            width = valid_sub_aps.shape[1]
+            half = width // 2
+            if 2 * half == width:
+                rows, cols = np.nonzero(valid_sub_aps[:, :half])
+                left = rows * width + cols
+                targets = np.concatenate([left, left + half])
+        else:
+            targets = np.flatnonzero(valid_sub_aps)
+        self._signal_2d_cache = (valid_sub_aps, self.wfs_type, targets)
+        return targets
+
     def compute_signal_2d(self, signal, valid_sub_aps=None, out=None):
         """
         Compute the 2D signal from the valid sub-aperture mask.
@@ -2053,6 +2334,19 @@ class SlopesProcess(Component):
             return -1
         if out is None:
             out = self.cur_signal_2d
+
+        targets = self._signal_2d_targets(valid_sub_aps)
+        if (
+            targets is not None
+            and out.flags.c_contiguous
+            and out.shape == valid_sub_aps.shape
+            and isinstance(signal, np.ndarray)
+            and signal.size == targets.size
+        ):
+            # Integer-index scatter into the flat view: same placement as the
+            # boolean-mask assignments below, about 2.5x faster per frame.
+            out.reshape(-1)[targets] = signal.reshape(-1)
+            return out
 
         if self.wfs_type == "pywfs":
             slopemask = valid_sub_aps[:, : valid_sub_aps.shape[1] // 2]
