@@ -153,7 +153,9 @@ def test_science_camera_setter_and_load_error_paths(monkeypatch):
         cam.take_dark()
 
     monkeypatch.setattr(
-        sci_mod.np, "load", lambda filename: (_ for _ in ()).throw(RuntimeError("load failed"))
+        sci_mod.np,
+        "load",
+        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("load failed")),
     )
     with pytest.raises(RuntimeError, match="load failed"):
         cam.load_dark("missing-dark.npy")

@@ -45,6 +45,7 @@ from pyrtc.logging_utils import (  # noqa: E402
     configure_logging_from_args,
     get_logger,
 )
+from pyrtc.calibration import save_calibration  # noqa: E402
 from pyrtc.streams import STREAM_NOTIFY_ENV, clear_shms  # noqa: E402
 
 logger = get_logger(__name__)
@@ -159,7 +160,7 @@ def _write_interaction_matrix(config: dict) -> None:
     matrix = build_synthetic_shwfs_response_matrix(
         num_regions, int(config["wfc"]["num_modes"]), layout
     )
-    np.save(config["loop"]["im_file"], matrix.astype(np.float32))
+    save_calibration(config["loop"]["im_file"], matrix.astype(np.float32), "interaction_matrix")
 
 
 @contextlib.contextmanager

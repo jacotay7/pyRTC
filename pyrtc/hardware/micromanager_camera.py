@@ -26,8 +26,10 @@ Config keys, on top of the usual WFS or science-camera ones:
 
 Frames stream from continuous sequence acquisition. Each ``expose`` returns
 the newest frame and drops older ones, so the loop always sees the latest
-exposure. Micro-Manager images are ``(height, width)``; they are transposed
-into pyrtc's ``(width, height)`` stream shape.
+exposure. Micro-Manager images are ``(height, width)``, the shape of pyrtc's
+image streams (``[y, x]``, #162), so they are published as they come. (pyrtc
+1.x transposed them; calibrations saved then need ``legacy_calibration:
+xy``.)
 """
 
 from __future__ import annotations
@@ -128,7 +130,7 @@ class _MicroManagerDevice:
         image = core.popNextImage()
         while core.getRemainingImageCount() > 0:  # keep only the newest frame
             image = core.popNextImage()
-        return np.ascontiguousarray(np.asarray(image).T, dtype=np.uint16)
+        return np.ascontiguousarray(image, dtype=np.uint16)
 
     def _close_micromanager(self) -> None:
         core = getattr(self, "_core", None)

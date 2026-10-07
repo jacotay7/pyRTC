@@ -29,9 +29,13 @@ Needs the ImageStreamIO Python module (``ImageStreamIOWrap``); build it with
 ``pip install git+https://github.com/milk-org/ImageStreamIO``. ISIO files live
 in ``MILK_SHM_DIR`` (``/milk/shm`` or ``/tmp``).
 
-Arrays keep their shape: a pyrtc ``(a, b)`` stream becomes an ISIO image with
-``size = [a, b]``, stored column-major as ISIO expects, so ``size[0]`` is the
-fastest axis. The ISIO-to-pyrtc direction publishes each new ISIO frame (its
+Axes are reversed at the boundary, so images keep their orientation: pyrtc
+arrays are row-major and indexed ``[y, x]`` (#162), while ISIO images are
+column-major with ``size = [x, y]`` (``size[0]`` is the fastest axis, milk's
+x). A pyrtc ``(height, width)`` stream becomes an ISIO image with
+``size = [width, height]`` holding the same bytes, and an ISIO ``[nx, ny]``
+image becomes a pyrtc ``(ny, nx)`` stream. (pyrtc 1.x kept the shape, which
+matched milk while pyrtc streams were ``(width, height)``.) The ISIO-to-pyrtc direction publishes each new ISIO frame (its
 ``cnt0`` becomes the pyrtc ``frame_id``) within about ``poll_interval``.
 Waiting uses non-blocking semaphore polls, because the ISIO module's blocking
 waits hold the GIL and would stall every other pyrtc thread.
@@ -144,19 +148,20 @@ class IsioBridge(Component):
         if hasattr(frame, "detach"):  # GPU stream
             frame = frame.detach().cpu().numpy()
         self.shape, self.dtype = tuple(frame.shape), np.dtype(frame.dtype)
+        isio_shape = self.shape[::-1]
         if self._image.open(self.isio_name) == 0:
             existing_shape = tuple(int(n) for n in self._image.md.size)
             existing_dtype = _isio_dtype(self._image)
-            if existing_shape != self.shape or existing_dtype != self.dtype:
+            if existing_shape != isio_shape or existing_dtype != self.dtype:
                 raise ValueError(
-                    f"ISIO stream {self.isio_name!r} exists with shape {existing_shape} "
-                    f"{existing_dtype}; the pyrtc stream is {self.shape} {self.dtype}. "
-                    "Remove it or pick another isio_name."
+                    f"ISIO stream {self.isio_name!r} exists with size {existing_shape} "
+                    f"{existing_dtype}; the pyrtc stream {self.shape} {self.dtype} needs "
+                    f"size {isio_shape}. Remove it or pick another isio_name."
                 )
         else:
             self._image = self._isio.Image()
             error = self._image.create(
-                self.isio_name, np.asfortranarray(frame), -1, 1, self.num_semaphores, 1
+                self.isio_name, _to_isio_layout(frame), -1, 1, self.num_semaphores, 1
             )
             if error:
                 raise RuntimeError(f"ISIO create({self.isio_name!r}) failed with {error}")
@@ -165,15 +170,14 @@ class IsioBridge(Component):
     def _write_isio(self, frame) -> None:
         if hasattr(frame, "detach"):
             frame = frame.detach().cpu().numpy()
-        # ISIO stores column-major; its Python write only accepts that layout.
-        self._image.write(np.asfortranarray(frame, dtype=self.dtype))
+        self._image.write(_to_isio_layout(frame, self.dtype))
 
     # -- ISIO -> pyrtc --------------------------------------------------------
 
     def _setup_from_isio(self) -> None:
         if self._image.open(self.isio_name) != 0:
             raise FileNotFoundError(f"ISIO stream {self.isio_name!r} does not exist")
-        frame = np.ascontiguousarray(self._image.copy())
+        frame = _from_isio_layout(self._image.copy())
         self.shape, self.dtype = tuple(frame.shape), frame.dtype
         self.stream_name = self.output_stream_name("output")
         output = create_stream(self.stream_name, self.shape, self.dtype)
@@ -211,7 +215,7 @@ class IsioBridge(Component):
                 return
             self._write_isio(frame)
         elif self._wait_isio():
-            self._publish(np.ascontiguousarray(self._image.copy()))
+            self._publish(_from_isio_layout(self._image.copy()))
 
     def close(self, *args, **kwargs):
         try:
@@ -227,6 +231,22 @@ class IsioBridge(Component):
                 except Exception:
                     pass
                 self._image = None
+
+
+def _to_isio_layout(frame, dtype=None) -> np.ndarray:
+    """A pyrtc ``[y, x]`` array as the column-major ``[x, y]`` array ISIO stores.
+
+    The transpose of a row-major array is already column-major, so this is
+    the same memory (ISIO's Python write only accepts that layout).
+    """
+
+    return np.asfortranarray(np.asarray(frame).T, dtype=dtype)
+
+
+def _from_isio_layout(image) -> np.ndarray:
+    """An ISIO ``[x, y]`` array as a row-major pyrtc ``[y, x]`` array."""
+
+    return np.ascontiguousarray(np.asarray(image).T)
 
 
 def main(argv=None) -> int:

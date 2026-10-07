@@ -25,9 +25,11 @@ Config keys, on top of the usual WFS or science-camera ones:
 ``fetch_timeout``
     Seconds to wait for a frame (default 1.0).
 
-pyrtc image streams have shape ``(width, height)``; camera frames are
-``(Height, Width)`` (rows, columns), so frames are transposed. ``width`` and
-``height`` then mean the same as the camera's ``Width``/``Height`` nodes.
+Camera frames are ``(Height, Width)`` (rows, columns), which is the shape of
+pyrtc's image streams (``[y, x]``, #162), so frames are published as they
+come. ``width`` and ``height`` mean the same as the camera's
+``Width``/``Height`` nodes. (pyrtc 1.x transposed them into ``(width,
+height)`` streams; calibrations saved then need ``legacy_calibration: xy``.)
 """
 
 from __future__ import annotations
@@ -139,9 +141,9 @@ class _GenICamDevice:
         with self._acquirer.fetch(timeout=self.fetch_timeout) as buffer:
             component = buffer.payload.components[0]
             image = np.asarray(component.data).reshape(component.height, component.width)
-            # (Height, Width) -> pyrtc's (width, height). The buffer returns to
-            # the producer on exit, so copy.
-            return np.ascontiguousarray(image.T, dtype=np.uint16)
+            # (Height, Width) is pyrtc's [y, x]. The buffer returns to the
+            # producer on exit, so copy.
+            return np.array(image, dtype=np.uint16, order="C", copy=True)
 
     # Standard setters: record the value (base class), then apply the node.
 

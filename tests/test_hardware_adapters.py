@@ -180,6 +180,120 @@ def test_spinnaker_science_camera_init_and_controls(monkeypatch):
     assert cam.camera.released is True
 
 
+def test_ximea_and_spinnaker_frames_follow_camera_axes(monkeypatch):
+    """#162: (height, width) SDK frames land at [y, x], and a +x spot shift gives +sx."""
+
+    from testsupport import (
+        ORIENTATION_FRAME_SHAPE,
+        ORIENTATION_HOT_PIXEL,
+        assert_wfs_follows_camera_axes,
+        hot_pixel_frame,
+        private_stream,
+    )
+
+    monkeypatch.setattr(
+        importlib.import_module("pyrtc.wavefront_sensor"), "create_stream", private_stream
+    )
+    monkeypatch.setattr(
+        importlib.import_module("pyrtc.science_camera"), "create_stream", private_stream
+    )
+    height, width = ORIENTATION_FRAME_SHAPE
+    current = {"frame": hot_pixel_frame()}
+
+    class _XiCamera:
+        def open_device_by(self, mode, serial):
+            pass
+
+        def set_param(self, key, value):
+            pass
+
+        def start_acquisition(self):
+            pass
+
+        def stop_acquisition(self):
+            pass
+
+        def close_device(self):
+            pass
+
+        def get_image(self, _img):
+            pass
+
+    class _XiImage:
+        def get_image_data_numpy(self):
+            return current["frame"]
+
+    fake_xiapi = types.SimpleNamespace(Camera=_XiCamera, Image=_XiImage)
+    monkeypatch.setitem(sys.modules, "ximea", types.SimpleNamespace(xiapi=fake_xiapi))
+    sys.modules.pop("pyrtc.hardware.ximea_wfs", None)
+    ximea = importlib.import_module("pyrtc.hardware.ximea_wfs")
+    wfs = ximea.XIMEAWFS(
+        {"name": "wfs", "serial": "1", "width": width, "height": height, "functions": []}
+    )
+    try:
+        assert_wfs_follows_camera_axes(wfs, lambda frame: current.__setitem__("frame", frame))
+    finally:
+        wfs.close()
+
+    class _Node:
+        def set_node_value(self, value, verify=False):
+            pass
+
+        def set_node_value_from_str(self, value, verify=False):
+            pass
+
+    class _SpinCamera:
+        camera_nodes = types.SimpleNamespace(ExposureAuto=_Node(), GainAuto=_Node())
+
+        def init_cam(self):
+            pass
+
+        def begin_acquisition(self):
+            pass
+
+        def end_acquisition(self):
+            pass
+
+        def deinit_cam(self):
+            pass
+
+        def release(self):
+            pass
+
+        def get_next_image(self, timeout=5):
+            # Spinnaker hands over the row-major (Height, Width) buffer.
+            data = hot_pixel_frame().tobytes()
+            return types.SimpleNamespace(get_image_data=lambda: data)
+
+    class _CameraList:
+        @staticmethod
+        def create_from_system(system, update_cams=True, update_interfaces=True):
+            return types.SimpleNamespace(create_camera_by_index=lambda index: _SpinCamera())
+
+    monkeypatch.setitem(sys.modules, "rotpy.camera", types.SimpleNamespace(CameraList=_CameraList))
+    monkeypatch.setitem(sys.modules, "rotpy.system", types.SimpleNamespace(SpinSystem=object))
+    sys.modules.pop("pyrtc.hardware.spinnaker_science_cam", None)
+    spinnaker = importlib.import_module("pyrtc.hardware.spinnaker_science_cam")
+    camera = spinnaker.SpinnakerScienceCamera(
+        {
+            "name": "psf",
+            "index": 0,
+            "width": width,
+            "height": height,
+            "dark_count": 1,
+            "integration": 1,
+            "functions": [],
+        }
+    )
+    try:
+        camera.expose()
+        short = np.asarray(camera._stream_object("psf_short").read())
+        assert short.shape == ORIENTATION_FRAME_SHAPE
+        assert np.unravel_index(np.argmax(short), short.shape) == ORIENTATION_HOT_PIXEL
+    finally:
+        camera.close()
+
+
 def test_alpao_dm_init_and_layout(monkeypatch, tmp_path):
     from testsupport import private_stream
 

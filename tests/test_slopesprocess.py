@@ -437,7 +437,7 @@ def _live_pywfs(gpu_device=None, radius=10):
         "functions": ["compute_signal"],
         "input_streams": {"wfs": wfs.name},
         "output_streams": outputs,
-        "pupils": [f"{y},{x}" for x, y in LIVE_LOCS],
+        "pupils": [f"{x},{y}" for x, y in LIVE_LOCS],  # "x,y" = column,row
         "pupils_radius": radius,
     }
     if gpu_device is not None:
@@ -661,3 +661,83 @@ def test_set_pupils_on_live_gpu_instance_rebuilds_device_cache():
 @pytest.mark.skipif(not _cuda_available(), reason="CUDA is not available")
 def test_take_ref_slopes_with_gpu_signal_stream():
     _check_take_ref_slopes_live("cuda:0")
+
+
+@pytest.mark.parametrize("configured", [True, False])
+def test_pywfs_pupils_are_x_y_and_x_slopes_compare_columns(configured):
+    """#162: ``pupils`` entries are "x,y" (column,row), and sx compares pupils across columns.
+
+    The default layout follows the documented order too. The image is
+    non-square, so a swapped axis cannot pass.
+    """
+
+    shape = (40, 64)  # (height, width)
+    locs = [(16, 10), (16, 30), (48, 10), (48, 30)]  # (x, y): low x first, then high x
+    wfs = private_stream("wfs", shape, np.float32)
+    suffix = uuid.uuid4().hex[:8]
+    outputs = {"signal": f"sig_{suffix}", "signal_2d": f"sig2d_{suffix}"}
+    conf = {
+        "type": "PYWFS",
+        "signal_type": "slopes",
+        "functions": [],
+        "input_streams": {"wfs": wfs.name},
+        "output_streams": outputs,
+    }
+    if configured:
+        conf.update({"pupils": [f"{x},{y}" for x, y in locs], "pupils_radius": 6})
+    wfs.write(np.ones(shape, dtype=np.float32))
+    proc = slopes_mod.SlopesProcess(conf)
+    try:
+        if not configured:
+            assert slopes_mod.default_pupil_layout(shape) == (locs, 10)
+        assert list(proc.pupil_locs) == locs
+        for index, (x, y) in enumerate(locs, start=1):
+            assert proc.pupil_mask[y, x] == index  # row y, column x
+
+        def mean_slopes(image):
+            wfs.write(image.astype(np.float32))
+            proc.compute_signal()
+            signal = np.asarray(proc.read(block=False))
+            half = signal.size // 2
+            return float(np.mean(signal[:half])), float(np.mean(signal[half:]))
+
+        brighter_left = np.where(np.arange(shape[1])[None, :] < 32, 3.0, 1.0) * np.ones(shape)
+        assert mean_slopes(brighter_left) == pytest.approx((0.5, 0.0), abs=1e-6)
+        brighter_top = np.where(np.arange(shape[0])[:, None] < 20, 3.0, 1.0) * np.ones(shape)
+        assert mean_slopes(brighter_top) == pytest.approx((0.0, 0.5), abs=1e-6)
+    finally:
+        proc.close()
+        clear_shms(list(outputs.values()))
+
+
+def test_pupil_location_parsing():
+    assert slopes_mod.parse_pupil_location("30, 10") == (30, 10)
+    assert slopes_mod.parse_pupil_location([4, 5]) == (4, 5)
+    with pytest.raises(ValueError, match="not 'x,y'"):
+        slopes_mod.parse_pupil_location("1,2,3")
+
+
+def test_shwfs_grid_uses_the_shorter_image_side():
+    """A non-square SHWFS image gets as many sub-apertures as its shorter side holds."""
+
+    wfs = private_stream("wfs", (24, 40), np.int32)  # (height, width)
+    suffix = uuid.uuid4().hex[:8]
+    outputs = {"signal": f"sig_{suffix}", "signal_2d": f"sig2d_{suffix}"}
+    proc = slopes_mod.SlopesProcess(
+        {
+            "type": "SHWFS",
+            "signal_type": "slopes",
+            "sub_ap_spacing": 8,
+            "sub_ap_offset_x": 0,
+            "sub_ap_offset_y": 0,
+            "functions": [],
+            "input_streams": {"wfs": wfs.name},
+            "output_streams": outputs,
+        }
+    )
+    try:
+        assert proc.num_regions == 3
+        assert proc.signal_2d_shape == (6, 3)
+    finally:
+        proc.close()
+        clear_shms(list(outputs.values()))

@@ -8,6 +8,7 @@ import pytest
 import yaml
 
 from testsupport import private_synthetic_config, publishing_chain
+from pyrtc.calibration import save_calibration
 from pyrtc.manager import HardComponentRuntime, RTCManager
 from pyrtc.rpc import _socket_read_json, _socket_send_json
 from pyrtc.streams import (
@@ -33,7 +34,7 @@ def _write_runtime_synthetic_config(tmp_path: Path) -> Path:
     im_path = tmp_path / "synthetic_identity_im.npy"
     layout = _default_wfc_layout(int(config["wfc"]["num_actuators"]))
     response = build_synthetic_shwfs_response_matrix(7, int(config["wfc"]["num_modes"]), layout)
-    np.save(im_path, response.astype(np.float32))
+    save_calibration(im_path, response.astype(np.float32), "interaction_matrix")
     config["loop"]["im_file"] = str(im_path)
 
     config_path = tmp_path / "synthetic_runtime_config.yaml"

@@ -4,6 +4,58 @@ All notable changes to `pyrtcao` will be documented in this file.
 
 ## Unreleased
 
+### Breaking changes
+
+pyrtc 2.0 follows the AO stack's axis and pixel conventions (aocore
+`CONVENTIONS.md` 1.1, 1.2, 7.1). Saved 1.x calibrations need converting or
+re-measuring; the docs page "Migrating to pyrtc 2.0" walks through it.
+
+- **Image streams are `(height, width)`, indexed `[y, x]`** (#162, #130).
+	`wfs_raw`, `wfs`, `psf_short` and `psf_long` were declared
+	`(width, height)`, and the GenICam and Micro-Manager adapters transposed
+	camera frames into them, so the slope pyrtc called x followed the
+	camera's y axis and sub-apertures were ordered column-major in camera
+	terms.
+	- Camera adapters publish frames as the SDK returns them; GenICam and
+	  Micro-Manager no longer transpose. XIMEA and Spinnaker, which never
+	  did, now work with non-square ROIs (#130).
+	- Slope x/y follow the image columns/rows. SHWFS sub-apertures are
+	  ordered row-major over `(subap_y, subap_x)`.
+	- PYWFS `pupils` entries are `"x,y"` = column,row, as documented (1.x
+	  parsed them as row,column of its stream). Configs written for an
+	  adapter that did not transpose (XIMEA, the simulators) must swap each
+	  string. The default pupil layout follows the image's width and height.
+	- A non-square SHWFS image gets `min(height, width) // sub_ap_spacing`
+	  sub-apertures per side, in `SlopesProcess` and in stream planning.
+	- The ISIO bridge reverses the axes: a pyrtc `(height, width)` stream is
+	  an ISIO image of `size = [width, height]`, so milk still sees x as the
+	  fast axis.
+- **SHWFS sub-aperture pixel `k` sits at `k - (n - 1) / 2`** (#163), not
+	`k - n // 2` (`shwfs_subaperture_coords`, `SlopesProcess.xvals`). A spot
+	on the optical axis of an even sub-aperture now reads 0 instead of
+	-0.5 px; raw slopes of even sub-apertures move by +0.5 px. Residual
+	slopes (against reference slopes) are unchanged. The WCoG weight without
+	a reference image is now centred on the sub-aperture.
+- **Calibration files are versioned.** WFS and science-camera darks, model
+	PSFs, SHWFS reference images, valid sub-aperture masks, reference slopes
+	and interaction matrices are saved by `pyrtc.calibration.save_calibration`:
+	an `.npz` archive (under the configured file name) with the array and a
+	`pyrtc_calibration` record (format 2, kind). Loading a plain `.npy`
+	(pyrtc 1.x) file fails with a message explaining the options, unless the
+	section sets `legacy_calibration`:
+	- `yx` (the 1.x adapter published frames unchanged: XIMEA, Spinnaker,
+	  the simulators): arrays load unchanged, SHWFS reference slopes of even
+	  sub-apertures move by +0.5 px;
+	- `xy` (it transposed them: GenICam, Micro-Manager): images transpose,
+	  slope maps and valid masks swap and transpose their x/y halves;
+	- `as_is`: the file already follows the 2.0 conventions.
+
+	Every conversion is exact; the inexact case (WCoG reference slopes
+	without a reference image) is refused. An `xy` interaction matrix needs
+	the 1.x valid mask to reorder its rows and is converted offline with the
+	new `pyrtc-migrate-calibration` CLI. Corrector files (flat, M2C, layouts)
+	are unchanged. The NCPA optimizer reads and writes 2.0 files.
+
 ### Added
 
 - **PyTorch image reconstructor.** `TorchImageReconstructor`
@@ -79,11 +131,9 @@ All notable changes to `pyrtcao` will be documented in this file.
 	stack's convention checks (`aocore.conformance`, now a test requirement)
 	against pyrtc. The checks cover SHWFS slope sign and the blocked
 	`[sx..., sy...]` layout, actuator positions, the centroid helper, and the
-	Zernike modes pyrtc requests from aobasis. Two known deviations are
-	tracked as strict xfails. Image streams are `(width, height)`, so SHWFS
-	slope x/y follow the camera's y/x axes (#162). SHWFS sub-aperture pixel
-	coordinates are centred at `n // 2` rather than `(n - 1) / 2` (#163).
-	Behaviour is unchanged for now.
+	Zernike modes pyrtc requests from aobasis, and a camera frame published
+	through a `WavefrontSensor`. The two deviations they found (#162, #163)
+	are fixed in this release (see Breaking changes).
 
 ## 1.1.0 - 2026-09-29
 

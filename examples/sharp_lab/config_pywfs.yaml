@@ -52,11 +52,11 @@ wfs:
   functions:
   - expose
 
-  # pupils: 
-  # - 90,110
-  # - 91,270
-  # - 300,145
-  # - 260,270
+  # pupils:
+  # - 110,90
+  # - 145,300
+  # - 270,91
+  # - 270,260
 
 slopes:
   type: PYWFS
@@ -66,11 +66,13 @@ slopes:
   flat_norm: True
   pupils_radius: 32 #64
   # gpu_device: 0
-  pupils: 
-  - 45,48
-  - 46,128
-  - 152,65 #140, 60
-  - 130,128
+  # "x,y" = column,row, ordered (low x, low y), (low x, high y), (high x, low y),
+  # (high x, high y) so that sx compares columns (pyrtc 2.0; see the migration docs).
+  pupils:
+  - 48,45
+  - 65,152 #60, 140
+  - 128,46
+  - 128,130
   affinity: 4
   class_name: SlopesProcess
   input_streams:

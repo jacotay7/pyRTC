@@ -100,8 +100,12 @@ model's device, each frame then goes through, in order:
 6. ``output_scale_file``: element-wise multiplication by ``signal_size``
    factors (for example the inverse of per-mode training normalisation).
 
-The image is the stream array as stored, ``(width, height)`` in pyrtc's
-convention; train on frames read from the ``wfs`` stream to match.
+The image is the stream array as stored, ``(height, width)`` = ``[y, x]``;
+train on frames read from the ``wfs`` stream to match. A model trained on
+pyrtc 1.x frames from an adapter that transposed them (GenICam,
+Micro-Manager) sees transposed images now; retrain it, or wrap it in a
+module that transposes the image's last two axes first (see
+:doc:`../guides/migration_2_0`).
 
 Plugging into the loop
 ----------------------
@@ -115,12 +119,15 @@ stream, so nothing changes in the ``loop`` section. Two common set-ups:
 
   .. code-block:: python
 
-    np.save("calib/identity_im.npy", np.eye(num_modes, dtype=np.float32))
+    from pyrtc.calibration import save_calibration
+
+    save_calibration("calib/identity_im.npz", np.eye(num_modes, dtype=np.float32),
+                     "interaction_matrix")
 
   .. code-block:: yaml
 
     loop:
-      im_file: calib/identity_im.npy
+      im_file: calib/identity_im.npz
       gain: 0.3
       functions: [standard_integrator]
 
