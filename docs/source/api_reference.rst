@@ -21,6 +21,7 @@ Module Index
    :toctree: generated
    :nosignatures:
 
+   calibration
    streams
    rpc
    manager

@@ -141,6 +141,33 @@ See above for how to launch a soft-RTC equivalent.
   print(slopes.get_property("ref_slopes_file"))
 
 
+Slope axes and layout
+---------------------
+
+The ``wfs`` image is ``(height, width)``, indexed ``[y, x]``. Slopes are in
+pixels, with x along the image columns and y along the rows, and the
+``signal`` vector is *blocked*: all x slopes, then all y slopes (aocore
+CONVENTIONS 7.1). An OPD ramp along +x moves every spot towards +x and gives
+positive x slopes.
+
+- **SHWFS.** The sub-aperture grid has ``min(height, width) // round(sub_ap_spacing)``
+  sub-apertures per side, ordered row-major over ``(subap_y, subap_x)``.
+  ``signal_2d`` is ``(2N, N)``: the ``N x N`` x-slope map stacked on the
+  y-slope map, and the valid sub-aperture mask has the same layout. Pixel
+  ``k`` of a sub-aperture sits at ``k - (n - 1) / 2``, so a spot on the
+  sub-aperture's optical axis reads 0 also for even ``n`` (CONVENTIONS 1.2).
+- **PYWFS.** ``pupils`` entries are ``"x,y"``: the column and row of each
+  pupil centre. List them as (low x, low y), (low x, high y), (high x, low
+  y), (high x, high y); then ``sx = (p1 + p2) - (p3 + p4)`` compares the
+  pupils across columns and ``sy = (p1 + p3) - (p2 + p4)`` across rows,
+  each normalised by the mean pupil flux. Without ``pupils`` the four
+  quadrant centres are used in that order. ``signal_2d`` holds the x and y
+  slope images of the pupil side by side.
+
+pyrtc 1.x used ``(width, height)`` streams and ``k - n // 2`` pixel
+coordinates (#162, #163); see :doc:`../guides/migration_2_0` for 1.x
+configs and calibration files.
+
 SHWFS centroiding
 -----------------
 

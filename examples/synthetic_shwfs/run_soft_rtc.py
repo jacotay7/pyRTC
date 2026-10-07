@@ -20,6 +20,7 @@ if str(REPO_ROOT) not in sys.path:
 
 from pyrtc.loop import Loop
 from pyrtc import clear_shms
+from pyrtc.calibration import save_calibration
 from pyrtc.slopes_process import SlopesProcess
 from pyrtc.config_schema import read_system_config
 from pyrtc.hardware.synthetic_systems import (
@@ -149,7 +150,7 @@ def ensure_synthetic_interaction_matrix(config: dict) -> Path:
     layout = _default_wfc_layout(int(config["wfc"]["num_actuators"]))
     interaction_matrix = build_synthetic_shwfs_response_matrix(num_regions, num_modes, layout)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    np.save(output_path, interaction_matrix.astype(np.float32))
+    save_calibration(output_path, interaction_matrix.astype(np.float32), "interaction_matrix")
     return output_path
 
 

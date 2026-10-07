@@ -63,12 +63,15 @@ This class is often subclassed for site-specific cameras under `pyrtc.hardware`.
 Image Shape Convention
 ----------------------
 
-pyrtc image streams have shape ``(width, height)``: ``width`` is the first
-array axis. Camera SDKs return frames as ``(Height, Width)`` (rows,
-columns), so an adapter must transpose each frame (``frame.T``) before
-publishing it. Then ``width``/``height`` in the config mean the same as the
-camera's own settings. The GenICam and Micro-Manager adapters do this. The
-XIMEA and Spinnaker adapters don't yet, so use square ROIs with them (#130).
+pyrtc image streams have shape ``(height, width)`` and are indexed
+``[y, x]``: rows are the camera's y axis and columns its x axis (aocore
+CONVENTIONS 1.1). That is the layout camera SDKs return, so adapters publish
+frames as they come, without transposing them, and ``width``/``height`` in
+the config mean the same as the camera's own settings.
+
+pyrtc 1.x declared streams ``(width, height)`` and some adapters transposed
+frames into them (#162, #130). Calibration files saved with 1.x need
+``legacy_calibration`` or a re-measurement; see :doc:`../guides/migration_2_0`.
 
 Parameters
 ----------

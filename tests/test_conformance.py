@@ -1,7 +1,8 @@
 """pyrtc follows the AO stack conventions (aocore CONVENTIONS.md).
 
 pyrtc's slope vectors use the *blocked* layout ``[sx_1 .. sx_N, sy_1 .. sy_N]``
-(CONVENTIONS 7.1). The Shack-Hartmann images here are formed with aocore's
+(CONVENTIONS 7.1), and its image streams are ``(height, width)`` = ``[y, x]``
+(CONVENTIONS 1.1, #162). The Shack-Hartmann images here are formed with aocore's
 reference Fraunhofer propagator, so the sign checks test pyrtc's slope code
 against the stack definition rather than against a local model.
 """
@@ -17,6 +18,7 @@ from pyrtc import slopes_process as sp
 from pyrtc.modal_basis import actuator_positions_from_layout, generate_modes, parse_basis_config
 from pyrtc.streams import clear_shms
 from pyrtc.utils import centroid
+from pyrtc.wavefront_sensor import WavefrontSensor
 from testsupport import private_stream
 
 # A 64 x 64 OPD grid over a 1 m square pupil, 8 x 8 lenslets of 8 pixels, and
@@ -93,40 +95,141 @@ def test_shwfs_slopes_are_blocked_and_positive_along_the_ramp(shwfs_slopes):
     assert result["y_ramp_mean_sy"] == pytest.approx(0.5, rel=0.05)
 
 
-@pytest.mark.xfail(
-    raises=conformance.ConformanceError,
-    strict=True,
-    reason=(
-        "pyrtc image streams are (width, height), i.e. [x, y], and camera adapters "
-        "transpose frames into them, but the SHWFS centroiders take x along axis 1 "
-        "(jacotay7/pyRTC#162)"
-    ),
-)
-def test_shwfs_slopes_follow_camera_axes(shwfs_slopes):
-    """Rules 1.1 and 7.1 for a camera frame published as adapters do (``frame.T``, #130)."""
+# The camera frame is wider than the lenslet array, so a swapped axis cannot
+# go unnoticed: (height, width) = (64, 80), lenslets in the first 64 columns.
+CAMERA_SHAPE = (N_PUPIL, N_PUPIL + 16)
 
-    conformance.check_slope_sign(
-        lambda opd: shwfs_slopes(np.ascontiguousarray(_shwfs_image(opd).T)),
+
+@pytest.fixture
+def camera_slopes():
+    """``slopes(image)`` for a camera frame published through a ``WavefrontSensor``.
+
+    The frame is what a camera SDK returns, ``(height, width)`` = ``[y, x]``
+    (#162). It goes through the sensor's ``wfs`` stream, as an adapter's
+    ``expose`` publishes it, into a SHWFS ``SlopesProcess``; the reference
+    slopes are those of a flat wavefront.
+    """
+
+    suffix = uuid.uuid4().hex[:8]
+    outputs = {
+        "wfs_raw": f"raw_{suffix}",
+        "wfs": f"wfs_{suffix}",
+        "signal": f"sig_{suffix}",
+        "signal_2d": f"sig2d_{suffix}",
+    }
+    height, width = CAMERA_SHAPE
+    wfs = WavefrontSensor(
+        {
+            "name": "wfs",
+            "width": width,
+            "height": height,
+            "functions": [],
+            "output_streams": {"wfs_raw": outputs["wfs_raw"], "wfs": outputs["wfs"]},
+        }
+    )
+    proc = None
+    try:
+        assert tuple(wfs._stream_object("wfs").shape) == CAMERA_SHAPE
+        proc = sp.SlopesProcess(
+            {
+                "type": "SHWFS",
+                "signal_type": "slopes",
+                "sub_ap_spacing": SUB_PIXELS,
+                "sub_ap_offset_x": 0,
+                "sub_ap_offset_y": 0,
+                "functions": [],
+                "input_streams": {"wfs": outputs["wfs"]},
+                "output_streams": {"signal": outputs["signal"], "signal_2d": outputs["signal_2d"]},
+            }
+        )
+        scale = 60000.0 / float(np.max(_shwfs_image(np.zeros((N_PUPIL, N_PUPIL)))))
+
+        def slopes(image):
+            frame = np.zeros(CAMERA_SHAPE, dtype=np.uint16)
+            frame[:, :N_PUPIL] = np.rint(np.clip(image * scale, 0, 65535))
+            wfs.data = frame
+            wfs.expose()
+            proc.compute_signal()
+            return np.array(proc.read(block=False), dtype=np.float64)
+
+        flat = slopes(_shwfs_image(np.zeros((N_PUPIL, N_PUPIL))))
+        proc.set_ref_slopes(proc.compute_signal_2d(flat.astype(np.float32)))
+        yield slopes
+    finally:
+        if proc is not None:
+            proc.close()
+        wfs.close()
+        clear_shms(list(outputs.values()))
+
+
+def test_shwfs_slopes_follow_camera_axes(camera_slopes):
+    """Rules 1.1 and 7.1 for a camera frame published through a WFS stream (#162).
+
+    The image streams are ``(height, width)``, adapters publish frames as the
+    camera returns them, and the x slopes follow the camera's columns.
+    """
+
+    result = conformance.check_slope_sign(
+        lambda opd: camera_slopes(_shwfs_image(opd)),
         pupil_shape=(N_PUPIL, N_PUPIL),
         pitch=PITCH,
         gradient=GRADIENT,
         n_subapertures=N_LENSLETS**2,
         layout="blocked",
     )
+    assert result["x_ramp_mean_sx"] == pytest.approx(0.5, rel=0.05)
+    assert result["y_ramp_mean_sy"] == pytest.approx(0.5, rel=0.05)
 
 
-@pytest.mark.xfail(
-    raises=conformance.ConformanceError,
-    strict=True,
-    reason=(
-        "SHWFS sub-aperture pixel k sits at k - n // 2, not k - (n - 1) / 2, so even "
-        "sub-apertures are centred half a pixel off (jacotay7/pyRTC#163)"
-    ),
-)
 def test_shwfs_subaperture_coordinates_are_pixel_centres():
-    """Rule 1.2 for the coordinates every SHWFS centroider measures spots in."""
+    """Rule 1.2 for the coordinates every SHWFS centroider measures spots in (#163)."""
 
     conformance.check_coordinates(lambda n, pitch: sp.shwfs_subaperture_coords(n) * pitch)
+
+
+@pytest.mark.parametrize("centroider", ["cog", "wcog", "correlation"])
+@pytest.mark.parametrize("sub_pixels", [7, 8])
+def test_centred_spot_reads_zero_raw_slopes(centroider, sub_pixels):
+    """#163: a spot on a sub-aperture's optical axis reads 0 with zero reference slopes.
+
+    For an even sub-aperture the spot sits between the two middle pixels;
+    pyrtc 1.x read -0.5 px there.
+    """
+
+    n_sub = 4
+    shape = (n_sub * sub_pixels, n_sub * sub_pixels)
+    rows, cols = np.indices(shape, dtype=np.float64)
+    centre = (sub_pixels - 1) / 2.0
+    spots = np.exp(
+        -(((rows % sub_pixels) - centre) ** 2 + ((cols % sub_pixels) - centre) ** 2) / 1.5
+    )
+    image = np.rint(1000.0 * spots).astype(np.int32)
+    wfs = private_stream("wfs", shape, np.int32)
+    suffix = uuid.uuid4().hex[:8]
+    outputs = {"signal": f"sig_{suffix}", "signal_2d": f"sig2d_{suffix}"}
+    proc = sp.SlopesProcess(
+        {
+            "type": "SHWFS",
+            "signal_type": "slopes",
+            "sub_ap_spacing": sub_pixels,
+            "sub_ap_offset_x": 0,
+            "sub_ap_offset_y": 0,
+            "centroider": centroider,
+            "correlation_search_radius": 1,
+            "functions": [],
+            "input_streams": {"wfs": wfs.name},
+            "output_streams": outputs,
+        }
+    )
+    try:
+        wfs.write(image)
+        if centroider == "correlation":
+            proc.set_reference_image(image)
+        proc.compute_signal()
+        np.testing.assert_allclose(proc.read(block=False), 0.0, atol=1e-5)
+    finally:
+        proc.close()
+        clear_shms(list(outputs.values()))
 
 
 def test_actuator_positions_from_layout_are_pixel_centres():

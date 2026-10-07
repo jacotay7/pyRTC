@@ -88,11 +88,11 @@ slopes:
 #   dark_file: "/home/whetstone/pyrtc/examples/sharp_lab/calib/dark.npy"
 #   affinity: 12
 #   flat_norm: True
-#   pupils: 
-#   - 44,57
-#   - 45,138
-#   - 150,75
-#   - 130,138
+#   pupils:
+#   - 57,44
+#   - 75,150
+#   - 138,45
+#   - 138,130
 #   functions:
 #   - expose
 #   - compute_signal

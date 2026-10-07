@@ -218,11 +218,12 @@ def expected_output_shm_specs_for_config(system_conf: dict) -> dict[str, dict[st
         width = int(wfs_conf.get("width", 1))
         height = int(wfs_conf.get("height", 1))
         downsample = int(wfs_conf.get("downsample_factor", 0) or 0)
-        image_shape = (width, height)
+        # Image streams are (height, width) = [y, x] (CONVENTIONS 1.1, #162).
+        image_shape = (height, width)
         if downsample > 0:
-            image_shape = (max(1, width // downsample), max(1, height // downsample))
+            image_shape = (max(1, height // downsample), max(1, width // downsample))
         specs[output_aliases.get("wfs_raw", "wfs_raw")] = {
-            "shape": (width, height),
+            "shape": (height, width),
             "dtype": np.uint16,
         }
         specs[output_aliases.get("wfs", "wfs")] = {"shape": image_shape, "dtype": np.int32}
@@ -245,11 +246,11 @@ def expected_output_shm_specs_for_config(system_conf: dict) -> dict[str, dict[st
                 }
         elif wfs_type == "shwfs":
             downsample = int(wfs_conf.get("downsample_factor", 0) or 0)
-            width = int(wfs_conf.get("width", 1))
+            side = min(int(wfs_conf.get("width", 1)), int(wfs_conf.get("height", 1)))
             if downsample > 0:
-                width = max(1, width // downsample)
+                side = max(1, side // downsample)
             spacing = int(round(float(slopes_conf.get("sub_ap_spacing", 1))))
-            num_regions = max(1, width // max(1, spacing))
+            num_regions = max(1, side // max(1, spacing))
             signal2d_shape = (2 * num_regions, num_regions)
             signal_size = int(np.prod(signal2d_shape))
             specs[output_aliases.get("signal", "signal")] = {
@@ -299,7 +300,7 @@ def expected_output_shm_specs_for_config(system_conf: dict) -> dict[str, dict[st
     psf_conf = system_conf.get("psf")
     if isinstance(psf_conf, dict):
         output_aliases = stream_alias_map(psf_conf.get("output_streams"))
-        psf_shape = (int(psf_conf.get("width", 1)), int(psf_conf.get("height", 1)))
+        psf_shape = (int(psf_conf.get("height", 1)), int(psf_conf.get("width", 1)))
         specs[output_aliases.get("psf_short", "psf_short")] = {
             "shape": psf_shape,
             "dtype": np.int32,

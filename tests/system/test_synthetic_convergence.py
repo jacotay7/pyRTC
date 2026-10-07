@@ -13,6 +13,7 @@ from pathlib import Path
 import numpy as np
 
 from pyrtc import RTCManager, clear_shms, open_stream
+from pyrtc.calibration import save_calibration
 from pyrtc.config_schema import read_system_config
 from testsupport import prefix_system_streams
 
@@ -35,7 +36,9 @@ def test_synthetic_loop_converges_after_calibration(tmp_path):
     # Shorten calibration for test runtime; the example uses more iterations.
     config["loop"]["num_iters_im"] = 400
     config["loop"]["im_file"] = str(tmp_path / "im.npy")
-    np.save(config["loop"]["im_file"], np.zeros((98, 97), dtype=np.float32))
+    save_calibration(
+        config["loop"]["im_file"], np.zeros((98, 97), dtype=np.float32), "interaction_matrix"
+    )
 
     manager = RTCManager.from_config(config, config_path=str(SYNTHETIC_CONFIG_PATH), mode="soft")
     signal_stream = None

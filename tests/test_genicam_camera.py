@@ -6,7 +6,13 @@ import types
 import numpy as np
 import pytest
 
-from testsupport import private_stream
+from testsupport import (
+    ORIENTATION_FRAME_SHAPE,
+    ORIENTATION_HOT_PIXEL,
+    assert_wfs_follows_camera_axes,
+    hot_pixel_frame,
+    private_stream,
+)
 
 
 class _Node:
@@ -177,9 +183,9 @@ def test_wfs_opens_configures_and_grabs(genicam):
 
         wfs.expose()
         assert acquirer.last_timeout == 0.2
-        # Camera frames are (Height, Width); pyrtc streams are (width, height).
-        np.testing.assert_array_equal(wfs.data, acquirer.frame.T)
-        np.testing.assert_array_equal(wfs._stream_object("wfs_raw").read(), acquirer.frame.T)
+        # Camera frames are (Height, Width), the shape of pyrtc's [y, x] streams.
+        np.testing.assert_array_equal(wfs.data, acquirer.frame)
+        np.testing.assert_array_equal(wfs._stream_object("wfs_raw").read(), acquirer.frame)
 
         wfs.set_exposure(100.0)
         assert history[-1] == ("ExposureTime", 100.0)
@@ -213,7 +219,42 @@ def test_science_camera_grabs_frames(genicam):
     try:
         assert _Harvester.instances[-1].files == ["/a.cti", "/b.cti"]
         camera.expose()
-        assert camera.data.shape == (4, 3) and camera.data.dtype == np.uint16
+        assert camera.data.shape == (3, 4) and camera.data.dtype == np.uint16
+    finally:
+        camera.close()
+
+
+def test_wfs_frames_follow_camera_axes(genicam):
+    """#162: a camera frame lands at [y, x], and a spot moved along +x gives +sx."""
+
+    height, width = ORIENTATION_FRAME_SHAPE
+    wfs = genicam.GenICamWFS(_wfs_conf(width=width, height=height))
+    try:
+        acquirer = _Harvester.instances[-1].acquirers[-1]
+        assert_wfs_follows_camera_axes(wfs, lambda frame: setattr(acquirer, "frame", frame))
+    finally:
+        wfs.close()
+
+
+def test_science_camera_frames_follow_camera_axes(genicam):
+    height, width = ORIENTATION_FRAME_SHAPE
+    camera = genicam.GenICamScienceCamera(
+        {
+            "name": "psf",
+            "width": width,
+            "height": height,
+            "dark_count": 1,
+            "integration": 1,
+            "functions": [],
+            "cti_file": "/a.cti",
+        }
+    )
+    try:
+        _Harvester.instances[-1].acquirers[-1].frame = hot_pixel_frame()
+        camera.expose()
+        short = np.asarray(camera._stream_object("psf_short").read())
+        assert short.shape == ORIENTATION_FRAME_SHAPE
+        assert np.unravel_index(np.argmax(short), short.shape) == ORIENTATION_HOT_PIXEL
     finally:
         camera.close()
 

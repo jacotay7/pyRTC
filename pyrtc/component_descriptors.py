@@ -13,6 +13,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Mapping, Type
 
+from pyrtc.calibration import LEGACY_CALIBRATION_CHOICES
 from pyrtc.corrector_splitter import CorrectorSplitter
 from pyrtc.image_reconstructor import TorchImageReconstructor
 from pyrtc.isio_bridge import IsioBridge
@@ -229,6 +230,22 @@ class ComponentDescriptor:
         return payload
 
 
+def _legacy_calibration_field() -> ConfigFieldDescriptor:
+    """The ``legacy_calibration`` key of the sections that load frame-dependent files."""
+
+    return ConfigFieldDescriptor(
+        "legacy_calibration",
+        "str | None",
+        "How to read pyrtc 1.x calibration files: 'yx' (adapter published frames "
+        "unchanged), 'xy' (adapter transposed them), 'as_is' (already 2.0); unset "
+        "refuses them. See pyrtc.calibration.",
+        default=None,
+        choices=LEGACY_CALIBRATION_CHOICES,
+        allow_none=True,
+        case_sensitive=False,
+    )
+
+
 BUILTIN_COMPONENT_DESCRIPTORS: tuple[ComponentDescriptor, ...] = (
     ComponentDescriptor(
         section_name="wfs",
@@ -257,6 +274,7 @@ BUILTIN_COMPONENT_DESCRIPTORS: tuple[ComponentDescriptor, ...] = (
             ConfigFieldDescriptor(
                 "dark_file", "str", "Path to a persisted dark frame.", default=""
             ),
+            _legacy_calibration_field(),
             ConfigFieldDescriptor(
                 "downsample_factor",
                 "int",
@@ -297,15 +315,15 @@ BUILTIN_COMPONENT_DESCRIPTORS: tuple[ComponentDescriptor, ...] = (
                 "wfs_raw",
                 "output",
                 dtype="uint16",
-                shape="(width, height)",
-                description="Raw WFS image stream.",
+                shape="(height, width)",
+                description="Raw WFS image stream, indexed [y, x].",
             ),
             StreamDescriptor(
                 "wfs",
                 "output",
                 dtype="int32",
-                shape="(processed_width, processed_height)",
-                description="Dark-subtracted processed WFS image stream.",
+                shape="(processed_height, processed_width)",
+                description="Dark-subtracted processed WFS image stream, indexed [y, x].",
             ),
         ),
         supports_hard_rtc=True,
@@ -349,7 +367,10 @@ BUILTIN_COMPONENT_DESCRIPTORS: tuple[ComponentDescriptor, ...] = (
                 "flat_norm", "bool", "Whether to normalize the PYWFS flat.", default=True
             ),
             ConfigFieldDescriptor(
-                "pupils", "list[str]", "Pupil centers for PYWFS in 'x,y' form.", default=[]
+                "pupils",
+                "list[str]",
+                "PYWFS pupil centres as 'x,y' = 'column,row' of the WFS image.",
+                default=[],
             ),
             ConfigFieldDescriptor(
                 "pupils_radius",
@@ -418,6 +439,7 @@ BUILTIN_COMPONENT_DESCRIPTORS: tuple[ComponentDescriptor, ...] = (
             ConfigFieldDescriptor(
                 "ref_slopes_file", "str", "Path to the reference slopes file.", default=""
             ),
+            _legacy_calibration_field(),
             ConfigFieldDescriptor(
                 "functions", "list[str]", "Worker methods started in component threads.", default=[]
             ),
@@ -444,7 +466,7 @@ BUILTIN_COMPONENT_DESCRIPTORS: tuple[ComponentDescriptor, ...] = (
                 "wfs",
                 "input",
                 dtype="int32",
-                shape="(processed_width, processed_height)",
+                shape="(processed_height, processed_width)",
                 description="Processed wavefront-sensor image stream.",
             ),
         ),
@@ -611,7 +633,7 @@ BUILTIN_COMPONENT_DESCRIPTORS: tuple[ComponentDescriptor, ...] = (
             StreamDescriptor(
                 "wfs",
                 "input",
-                shape="(processed_width, processed_height)",
+                shape="(processed_height, processed_width)",
                 description="Processed wavefront-sensor image stream.",
             ),
         ),
@@ -754,6 +776,7 @@ BUILTIN_COMPONENT_DESCRIPTORS: tuple[ComponentDescriptor, ...] = (
             ConfigFieldDescriptor(
                 "im_file", "str", "Path to the interaction-matrix file.", default=""
             ),
+            _legacy_calibration_field(),
             ConfigFieldDescriptor("p_gain", "float", "PID proportional gain.", default=0.1),
             ConfigFieldDescriptor("i_gain", "float", "PID integral gain.", default=0.0),
             ConfigFieldDescriptor("d_gain", "float", "PID derivative gain.", default=0.0),
@@ -988,6 +1011,7 @@ BUILTIN_COMPONENT_DESCRIPTORS: tuple[ComponentDescriptor, ...] = (
                 "dark_file", "str", "Path to a persisted dark frame.", default=""
             ),
             ConfigFieldDescriptor("model_file", "str", "Path to a model PSF file.", default=""),
+            _legacy_calibration_field(),
             ConfigFieldDescriptor(
                 "functions", "list[str]", "Worker methods started in component threads.", default=[]
             ),
@@ -1015,15 +1039,15 @@ BUILTIN_COMPONENT_DESCRIPTORS: tuple[ComponentDescriptor, ...] = (
                 "psf_short",
                 "output",
                 dtype="int32",
-                shape="(width, height)",
-                description="Short-exposure PSF image stream.",
+                shape="(height, width)",
+                description="Short-exposure PSF image stream, indexed [y, x].",
             ),
             StreamDescriptor(
                 "psf_long",
                 "output",
                 dtype="float64",
-                shape="(width, height)",
-                description="Long-exposure PSF image stream.",
+                shape="(height, width)",
+                description="Long-exposure PSF image stream, indexed [y, x].",
             ),
             StreamDescriptor(
                 "strehl",

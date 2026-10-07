@@ -73,12 +73,14 @@ aliases.
   units, Zernikes, slope layouts; pyrtc's slope vectors are *blocked*,
   `[sx..., sy...]`). `tests/test_conformance.py` runs its `aocore.conformance`
   checks against pyrtc; aocore is a test requirement only, since no runtime
-  code imports it. Known deviations are strict xfails that link their issue
-  (#162: image streams are `(width, height)`; #163: SHWFS sub-aperture
-  coordinates centred at `n // 2`). When you fix one, drop its xfail. Some
-  look-alikes of aocore/aobasis helpers stay local on purpose, and each says
-  why next to the code (`utils.generate_circular_aperture_mask`,
-  `utils.centroid`, `utils.gaussian_2d_grid`, `Loop.hadamard_patterns`).
+  code imports it. Track a known deviation as a strict xfail that links its
+  issue, and drop the xfail with the fix (as #162 and #163 were in 2.0).
+  Image streams are `(height, width)`, indexed `[y, x]` (x = columns), slope
+  x/y follow columns/rows, and SHWFS sub-aperture pixel `k` sits at
+  `k - (n - 1) / 2`. Some look-alikes of aocore/aobasis helpers stay local
+  on purpose, and each says why next to the code
+  (`utils.generate_circular_aperture_mask`, `utils.centroid`,
+  `utils.gaussian_2d_grid`, `Loop.hadamard_patterns`).
 - Dependencies: keep `[project] dependencies` to what the soft-RTC core
   needs. Anything else goes in an extra and is imported lazily through
   `pyrtc.utils.require_optional(module, extra, feature)`, which names the
@@ -102,6 +104,16 @@ aliases.
   section without `type` but with `signal_size` is how stream planning
   (`expected_output_shm_specs_for_config`) and the AOTPy export recognise
   such a generic signal producer.
+- `pyrtc/calibration.py` — versioned calibration files. Frame-dependent
+  calibrations (WFS/PSF darks, model PSF, SHWFS reference image, valid
+  sub-aperture masks, reference slopes, interaction matrices) are saved with
+  `save_calibration` and loaded through `load_component_calibration`, which
+  converts pyrtc 1.x files per the section's `legacy_calibration`
+  (`yx`/`xy`/`as_is`) or refuses them. `pyrtc-migrate-calibration`
+  (`pyrtc/scripts/migrate_calibration.py`) converts files offline. A new
+  frame-dependent calibration file must go through this module too, and a
+  change to image or slope conventions needs a new `CALIBRATION_FORMAT` and
+  conversion. Corrector files (flat, M2C, layouts) stay plain `.npy`.
 - `pyrtc/latency.py` — stream latency measurement. `pyrtc/exporters/` — AOTPy
   export of telemetry sessions.
 - `pyrtc/hardware/` — reference adapters:
@@ -113,8 +125,10 @@ aliases.
   Vendor SDKs are optional and may be missing. New adapters import them
   inside `__init__` (`require_optional`), not at module load, so the module
   imports and documents without the SDK. Camera frames come as
-  `(Height, Width)` and pyrtc streams are `(width, height)`, so transpose
-  (#130).
+  `(Height, Width)`, the shape of pyrtc's image streams, so publish them
+  without transposing (#162). Test a new camera adapter's orientation with
+  `testsupport.assert_wfs_follows_camera_axes` (a hot pixel and a spot shift
+  through its fake SDK).
 - `pyrtc/gui/`, `pyrtc/scripts/` — manager GUI, viewer, and CLI entry points
   (declared in `pyproject.toml` under `[project.scripts]`). The GUI and viewer
   use Qt6 through `qtpy` (PySide6 by default, PyQt6 also works), selected by
@@ -369,6 +383,17 @@ ruff check . && ruff format --check .    # lint, as in CI
   (`pseudo_open_loop_slopes`, #158). numba's `np.dot` also needs both
   operands in one dtype, so cast matrices to the CM's dtype when building
   them (`Loop.f_im`).
+- Calibration files written by pyrtc are `.npz` archives under whatever name
+  the config gives (often `*.npy`), so `np.load` returns an `NpzFile`.
+  A test or example that writes a calibration with `np.save` (an identity IM,
+  a mask, a dark) gets refused as a pyrtc 1.x file; write it with
+  `pyrtc.calibration.save_calibration`. `Loop.load_im` also checks the
+  matrix shape against `(signal_size, num_modes)`.
+- What a pyrtc 1.x calibration (or PYWFS `pupils` string) means depends on
+  the 1.x adapter: GenICam and Micro-Manager transposed frames into
+  `(width, height)` streams, while XIMEA, Spinnaker and the simulators wrote
+  `[y, x]` arrays into them unchanged (square ROIs only). That is why
+  `legacy_calibration` must be set by the user and is never guessed.
 - numba's `workqueue` threading layer crashes the process when two threads
   call `parallel=True` kernels at once; `omp` and `tbb` are safe. Only the WFS
   thread runs one today (`rotate_image_jit`). A parallel kernel on a second

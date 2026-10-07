@@ -55,15 +55,16 @@ def test_pyrtc_stream_mirrors_to_isio(isio_images):
     reader = ISIO.Image()
     assert reader.open(isio_name) == 0
     try:
-        assert [int(n) for n in reader.md.size] == [3, 4]
+        # pyrtc (height, width) = [y, x]; ISIO size = [x, y] (#162).
+        assert [int(n) for n in reader.md.size] == [4, 3]
         bridge.start()
         frame = np.arange(12, dtype=np.float32).reshape(3, 4)
         source.write(frame)
         # The bridge's first read returns the current payload, so it may
         # mirror the zeros written above before this frame: wait for the
-        # frame itself, not for any write. Same array on both sides,
-        # element for element.
-        _wait_for(lambda: np.array_equal(np.ascontiguousarray(reader.copy()), frame))
+        # frame itself, not for any write. ISIO holds the same bytes with
+        # its axes reversed, so pixel (x, y) is frame[y, x] on both sides.
+        _wait_for(lambda: np.array_equal(np.asarray(reader.copy()), frame.T))
     finally:
         reader.close()
         bridge.close()
@@ -90,14 +91,15 @@ def test_isio_stream_mirrors_into_pyrtc(isio_images):
     )
     stream = open_stream(output, readonly=True)
     try:
-        assert stream.shape == (2, 5) and stream.dtype == np.uint16
+        # ISIO size [2, 5] = [x, y] becomes a (5, 2) = [y, x] pyrtc stream.
+        assert stream.shape == (5, 2) and stream.dtype == np.uint16
         bridge.start()
         frame = np.arange(10, dtype=np.uint16).reshape(2, 5)
         before = stream.count
         writer.write(np.asfortranarray(frame))
         _wait_for(lambda: stream.count > before)
         publication = stream.read_publication()
-        np.testing.assert_array_equal(publication.payload, frame)
+        np.testing.assert_array_equal(publication.payload, frame.T)
         assert publication.frame_id == int(writer.md.cnt0)  # ISIO cnt0 is the frame id
     finally:
         stream.close()
@@ -112,7 +114,7 @@ def test_existing_isio_stream_with_another_shape_is_refused(isio_images):
     source = private_stream("isio_src2", (3, 4), "float32")
     source.write(np.zeros((3, 4), dtype=np.float32))
     try:
-        with pytest.raises(ValueError, match="exists with shape"):
+        with pytest.raises(ValueError, match="exists with size"):
             IsioBridge(
                 {
                     "name": "b",

@@ -148,6 +148,7 @@ class SpinnakerScienceCamera(ScienceCamera):
     def expose(self):
 
         self.img = self.camera.get_next_image(timeout=5)
+        # The buffer is row-major (Height, Width), pyrtc's [y, x] image shape.
         self.data = np.ndarray(self.image_shape, buffer=self.img.get_image_data(), dtype=np.uint16)
         super().expose()
 

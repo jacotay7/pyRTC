@@ -130,6 +130,7 @@ class XIMEAWFS(WavefrontSensor):
         #     # /2 is adjusted for on-chip binning
         #     self.data = downsample_uint16_image_jit(self.img.get_image_data_numpy(), self.binning//2)
         # else:
+        # (height, width) frames: pyrtc's [y, x] image shape, no transpose.
         self.data = self.img.get_image_data_numpy()
         super().expose()
 

@@ -14,6 +14,13 @@ from typing import Any
 from numba import jit
 from scipy.linalg import hadamard
 
+from pyrtc.calibration import (
+    CalibrationError,
+    interaction_matrix_from_legacy,
+    load_component_calibration,
+    normalize_legacy_calibration,
+    save_calibration,
+)
 from pyrtc.logging_utils import get_logger
 from pyrtc.manager import launch_component
 from pyrtc.streams import gpu_torch_available, open_stream
@@ -248,6 +255,11 @@ class Loop(Component):
         ``open`` or ``flatten``. Default is "hold".
     im_file : str, optional
         File to save the interaction matrix. Default is "".
+    legacy_calibration : str, optional
+        How to read a pyrtc 1.x ``im_file``: ``"yx"`` or ``"as_is"`` load it
+        unchanged; an ``"xy"`` matrix needs its rows reordered and is
+        refused, with directions to ``pyrtc-migrate-calibration`` (see
+        :mod:`pyrtc.calibration`). Unset, 1.x files are refused.
     p_gain : float, optional
         Proportional gain for PID integrator. Default is 0.1.
     i_gain : float, optional
@@ -481,6 +493,9 @@ class Loop(Component):
             self._producer_alive = None
             self.last_round_trip_frames = None
             self.im_file = set_from_config(self.conf, "im_file", "")
+            self.legacy_calibration = normalize_legacy_calibration(
+                set_from_config(self.conf, "legacy_calibration", None)
+            )
             self.cm_method = str(set_from_config(self.conf, "cm_method", "svd")).lower()
             conditioning = set_from_config(self.conf, "conditioning", None)
             self.conditioning = None if conditioning is None else float(conditioning)
@@ -1062,7 +1077,7 @@ class Loop(Component):
                 filename = self.im_file
             if filename == "":
                 raise ValueError("No interaction matrix filename provided")
-            np.save(filename, self.im)
+            save_calibration(filename, self.im, "interaction_matrix")
             component_logger.info("Saved interaction matrix to %s", filename)
         except Exception:
             component_logger.exception(
@@ -1087,7 +1102,22 @@ class Loop(Component):
                 self.im = np.zeros_like(self.im)
                 component_logger.info("No interaction matrix file configured; using zeros")
             else:
-                self.im = np.load(filename)
+                im = load_component_calibration(
+                    filename,
+                    "interaction_matrix",
+                    getattr(self, "legacy_calibration", None),
+                    lambda data, frame: interaction_matrix_from_legacy(
+                        data, frame, path=str(filename)
+                    ),
+                    component_logger,
+                )
+                expected = tuple(np.shape(self.im))
+                if tuple(im.shape) != expected:
+                    raise CalibrationError(
+                        f"Interaction matrix {filename} has shape {im.shape}; this loop "
+                        f"needs (signal_size, num_modes) = {expected}"
+                    )
+                self.im = im
                 component_logger.info("Loaded interaction matrix from %s", filename)
             self.compute_cm()
         except Exception:

@@ -13,6 +13,7 @@ import yaml
 torch = pytest.importorskip("torch")
 
 from pyrtc import RTCManager, clear_shms  # noqa: E402
+from pyrtc.calibration import save_calibration  # noqa: E402
 from testsupport import private_synthetic_config  # noqa: E402
 
 MODEL_SOURCE = """
@@ -69,7 +70,7 @@ def test_loop_runs_on_a_torch_reconstructor(tmp_path, device):
         config["manager"][key].pop("slopes", None)
     # The model outputs modal coefficients, so the IM (and CM) is the identity.
     im_path = tmp_path / "identity_im.npy"
-    np.save(im_path, np.eye(num_modes, dtype=np.float32))
+    save_calibration(im_path, np.eye(num_modes, dtype=np.float32), "interaction_matrix")
     config["loop"]["im_file"] = str(im_path)
     config["loop"]["gain"] = 0.15
     config_path.write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")

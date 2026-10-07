@@ -8,6 +8,12 @@ leaving camera-specific acquisition details to hardware subclasses.
 
 import numpy as np
 
+from pyrtc.calibration import (
+    image_from_legacy,
+    load_component_calibration,
+    normalize_legacy_calibration,
+    save_calibration,
+)
 from pyrtc.logging_utils import ensure_logging_configured, get_logger
 from pyrtc.streams import create_stream
 from pyrtc.manager import launch_component
@@ -52,9 +58,9 @@ class ScienceCamera(Component):
     name : str
         Name of the camera.
     width : int
-        Width of the image. Required.
+        Width of the image (columns, x). Required.
     height : int
-        Height of the image. Required.
+        Height of the image (rows, y). Required.
     dark_count : int
         Number of dark frames to average. Required.
     integration : int
@@ -63,13 +69,21 @@ class ScienceCamera(Component):
         File to save the dark frames. Default is "".
     model_file : str, optional
         File to save the model PSF. Default is "".
+    legacy_calibration : str, optional
+        How to read pyrtc 1.x ``dark_file``/``model_file`` files: ``"yx"``,
+        ``"xy"`` or ``"as_is"`` (see :mod:`pyrtc.calibration`). Unset, 1.x
+        files are refused.
+
+    Images are ``(height, width)`` arrays indexed ``[y, x]`` (aocore
+    CONVENTIONS 1.1, #162); adapters publish camera frames without
+    transposing them.
 
     Attributes
     ----------
     name : str
         Name of the camera.
     image_shape : tuple
-        Shape of the image.
+        Shape of the image, ``(height, width)``.
     image_raw_dtype : type
         Data type of the raw image.
     image_dtype : type
@@ -137,7 +151,9 @@ class ScienceCamera(Component):
             ensure_logging_configured(app_name="pyrtc", component_name=self.__class__.__name__)
             self.logger = get_logger(f"{self.__class__.__module__}.{self.__class__.__name__}")
             self.name = conf["name"]
-            self.image_shape = (conf["width"], conf["height"])
+            # Streams are (height, width) = [y, x] (CONVENTIONS 1.1, #162).
+            self.image_shape = (conf["height"], conf["width"])
+            self.legacy_calibration = normalize_legacy_calibration(conf.get("legacy_calibration"))
             self.image_raw_dtype = np.uint16
             self.image_dtype = np.int32
             self.psf_long_dtype = np.float64
@@ -396,7 +412,7 @@ class ScienceCamera(Component):
                 filename = self.dark_file
             if filename == "":
                 raise ValueError("No dark frame filename provided")
-            np.save(filename, self.dark)
+            save_calibration(filename, self.dark, "psf_dark")
             self.logger.info("Saved science camera dark frame to %s", filename)
         except Exception:
             logger.exception(
@@ -422,7 +438,7 @@ class ScienceCamera(Component):
                 self.dark = np.zeros_like(self.dark)
                 logger.info("No science camera dark frame file configured; using zeros")
             else:
-                self.dark = np.load(filename)
+                self.dark = self._load_image_calibration(filename, "psf_dark")
                 self.logger.info("Loaded science camera dark frame from %s", filename)
         except Exception:
             logger.exception(
@@ -430,6 +446,23 @@ class ScienceCamera(Component):
             )
             raise
         return
+
+    def _load_image_calibration(self, filename, kind):
+        """Load an image-shaped calibration, converting or refusing a 1.x file."""
+
+        image = load_component_calibration(
+            filename,
+            kind,
+            getattr(self, "legacy_calibration", None),
+            image_from_legacy,
+            self.logger,
+        )
+        if tuple(image.shape) != tuple(self.image_shape):
+            raise ValueError(
+                f"{filename} has shape {image.shape}; the science image is "
+                f"(height, width) = {tuple(self.image_shape)}"
+            )
+        return image
 
     def take_model_psf(self):
         """
@@ -474,7 +507,7 @@ class ScienceCamera(Component):
                 filename = self.model_file
             if filename == "":
                 raise ValueError("No model PSF filename provided")
-            np.save(filename, self.model)
+            save_calibration(filename, self.model, "psf_model")
             self.logger.info("Saved model PSF to %s", filename)
         except Exception:
             logger.exception("Failed to save model PSF to %s", filename or self.model_file)
@@ -498,7 +531,7 @@ class ScienceCamera(Component):
                 self.model = np.zeros_like(self.model)
                 logger.info("No model PSF file configured; using zeros")
             else:
-                self.model = np.load(filename)
+                self.model = self._load_image_calibration(filename, "psf_model")
                 self.logger.info("Loaded model PSF from %s", filename)
         except Exception:
             logger.exception("Failed to load model PSF from %s", filename or self.model_file)

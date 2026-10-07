@@ -13,6 +13,15 @@ import numpy as np
 from typing import Any
 from numba import jit
 
+from pyrtc.calibration import (
+    CalibrationError,
+    image_from_legacy,
+    load_component_calibration,
+    normalize_legacy_calibration,
+    save_calibration,
+    shwfs_ref_slopes_from_legacy,
+    slope_map_from_legacy,
+)
 from pyrtc.logging_utils import get_logger
 from pyrtc.manager import launch_component
 from pyrtc.streams import clear_shms, create_stream, gpu_torch_available, open_stream
@@ -200,9 +209,9 @@ def compute_slopes_pywfs_optim_numba(
         return slopes
 
     for i in range(num_pixels_in_pupils):
-        # Compute Y slopes
+        # X slopes: pupils 1 + 2 against pupils 3 + 4
         slopes[i] = (tmp1[i] - tmp2[i]) / mean_value - ref_slopes[i]
-        # Compute X slopes
+        # Y slopes: pupils 1 + 3 against pupils 2 + 4
         slopes[num_pixels_in_pupils + i] = (
             (p1[i] + p3[i]) - (p2[i] + p4[i])
         ) / mean_value - ref_slopes[num_pixels_in_pupils + i]
@@ -344,12 +353,16 @@ FWHM_PER_SIGMA = float(2.0 * np.sqrt(2.0 * np.log(2.0)))
 def shwfs_subaperture_coords(int_n: int) -> np.ndarray:
     """Return the 1D pixel coordinates used by every SHWFS centroider.
 
-    Pixel ``k`` of a sub-aperture sits at ``k - int_n // 2``, the same
-    convention as the ``xvals`` grid of the thresholded CoG kernel, so all
-    centroiders report spot positions in the same frame.
+    Pixel ``k`` of a sub-aperture sits at ``k - (int_n - 1) / 2``, the pixel
+    centre convention of aocore CONVENTIONS 1.2: a spot on the optical axis
+    of the sub-aperture reads 0, also between the two middle pixels of an
+    even-sized one (#163). The ``xvals`` grid of the thresholded CoG kernel
+    uses the same coordinates, so all centroiders report spot positions in
+    the same frame.
     """
 
-    return (np.arange(int(int_n)) - int(int_n) // 2).astype(np.float32)
+    int_n = int(int_n)
+    return (np.arange(int_n) - (int_n - 1) / 2.0).astype(np.float32)
 
 
 def wcog_gain_correction(weight_fwhm: float, spot_fwhm: float) -> float:
@@ -668,6 +681,38 @@ def compute_slopes_shwfs_correlation_numba(
     return slopes
 
 
+def parse_pupil_location(location) -> tuple[int, int]:
+    """Parse a PYWFS ``pupils`` entry ``"x,y"`` into ``(x, y)`` = (column, row).
+
+    pyrtc 1.x parsed the string as ``row,column`` of its ``(width, height)``
+    stream; see the migration notes for configs written for adapters that
+    did not transpose frames.
+    """
+
+    if isinstance(location, str):
+        parts = location.split(",")
+    else:
+        parts = list(location)
+    if len(parts) != 2:
+        raise ValueError(f"slopes: pupil location {location!r} is not 'x,y'")
+    return int(parts[0]), int(parts[1])
+
+
+def default_pupil_layout(image_shape) -> tuple[list[tuple[int, int]], int]:
+    """Return the default PYWFS ``(pupil_locs, radius)`` for a ``(height, width)`` image.
+
+    The pupils sit at the quadrant centres, ordered (low x, low y), (low x,
+    high y), (high x, low y), (high x, high y), so that the x slope compares
+    columns.
+    """
+
+    height, width = (int(axis) for axis in image_shape)
+    x0, x1 = int(0.25 * width), int(0.75 * width)
+    y0, y1 = int(0.25 * height), int(0.75 * height)
+    radius = min(height - y1, width - x1)
+    return [(x0, y0), (x0, y1), (x1, y0), (x1, y1)], radius
+
+
 class SlopesProcess(Component):
     """
     A class to handle real-time slope computation for wavefront sensors.
@@ -686,7 +731,12 @@ class SlopesProcess(Component):
     flat_norm : float, optional
         Normalization factor for the flat. Required for "PYWFS" with "slopes" signal_type.
     pupils : list of str, optional
-        List of pupil locations in "x,y" format. Required for "PYWFS".
+        Pupil centres as ``"x,y"`` strings: x is the column and y the row of
+        the ``wfs`` image (``[y, x]``, #162). List them as (low x, low y),
+        (low x, high y), (high x, low y), (high x, high y), so that the x
+        slope compares the pupils across columns: ``sx = (p1 + p2) - (p3 +
+        p4)`` and ``sy = (p1 + p3) - (p2 + p4)``. Default: the four quadrant
+        centres in that order.
     pupils_radius : int, optional
         Radius of the pupils. Required for "PYWFS".
     contrast : float, optional
@@ -720,6 +770,15 @@ class SlopesProcess(Component):
         File containing valid sub-aperture mask. Default is "".
     ref_slopes_file : str, optional
         File containing reference slopes. Default is "".
+    legacy_calibration : str, optional
+        How to read pyrtc 1.x calibration files (valid sub-apertures,
+        reference slopes, reference image): ``"yx"``, ``"xy"`` or ``"as_is"``
+        (see :mod:`pyrtc.calibration`). Unset, 1.x files are refused.
+
+    Slopes are in pixels with x along the image columns and y along the
+    rows, in the blocked layout ``[sx..., sy...]`` (aocore CONVENTIONS 7.1).
+    SHWFS sub-apertures are ordered row-major over ``(subap_y, subap_x)``,
+    and ``signal_2d`` stacks the ``N x N`` x-slope map on the y-slope map.
 
     Attributes
     ----------
@@ -875,18 +934,18 @@ class SlopesProcess(Component):
 
             self.ref_slopes_file = set_from_config(self.conf, "ref_slopes_file", "")
             self.ref_slope_count = set_from_config(self.conf, "ref_slope_count", 1000)
+            self.legacy_calibration = normalize_legacy_calibration(
+                set_from_config(self.conf, "legacy_calibration", None)
+            )
 
             if self.wfs_type == "pywfs":
                 if "pupils" in self.conf.keys():
-                    pupil_locs = [
-                        (int(x.split(",")[1]), int(x.split(",")[0])) for x in self.conf["pupils"]
-                    ]
-                    self.set_pupils(pupil_locs, self.conf["pupils_radius"])
+                    self.set_pupils(
+                        [parse_pupil_location(loc) for loc in self.conf["pupils"]],
+                        self.conf["pupils_radius"],
+                    )
                 else:
-                    a, b = int(0.25 * self.image_shape[0]), int(0.75 * self.image_shape[0])
-                    c, d = int(0.25 * self.image_shape[1]), int(0.75 * self.image_shape[1])
-                    r = min(self.image_shape[0] - b, self.image_shape[1] - d)
-                    self.set_pupils([(a, c), (a, d), (b, c), (b, d)], r)
+                    self.set_pupils(*default_pupil_layout(self.image_shape))
                 if self.signal_type == "slopes":
                     self.flat_norm = set_from_config(self.conf, "flat_norm", True)
                 # set_pupils allocated the PYWFS work buffers and reference slopes.
@@ -895,11 +954,12 @@ class SlopesProcess(Component):
                 self.shwfs_contrast = set_from_config(self.conf, "contrast", 0.0)
                 self.sub_ap_spacing = self.conf["sub_ap_spacing"]
                 self.region_size = int(np.round(self.sub_ap_spacing, 0))
-                self.num_regions = self.image_shape[0] // self.region_size
+                self.num_regions = min(self.image_shape) // self.region_size
                 self.offset_x = self.conf["sub_ap_offset_x"]
                 self.offset_y = self.conf["sub_ap_offset_y"]
-                xvals = np.arange(self.region_size).astype(int) - self.region_size // 2
-                self.xvals = np.meshgrid(xvals, xvals)[0].astype(self.signal_dtype)
+                # xvals[m, n] is the x (column) coordinate of pixel (m, n).
+                coords = shwfs_subaperture_coords(self.region_size)
+                self.xvals = np.meshgrid(coords, coords)[0].astype(self.signal_dtype)
 
                 self.signal_2d_size = int(2 * self.num_regions**2)
                 self.signal_2d_shape = (2 * self.num_regions, self.num_regions)
@@ -1085,7 +1145,7 @@ class SlopesProcess(Component):
                 filename = self.valid_sub_aps_file
             if filename == "":
                 raise ValueError("No valid_sub_aps filename provided")
-            np.save(filename, self.valid_sub_aps)
+            save_calibration(filename, self.valid_sub_aps, "valid_sub_aps", wfs_type=self.wfs_type)
             component_logger.info("Saved valid sub-aperture mask to %s", filename)
         except Exception:
             component_logger.exception(
@@ -1113,7 +1173,14 @@ class SlopesProcess(Component):
                 valid_sub_aps = np.ones_like(self.valid_sub_aps)
                 component_logger.info("No valid_sub_aps file configured; using all-true mask")
             else:
-                valid_sub_aps = np.load(filename)
+                valid_sub_aps = load_component_calibration(
+                    filename,
+                    "valid_sub_aps",
+                    getattr(self, "legacy_calibration", None),
+                    self._slope_map_from_legacy,
+                    component_logger,
+                )
+                self._check_slope_map_shape(filename, valid_sub_aps)
                 component_logger.info("Loaded valid sub-aperture mask from %s", filename)
 
             self.set_valid_sub_aps(valid_sub_aps)
@@ -1216,7 +1283,13 @@ class SlopesProcess(Component):
                 filename = self.ref_slopes_file
             if filename == "":
                 raise ValueError("No reference slopes filename provided")
-            np.save(filename, self.ref_slopes)
+            metadata = {"wfs_type": self.wfs_type}
+            if self.wfs_type == "shwfs":
+                metadata.update(
+                    sub_aperture_size=int(self.region_size),
+                    centroider=getattr(self, "centroider", "cog"),
+                )
+            save_calibration(filename, self.ref_slopes, "ref_slopes", **metadata)
             component_logger.info("Saved reference slopes to %s", filename)
         except Exception:
             component_logger.exception(
@@ -1244,7 +1317,14 @@ class SlopesProcess(Component):
                 ref_slopes = np.zeros_like(self.ref_slopes)
                 component_logger.info("No reference slopes file configured; using zeros")
             else:
-                ref_slopes = np.load(filename)
+                ref_slopes = load_component_calibration(
+                    filename,
+                    "ref_slopes",
+                    getattr(self, "legacy_calibration", None),
+                    lambda data, frame: self._ref_slopes_from_legacy(data, frame, filename),
+                    component_logger,
+                )
+                self._check_slope_map_shape(filename, ref_slopes)
                 component_logger.info("Loaded reference slopes from %s", filename)
 
             self.set_ref_slopes(ref_slopes)
@@ -1255,6 +1335,37 @@ class SlopesProcess(Component):
             )
             raise
         return
+
+    def _swap_pywfs_halves(self) -> bool:
+        """Whether a 1.x ``"xy"`` PYWFS slope map swaps its halves (default pupils)."""
+
+        conf = getattr(self, "conf", None) or {}
+        return self.wfs_type == "pywfs" and "pupils" not in conf
+
+    def _slope_map_from_legacy(self, data, legacy_frame):
+        return slope_map_from_legacy(
+            data, legacy_frame, self.wfs_type, swap_pywfs_halves=self._swap_pywfs_halves()
+        )
+
+    def _ref_slopes_from_legacy(self, data, legacy_frame, filename):
+        if self.wfs_type == "shwfs":
+            return shwfs_ref_slopes_from_legacy(
+                data,
+                legacy_frame,
+                int(self.region_size),
+                centroider=getattr(self, "centroider", "cog"),
+                has_reference_image=getattr(self, "reference_image", None) is not None,
+                path=str(filename),
+            )
+        return self._slope_map_from_legacy(data, legacy_frame)
+
+    def _check_slope_map_shape(self, filename, slope_map) -> None:
+        expected = tuple(np.shape(self.valid_sub_aps))
+        if tuple(np.shape(slope_map)) != expected:
+            raise CalibrationError(
+                f"{filename} has shape {np.shape(slope_map)}; this {self.wfs_type.upper()} "
+                f"geometry needs {expected}"
+            )
 
     def _invalidate_gpu_pywfs_cache(self, *, masks: bool = True, ref: bool = True) -> None:
         """Drop cached device copies of the PYWFS masks and/or reference slopes."""
@@ -1537,7 +1648,7 @@ class SlopesProcess(Component):
             raise ValueError("No reference image filename provided")
         if self.reference_image is None:
             raise ValueError("No reference image to save")
-        np.save(filename, self.reference_image)
+        save_calibration(filename, self.reference_image, "reference_image")
         getattr(self, "logger", logger).info("Saved SHWFS reference image to %s", filename)
 
     def load_reference_image(self, filename=""):
@@ -1553,7 +1664,15 @@ class SlopesProcess(Component):
             filename = self.reference_image_file
         if filename == "":
             raise ValueError("No reference image filename provided")
-        self.set_reference_image(np.load(filename))
+        self.set_reference_image(
+            load_component_calibration(
+                filename,
+                "reference_image",
+                getattr(self, "legacy_calibration", None),
+                image_from_legacy,
+                getattr(self, "logger", logger),
+            )
+        )
 
     def _compute_slopes_shwfs(self, image):
         """Run the configured SHWFS centroider and return the 2D slopes array."""
@@ -1759,7 +1878,8 @@ class SlopesProcess(Component):
         Parameters
         ----------
         pupil_locs : list of tuple
-            List of pupil locations.
+            Pupil centres as ``(x, y)`` = (column, row) of the ``wfs`` image,
+            in the order described for the ``pupils`` config key.
         pupil_radius : int
             Radius of the pupils.
         """
@@ -1854,11 +1974,12 @@ class SlopesProcess(Component):
                 self.pupil_radius,
                 self.central_obscuration_ratio,
             )
-            N = self.pupil_mask.shape[0]
+            height, width = self.pupil_mask.shape
             n = pupil_template.shape[0]
             half_n = n // 2
 
             for i, pupil_loc in enumerate(self.pupil_locs):
+                # (x, y) = (column, row) of the pupil centre.
                 px, py = pupil_loc
 
                 x_start = px - half_n
@@ -1866,7 +1987,7 @@ class SlopesProcess(Component):
                 y_start = py - half_n
                 y_end = py + half_n + (n % 2)
 
-                if x_start < 0 or y_start < 0 or x_end > N or y_end > N:
+                if x_start < 0 or y_start < 0 or x_end > width or y_end > height:
                     raise ValueError("The subimage exceeds the bounds of the larger array.")
 
                 self.pupil_mask[y_start:y_end, x_start:x_end] += pupil_template * (i + 1)
