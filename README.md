@@ -116,7 +116,7 @@ The project is designed for:
 
 ## Release Posture
 
-`pyrtc` `1.1.0` is the current release, published on PyPI as `pyrtcao`; see `CHANGELOG.md` for release notes. The release policy is conservative:
+`pyrtc` `2.0.0` is the current release, published on PyPI as `pyrtcao`; see `CHANGELOG.md` for release notes. The release policy is conservative:
 
 - User-facing project name: `pyrtc`
 - PyPI distribution name: `pyrtcao`
@@ -127,6 +127,7 @@ The project is designed for:
 - Windows: soft-RTC only — Windows named shared memory is freed when the last handle closes, so streams do not survive their producer process and hard-RTC restart/reattach flows are unsupported there
 - GPU behavior: benchmark-validated on a Linux CUDA host for synthetic loop workloads, but still target-environment validation required for operational use
 - Hardware integrations: examples and reference implementations, not universal plug-and-play support
+- Upgrading from 1.x: 2.0 publishes images as `(height, width)` = `[y, x]` and centres SHWFS sub-aperture pixels at `k - (n - 1) / 2`; saved 1.x calibrations must be converted or re-measured (see "Migrating to pyrtc 2.0" in the docs)
 
 ## Core Capabilities
 
