@@ -901,6 +901,10 @@ class Loop(Component):
         the first ``num_modes`` columns. The result has shape
         ``(N, num_modes)`` and orthogonal columns (``P.T @ P == N * I``), so
         responses to the patterns demultiplex exactly into per-mode columns.
+
+        These are sign patterns over modes, not a basis over actuators, so they
+        come from :func:`scipy.linalg.hadamard` rather than
+        ``aobasis.HadamardBasisGenerator`` (which needs actuator positions).
         """
 
         num_modes = int(num_modes)

@@ -68,6 +68,17 @@ aliases.
   worked around here. Since aobasis 1.1, Zernikes carry the Noll factor, and
   pyrtc orthonormalizes Zernike and Fourier bases by default, so a test that
   expects raw values must set `orthonormalize: false`.
+- AO stack conventions: [aocore](https://github.com/jacotay7/aocore)'s
+  `CONVENTIONS.md` is the contract shared with the sibling packages (axes,
+  units, Zernikes, slope layouts; pyrtc's slope vectors are *blocked*,
+  `[sx..., sy...]`). `tests/test_conformance.py` runs its `aocore.conformance`
+  checks against pyrtc; aocore is a test requirement only, since no runtime
+  code imports it. Known deviations are strict xfails that link their issue
+  (#162: image streams are `(width, height)`; #163: SHWFS sub-aperture
+  coordinates centred at `n // 2`). When you fix one, drop its xfail. Some
+  look-alikes of aocore/aobasis helpers stay local on purpose, and each says
+  why next to the code (`utils.generate_circular_aperture_mask`,
+  `utils.centroid`, `utils.gaussian_2d_grid`, `Loop.hadamard_patterns`).
 - Dependencies: keep `[project] dependencies` to what the soft-RTC core
   needs. Anything else goes in an extra and is imported lazily through
   `pyrtc.utils.require_optional(module, extra, feature)`, which names the
