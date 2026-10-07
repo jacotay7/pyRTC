@@ -259,17 +259,17 @@ timings as ``slopes.compute_slopes_shwfs_*_numba``):
     - ``wcog``
     - ``correlation``
   * - 20x20 sub-apertures, 8 px, R = 2
-    - ~27 us
-    - ~1.7x
-    - ~10x
+    - ~30 us
+    - ~1.6x
+    - ~9x
   * - 20x20 sub-apertures, 16 px, R = 4
-    - ~76 us
+    - ~85 us
     - ~1.7x
-    - ~18x
+    - ~16x
   * - 60x60 sub-apertures, 8 px, R = 2
-    - ~0.24 ms
-    - ~1.7x
-    - ~10x
+    - ~0.27 ms
+    - ~1.6x
+    - ~9x
 
 The CoG and WCoG sums are vectorized (numba ``fastmath`` reassociation):
 slopes from integer frames, such as the ``int32`` ``wfs`` stream, are exact,

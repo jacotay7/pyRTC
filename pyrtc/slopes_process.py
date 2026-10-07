@@ -424,9 +424,9 @@ def compute_slopes_shwfs_optim_numba(
     The image is traversed lenslet by lenslet, thresholded locally, and reduced
     into x/y centroid offsets relative to the unaberrated reference slopes.
 
-    Pixels are converted to float32 as they are read, so the kernel only
-    allocates a transposed copy of ``xvals`` and ``slopes`` can be reused
-    across frames. Every entry of ``slopes`` is written: sub-apertures without
+    Pixels are converted to float32 row by row as they are read, so the
+    kernel only allocates two small scratch arrays and ``slopes`` can be
+    reused across frames. Every entry of ``slopes`` is written: sub-apertures without
     flux above threshold, or falling outside the image, are set to 0.
     """
 
@@ -441,6 +441,10 @@ def compute_slopes_shwfs_optim_numba(
     for m in range(int_n):
         for n in range(int_n):
             xvals_t[m, n] = xvals[n, m]
+    # Each image row is converted into this float32 buffer before it is
+    # summed, so the (reassociated) sums compile to the same code for every
+    # image dtype: a frame gives the same slopes as its float32 copy.
+    row = np.empty(int_n, dtype=np.float32)
 
     # Loop over all regions
     for i in range(num_regions):
@@ -460,15 +464,17 @@ def compute_slopes_shwfs_optim_numba(
             weight_x = zero
             weight_y = zero
             for m in range(int_n):
-                row = image[start_i + m, start_j : start_j + int_n]
-                x_weights = xvals[m]
-                y_weights = xvals_t[m]
+                pixels = image[start_i + m, start_j : start_j + int_n]
                 for n in range(int_n):
-                    value = np.float32(row[n])
+                    value = np.float32(pixels[n])
                     # Pixels at or below threshold add 0. A select instead of
                     # a branch: background pixels sit near the threshold, so
                     # a branch mispredicts often and blocks vectorization.
-                    value = value if value > threshold else zero
+                    row[n] = value if value > threshold else zero
+                x_weights = xvals[m]
+                y_weights = xvals_t[m]
+                for n in range(int_n):
+                    value = row[n]
                     norm += value
                     weight_x += x_weights[n] * value
                     weight_y += y_weights[n] * value
@@ -634,6 +640,8 @@ def compute_slopes_shwfs_wcog_numba(
     num_regions = unaberrated_slopes.shape[1]
     height, width = image.shape
     zero = np.float32(0)
+    # float32 copy of one image row (see compute_slopes_shwfs_optim_numba).
+    row = np.empty(int_n, dtype=np.float32)
     for i in range(num_regions):
         start_i = int(round(spacing * i)) + offset_y
         for j in range(num_regions):
@@ -650,13 +658,15 @@ def compute_slopes_shwfs_wcog_numba(
             sum_x = 0.0
             sum_y = 0.0
             for m in range(int_n):
-                row = image[start_i + m, start_j : start_j + int_n]
+                pixels = image[start_i + m, start_j : start_j + int_n]
+                for n in range(int_n):
+                    value = np.float32(pixels[n])
+                    # Select, not branch (see compute_slopes_shwfs_optim_numba).
+                    row[n] = value if value > threshold else zero
                 row_norm = 0.0
                 row_x = 0.0
                 for n in range(int_n):
-                    value = np.float32(row[n])
-                    # Select, not branch (see compute_slopes_shwfs_optim_numba).
-                    value = value if value > threshold else zero
+                    value = row[n]
                     weighted = value * x_weights[n]
                     row_norm += weighted
                     row_x += weighted * coords[n]
