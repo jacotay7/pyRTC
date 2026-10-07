@@ -4,6 +4,13 @@ All notable changes to `pyrtcao` will be documented in this file.
 
 ## Unreleased
 
+### Changed
+
+- **Requires `pyshmem>=1.4.0`.** pyshmem 1.4.0 fixes lost wakeups on `notify=True`
+  streams (a reader could sleep for its whole wait slice after a write landed)
+  and cuts per-call read/write overhead 2-4x (a small `write` 47 -> 11 us on an
+  Arm Neoverse-N1). Stream handoff was the largest per-frame cost in the loop.
+
 ### Performance
 
 Per-frame CPU and GPU time of the slopes stage, without changing results.
