@@ -4,6 +4,46 @@ All notable changes to `pyrtcao` will be documented in this file.
 
 ## Unreleased
 
+### Performance
+
+Per-frame CPU and GPU time of the slopes stage, without changing results.
+Timed on an 80-core Neoverse-N1 (Arm), one thread, as the median and p99 of
+3000 frames, median of three interleaved runs per side; "own" time is the
+stage without its stream reads and writes. The pyrtc-produced `signal`,
+`signal_2d` and `wfc` streams are bit-identical before and after on integer
+(`int32` `wfs`) frames.
+
+- **SHWFS centroiding about 1.9x faster.** The thresholded CoG and WCoG
+  kernels select instead of branching on the threshold and let LLVM
+  vectorize each sub-aperture sum (numba `fastmath={"reassoc",
+  "contract"}`, no `nnan`, so NaN pixels are still skipped). CoG on 40 x 40
+  sub-apertures of 8 px: 195 -> 104 us per frame; WCoG 245 -> 177 us. The
+  slopes stage's own time went 263 -> 148 us (p99 300 -> 171 us) and the
+  whole single-thread frame (WFS to DM command) 1549 -> 1399 us. Only the
+  order of the additions changes: integer frames give identical slopes,
+  float frames agree to float32 rounding (at most a few ulp).
+- **PYWFS slopes about 3.4x faster on the CPU.** `SlopesProcess` gathers
+  the pupils through cached pixel indices
+  (`compute_slopes_pywfs_indexed_numba`) instead of testing four masks at
+  every pixel: 124 -> 36 us on a 240 x 240 frame with 7.2k pixels per pupil;
+  the stage's own time went 187 -> 94 us (p99 223 -> 118 us). Identical
+  results; `compute_slopes_pywfs_optim_numba` keeps its mask interface.
+- **GPU PYWFS slopes as one CUDA graph.** The torch path issued about 15
+  small kernel launches per frame, whose host cost dominated. It is now
+  captured once (at construction, by `warmup`) and replayed, after a check
+  that the replay matches the eager result bit for bit; capture failures
+  fall back to the eager path with a warning. On an RTX 4060 (torch 2.11):
+  445 -> 70 us per frame including the copy back; the slopes stage's own
+  time went 729 -> 342 us with a CPU `wfs` stream and 637 -> 280 us with a
+  GPU-backed one.
+- `signal_2d` is filled through cached flat indices rather than boolean
+  masks (2.5x faster), and `SlopesProcess.cur_signal_2d` is now float32,
+  the stream's dtype, so publishing it no longer converts a float64 copy
+  every frame.
+- `WavefrontSensor.expose` subtracts the dark into a reused buffer with one
+  ufunc instead of two frame-sized temporaries: 47 -> 35 us on a 320 x 320
+  frame, and the stage's own p99 122 -> 74 us.
+
 ### Fixed
 
 - `test_hardware_launcher_inherits_logging_env` failed when the caller

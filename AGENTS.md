@@ -394,6 +394,26 @@ ruff check . && ruff format --check .    # lint, as in CI
   `(width, height)` streams, while XIMEA, Spinnaker and the simulators wrote
   `[y, x]` arrays into them unchanged (square ROIs only). That is why
   `legacy_calibration` must be set by the user and is never guessed.
+- The SHWFS CoG and WCoG kernels use numba `fastmath={"reassoc",
+  "contract"}` and a select for the threshold, which halves their time.
+  numba only takes a `set` of flags (not a tuple or frozenset). Do not add
+  `nnan`/`ninf` (NaN pixels must still fail the threshold) and do not bring
+  the threshold branch back: background pixels sit near the threshold, so
+  it mispredicts and blocks vectorization. Reassociation leaves integer
+  frames bit-identical (their sums are exact) but changes float frames at
+  float32 rounding, so compare float results with a tolerance.
+- With a CUDA `gpu_device`, `SlopesProcess` replays the torch PYWFS slopes
+  (`compute_slopes_pywfs_torch`) as a CUDA graph (`_PywfsCudaGraph`).
+  Changes to that function must stay capturable: no host synchronisation,
+  no `.item()` or value-dependent branches or shapes. Otherwise capture (or
+  its bitwise check against eager) fails and the component logs a warning
+  and runs eagerly, several times slower.
+- Loading a module with `cache=True` numba kernels from its file under
+  another name (`importlib.util.spec_from_file_location`, e.g. to compare
+  two versions of a kernel) writes cache entries that the real module then
+  fails to load (`ModuleNotFoundError: No module named '<dynamic>'`). Point
+  `NUMBA_CACHE_DIR` somewhere private for such scripts, or clear the
+  `__pycache__` afterwards.
 - numba's `workqueue` threading layer crashes the process when two threads
   call `parallel=True` kernels at once; `omp` and `tbb` are safe. Only the WFS
   thread runs one today (`rotate_image_jit`). A parallel kernel on a second

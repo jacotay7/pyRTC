@@ -247,8 +247,9 @@ warning once.
     # wcog_fwhm: 8.0
     # wcog_spot_fwhm: 3.0
 
-Cost relative to ``cog`` (single core, one frame; ``benchmarks/core_compute_bench.py``
-reports absolute timings as ``slopes.compute_slopes_shwfs_*_numba``):
+Cost relative to ``cog`` (single core, one frame of spots in read noise, on
+an Arm Neoverse-N1; ``benchmarks/core_compute_bench.py`` reports absolute
+timings as ``slopes.compute_slopes_shwfs_*_numba``):
 
 .. list-table::
   :header-rows: 1
@@ -258,17 +259,35 @@ reports absolute timings as ``slopes.compute_slopes_shwfs_*_numba``):
     - ``wcog``
     - ``correlation``
   * - 20x20 sub-apertures, 8 px, R = 2
-    - ~30-60 us
-    - ~1.4x
-    - ~5x
+    - ~27 us
+    - ~1.7x
+    - ~10x
   * - 20x20 sub-apertures, 16 px, R = 4
-    - ~0.12 ms
-    - ~1.4-2x
-    - ~11-13x
+    - ~76 us
+    - ~1.7x
+    - ~18x
   * - 60x60 sub-apertures, 8 px, R = 2
-    - ~0.25-0.45 ms
-    - ~1-1.5x
-    - ~3-6x
+    - ~0.24 ms
+    - ~1.7x
+    - ~10x
+
+The CoG and WCoG sums are vectorized (numba ``fastmath`` reassociation):
+slopes from integer frames, such as the ``int32`` ``wfs`` stream, are exact,
+and slopes from float frames can differ from a strictly sequential sum in the
+last bits.
+
+PYWFS on the GPU
+----------------
+
+With ``gpu_device`` set to a CUDA device, PYWFS slopes are computed with
+PyTorch on that device, from the ``wfs`` stream's CUDA tensor when the WFS
+publishes one, or from a host frame copied up through a pinned buffer. The
+dozen or so small kernels of one frame are captured once, at construction, as
+a CUDA graph and replayed every frame, which removes most of their launch
+cost. The capture is checked against the eager computation bit for bit; if it
+fails, the component logs a warning and computes eagerly. New reference slopes
+are copied into the graph; a new pupil geometry, image shape or dtype
+captures a new graph on the next frame.
 
 Parameters
 ----------
