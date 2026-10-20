@@ -116,7 +116,7 @@ The project is designed for:
 
 ## Release Posture
 
-`pyrtc` `2.0.0` is the current release, published on PyPI as `pyrtcao`; see `CHANGELOG.md` for release notes. The release policy is conservative:
+`pyrtc` `2.1.0` is the current release, published on PyPI as `pyrtcao`; see `CHANGELOG.md` for release notes. The release policy is conservative:
 
 - User-facing project name: `pyrtc`
 - PyPI distribution name: `pyrtcao`
