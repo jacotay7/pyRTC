@@ -4,7 +4,20 @@ All notable changes to `pyrtcao` will be documented in this file.
 
 ## Unreleased
 
+### Added
+
+- **`oopao` extra.** OOPAO 1.0 is on PyPI, so `pip install pyrtcao[oopao]`
+  installs `OOPAO>=1.0` for the OOPAO examples and bridge. The git clone on
+  `PYTHONPATH` that older OOPAO needed is no longer required or supported.
+  OOPAO's pyFFTW dependency has no Python 3.10 wheels. CI now runs the OOPAO
+  and SPECULA convergence tests (SPECULA 1.1.0, OOPAO 1.0.0) in the system
+  smoke job.
+
 ### Changed
+
+- `pyrtc.hardware.oopao_interface` drops its `sys.path` workaround for
+  pre-1.0 OOPAO and, without OOPAO, raises an `ImportError` that names the
+  `oopao` extra.
 
 - **Requires `pyshmem>=1.4.0`.** pyshmem 1.4.0 fixes lost wakeups on `notify=True`
   streams (a reader could sleep for its whole wait slice after a write landed)
@@ -56,6 +69,17 @@ stage without its stream reads and writes. The pyrtc-produced `signal`,
 
 ### Fixed
 
+- **SPECULA on a GPU ignored the atmosphere.** With `speculaInit.device_idx`
+  set to a GPU, `AtmoPropagation` replays a CUDA graph captured at setup,
+  before the bridge attaches the atmosphere layers, so every frame stayed
+  flat (zero WFS signal) with `use_atmosphere: true`. The bridge now
+  re-captures the graph whenever the layer list changes. Affects SPECULA
+  1.0.x and 1.1.
+- Building a GPU SPECULA context in a process that had already initialised
+  SPECULA on the CPU failed in `build_stream()` (`'NoneType' object has no
+  attribute 'use'`): `specula.base_processing_obj` keeps the device it saw at
+  import. The bridge now refreshes these cached globals in every loaded
+  SPECULA module, not only `base_time_obj`.
 - `test_hardware_launcher_inherits_logging_env` failed when the caller
   exported a thread count (e.g. `OPENBLAS_NUM_THREADS=16` on a benchmark
   host). The launcher keeps such settings on purpose, so the test now clears

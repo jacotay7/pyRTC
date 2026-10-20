@@ -4,8 +4,8 @@ Each example is calibrated through its own ``prepare_loop`` (atmosphere off,
 DM round trip confirmed, reference slopes taken, IM measured). A random
 aberration is then put on the DM and the loop must null it.
 
-OOPAO is not on PyPI; the test runs when it can be imported (e.g. a clone on
-``PYTHONPATH``, see the example docs) and is skipped otherwise. Streams get a
+The test runs when OOPAO (the ``oopao`` extra) can be imported and is
+skipped otherwise; CI installs it in the system smoke job. Streams get a
 per-test prefix so this can run next to other system tests.
 """
 
