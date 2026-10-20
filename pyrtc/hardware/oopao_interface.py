@@ -12,8 +12,6 @@ import argparse
 import inspect
 import os
 import time
-import importlib.util
-import sys
 from typing import Any, Mapping
 
 import numpy as np
@@ -24,44 +22,17 @@ from pyrtc.component import Component
 from pyrtc.science_camera import ScienceCamera
 from pyrtc.wavefront_corrector import WavefrontCorrector
 from pyrtc.wavefront_sensor import WavefrontSensor
-from pyrtc.utils import read_yaml_file, set_from_config, set_affinity_and_priority
+from pyrtc.utils import (
+    read_yaml_file,
+    require_optional,
+    set_affinity_and_priority,
+    set_from_config,
+)
 
 
-def _import_oopao_package():
-    """Import OOPAO, working around its import-time ``sys.path`` scan.
-
-    OOPAO's ``__init__`` looks for a ``sys.path`` entry containing "OOPAO"
-    (it expects a clone on ``PYTHONPATH``) and raises ``ValueError`` when the
-    package was pip-installed. Locate the package without executing it and
-    expose its directory on ``sys.path`` just for the import. (Upstream bug,
-    reported to the pyrtc maintainer; see AGENTS.md.)
-    """
-
-    if "OOPAO" in sys.modules or any("OOPAO" in str(entry) for entry in sys.path):
-        return
-    spec = importlib.util.find_spec("OOPAO")
-    if spec is None or not spec.submodule_search_locations:
-        return  # not installed: the imports below raise ModuleNotFoundError
-    package_dir = os.fspath(list(spec.submodule_search_locations)[0])
-    sys.path.append(package_dir)
-    try:
-        importlib.import_module("OOPAO")
-    except ModuleNotFoundError as exc:
-        if exc.name and exc.name.startswith("OOPAO."):
-            # pip installs of OOPAO omit its subpackages (tools, calibration).
-            raise ImportError(
-                f"The installed OOPAO at {package_dir} is incomplete ({exc.name} is "
-                "missing); pip installs of OOPAO omit its subpackages. Clone the "
-                "OOPAO repository and put the clone on PYTHONPATH instead (see the "
-                "pyrtc OOPAO example docs)."
-            ) from exc
-        raise
-    finally:
-        if package_dir in sys.path:
-            sys.path.remove(package_dir)
-
-
-_import_oopao_package()
+# OOPAO >= 1.0 installs from PyPI (the ``oopao`` extra). Older git checkouts
+# only imported from a clone on PYTHONPATH.
+require_optional("OOPAO", "oopao", "The OOPAO simulator bridge")
 
 from OOPAO.Atmosphere import Atmosphere  # noqa: E402
 from OOPAO.DeformableMirror import DeformableMirror  # noqa: E402
