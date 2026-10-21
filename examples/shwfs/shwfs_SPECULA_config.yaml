@@ -12,7 +12,7 @@ loop:
   num_dropped_modes: 0
   poke_amp: 100
   num_iters_im: 8
-  conditioning: 10
+  conditioning: 50
   affinity: 2
   im_method: push-pull
   hardware_delay: 0.01

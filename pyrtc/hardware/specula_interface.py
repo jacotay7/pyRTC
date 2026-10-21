@@ -534,17 +534,30 @@ def _zonal_actuator_positions(
     return np.column_stack(((x - center) * pixel_pitch, (y - center) * pixel_pitch))
 
 
-def _square_actuator_support_mask(n_act: int, obsratio: float = 0.0) -> np.ndarray:
-    if n_act < 1:
-        raise ValueError("square actuator support requires n_act >= 1")
-    if n_act <= 2:
-        return np.ones((n_act, n_act), dtype=bool)
-    center = 0.5 * (float(n_act) - 1.0)
-    radius = max(0.5 * (float(n_act) - 1.0), 0.5)
-    inner_radius = radius * float(obsratio)
-    yy, xx = np.indices((n_act, n_act), dtype=np.float32)
-    rr = np.sqrt((xx - center) ** 2 + (yy - center) ** 2)
-    return np.logical_and(rr <= radius, rr >= inner_radius)
+# Actuators whose influence inside the pupil carries less than this fraction
+# of the strongest actuator's (RMS over the pupil) get no modal command.
+ACTUATOR_COUPLING_THRESHOLD = 0.1
+
+
+def _coupled_actuator_support(
+    zonal_ifunc: np.ndarray, threshold: float = ACTUATOR_COUPLING_THRESHOLD
+) -> np.ndarray:
+    """Actuators that couple enough into the pupil to carry modal commands.
+
+    ``zonal_ifunc`` is SPECULA's ``(num_actuators, num_pupil_pixels)``
+    influence-function matrix. An actuator just outside the pupil edge still
+    shapes the edge pixels, so a geometric cut at the pupil radius leaves the
+    edge uncorrectable; the SH still measures it there, and that error aliases
+    into every controlled mode. Weakly coupled actuators are excluded instead,
+    since a least-squares fit would drive them to large commands.
+    """
+
+    zonal_ifunc = np.asarray(zonal_ifunc, dtype=np.float64)
+    coupling = np.sqrt(np.sum(zonal_ifunc * zonal_ifunc, axis=1))
+    peak = float(coupling.max()) if coupling.size else 0.0
+    if peak <= 0.0:
+        return np.ones(coupling.shape[0], dtype=bool)
+    return coupling >= float(threshold) * peak
 
 
 def _zonal_actuator_count(dm_conf: Mapping[str, Any]) -> int:
@@ -1095,17 +1108,9 @@ class SPECULASystemContext:
             self._bindings.cpu_array(modal_ifunc_obj.influence_function),
             dtype=np.float32,
         )
-        modal_to_command = np.linalg.pinv(zonal_ifunc.T) @ modal_ifunc.T
-
-        if geom == "square" and not circ_geom:
-            actuator_support = _square_actuator_support_mask(
-                n_act, dm_conf.get("obsratio", 0.0)
-            ).reshape(-1)
-            if actuator_support.size != modal_to_command.shape[0]:
-                raise ValueError(
-                    "SPECULA square actuator support mask size does not match the modal-to-command row count"
-                )
-            modal_to_command[~actuator_support, :] = 0.0
+        support = _coupled_actuator_support(zonal_ifunc)
+        modal_to_command = np.zeros((num_actuators, modal_ifunc.shape[0]), dtype=np.float64)
+        modal_to_command[support, :] = np.linalg.pinv(zonal_ifunc[support].T) @ modal_ifunc.T
 
         return (
             num_actuators,
@@ -1120,10 +1125,10 @@ class SPECULASystemContext:
     ) -> np.ndarray:
         """Build the modal-to-command matrix with aobasis from a ``wfc.basis`` section.
 
-        Modes are evaluated at the SPECULA actuator positions (metres). For
-        square geometry, actuators outside the circular support get zero rows,
-        as in the SPECULA-native path. ``pupil_diameter`` defaults to
-        ``pixel_pupil * pixel_pitch``.
+        Modes are evaluated at the SPECULA actuator positions (metres).
+        Actuators that barely couple into the pupil get zero rows, as in the
+        SPECULA-native path (``_coupled_actuator_support``). ``pupil_diameter``
+        defaults to ``pixel_pupil * pixel_pitch``.
         """
 
         npixels = int(getattr(self.simul_params, "pixel_pupil"))
@@ -1137,10 +1142,9 @@ class SPECULASystemContext:
                 f"SPECULA {effective_geom} geometry n_act={n_act} gives {positions.shape[0]} "
                 f"actuator positions, but the SPECULA DM built {num_actuators}."
             )
-        if effective_geom == "square":
-            support = _square_actuator_support_mask(n_act, dm_conf.get("obsratio", 0.0)).reshape(-1)
-        else:
-            support = np.ones(num_actuators, dtype=bool)
+        support = _coupled_actuator_support(
+            self._bindings.cpu_array(self.dm.ifunc_obj.influence_function)
+        )
 
         basis = basis.with_defaults(pupil_diameter=npixels * pixel_pitch)
         modal_to_command = np.zeros((num_actuators, num_modes), dtype=np.float32)

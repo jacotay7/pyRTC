@@ -2,6 +2,29 @@
 
 All notable changes to `pyrtcao` will be documented in this file.
 
+## Unreleased
+
+### Fixed
+
+- **SPECULA examples now correct turbulence (#175).** With
+  `use_atmosphere: true`, closing the loop lowered the Strehl (SHWFS
+  0.05 -> 0.01) instead of raising it. Two causes:
+  - The SPECULA bridge zeroed every actuator outside a circle of the
+    pupil radius after fitting the modes, so the actuators that shape the
+    pupil rim never moved and the fit was no longer least squares. The
+    rim stayed uncorrected (840 nm rms there vs 170 nm inside), the
+    sub-apertures still measured it, and that error aliased into every
+    controlled mode. Actuators are now kept when their influence inside
+    the pupil is at least 10 % of the strongest actuator's, and the modes
+    are fitted on those actuators only (also for `wfc.basis`).
+  - The SHWFS example's `conditioning: 10` truncated tip and tilt, whose
+    interaction-matrix response is the weakest of the 54 Zernikes, so the
+    largest part of the turbulence went uncorrected. It is now 50.
+
+  K-band Strehl with turbulence now rises from about 0.05 open loop to
+  about 0.6 (SHWFS) and 0.5 (PYWFS). `test_specula_loop_corrects_turbulence`
+  checks it.
+
 ## 2.1.0 - 2026-10-20
 
 ### Added
