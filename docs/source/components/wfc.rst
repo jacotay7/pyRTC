@@ -99,10 +99,12 @@ Adapters:
   diameter. Without ``basis`` or ``m2c_file`` it keeps the identity, and
   ``OOPAOInterface.compute_and_load_kl_basis`` still loads OOPAO's own KL basis.
 - ``SPECULAWFCorrector`` evaluates the basis at the SPECULA zonal actuator positions and
-  defaults ``pupil_diameter`` to ``pixel_pupil * pixel_pitch``; for square geometry,
-  actuators outside the circular support get zero rows. Without ``wfc.basis`` it keeps
-  the SPECULA-native basis from the parameter file (SPECULA modal surfaces fitted onto
-  the zonal influence functions).
+  defaults ``pupil_diameter`` to ``pixel_pupil * pixel_pitch``. Actuators whose
+  influence inside the pupil is under 10 % of the strongest actuator's
+  (``ACTUATOR_COUPLING_THRESHOLD``) get zero rows; actuators just outside the pupil
+  edge are kept, because they shape the pupil rim. Without ``wfc.basis`` it keeps the
+  SPECULA-native basis from the parameter file (SPECULA modal surfaces least-squares
+  fitted onto the influence functions of those actuators).
 
 :meth:`WavefrontCorrector.build_basis_m2c` rebuilds the matrix at runtime, optionally
 from a new basis mapping, and :attr:`WavefrontCorrector.m2c_source` reports where the

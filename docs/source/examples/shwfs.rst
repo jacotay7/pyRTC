@@ -92,7 +92,11 @@ Notes
 - The SPECULA example calibrates with the atmosphere removed: it waits until a DM poke
   reaches the slopes, takes reference slopes on the flat DM, then measures the push-pull IM.
   With ``specula.use_atmosphere: false`` (the default config) the loop then converges to zero
-  residual; set it to ``true`` to close the loop on turbulence.
+  residual; set it to ``true`` to close the loop on turbulence. With turbulence, the K-band
+  Strehl of the SPECULA examples rises from about 0.05 open loop to about 0.6 (SHWFS) and
+  0.5 (PYWFS) closed loop. The SHWFS config uses ``conditioning: 50``: Zernike slopes grow
+  with radial order, so tip and tilt have the weakest interaction-matrix response, and a
+  tighter cut (10) dropped them from the control matrix.
 - The DM basis comes from the SPECULA parameter file (SPECULA example) or OOPAO's identity;
   add a ``basis`` section to ``wfc`` to build it with aobasis instead (see
   :doc:`../components/wfc`). With ``basis: {type: kl}`` the SPECULA SHWFS example

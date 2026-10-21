@@ -115,6 +115,64 @@ def test_specula_loop_converges_after_calibration(example, tmp_path, monkeypatch
     )
 
 
+def _mean_strehl(sim, samples: int = 20) -> float:
+    """Mean instantaneous PSF Strehl from SPECULA over ``samples`` frames."""
+    values = []
+    for _ in range(samples):
+        values.append(float(sim.context._cached_psf_strehl))
+        time.sleep(0.05)
+    return float(np.mean(values))
+
+
+@pytest.mark.parametrize("example", sorted(EXAMPLES))
+def test_specula_loop_corrects_turbulence(example, tmp_path, monkeypatch):
+    # With the atmosphere on, closing the loop must raise the Strehl well
+    # above the open-loop value (#175). Edge actuators missing from the M2C
+    # and an IM conditioning that truncated tip/tilt once made it fall.
+    module = _load_example(example)
+    config = read_yaml_file(str(module.CONFIG_PATH))
+    config["specula"]["use_atmosphere"] = True
+    config["loop"]["num_iters_im"] = 2
+    streams = prefix_system_streams(config, f"t{os.getpid()}_{uuid.uuid4().hex[:6]}_")
+    specula_param = read_yaml_file(str(module.PARAM_PATH))
+    specula_param["main"]["root_dir"] = str(tmp_path / "specula")
+    param_file = tmp_path / "params.yaml"
+    import yaml
+
+    param_file.write_text(yaml.safe_dump(specula_param))
+    monkeypatch.chdir(tmp_path)
+
+    clear_shms(streams)
+    system = module.build_system(config, specula_param_file=param_file)
+    try:
+        module.start_system(system)
+        module.prepare_loop(system)
+        loop = system["loop"]
+        time.sleep(0.5)
+        open_strehl = _mean_strehl(system["sim"])
+
+        loop.start()
+        # The loop iterates once per WFS frame; wait for the first good window
+        # against a generous deadline for slow or loaded machines (the PYWFS
+        # runs ~10 frames/s), then require the correction to hold. A broken
+        # loop wanders and can cross the bar for a moment.
+        deadline = time.monotonic() + 40.0
+        time.sleep(2.0)
+        while _mean_strehl(system["sim"]) <= 0.3 and time.monotonic() < deadline:
+            pass
+        closed_strehl = [_mean_strehl(system["sim"]) for _ in range(3)]
+        loop.stop()
+    finally:
+        module.stop_system(system)
+        clear_shms(streams)
+
+    # Locally the K-band Strehl goes from ~0.03-0.07 open to ~0.45-0.7 closed.
+    assert min(closed_strehl) > 0.3, (
+        f"{example}: closed-loop Strehl {closed_strehl} (open {open_strehl:.3f})"
+    )
+    assert min(closed_strehl) > 3.0 * open_strehl
+
+
 def _cupy_device_available() -> bool:
     try:
         import cupy

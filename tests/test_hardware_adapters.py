@@ -1311,8 +1311,43 @@ def test_specula_standalone_bridge_syncs_pywfs_geometry(monkeypatch):
     assert wfs.read(block=False).shape == (12, 12)
 
 
-def test_specula_square_dm_zeroes_m2c_outside_circular_support(monkeypatch):
+_CORNERS_5X5 = np.zeros(25, dtype=bool)
+_CORNERS_5X5[[0, 4, 20, 24]] = True
+
+
+def _weaken_fake_specula_dm(monkeypatch, weak):
+    """Make the fake SPECULA DM's ``weak`` actuators barely reach the pupil."""
+
+    dm_module = sys.modules["specula.processing_objects.dm"]
+    base = dm_module.DM
+
+    class _WeakEdgeDM(base):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            influence = np.array(self.ifunc_obj.influence_function, dtype=np.float32)
+            influence[weak] *= 0.05
+            self.ifunc_obj.influence_function = influence
+
+    monkeypatch.setattr(dm_module, "DM", _WeakEdgeDM)
+
+
+def test_specula_coupled_actuator_support_uses_in_pupil_influence():
+    module = importlib.import_module("pyrtc.hardware.specula_interface")
+    ifunc = np.eye(4, dtype=np.float32)
+    ifunc[3] *= 0.05  # couples 5 % of the strongest actuator's influence
+
+    support = module._coupled_actuator_support(ifunc)
+
+    np.testing.assert_array_equal(support, [True, True, True, False])
+    assert module._coupled_actuator_support(np.zeros((3, 2))).all()
+
+
+def test_specula_dm_m2c_skips_actuators_that_barely_reach_the_pupil(monkeypatch):
+    # A geometric cut at the pupil radius also dropped the edge actuators that
+    # shape the pupil rim, which left the rim uncorrectable; the support now
+    # comes from each actuator's influence inside the pupil.
     _install_fake_specula(monkeypatch)
+    _weaken_fake_specula_dm(monkeypatch, _CORNERS_5X5)
 
     sys.modules.pop("pyrtc.hardware.specula_interface", None)
     module = importlib.import_module("pyrtc.hardware.specula_interface")
@@ -1329,10 +1364,9 @@ def test_specula_square_dm_zeroes_m2c_outside_circular_support(monkeypatch):
     sim = module.SPECULAInterface(conf, param=param)
     _wfs, dm, _psf = sim.get_hardware()
 
-    support = module._square_actuator_support_mask(5, 0.0).reshape(-1)
-    assert dm.M2C.shape[0] == support.size
-    assert np.all(dm.M2C[~support] == 0.0)
-    assert np.any(dm.M2C[support] != 0.0)
+    assert dm.M2C.shape[0] == _CORNERS_5X5.size
+    assert np.all(dm.M2C[_CORNERS_5X5] == 0.0)
+    assert np.any(dm.M2C[~_CORNERS_5X5] != 0.0)
 
 
 def test_specula_circular_dm_uses_circular_display_diameter(monkeypatch):
@@ -1778,6 +1812,7 @@ def test_oopao_wfc_prefers_dm_coordinates_and_telescope_diameter(monkeypatch):
 
 def test_specula_wfc_uses_aobasis_when_wfc_basis_is_set(monkeypatch):
     _install_fake_specula(monkeypatch)
+    _weaken_fake_specula_dm(monkeypatch, _CORNERS_5X5)
 
     sys.modules.pop("pyrtc.hardware.specula_interface", None)
     module = importlib.import_module("pyrtc.hardware.specula_interface")
@@ -1799,11 +1834,10 @@ def test_specula_wfc_uses_aobasis_when_wfc_basis_is_set(monkeypatch):
     sim = module.SPECULAInterface(conf, param=param)
     _wfs, dm, _psf = sim.get_hardware()
 
-    support = module._square_actuator_support_mask(5, 0.0).reshape(-1)
     assert dm.m2c_source == "basis"
     assert dm.M2C.shape == (25, 4)
-    assert np.all(dm.M2C[~support] == 0.0)
-    assert np.linalg.matrix_rank(dm.M2C[support]) == 4
+    assert np.all(dm.M2C[_CORNERS_5X5] == 0.0)
+    assert np.linalg.matrix_rank(dm.M2C[~_CORNERS_5X5]) == 4
     np.testing.assert_allclose(np.abs(dm.M2C).max(axis=0), 1.0, rtol=1e-6)
 
 

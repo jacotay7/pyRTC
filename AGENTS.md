@@ -307,6 +307,19 @@ ruff check . && ruff format --check .    # lint, as in CI
   requires graph inputs to be updated in place (a reallocated input raises),
   and `specula.init()` before any object is built (the bridge does both). The
   system tests run SPECULA on the CPU only, so check GPU changes by hand.
+- SPECULA M2C support: keep every actuator that couples into the pupil
+  (`_coupled_actuator_support`), and fit the modes on those actuators only.
+  A geometric cut at the pupil radius dropped the actuators that shape the
+  rim; the SH still measured the rim and the loop made turbulence worse
+  (#175). A static aberration that is itself a DM shape is corrected
+  perfectly either way, so test changes here with the atmosphere on
+  (`test_specula_loop_corrects_turbulence`), not only with DM-space
+  aberrations.
+- `conditioning` (SVD cut at `max(s) / conditioning`) drops the weakest
+  IM directions. With an unnormalized Zernike IM those are tip and tilt,
+  since slopes grow with radial order, so a tight cut leaves the largest
+  turbulence modes uncontrolled. Check `retained_singular_values` in the
+  loop's log.
 - Simulated systems run asynchronously: the loop iterates once per WFS frame,
   so its delay in iterations is the DM-to-WFS round trip in frames, which
   grows on a loaded CI runner. An integrator is stable only below
