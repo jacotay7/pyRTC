@@ -24,6 +24,14 @@ All notable changes to `pyrtcao` will be documented in this file.
   K-band Strehl with turbulence now rises from about 0.05 open loop to
   about 0.6 (SHWFS) and 0.5 (PYWFS). `test_specula_loop_corrects_turbulence`
   checks it.
+- **SPECULA science camera: one writer for `strehl` and `tiptilt`.**
+  `expose()` also published SPECULA's Strehl and a constant 0 tip-tilt, so
+  the streams alternated with `integrate()`'s long-exposure estimate. The two
+  are different quantities: SPECULA's `out_sr` is the on-axis Strehl, while
+  pyrtc's estimate is peak-based (aocore CONVENTIONS 4.2), and they diverge
+  when residual tip-tilt moves the peak (0.24 vs 0.40 in one run). The PID
+  and loop-hyperparameter optimizers use `strehl` as their objective. Now
+  only `integrate()` writes them, as for the OOPAO and HCIPy cameras.
 
 ## 2.1.0 - 2026-10-20
 

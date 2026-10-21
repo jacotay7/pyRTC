@@ -1088,6 +1088,38 @@ def test_specula_interface_requires_optional_dependency(monkeypatch):
         module.SPECULAInterface(_specula_conf(), param=_specula_param())
 
 
+def test_specula_science_camera_writes_strehl_only_from_integrate(monkeypatch):
+    # expose() also published SPECULA's instantaneous Strehl (and a constant 0
+    # tip-tilt), so the stream alternated with integrate()'s long-exposure
+    # estimate; the PID and loop-hyperparameter optimizers read it.
+    _install_fake_specula(monkeypatch)
+    sys.modules.pop("pyrtc.hardware.specula_interface", None)
+    module = importlib.import_module("pyrtc.hardware.specula_interface")
+    conf = {
+        **_specula_conf(),
+        "psf": {
+            "name": "psf",
+            "width": 2,
+            "height": 2,
+            "dark_count": 1,
+            "integration": 1,
+            "functions": [],
+        },
+    }
+    # pixel_pupil 16 * nd 0.125: a 2 x 2 camera, the fake PSF's frame size.
+    param = {**_specula_param(), "psf": {"wavelengthInNm": 1650, "nd": 0.125}}
+    sim = module.SPECULAInterface(conf, param=param)
+    _wfs, _dm, psf = sim.get_hardware()
+    counts = {name: psf._stream_object(name).count for name in ("strehl", "tiptilt")}
+
+    psf.expose()
+    assert {name: psf._stream_object(name).count for name in counts} == counts
+
+    psf.integrate()
+    for name, count in counts.items():
+        assert psf._stream_object(name).count == count + 1
+
+
 def test_specula_runtime_init_refreshes_globals_cached_by_submodules(monkeypatch):
     # SPECULA submodules import the device globals by value. A process that
     # built a CPU context first kept default_target_device = None in
