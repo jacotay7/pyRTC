@@ -315,6 +315,18 @@ ruff check . && ruff format --check .    # lint, as in CI
   perfectly either way, so test changes here with the atmosphere on
   (`test_specula_loop_corrects_turbulence`), not only with DM-space
   aberrations.
+- `Loop.compute_im` returns with its last poke frame unconsumed, so the
+  next `read_stream("signal")` returns that frame, not one of the flattened
+  DM. Tests that measure the calibrated residual call
+  `testsupport.drain_in_flight_signal(loop)` first; without it the SPECULA
+  PYWFS convergence test failed about 3 runs in 4 once the M2C fix (#178)
+  made that poke frame larger.
+- Science cameras publish `strehl`/`tiptilt` from one place only:
+  `ScienceCamera.compute_strehl` in `integrate` (peak-based, aocore
+  CONVENTIONS 4.2). Optimizers read `strehl` as their objective. SPECULA's
+  own `out_sr` is the on-axis Strehl, lower than the peak-based value when
+  residual tip-tilt moves the peak; tests that want the simulator's value
+  read it from the context (`_cached_psf_strehl`), not from the stream.
 - `conditioning` (SVD cut at `max(s) / conditioning`) drops the weakest
   IM directions. With an unnormalized Zernike IM those are tip and tilt,
   since slopes grow with radial order, so a tight cut leaves the largest

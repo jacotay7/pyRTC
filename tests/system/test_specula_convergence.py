@@ -22,7 +22,7 @@ pytest.importorskip("specula")
 
 from pyrtc import clear_shms  # noqa: E402
 from pyrtc.utils import read_yaml_file  # noqa: E402
-from testsupport import prefix_system_streams
+from testsupport import drain_in_flight_signal, prefix_system_streams
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 EXAMPLES = {
@@ -71,7 +71,7 @@ def test_specula_loop_converges_after_calibration(example, tmp_path, monkeypatch
         loop = system["loop"]
         dm = system["dm"]
 
-        time.sleep(0.2)
+        drain_in_flight_signal(loop)
         calibrated_rms = _mean_signal_rms(loop)
 
         rng = np.random.default_rng(39)
@@ -116,7 +116,7 @@ def test_specula_loop_converges_after_calibration(example, tmp_path, monkeypatch
 
 
 def _mean_strehl(sim, samples: int = 20) -> float:
-    """Mean instantaneous PSF Strehl from SPECULA over ``samples`` frames."""
+    """Mean of SPECULA's instantaneous, on-axis PSF Strehl over ``samples`` frames."""
     values = []
     for _ in range(samples):
         values.append(float(sim.context._cached_psf_strehl))

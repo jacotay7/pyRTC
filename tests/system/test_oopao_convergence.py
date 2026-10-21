@@ -20,7 +20,7 @@ import pytest
 
 from pyrtc import clear_shms
 from pyrtc.utils import read_yaml_file
-from testsupport import prefix_system_streams
+from testsupport import drain_in_flight_signal, prefix_system_streams
 
 try:
     import pyrtc.hardware.oopao_interface  # noqa: F401  (imports OOPAO)
@@ -68,7 +68,7 @@ def test_oopao_loop_converges_after_calibration(example):
             system, gain=config["loop"]["gain"], poke_amp=loop.poke_amp, compute_im=True
         )
 
-        time.sleep(0.2)
+        drain_in_flight_signal(loop)
         calibrated_rms = _mean_signal_rms(loop)
 
         rng = np.random.default_rng(88)

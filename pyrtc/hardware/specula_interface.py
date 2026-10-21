@@ -1340,13 +1340,16 @@ class SPECULAScienceCamera(ScienceCamera):
             self.context.register_component(self.section_name, self)
 
     def expose(self):
-        frame, model, strehl, tiptilt = self.context.capture_psf()
+        # ``strehl`` and ``tiptilt`` come only from ``integrate`` (the
+        # long-exposure estimate against the model PSF), as for the other
+        # science cameras. Writing SPECULA's instantaneous Strehl here as well
+        # made the stream alternate between two quantities, and optimizers use
+        # it as their objective.
+        frame, model, _strehl, _tiptilt = self.context.capture_psf()
         self.data = frame.astype(self.image_raw_dtype, copy=False)
         if not np.any(self.model):
             self.set_model_psf(model.astype(self.psf_long_dtype, copy=False))
         super().expose()
-        self.write_stream("strehl", np.array([strehl], dtype=float))
-        self.write_stream("tiptilt", np.array([tiptilt], dtype=float))
 
     def integrate(self):
         super().integrate()

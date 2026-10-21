@@ -265,6 +265,20 @@ class StaticStream:
         pass
 
 
+def drain_in_flight_signal(loop, timeout=10.0):
+    """Consume the ``signal`` frames still in flight after a calibration.
+
+    ``Loop.compute_im`` returns with its last poke frame unconsumed, so the
+    first ``read_stream("signal")`` afterwards returns it rather than a frame
+    of the flattened DM. Drop the frames of one DM round trip (as measured by
+    ``check_round_trip``) plus one before measuring the calibrated residual.
+    """
+
+    frames = int(getattr(loop, "last_round_trip_frames", None) or 3) + 1
+    for _ in range(frames):
+        loop.read_stream("signal", timeout=timeout)
+
+
 @pytest.fixture(autouse=True)
 def unlink_private_streams():
     yield
