@@ -1088,6 +1088,40 @@ def test_specula_interface_requires_optional_dependency(monkeypatch):
         module.SPECULAInterface(_specula_conf(), param=_specula_param())
 
 
+def test_specula_runtime_init_refreshes_globals_cached_by_submodules(monkeypatch):
+    # SPECULA submodules import the device globals by value. A process that
+    # built a CPU context first kept default_target_device = None in
+    # base_processing_obj, and a later GPU context failed in build_stream().
+    module = importlib.import_module("pyrtc.hardware.specula_interface")
+    device = object()
+    root = types.ModuleType("specula")
+
+    def init(device_idx, precision):
+        root.default_target_device_idx = device_idx
+        root.default_target_device = device
+        root.global_precision = precision
+
+    root.init = init
+    for attr in module._SPECULA_RUNTIME_GLOBALS:
+        setattr(root, attr, None)
+    processing = types.ModuleType("specula.base_processing_obj")
+    processing.default_target_device = None
+    monkeypatch.setitem(sys.modules, "specula.base_processing_obj", processing)
+
+    module._initialize_specula_runtime(root, device_idx=0, precision=1)
+
+    assert processing.default_target_device is device
+    assert not hasattr(processing, "default_target_device_idx")
+
+
+def test_oopao_interface_names_the_oopao_extra_when_missing(monkeypatch):
+    monkeypatch.setitem(sys.modules, "OOPAO", None)
+    monkeypatch.delitem(sys.modules, "pyrtc.hardware.oopao_interface", raising=False)
+
+    with pytest.raises(ImportError, match=r"pip install 'pyrtcao\[oopao\]'"):
+        importlib.import_module("pyrtc.hardware.oopao_interface")
+
+
 def test_expected_output_specs_sync_specula_pywfs_geometry():
     streams = importlib.import_module("pyrtc.streams")
 
@@ -1398,6 +1432,30 @@ def test_specula_standalone_bridge_honours_use_atmosphere(monkeypatch):
     sim.context.step_index = 7
     sim.add_atmosphere()
     assert sim.context.pupilstop.generation_time == sim.context.scheduled_time_t()
+
+
+@pytest.mark.parametrize("specula_1_1", [True, False])
+def test_specula_atmosphere_toggle_recaptures_propagation_graph(monkeypatch, specula_1_1):
+    # On a GPU, AtmoPropagation replays a CUDA graph captured over the layer
+    # list at setup(); without a new capture, attaching the atmosphere later
+    # left every frame flat.
+    _install_fake_specula(monkeypatch)
+    sys.modules.pop("pyrtc.hardware.specula_interface", None)
+    module = importlib.import_module("pyrtc.hardware.specula_interface")
+    conf = {**_specula_conf(), "specula": {"use_atmosphere": False}}
+    sim = module.SPECULAInterface(conf, param=_specula_param())
+    prop = sim.context.prop
+    calls = []
+    prop.cuda_graph = object()
+    if specula_1_1:
+        prop.invalidate_graph = lambda: calls.append("invalidate_graph")
+    else:
+        prop.build_stream = lambda: calls.append("build_stream")
+
+    sim.add_atmosphere()
+    sim.remove_atmosphere()
+
+    assert calls == ["invalidate_graph" if specula_1_1 else "build_stream"] * 2
 
 
 def test_oopao_interface_builds_from_param_dict_and_keeps_source_overrides(monkeypatch):

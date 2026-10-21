@@ -298,6 +298,15 @@ ruff check . && ruff format --check .    # lint, as in CI
   optical setup without a new DM command (atmosphere on/off) must refresh an
   input, and every step must advance the WFS and PSF branches together, or
   the WFS silently repeats a stale (or blank) frame.
+- On a GPU (`speculaInit.device_idx >= 0`) SPECULA replays objects' trigger
+  code as CUDA graphs captured at `setup()`. `AtmoPropagation`'s graph bakes
+  in the layer list, so after attaching or detaching layers
+  (`_refresh_propagation_setup`) the bridge re-captures it
+  (`invalidate_graph()` on SPECULA >= 1.1, `build_stream()` before). Without
+  that, every GPU frame with the atmosphere on was flat. SPECULA 1.1 also
+  requires graph inputs to be updated in place (a reallocated input raises),
+  and `specula.init()` before any object is built (the bridge does both). The
+  system tests run SPECULA on the CPU only, so check GPU changes by hand.
 - Simulated systems run asynchronously: the loop iterates once per WFS frame,
   so its delay in iterations is the DM-to-WFS round trip in frames, which
   grows on a loaded CI runner. An integrator is stable only below
@@ -328,19 +337,19 @@ ruff check . && ruff format --check .    # lint, as in CI
   longer a cause: components warm their kernels when built (#157).
 - Windows frees named shared memory when the last handle closes, so streams do
   not outlive their producer there. Treat Windows as soft-RTC only.
-- OOPAO (not on PyPI) has two packaging bugs. Its `__init__` looks for a
-  `sys.path` entry containing `OOPAO` and fails with `ValueError: attempt to
-  get argmin of an empty sequence` otherwise, and a pip install from git omits
-  its subpackages (`OOPAO.tools`, `OOPAO.calibration`). `oopao_interface`
-  works around the first (it exposes the package directory on `sys.path` for
-  the import) and raises a clear `ImportError` for the second. The supported
-  install is a clone on `PYTHONPATH` (recipe in `docs/source/examples/pywfs.rst`).
-  Per the maintainer, don't file OOPAO issues upstream; the write-up is kept
-  outside the repo for the maintainer.
-- `oopao_interface` targets current OOPAO propagation: `src ** tel * dm * wfs`,
+- OOPAO is on PyPI from 1.0 (the `oopao` extra, `OOPAO>=1.0`), which fixed
+  the packaging bugs that forced a git clone on `PYTHONPATH` before. Its
+  pyFFTW dependency has no wheels for Python 3.10 or free-threaded builds, so
+  OOPAO is not in `requirements-test.txt`. CI installs the `oopao` and
+  `specula` extras only in the `smoke-system-notebook` job, where the
+  convergence tests run. Importing OOPAO prints a banner to stdout.
+- `oopao_interface` targets OOPAO 1.0 propagation: `src ** tel * dm * wfs`,
   or `src ** atm * tel * dm * wfs` with atmosphere (`**` resets the source).
-  DM commands are in metres. `tests/system/test_oopao_convergence.py` runs
-  when OOPAO is importable (e.g. `PYTHONPATH=<clone>`) and skips otherwise.
+  DM commands are in metres. In 1.0 the source carries the field, so setting
+  `tel.OPD` and propagating `src ** tel * wfs` does not apply the OPD, and
+  `ShackHartmann.wfs_measure` takes the source and its `sh_data` entry.
+  `tests/system/test_oopao_convergence.py` runs when OOPAO is importable and
+  skips otherwise.
 - `hcipy_interface` builds its whole system from a flat parameter mapping
   (defaults in `DEFAULT_PARAMS`). HCIPy's Shack-Hartmann optics need the
   pupil magnified to the physical microlens-array size (the interface uses
@@ -394,6 +403,26 @@ ruff check . && ruff format --check .    # lint, as in CI
   `(width, height)` streams, while XIMEA, Spinnaker and the simulators wrote
   `[y, x]` arrays into them unchanged (square ROIs only). That is why
   `legacy_calibration` must be set by the user and is never guessed.
+- The SHWFS CoG and WCoG kernels use numba `fastmath={"reassoc",
+  "contract"}` and a select for the threshold, which halves their time.
+  numba only takes a `set` of flags (not a tuple or frozenset). Do not add
+  `nnan`/`ninf` (NaN pixels must still fail the threshold) and do not bring
+  the threshold branch back: background pixels sit near the threshold, so
+  it mispredicts and blocks vectorization. Reassociation leaves integer
+  frames bit-identical (their sums are exact) but changes float frames at
+  float32 rounding, so compare float results with a tolerance.
+- With a CUDA `gpu_device`, `SlopesProcess` replays the torch PYWFS slopes
+  (`compute_slopes_pywfs_torch`) as a CUDA graph (`_PywfsCudaGraph`).
+  Changes to that function must stay capturable: no host synchronisation,
+  no `.item()` or value-dependent branches or shapes. Otherwise capture (or
+  its bitwise check against eager) fails and the component logs a warning
+  and runs eagerly, several times slower.
+- Loading a module with `cache=True` numba kernels from its file under
+  another name (`importlib.util.spec_from_file_location`, e.g. to compare
+  two versions of a kernel) writes cache entries that the real module then
+  fails to load (`ModuleNotFoundError: No module named '<dynamic>'`). Point
+  `NUMBA_CACHE_DIR` somewhere private for such scripts, or clear the
+  `__pycache__` afterwards.
 - numba's `workqueue` threading layer crashes the process when two threads
   call `parallel=True` kernels at once; `omp` and `tbb` are safe. Only the WFS
   thread runs one today (`rotate_image_jit`). A parallel kernel on a second

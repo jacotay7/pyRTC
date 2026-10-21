@@ -113,3 +113,53 @@ def test_specula_loop_converges_after_calibration(example, tmp_path, monkeypatch
         f"{example}: DM command rms {dm_rms:.4g} did not return towards flat "
         f"(aberration rms {aberration_dm_rms:.4g})"
     )
+
+
+def _cupy_device_available() -> bool:
+    try:
+        import cupy
+
+        return cupy.cuda.runtime.getDeviceCount() > 0
+    except Exception:
+        return False
+
+
+@pytest.mark.gpu
+@pytest.mark.skipif(not _cupy_device_available(), reason="no CuPy CUDA device")
+@pytest.mark.parametrize("example", sorted(EXAMPLES))
+def test_specula_gpu_frames_follow_the_atmosphere(example, tmp_path):
+    # On a GPU, AtmoPropagation replays a CUDA graph captured before the
+    # bridge attaches the atmosphere; without a new capture every frame
+    # stayed flat.
+    import gc
+
+    import cupy
+
+    from pyrtc.hardware.specula_interface import SPECULASystemContext
+
+    # Earlier tests in the process (OOPAO picks CuPy when it is installed)
+    # keep GPU memory pooled; on a small GPU this test then fails with cuSOLVER
+    # internal errors and leaves the device unusable for the torch GPU tests.
+    cupy.get_default_memory_pool().free_all_blocks()
+    module = _load_example(example)
+    param = read_yaml_file(str(module.PARAM_PATH))
+    param["speculaInit"]["device_idx"] = 0
+    param["main"]["root_dir"] = str(tmp_path / "specula")
+    config = read_yaml_file(str(module.CONFIG_PATH))
+    context = SPECULASystemContext({"param": param, "use_atmosphere": True}, config)
+
+    def propagated_phase(ctx):
+        ctx.capture_wfs()
+        ef = ctx.prop.outputs["out_on_axis_source_ef"]
+        return np.asarray(ctx._bindings.cpu_array(ef.phaseInNm), dtype=np.float64)
+
+    try:
+        first = propagated_phase(context)
+        for _ in range(5):
+            later = propagated_phase(context)
+    finally:
+        del context
+        gc.collect()
+        cupy.get_default_memory_pool().free_all_blocks()
+    assert np.std(later) > 10.0  # nm; turbulence is hundreds of nm rms
+    assert not np.array_equal(first, later)

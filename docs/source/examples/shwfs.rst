@@ -30,18 +30,14 @@ The simulator is not installed with pyrtc. Install the backend you want to run: 
 OOPAO
 ~~~~~
 
-OOPAO is not on PyPI, so it cannot be a pyrtc extra. Installing it straight from GitHub (``pip install git+https://github.com/cheritier/OOPAO.git``) is not enough: ``import OOPAO`` then fails with ``ValueError: attempt to get argmin of an empty sequence``. At import time, ``OOPAO/__init__.py`` looks for an entry containing ``OOPAO`` on ``sys.path`` and writes a small file into it. A plain ``pip install`` puts OOPAO in ``site-packages``, so no such entry exists.
-
-Clone OOPAO and put the clone on ``PYTHONPATH``:
+OOPAO 1.0 and later is on PyPI and is available as a pyrtc extra:
 
 .. code-block:: bash
 
-	git clone https://github.com/cheritier/OOPAO.git   # keep the directory name "OOPAO"
-	pip install ./OOPAO                                # installs OOPAO's dependencies
-	export PYTHONPATH="$PWD/OOPAO:$PYTHONPATH"
-	python -c "import OOPAO"                           # check the install
+	pip install pyrtcao[oopao]   # from a source checkout: pip install .[oopao]
+	# or install OOPAO on its own: pip install "OOPAO>=1.0"
 
-The clone's path must contain ``OOPAO`` (the match is case-sensitive, so a directory renamed to ``oopao`` fails) and must be writable. ``PYTHONPATH`` takes precedence over ``site-packages``, so the clone is the copy that gets imported. Add the ``export`` line to your shell profile or environment activation script so it persists.
+pyrtc's OOPAO bridge targets OOPAO 1.0. Earlier OOPAO versions were only installable as a git clone on ``PYTHONPATH`` and are not supported. OOPAO depends on pyFFTW, which has no wheels for Python 3.10 or free-threaded builds, so the extra needs Python 3.11 or later there unless FFTW is available to build pyFFTW from source.
 
 SPECULA
 ~~~~~~~

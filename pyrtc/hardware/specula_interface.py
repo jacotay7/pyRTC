@@ -320,27 +320,39 @@ def sync_specula_pywfs_config(
     return applied or None
 
 
+_SPECULA_RUNTIME_GLOBALS = (
+    "global_precision",
+    "default_target_device_idx",
+    "default_target_device",
+    "cpu_float_dtype_list",
+    "gpu_float_dtype_list",
+    "cpu_complex_dtype_list",
+    "gpu_complex_dtype_list",
+)
+
+
 def _initialize_specula_runtime(specula_module, *, device_idx: int, precision: int) -> None:
     """Initialize SPECULA before importing data-object or processing modules.
 
-    SPECULA's BaseTimeObj module imports global runtime state from the package
-    root at module import time. That means `specula.init(...)` must happen
-    before importing most SPECULA submodules, or those cached globals remain
-    `None` and later constructors fail. If SPECULA submodules were already
-    imported by the current process, patch their cached globals as well.
+    SPECULA submodules (``base_time_obj``, ``base_processing_obj``) import
+    global runtime state from the package root at module import time. That
+    means `specula.init(...)` must happen before importing most SPECULA
+    submodules, or those cached globals remain `None` and later constructors
+    fail. If SPECULA submodules were already imported by the current process
+    (e.g. a CPU context built before a GPU one), patch their cached globals as
+    well; a stale ``default_target_device`` of ``None`` breaks CUDA graph
+    capture.
     """
 
     specula_module.init(device_idx, precision=precision)
 
-    base_time_obj = sys.modules.get("specula.base_time_obj")
-    if base_time_obj is not None:
-        base_time_obj.global_precision = specula_module.global_precision
-        base_time_obj.default_target_device_idx = specula_module.default_target_device_idx
-        base_time_obj.default_target_device = specula_module.default_target_device
-        base_time_obj.cpu_float_dtype_list = specula_module.cpu_float_dtype_list
-        base_time_obj.gpu_float_dtype_list = specula_module.gpu_float_dtype_list
-        base_time_obj.cpu_complex_dtype_list = specula_module.cpu_complex_dtype_list
-        base_time_obj.gpu_complex_dtype_list = specula_module.gpu_complex_dtype_list
+    for name, module in list(sys.modules.items()):
+        if module is None or not name.startswith("specula."):
+            continue
+        module_globals = vars(module)
+        for attr in _SPECULA_RUNTIME_GLOBALS:
+            if attr in module_globals:
+                module_globals[attr] = getattr(specula_module, attr)
 
 
 def _load_specula_bindings(*, device_idx: int, precision: int) -> SimpleNamespace:
@@ -814,6 +826,15 @@ class SPECULASystemContext:
         self.prop.setup_interpolators()
         if getattr(self.prop, "doFresnel", False):
             self.prop.doFresnel_setup()
+        elif getattr(self.prop, "cuda_graph", None) is not None:
+            # On a GPU, setup() captured trigger_code() as a CUDA graph over
+            # the layer list of that time. Replaying it after the list changes
+            # propagates the old layers: with the atmosphere attached later,
+            # every frame stayed flat. Capture it again.
+            if hasattr(self.prop, "invalidate_graph"):  # SPECULA >= 1.1
+                self.prop.invalidate_graph()
+            else:
+                self.prop.build_stream()
 
     def _refresh_psf_cache(self) -> None:
         if self.psf is None:

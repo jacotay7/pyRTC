@@ -317,6 +317,55 @@ def test_gpu_pywfs_matches_cpu_numba_path():
     assert np.all(_numba_reference(sp, dark) == 0.0)
 
 
+@pytest.mark.gpu
+@pytest.mark.skipif(not _cuda_available(), reason="CUDA is not available")
+def test_gpu_pywfs_cuda_graph_matches_eager_torch_path():
+    """The CUDA-graph replay gives the eager torch slopes bit for bit."""
+    import torch
+
+    rng = np.random.default_rng(7)
+    sp = _pywfs_process("cuda:0", size=128, radius=20)
+    indices = [
+        torch.as_tensor(np.flatnonzero(mask), device="cuda:0")
+        for mask in (sp.p1mask, sp.p2mask, sp.p3mask, sp.p4mask)
+    ]
+
+    def eager(image, ref_1d):
+        return slopes_mod.compute_slopes_pywfs_torch(
+            torch.as_tensor(image, device="cuda:0").reshape(-1),
+            *indices,
+            sp.num_pixels_in_pupils,
+            torch.zeros(2 * sp.num_pixels_in_pupils, device="cuda:0"),
+            torch.as_tensor(ref_1d, device="cuda:0"),
+        ).cpu()
+
+    image = rng.integers(0, 4000, (128, 128)).astype(np.int32)
+    signal, _ = _run_compute_signal(sp, image)
+    graph = sp._pywfs_graph[2]
+    assert graph is not None, "the CUDA graph should be captured"
+    assert torch.equal(torch.as_tensor(signal), eager(image, sp.ref_slopes_1d))
+
+    # GPU-resident frames reuse the graph (same shape and dtype).
+    image = rng.integers(0, 4000, (128, 128)).astype(np.int32)
+    signal, _ = _run_compute_signal(sp, torch.as_tensor(image, device="cuda:0"))
+    assert sp._pywfs_graph[2] is graph
+    assert torch.equal(torch.as_tensor(signal), eager(image, sp.ref_slopes_1d))
+
+    # New reference slopes reach the graph without a recapture.
+    sp.set_ref_slopes(rng.normal(scale=0.01, size=sp.valid_sub_aps.shape).astype(np.float32))
+    signal, _ = _run_compute_signal(sp, image)
+    assert sp._pywfs_graph[2] is graph
+    assert torch.equal(torch.as_tensor(signal), eager(image, sp.ref_slopes_1d))
+
+    # A dark frame still gives zeros, and a float frame gets its own graph.
+    signal, _ = _run_compute_signal(sp, np.zeros_like(image))
+    assert np.all(signal == 0.0)
+    float_image = rng.random((128, 128)).astype(np.float32) * 100
+    signal, _ = _run_compute_signal(sp, float_image)
+    assert sp._pywfs_graph[2] is not graph
+    assert torch.equal(torch.as_tensor(signal), eager(float_image, sp.ref_slopes_1d))
+
+
 def test_gpu_pywfs_device_cache_rebuilds_on_change():
     """Masks/ref slopes are uploaded once and re-uploaded only when they change.
 

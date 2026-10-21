@@ -2,6 +2,89 @@
 
 All notable changes to `pyrtcao` will be documented in this file.
 
+## 2.1.0 - 2026-10-20
+
+### Added
+
+- **`oopao` extra.** OOPAO 1.0 is on PyPI, so `pip install pyrtcao[oopao]`
+  installs `OOPAO>=1.0` for the OOPAO examples and bridge. The git clone on
+  `PYTHONPATH` that older OOPAO needed is no longer required or supported.
+  OOPAO's pyFFTW dependency has no Python 3.10 wheels. CI now runs the OOPAO
+  and SPECULA convergence tests (SPECULA 1.1.0, OOPAO 1.0.0) in the system
+  smoke job.
+
+### Changed
+
+- `pyrtc.hardware.oopao_interface` drops its `sys.path` workaround for
+  pre-1.0 OOPAO and, without OOPAO, raises an `ImportError` that names the
+  `oopao` extra.
+
+- **Requires `pyshmem>=1.4.0`.** pyshmem 1.4.0 fixes lost wakeups on `notify=True`
+  streams (a reader could sleep for its whole wait slice after a write landed)
+  and cuts per-call read/write overhead 2-4x (a small `write` 47 -> 11 us on an
+  Arm Neoverse-N1). Stream handoff was the largest per-frame cost in the loop.
+
+### Performance
+
+Per-frame CPU and GPU time of the slopes stage, without changing results.
+Timed on an 80-core Neoverse-N1 (Arm), one thread, as the median and p99 of
+3000 frames, median of three interleaved runs per side; "own" time is the
+stage without its stream reads and writes. The pyrtc-produced `signal`,
+`signal_2d` and `wfc` streams are bit-identical before and after on integer
+(`int32` `wfs`) frames.
+
+- **SHWFS centroiding 1.3-1.7x faster.** The thresholded CoG and WCoG
+  kernels select instead of branching on the threshold and let LLVM
+  vectorize each sub-aperture sum (numba `fastmath={"reassoc",
+  "contract"}`, no `nnan`, so NaN pixels are still skipped). On 40 x 40
+  sub-apertures of 8 px, CoG went 196 -> 116 us per frame and WCoG
+  250 -> 192 us (on an x86 desktop about 2x for both). The slopes stage's
+  own time went 265 -> 159 us (p99 288 -> 183 us), and the whole
+  single-thread frame, WFS to DM command, 1591 -> 1392 us (p99
+  1677 -> 1490 us). Only the order of the additions changes, the same for
+  every frame dtype: integer frames give identical slopes, and float frames
+  agree to float32 rounding (a few ulp).
+- **PYWFS slopes about 3.4x faster on the CPU.** `SlopesProcess` gathers
+  the pupils through cached pixel indices
+  (`compute_slopes_pywfs_indexed_numba`) instead of testing four masks at
+  every pixel: 124 -> 36 us on a 240 x 240 frame with 7.2k pixels per pupil;
+  the stage's own time went 192 -> 92 us (p99 234 -> 113 us). Identical
+  results; `compute_slopes_pywfs_optim_numba` keeps its mask interface.
+- **GPU PYWFS slopes as one CUDA graph.** The torch path issued about 15
+  small kernel launches per frame, whose host cost dominated. It is now
+  captured once (at construction, by `warmup`) and replayed, after a check
+  that the replay matches the eager result bit for bit; capture failures
+  fall back to the eager path with a warning. On an RTX 4060 (torch 2.11):
+  445 -> 70 us per frame including the copy back; the slopes stage's own
+  time went 729 -> 342 us with a CPU `wfs` stream and 637 -> 280 us with a
+  GPU-backed one.
+- `signal_2d` is filled through cached flat indices rather than boolean
+  masks (2.5x faster), and `SlopesProcess.cur_signal_2d` is now float32,
+  the stream's dtype, so publishing it no longer converts a float64 copy
+  every frame.
+- `WavefrontSensor.expose` subtracts the dark into a reused buffer with one
+  ufunc instead of two frame-sized temporaries: 47 -> 35 us on a 320 x 320
+  frame (the stage's own p99 82 -> 70 us); frames of 128 x 128 and smaller
+  pay about 0.5 us more.
+
+### Fixed
+
+- **SPECULA on a GPU ignored the atmosphere.** With `speculaInit.device_idx`
+  set to a GPU, `AtmoPropagation` replays a CUDA graph captured at setup,
+  before the bridge attaches the atmosphere layers, so every frame stayed
+  flat (zero WFS signal) with `use_atmosphere: true`. The bridge now
+  re-captures the graph whenever the layer list changes. Affects SPECULA
+  1.0.x and 1.1.
+- Building a GPU SPECULA context in a process that had already initialised
+  SPECULA on the CPU failed in `build_stream()` (`'NoneType' object has no
+  attribute 'use'`): `specula.base_processing_obj` keeps the device it saw at
+  import. The bridge now refreshes these cached globals in every loaded
+  SPECULA module, not only `base_time_obj`.
+- `test_hardware_launcher_inherits_logging_env` failed when the caller
+  exported a thread count (e.g. `OPENBLAS_NUM_THREADS=16` on a benchmark
+  host). The launcher keeps such settings on purpose, so the test now clears
+  them before checking the single-thread defaults.
+
 ## 2.0.0 - 2026-10-06
 
 ### Breaking changes

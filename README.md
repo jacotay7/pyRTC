@@ -116,7 +116,7 @@ The project is designed for:
 
 ## Release Posture
 
-`pyrtc` `2.0.0` is the current release, published on PyPI as `pyrtcao`; see `CHANGELOG.md` for release notes. The release policy is conservative:
+`pyrtc` `2.1.0` is the current release, published on PyPI as `pyrtcao`; see `CHANGELOG.md` for release notes. The release policy is conservative:
 
 - User-facing project name: `pyrtc`
 - PyPI distribution name: `pyrtcao`
@@ -191,7 +191,7 @@ pip install .
 
 The same extras work from a source checkout, e.g. `pip install .[viewer,hcipy]`.
 
-The `specula` extra installs the [SPECULA](https://pypi.org/project/specula/) simulator used by the simulator-backed examples. The OOPAO simulator is not on PyPI and needs a manual install; see [Simulator-Backed Examples](#simulator-backed-examples).
+The `specula` and `oopao` extras install the [SPECULA](https://pypi.org/project/specula/) and [OOPAO](https://pypi.org/project/OOPAO/) simulators used by the simulator-backed examples; see [Simulator-Backed Examples](#simulator-backed-examples).
 
 If GPU mode is configured through `gpu_device` but PyTorch is unavailable, supported paths fall back to CPU mode with a warning instead of failing immediately.
 
@@ -307,17 +307,14 @@ pip install pyrtcao[specula]   # or: pip install specula
 python examples/shwfs/shwfs_specula_soft_rtc_example.py --duration 10
 ```
 
-OOPAO is not on PyPI. Installing it with `pip install git+https://github.com/cheritier/OOPAO.git` is not enough: `import OOPAO` then fails with `ValueError: attempt to get argmin of an empty sequence`, because OOPAO looks for its own checkout on `sys.path` at import time. Clone it and put the clone on `PYTHONPATH` instead:
+OOPAO 1.0 and later is on PyPI too (Python 3.11+; its pyFFTW dependency has no 3.10 wheels):
 
 ```bash
-git clone https://github.com/cheritier/OOPAO.git   # keep the directory name "OOPAO"
-pip install ./OOPAO                                # installs OOPAO's dependencies
-export PYTHONPATH="$PWD/OOPAO:$PYTHONPATH"
-python -c "import OOPAO"                           # check the install
+pip install pyrtcao[oopao]   # or: pip install "OOPAO>=1.0"
 python examples/pywfs/pywfs_oopao_soft_rtc_example.py --duration 10
 ```
 
-The clone directory's path must contain `OOPAO` (case-sensitive) and be writable, since OOPAO writes a small file there on import. See the [PYWFS Example](https://pyrtc-ao.readthedocs.io/en/latest/examples/pywfs.html) docs for details.
+Older OOPAO git checkouts are not supported. See the [PYWFS Example](https://pyrtc-ao.readthedocs.io/en/latest/examples/pywfs.html) docs for details.
 
 ## Tools and Benchmarks
 

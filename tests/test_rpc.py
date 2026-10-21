@@ -515,6 +515,10 @@ def test_hardware_launcher_write_and_read():
 
 
 def test_hardware_launcher_inherits_logging_env(monkeypatch, tmp_path):
+    # The single-thread defaults are under test, so a caller's own thread
+    # settings (kept on purpose, see the next test) must not leak in.
+    for variable in rpc._SINGLE_THREAD_ENV:
+        monkeypatch.delenv(variable, raising=False)
     configure_logging(
         app_name="pyrtc-test-launcher",
         component_name="parent",

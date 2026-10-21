@@ -114,6 +114,7 @@ def test_loop_warmup_failure_is_logged_not_raised(monkeypatch, caplog):
 
 SLOPES_KERNELS = (
     "compute_slopes_pywfs_optim_numba",
+    "compute_slopes_pywfs_indexed_numba",
     "compute_slopes_shwfs_optim_numba",
     "compute_slopes_shwfs_wcog_numba",
     "build_shwfs_wcog_weights_numba",

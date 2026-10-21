@@ -398,10 +398,9 @@ class WavefrontSensor(Component):
         self._exposure_frame_id = getattr(self, "_exposure_frame_id", 0) + 1
         self.frame_id = self._exposure_frame_id
         self.write_stream("wfs_raw", self.data)
-        img = self.data.astype(self.image_dtype)
 
         # Apply dark subtraction
-        processed_image = img - self.dark
+        processed_image = self._dark_subtracted(self.data)
 
         # Apply downsampling if configured
         if self.downsample_factor > 0:
@@ -415,6 +414,25 @@ class WavefrontSensor(Component):
         # Write the processed image to shared memory
         self.write_stream("wfs", processed_image)
         return
+
+    def _dark_subtracted(self, data):
+        """Return ``data.astype(image_dtype) - dark``.
+
+        With an ``image_dtype`` dark of the frame's shape (the usual case),
+        the cast and subtraction run as one ufunc into a reused buffer, which
+        skips two frame-sized temporaries per exposure; the result is the
+        same, since the ufunc casts ``data`` exactly as ``astype`` does. Any
+        other dark (a float array set directly) keeps the general expression.
+        """
+
+        dark = self.dark
+        buffer = getattr(self, "_dark_subtracted_buffer", None)
+        if buffer is None or buffer.shape != data.shape:
+            buffer = np.empty(data.shape, dtype=self.image_dtype)
+            self._dark_subtracted_buffer = buffer
+        if dark.dtype is not buffer.dtype or dark.shape != data.shape:
+            return data.astype(self.image_dtype) - dark
+        return np.subtract(data, dark, out=buffer, dtype=buffer.dtype, casting="unsafe")
 
     def read(self, block=True) -> None:
         """
