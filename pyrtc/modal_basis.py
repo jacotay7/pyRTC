@@ -261,6 +261,37 @@ def actuator_positions_from_layout(
     return positions_from_mask(layout, pitch)
 
 
+def actuator_positions_from_index_map(
+    index_map: np.ndarray, pupil_diameter: float = DEFAULT_PUPIL_DIAMETER
+) -> np.ndarray:
+    """Return ``(N, 2)`` actuator ``(x, y)`` positions in metres for an index map.
+
+    ``index_map`` holds each cell's actuator index (``-1`` for empty cells,
+    an actuator may cover several cells). Each actuator sits at the centroid
+    of its cells, with the cell pitch and centred origin of
+    :func:`actuator_positions_from_layout`; row ``k`` is actuator ``k``.
+    """
+
+    index_map = np.asarray(index_map)
+    if index_map.ndim != 2:
+        raise ValueError(f"index map must be 2D, got {index_map.shape}")
+    count = int(index_map.max()) + 1
+    side = max(index_map.shape)
+    pitch = float(pupil_diameter) / (side - 1) if side > 1 else float(pupil_diameter)
+    rows, cols = np.indices(index_map.shape)
+    centre_r, centre_c = (index_map.shape[0] - 1) / 2.0, (index_map.shape[1] - 1) / 2.0
+    positions = np.empty((count, 2), dtype=np.float64)
+    for k in range(count):
+        cells = index_map == k
+        if not cells.any():
+            raise ValueError(f"index map has no cell for actuator {k}")
+        positions[k] = (
+            (cols[cells].mean() - centre_c) * pitch,
+            (rows[cells].mean() - centre_r) * pitch,
+        )
+    return positions
+
+
 def load_actuator_positions(filename: str) -> np.ndarray:
     """Load ``(N, 2)`` actuator positions in metres from a ``.npy`` or text file."""
 

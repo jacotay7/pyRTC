@@ -4,10 +4,11 @@ import argparse
 import subprocess
 
 from pyrtc.logging_utils import add_logging_cli_args, configure_logging_from_args
+from pyrtc.scripts.viewer_helpers import viewer_command
 
 
 DEFAULT_VIEW_COMMANDS = [
-    ["pyrtc-view", "wfs", "signal_2d", "wfc_2d", "psf_short", "psf_long", "--geometry", "2x3"],
+    viewer_command("wfs", "signal_2d", "wfc_2d", "psf_short", "psf_long", "--geometry", "2x3"),
 ]
 
 

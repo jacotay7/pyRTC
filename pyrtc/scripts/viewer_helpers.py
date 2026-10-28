@@ -6,11 +6,23 @@ resolution, and stream polling.
 """
 
 import math
+import sys
 import time
 
 import numpy as np
 
 from pyrtc.streams import open_stream
+
+
+def viewer_command(*args):
+    """Return the ``pyrtc-view`` command line, run by this interpreter.
+
+    Spawning the ``pyrtc-view`` script by name needs its directory on
+    ``PATH``, which a launcher that runs a virtualenv's tools by absolute path
+    (a desktop menu, a service) does not provide.
+    """
+
+    return [sys.executable, "-m", "pyrtc.scripts.view", *args]
 
 
 def is_float_token(value: str) -> bool:
@@ -71,6 +83,17 @@ def read_shm_metadata(shm_name):
     return shm, tuple(shm.shape), np.dtype(shm.dtype)
 
 
+def stream_exists(shm_name) -> bool:
+    """Return whether ``shm_name`` can be opened now (its producer created it)."""
+
+    try:
+        shm = open_stream(shm_name, readonly=True)
+    except Exception:
+        return False
+    shm.close()
+    return True
+
+
 def resolve_grid(num_plots: int, geometry: str):
     """Resolve a viewer geometry string into a concrete grid size."""
 
@@ -101,8 +124,9 @@ def resolve_grid(num_plots: int, geometry: str):
 def compute_window_size(frames, rows, cols, pixel_scale):
     """Estimate a practical viewer window size for the current frames."""
 
-    max_height = max(frame.shape[0] for frame in frames)
-    max_width = max(frame.shape[1] for frame in frames)
+    # Streams that do not exist yet have no frame; size for a modest panel.
+    max_height = max((frame.shape[0] for frame in frames), default=256)
+    max_width = max((frame.shape[1] for frame in frames), default=256)
     panel_extent = max(max_height, max_width)
     plot_width = cols * panel_extent * pixel_scale
     plot_height = rows * panel_extent * pixel_scale

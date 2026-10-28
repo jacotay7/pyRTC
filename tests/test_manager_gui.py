@@ -6,6 +6,7 @@ from pyrtc.config_schema import read_system_config
 from pyrtc.gui.manager_adapter import (
     ManagerAdapter,
     _coerce_runtime_value,
+    _flow_layout,
     _is_live_runtime_field,
     _ordered_sections,
 )
@@ -44,6 +45,65 @@ def test_manager_adapter_builds_graph_snapshot_from_synthetic_config():
     assert ("wfs", "slopes", "wfs") in edges
     assert ("slopes", "loop", "signal") in edges
     assert ("loop", "wfc", "wfc") in edges
+
+
+def test_flow_layout_runs_left_to_right_and_breaks_the_feedback_edge():
+    positions = _flow_layout(
+        ["wfc", "wfs", "slopes", "loop", "psf", "spare"],
+        [("wfc", "wfs"), ("wfs", "slopes"), ("slopes", "loop"), ("loop", "wfc"), ("slopes", "psf")],
+    )
+
+    # The DM -> WFS edge closes the loop; the chain starts at the sensor.
+    chain = [positions[section] for section in ("wfs", "slopes", "loop", "wfc")]
+    assert [x for x, _ in chain] == sorted({x for x, _ in chain})
+    assert len({y for _, y in chain}) == 1
+    # A branch stacks under its column, and an unconnected section starts one.
+    assert positions["psf"][0] == positions["loop"][0]
+    assert positions["psf"][1] > positions["loop"][1]
+    assert positions["spare"][0] == positions["wfs"][0]
+
+
+def test_unplaced_sections_follow_the_data_flow():
+    adapter = ManagerAdapter()
+    adapter.load_config(str(SYNTHETIC_CONFIG_PATH))
+    adapter.config["manager"].pop("graph_layout")
+
+    nodes = {node.section_name: node for node in adapter.build_graph_snapshot().nodes}
+
+    assert nodes["wfs"].x < nodes["slopes"].x < nodes["loop"].x < nodes["wfc"].x
+    # Nodes name the configured class, not only its component family.
+    assert nodes["wfs"].subtitle == "SyntheticSHWFS"
+    assert nodes["slopes"].subtitle == "SlopesProcess"
+
+
+def test_shutdown_closes_the_manager_and_keeps_the_config():
+    adapter = ManagerAdapter()
+    adapter.load_config(str(SYNTHETIC_CONFIG_PATH))
+    closed = []
+    old = adapter.ensure_manager()
+    old.close = lambda: closed.append(True)
+
+    status = adapter.shutdown()
+
+    assert closed == [True]
+    assert adapter.manager is not old and adapter.manager.state == "created"
+    assert status["state"] == "created" and adapter.is_loaded()
+
+
+def test_a_failed_shutdown_raises_and_keeps_the_manager():
+    import pytest
+
+    adapter = ManagerAdapter()
+    adapter.load_config(str(SYNTHETIC_CONFIG_PATH))
+    old = adapter.ensure_manager()
+
+    def broken_close():
+        raise RuntimeError("light source did not turn off")
+
+    old.close = broken_close
+    with pytest.raises(RuntimeError, match="did not turn off"):
+        adapter.shutdown()
+    assert adapter.manager is old  # Shutdown can be retried
 
 
 def test_graph_snapshot_carries_component_safety_alerts():

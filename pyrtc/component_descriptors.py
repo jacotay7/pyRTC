@@ -17,6 +17,7 @@ from pyrtc.calibration import LEGACY_CALIBRATION_CHOICES
 from pyrtc.corrector_splitter import CorrectorSplitter
 from pyrtc.image_reconstructor import TorchImageReconstructor
 from pyrtc.isio_bridge import IsioBridge
+from pyrtc.light_source import LightSource
 from pyrtc.loop import Loop
 from pyrtc.science_camera import ScienceCamera
 from pyrtc.slopes_process import SlopesProcess
@@ -1120,6 +1121,42 @@ BUILTIN_COMPONENT_DESCRIPTORS: tuple[ComponentDescriptor, ...] = (
                 "*", "input", description="Attaches to existing streams on demand via save()."
             ),
         ),
+        output_streams=(),
+        supports_hard_rtc=False,
+        calibration_artifacts=(),
+    ),
+    ComponentDescriptor(
+        section_name="source",
+        category="light_source",
+        component_class=LightSource,
+        description=(
+            "Bench light source (laser, LED). Never emits until enable(); stop() and "
+            "close() turn emission off."
+        ),
+        required_fields=(
+            ConfigFieldDescriptor(
+                "max_power",
+                "float",
+                "Highest allowed setpoint in mW, on top of the device's own limit.",
+                required=True,
+                minimum=0.0,
+            ),
+        ),
+        optional_fields=(
+            ConfigFieldDescriptor("name", "str", "Light source name.", default="source"),
+            ConfigFieldDescriptor(
+                "power",
+                "float | None",
+                "Setpoint in mW, applied at open with emission off; unset keeps the device's.",
+                default=None,
+                allow_none=True,
+            ),
+            ConfigFieldDescriptor(
+                "functions", "list[str]", "Worker methods started in component threads.", default=[]
+            ),
+        ),
+        worker_functions=(),
+        input_streams=(),
         output_streams=(),
         supports_hard_rtc=False,
         calibration_artifacts=(),

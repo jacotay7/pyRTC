@@ -143,6 +143,129 @@ def test_viewer_renders_private_stream_offscreen(qapp):
 
 
 @requires_qt6
+def test_viewer_waits_for_a_stream_that_does_not_exist_yet(qapp):
+    """Launched before the system is built, the viewer waits instead of crashing."""
+
+    import uuid
+
+    import pyshmem
+    from pyrtc.scripts import viewer_core
+
+    name = f"qtwait_{uuid.uuid4().hex[:8]}"
+    window = viewer_core.MosaicViewerWindow([name], fps=30, geometry="square", pixel_scale=4.0)
+    stream = None
+    try:
+        window.show()
+        _process_events(qapp)
+        assert window.panels == {}
+        assert isinstance(window.placeholders[0], viewer_core.UnavailableStreamPlaceholder)
+
+        assert window.placeholders[0].waiting
+        stream = pyshmem.create(name, shape=(4, 6), dtype=np.float32)
+        stream.write(np.ones((4, 6), dtype=np.float32))
+        window._next_reconnect = 0.0
+        window.refresh_panels()
+        assert sorted(window.panels) == [0] and window.placeholders == {}
+
+        # A stream that exists but fails to open is not retried automatically.
+        rebuilds = []
+        original = viewer_core.StreamConnection
+
+        def broken(name, *args, **kwargs):
+            raise ValueError("unsupported stream")
+
+        viewer_core.StreamConnection = broken
+        try:
+            window.rebuild_grid()
+            assert not window.placeholders[0].waiting
+            window.rebuild_grid = lambda: rebuilds.append(1)
+            window._next_reconnect = 0.0
+            window.refresh_panels()
+            assert rebuilds == []
+        finally:
+            viewer_core.StreamConnection = original
+    finally:
+        window.close()
+        _process_events(qapp)
+        if stream is not None:
+            stream.close()
+            pyshmem.unlink(name)
+
+
+@requires_qt6
+def test_manager_gui_toolbar_follows_the_system_state(qapp, tmp_path, monkeypatch):
+    from pyrtc.gui import main_window
+
+    monkeypatch.chdir(tmp_path)
+    window = main_window.ManagerMainWindow(
+        config_path=str(SYNTHETIC_CONFIG_PATH), theme_name="dark", refresh_ms=60_000
+    )
+    try:
+        actions = ("build", "start", "stop", "shutdown")
+
+        def enabled(state):
+            window._update_action_states({"state": state, "components": {}})
+            return {name for name in actions if getattr(window, f"{name}_action").isEnabled()}
+
+        assert enabled("created") == {"build"}
+        assert enabled("built") == {"start", "shutdown"}
+        assert enabled("running") == {"stop", "shutdown"}
+        # Stopped components still hold their hardware: start again or shut down.
+        assert enabled("stopped") == {"start", "shutdown"}
+        # A failed build or crash can be shut down and rebuilt without a GUI restart.
+        assert enabled("failed") == {"stop", "shutdown"}
+    finally:
+        window.close()
+        _process_events(qapp)
+
+
+@requires_qt6
+def test_manager_gui_edges_enter_inputs_and_feedback_runs_below(qapp, tmp_path, monkeypatch):
+    from pyrtc.gui import main_window
+
+    monkeypatch.chdir(tmp_path)
+    window = main_window.ManagerMainWindow(
+        config_path=str(SYNTHETIC_CONFIG_PATH), theme_name="dark", refresh_ms=60_000
+    )
+    try:
+        window.show()
+        _process_events(qapp)
+        canvas = window.graph_canvas
+        assert canvas._auto_fit  # fitted on load
+        # A refresh after the fit leaves the user's view alone.
+        transform = canvas.transform()
+        from qtpy.QtWidgets import QAbstractSlider
+
+        canvas.horizontalScrollBar().triggerAction(QAbstractSlider.SliderAction.SliderSingleStepAdd)
+        assert not canvas._auto_fit  # the user's scroll wins
+        window.refresh_view()
+        assert canvas.transform() == transform
+        canvas.fit_to_graph()
+        assert canvas._auto_fit
+        canvas.zoom_in()
+        assert not canvas._auto_fit  # the user's zoom wins
+
+        edge = next(
+            item
+            for item in canvas._edge_items
+            if (item.edge.source_section, item.edge.target_section) == ("loop", "wfc")
+        )
+        loop_item, wfc_item = edge.source_item, edge.target_item
+        wfc_item.setPos(loop_item.pos().x() - 400.0, loop_item.pos().y())
+        points = edge.route()
+        # Out of the source's right side, into the target's left side.
+        assert points[0] == loop_item.connection_anchor("right")
+        tip = wfc_item.connection_anchor("left")
+        assert edge.arrow_item.path().elementAt(0).x == tip.x()
+        # Feedback runs below every node it passes.
+        lane_y = max(point.y() for point in points)
+        assert all(lane_y > rect.bottom() for rect in canvas._node_rects())
+    finally:
+        window.close()
+        _process_events(qapp)
+
+
+@requires_qt6
 def test_manager_gui_builds_graph_offscreen(qapp, tmp_path, monkeypatch):
     from pyrtc.gui import main_window
     from qtpy.QtCore import QPoint, Qt

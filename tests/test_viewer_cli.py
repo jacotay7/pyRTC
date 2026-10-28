@@ -1,3 +1,5 @@
+import sys
+
 import numpy as np
 
 from pyrtc.scripts import view
@@ -19,8 +21,9 @@ def test_view_launch_all_uses_pyrtc_view_commands():
     view_launch_all.launch_all(popen_fn=_popen)
 
     assert len(spawned) == len(view_launch_all.DEFAULT_VIEW_COMMANDS)
-    assert all(cmd[0] == "pyrtc-view" for cmd in spawned)
-    assert spawned[0][1:6] == ["wfs", "signal_2d", "wfc_2d", "psf_short", "psf_long"]
+    # Run by this interpreter, so it works without the venv's bin on PATH.
+    assert all(cmd[:3] == [sys.executable, "-m", "pyrtc.scripts.view"] for cmd in spawned)
+    assert spawned[0][3:8] == ["wfs", "signal_2d", "wfc_2d", "psf_short", "psf_long"]
 
 
 def test_view_launch_all_main_invokes_launcher(monkeypatch):
@@ -293,9 +296,10 @@ def test_rebuild_grid_preserves_failed_stream_cells_as_unavailable(monkeypatch):
             return None
 
     class _Placeholder:
-        def __init__(self, name, retry_callback):
+        def __init__(self, name, retry_callback, waiting=True):
             self.name = name
             self.retry_callback = retry_callback
+            self.waiting = waiting
 
         def apply_theme(self, theme):
             return None

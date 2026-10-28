@@ -7,6 +7,7 @@ from html import escape
 import logging
 from pathlib import Path
 import time
+import zlib
 
 from pyrtc.qt_compat import require_qt6, unavailable_qt_class
 
@@ -181,81 +182,100 @@ def _require_gui_backend() -> None:
 
 
 class GraphEdgeItem:
-    def __init__(self, scene, source_item, target_item, edge: GraphEdgeModel, theme):
+    """A stream from one node's output (right side) to another's input (left side).
+
+    A forward edge is an elbow between the two sides. An edge whose target is
+    not to the right of its source (feedback, such as the DM driving a
+    simulated WFS) runs in a lane below every node it passes, so it never
+    crosses a box. An arrowhead marks the receiving end.
+    """
+
+    ARROW_LENGTH = 10.0
+    ARROW_HALF_WIDTH = 5.0
+    STUB = 18.0
+
+    def __init__(
+        self, scene, source_item, target_item, edge: GraphEdgeModel, theme, obstacles=None
+    ):
         self.scene = scene
         self.source_item = source_item
         self.target_item = target_item
         self.edge = edge
+        self._obstacles = obstacles or (lambda: ())
         self.path_item = QGraphicsPathItem()
+        self.arrow_item = QGraphicsPathItem()
         self.label_item = QGraphicsSimpleTextItem(edge.label)
-        self.path_item.setZValue(0)
-        self.label_item.setZValue(0)
-        self.scene.addItem(self.path_item)
-        self.scene.addItem(self.label_item)
+        for item in (self.path_item, self.arrow_item, self.label_item):
+            item.setZValue(0)
+            self.scene.addItem(item)
+        key = f"{edge.source_section}/{edge.target_section}/{edge.source_stream}".encode()
+        self._lane_offset = 22.0 + (zlib.crc32(key) % 3) * 12.0
         self.apply_theme(theme)
         self.update_positions()
 
     def apply_theme(self, theme) -> None:
-        self.path_item.setPen(QPen(QColor(theme.edge), 2.0))
+        color = QColor(theme.edge)
+        self.path_item.setPen(QPen(color, 2.0))
+        self.arrow_item.setPen(QPen(color, 1.0))
+        self.arrow_item.setBrush(QBrush(color))
         self.label_item.setBrush(QBrush(QColor(theme.subtext)))
 
+    def route(self) -> list:
+        """Corner points from the source's output to the arrow's base."""
+
+        source_rect = self.source_item.sceneBoundingRect()
+        target_rect = self.target_item.sceneBoundingRect()
+        start = self.source_item.connection_anchor("right")
+        end = self.target_item.connection_anchor("left")
+        base_x = end.x() - self.ARROW_LENGTH
+        if target_rect.left() - source_rect.right() >= 2.0 * self.STUB + self.ARROW_LENGTH:
+            if abs(start.y() - end.y()) < 0.5:
+                return [start, QPointF(base_x, end.y())]
+            mid_x = (source_rect.right() + target_rect.left()) / 2.0
+            return [
+                start,
+                QPointF(mid_x, start.y()),
+                QPointF(mid_x, end.y()),
+                QPointF(base_x, end.y()),
+            ]
+        out_x = source_rect.right() + self.STUB
+        in_x = target_rect.left() - self.STUB - self.ARROW_LENGTH
+        span_left, span_right = min(in_x, out_x), max(in_x, out_x)
+        bottom = max(source_rect.bottom(), target_rect.bottom())
+        for rect in self._obstacles():
+            if rect.right() >= span_left and rect.left() <= span_right:
+                bottom = max(bottom, rect.bottom())
+        lane_y = bottom + self._lane_offset
+        return [
+            start,
+            QPointF(out_x, start.y()),
+            QPointF(out_x, lane_y),
+            QPointF(in_x, lane_y),
+            QPointF(in_x, end.y()),
+            QPointF(base_x, end.y()),
+        ]
+
     def update_positions(self) -> None:
-        source_rect = self.source_item.sceneBoundingRect()
-        target_rect = self.target_item.sceneBoundingRect()
-        flow_left_to_right = target_rect.center().x() >= source_rect.center().x()
-        source_side = "right" if flow_left_to_right else "left"
-        target_side = "left" if flow_left_to_right else "right"
-        source_point = self.source_item.connection_anchor(source_side)
-        target_point = self.target_item.connection_anchor(target_side)
-        source_rect = self.source_item.sceneBoundingRect()
-        target_rect = self.target_item.sceneBoundingRect()
-        lane_seed = (
-            abs(hash((self.edge.source_section, self.edge.target_section, self.edge.source_stream)))
-            % 3
-        )
-        lane_offset = 16.0 + lane_seed * 10.0
-        stub = 16.0
-        path = QPainterPath(source_point)
-
-        horizontal_gap = (
-            target_rect.left() - source_rect.right()
-            if flow_left_to_right
-            else source_rect.left() - target_rect.right()
-        )
-        if horizontal_gap >= 48.0:
-            if flow_left_to_right:
-                lane_start_x = source_rect.right() + stub
-                lane_end_x = target_rect.left() - stub
-            else:
-                lane_start_x = source_rect.left() - stub
-                lane_end_x = target_rect.right() + stub
-            midpoint_x = lane_start_x + (lane_end_x - lane_start_x) / 2.0
-            path.lineTo(lane_start_x, source_point.y())
-            path.lineTo(midpoint_x, source_point.y())
-            path.lineTo(midpoint_x, target_point.y())
-            path.lineTo(lane_end_x, target_point.y())
-        else:
-            route_above = source_rect.center().y() <= target_rect.center().y()
-            if route_above:
-                lane_y = min(source_rect.top(), target_rect.top()) - lane_offset
-            else:
-                lane_y = max(source_rect.bottom(), target_rect.bottom()) + lane_offset
-
-            if flow_left_to_right:
-                source_stub_x = source_rect.right() + stub
-                target_stub_x = target_rect.left() - stub
-            else:
-                source_stub_x = source_rect.left() - stub
-                target_stub_x = target_rect.right() + stub
-
-            path.lineTo(source_stub_x, source_point.y())
-            path.lineTo(source_stub_x, lane_y)
-            path.lineTo(target_stub_x, lane_y)
-            path.lineTo(target_stub_x, target_point.y())
-        path.lineTo(target_point)
+        points = self.route()
+        path = QPainterPath(points[0])
+        for point in points[1:]:
+            path.lineTo(point)
         self.path_item.setPath(path)
-        midpoint = path.pointAtPercent(0.5)
-        self.label_item.setPos(midpoint.x() - 24.0, midpoint.y() - 18.0)
+
+        tip = self.target_item.connection_anchor("left")
+        arrow = QPainterPath(tip)
+        arrow.lineTo(tip.x() - self.ARROW_LENGTH, tip.y() - self.ARROW_HALF_WIDTH)
+        arrow.lineTo(tip.x() - self.ARROW_LENGTH, tip.y() + self.ARROW_HALF_WIDTH)
+        arrow.closeSubpath()
+        self.arrow_item.setPath(arrow)
+
+        # Label the longest horizontal run, centred just above it.
+        runs = [(a, b) for a, b in zip(points, points[1:]) if abs(a.y() - b.y()) < 0.5]
+        a, b = max(runs, key=lambda run: abs(run[1].x() - run[0].x()))
+        label = self.label_item.boundingRect()
+        self.label_item.setPos(
+            (a.x() + b.x()) / 2.0 - label.width() / 2.0, a.y() - label.height() - 2.0
+        )
 
 
 class GraphNodeButtonItem(QGraphicsRectItem):
@@ -499,6 +519,13 @@ class GraphCanvas(QGraphicsView):
         self._suppress_selection_callback = False
         self._persist_positions = True
         self._zoom = 1.0
+        # Fit the graph to the view (on load and on resize) until the user
+        # zooms, scrolls or drags a node.
+        self._auto_fit = False
+        self._fit_pending = False
+        # actionTriggered fires for user scrolling only, not programmatic moves.
+        for bar in (self.horizontalScrollBar(), self.verticalScrollBar()):
+            bar.actionTriggered.connect(self._user_scrolled)
 
     @property
     def is_dragging(self) -> bool:
@@ -506,6 +533,48 @@ class GraphCanvas(QGraphicsView):
 
     def set_dragging(self, dragging: bool) -> None:
         self._dragging = dragging
+        if dragging:
+            self._auto_fit = False
+
+    def _node_rects(self):
+        return [item.sceneBoundingRect() for item in self._items_by_section.values()]
+
+    def clear_graph(self) -> None:
+        """Forget the current nodes, so a newly loaded config gets its own layout."""
+
+        self.scene.clear()
+        self._items_by_section = {}
+        self._edge_items = []
+
+    def fit_to_graph(self) -> None:
+        """Show the whole graph, at most at 1:1, and keep it fitted until the user zooms."""
+
+        self._auto_fit = True
+        self._fit_pending = True
+        self._fit_now()
+
+    def _fit_now(self) -> None:
+        rect = self.scene.itemsBoundingRect()
+        if rect.isEmpty():
+            return
+        self._fit_pending = False
+        rect = rect.adjusted(-40.0, -40.0, 40.0, 40.0)
+        self.resetTransform()
+        self.fitInView(rect, Qt.AspectRatioMode.KeepAspectRatio)
+        scale = self.transform().m11()
+        if scale > 1.0:
+            self.resetTransform()
+            scale = 1.0
+        self.centerOn(rect.center())
+        self._zoom = scale
+
+    def _user_scrolled(self, _action) -> None:
+        self._auto_fit = False
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if self._auto_fit:
+            self._fit_now()
 
     def rebuild(self, snapshot: GraphSnapshot, theme, *, blink_on: bool) -> None:
         positions = {
@@ -540,13 +609,17 @@ class GraphCanvas(QGraphicsView):
             target_item = self._items_by_section.get(edge.target_section)
             if source_item is None or target_item is None:
                 continue
-            edge_item = GraphEdgeItem(self.scene, source_item, target_item, edge, theme)
+            edge_item = GraphEdgeItem(
+                self.scene, source_item, target_item, edge, theme, obstacles=self._node_rects
+            )
             source_item.add_edge(edge_item)
             target_item.add_edge(edge_item)
             self._edge_items.append(edge_item)
 
         self.scene.setSceneRect(self.scene.itemsBoundingRect().adjusted(-80.0, -80.0, 120.0, 120.0))
         self._persist_positions = True
+        if self._fit_pending:  # the first build after fit_to_graph; refreshes leave the view alone
+            self._fit_now()
 
     def _handle_item_position_changed(self, section_name: str, x: float, y: float) -> None:
         if self._persist_positions and self.position_callback is not None:
@@ -579,12 +652,14 @@ class GraphCanvas(QGraphicsView):
         self._apply_zoom(1.0 / 1.15)
 
     def reset_zoom(self) -> None:
+        self._auto_fit = False
         if self._zoom == 0:
             return
         self.scale(1.0 / self._zoom, 1.0 / self._zoom)
         self._zoom = 1.0
 
     def _apply_zoom(self, factor: float) -> None:
+        self._auto_fit = False
         new_zoom = self._zoom * factor
         if new_zoom < 0.35 or new_zoom > 4.0:
             return
@@ -859,20 +934,31 @@ class ManagerMainWindow(QMainWindow):
         toolbar.addAction(self.validate_action)
 
         self.build_action = QAction("Build", self)
+        self.build_action.setToolTip("Construct every component (opens its hardware)")
         self.build_action.triggered.connect(self.build_system)
         toolbar.addAction(self.build_action)
 
         self.start_action = QAction("Start", self)
+        self.start_action.setToolTip("Start every component's worker functions")
         self.start_action.triggered.connect(self.start_system)
         toolbar.addAction(self.start_action)
 
         self.stop_action = QAction("Stop", self)
+        self.stop_action.setToolTip("Pause every component; hardware stays open")
         self.stop_action.triggered.connect(self.stop_system)
         toolbar.addAction(self.stop_action)
 
         self.reset_action = QAction("Reset", self)
+        self.reset_action.setToolTip("Stop, then start every component again")
         self.reset_action.triggered.connect(self.reset_system)
         toolbar.addAction(self.reset_action)
+
+        self.shutdown_action = QAction("Shutdown", self)
+        self.shutdown_action.setToolTip(
+            "Close every component and release its hardware; the config stays loaded"
+        )
+        self.shutdown_action.triggered.connect(self.shutdown_system)
+        toolbar.addAction(self.shutdown_action)
 
         self.toolbar_zoom_in_action = QAction("Zoom +", self)
         self.toolbar_zoom_in_action.triggered.connect(self.graph_canvas.zoom_in)
@@ -1088,7 +1174,9 @@ class ManagerMainWindow(QMainWindow):
         self.manager_mode = self.adapter.selected_mode()
         self._update_mode_actions()
         self.statusBar().showMessage(f"Loaded {config_path}", 3000)
+        self.graph_canvas.clear_graph()
         self.refresh_view()
+        self.graph_canvas.fit_to_graph()
 
     def save_config(self) -> None:
         if not self.adapter.config_path:
@@ -1154,6 +1242,15 @@ class ManagerMainWindow(QMainWindow):
             self._show_error("Stop failed", exc)
             return
         self.statusBar().showMessage("System stopped", 3000)
+        self.refresh_view()
+
+    def shutdown_system(self) -> None:
+        try:
+            self.adapter.shutdown()
+        except Exception as exc:
+            self._show_error("Shutdown failed", exc)
+            return
+        self.statusBar().showMessage("System shut down; all components closed", 5000)
         self.refresh_view()
 
     def reset_system(self) -> None:
@@ -1240,16 +1337,19 @@ class ManagerMainWindow(QMainWindow):
         is_loaded = self.adapter.is_loaded()
         state = None if status is None else status.get("state")
         is_running = state in {"running", "degraded", "failed"}
-        is_built = state == "built"
+        # Anything past "validated" may hold components (and their hardware),
+        # including a failed build or a stopped system.
+        is_unbuilt = state in {None, "created", "validated"}
         runtime_sections = set() if status is None else set(status.get("components", {}))
 
-        self.validate_action.setEnabled(is_loaded and not is_running and not is_built)
-        self.build_action.setEnabled(
-            is_loaded and not is_running and not is_built and not self.build_mode
+        self.validate_action.setEnabled(is_loaded and is_unbuilt)
+        self.build_action.setEnabled(is_loaded and is_unbuilt and not self.build_mode)
+        self.start_action.setEnabled(
+            is_loaded and state in {"built", "stopped"} and not self.build_mode
         )
-        self.start_action.setEnabled(is_loaded and is_built and not self.build_mode)
         self.stop_action.setEnabled(is_running and not self.build_mode)
         self.reset_action.setEnabled(is_running and not self.build_mode)
+        self.shutdown_action.setEnabled(is_loaded and not is_unbuilt and not self.build_mode)
         self.refresh_action.setEnabled(is_running)
         self.restart_action.setEnabled(
             is_running
@@ -1269,7 +1369,7 @@ class ManagerMainWindow(QMainWindow):
         self.remove_connection_action.setEnabled(
             build_enabled and bool(self.adapter.connection_names())
         )
-        mode_enabled = not self.build_mode and not is_running and not is_built
+        mode_enabled = not self.build_mode and is_unbuilt
         self.soft_mode_action.setEnabled(mode_enabled)
         self.hard_mode_action.setEnabled(mode_enabled)
         if hasattr(self, "mode_selector"):

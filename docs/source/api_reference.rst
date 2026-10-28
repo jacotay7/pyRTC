@@ -33,6 +33,7 @@ Module Index
    predictive
    latency
    isio_bridge
+   light_source
    telemetry
    utils
 
@@ -45,8 +46,10 @@ Module Index
    synthetic_systems
    hcipy_interface
    genicam_camera
+   vimba_camera
    micromanager_camera
    bmc_dm
+   thorlabs_dmp40
 
 Notes
 -----

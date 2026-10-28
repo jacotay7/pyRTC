@@ -128,7 +128,20 @@ def test_loop_methods_without_full_init(tmp_path):
     loop.set_peturb_amp(0.3)
     assert np.isclose(loop.perturb_amp, 0.3)
 
+    # A configured im_file that does not exist yet means "not calibrated":
+    # a zero IM (so a zero CM and no correction) until save_im() writes it.
+    calibrated = loop.im.copy()
     loop.im_file = str(tmp_path / "im.npy")
+    loop.load_im()
+    assert not np.any(loop.im) and not np.any(loop.cm)
+    with pytest.raises(FileNotFoundError):  # an explicit path must exist
+        loop.load_im(str(tmp_path / "other.npy"))
+    loop.im_file = str(tmp_path / "no_such_dir" / "im.npy")  # a typo, not "not yet"
+    with pytest.raises(FileNotFoundError, match="does not exist"):
+        loop.load_im()
+    loop.im_file = str(tmp_path / "im.npy")
+    loop.im = calibrated
+
     loop.save_im()
     loop.im = np.zeros_like(loop.im)
     loop.load_im()

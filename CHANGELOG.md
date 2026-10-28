@@ -4,8 +4,105 @@ All notable changes to `pyrtcao` will be documented in this file.
 
 ## Unreleased
 
+### Added
+
+- **Light sources (`pyrtc.light_source.LightSource`, `source` section).** This
+  is a base class for lasers and LEDs that holds the safety rules every
+  source shares:
+  - a required `max_power` cap in mW, which can be lowered but not raised
+    while running;
+  - no emission when the source opens (a source found on is turned off);
+  - `enable()` refuses while the device's own setpoint is above the cap;
+  - `set_power()` raises if the setpoint does not read back as requested;
+  - `stop()` and `close()` turn emission off;
+  - every change is read back.
+
+  The manager builds the source after every other section (custom ones
+  included) and stops it first. Adapters implement
+  `_open`, `_read_status`, `_set_power`, `_set_emission` and `_close`.
+- **`pyrtc.utils.TightenOnly`.** A safety limit attribute that can be
+  tightened but never loosened or removed, including from the manager GUI's
+  Apply on a running component. Values must be finite and non-negative. `ThorlabsDMP40` uses it for `command_cap`,
+  `max_step_v` and `max_offset_v`, and its `tilt_volts` and `bias_v` are now
+  read-only once the mirror is open.
+- **`ThorlabsDMP40` reports clipped writes and refuses an impossible cap.**
+  `writes` and `limited_writes` count the writes, and those with any segment
+  clipped by `command_cap`, `max_step_v` or `max_offset_v`. A calibration that
+  clipped a poke did not get the shape it asked for. Opening refuses a
+  `command_cap` that would already clip the mirror's shape at open, since the
+  first write would then move it.
+- **`ThorlabsDMP40` publishes `wfc_volts`.** The stream holds `[writes,
+  limited_writes, 40 segment volts]`, published at open and after every
+  write. A program that commands the mirror through the `wfc` stream can use
+  it to confirm that each command was written unclipped.
+- **`ThorlabsDMP40` limits allow 1 µV of float rounding.** Commands are
+  float32, so a step of exactly `max_step_v` (push +1 V to pull -1 V against a
+  2 V limit) came out tens of nV over it. It was clipped and counted as a
+  clipped write, which rejected a valid calibration. The DAC
+  resolves ~3.3 mV, so values within 1 µV of a limit now count as on it.
+- **Allied Vision cameras through Vimba X (`pyrtc.hardware.vimba_camera`).**
+  `VimbaWFS` and `VimbaScienceCamera` drive Alvium (and other Vimba X)
+  cameras with `vmbpy` (`pip install pyrtcao[vimba]`). The camera streams
+  continuously and `expose()` publishes the newest complete frame. Auto
+  exposure and gain are switched off, and every feature the adapter changed
+  is restored when it closes (`restore_on_close`). Several cameras can share
+  the process's Vimba system. Once a camera is open, an ROI or binning
+  change that would alter its frame shape is undone and raises an error.
+- **Thorlabs DMP40 deformable mirror (`pyrtc.hardware.thorlabs_dmp40`).**
+  `ThorlabsDMP40` drives the 40 segments through the native `dmp40` driver,
+  in volts about a 100 V bias, and holds the three tilt arms at the
+  required `tilt_volts`. Opening writes nothing and takes the measured
+  segment voltages as the flat. `max_step_v` and `max_offset_v` clip each
+  write, and closing restores the frame measured at open (`on_close`), in
+  steps of at most `max_step_v`.
+
+### Changed
+
+- **Manager GUI: a Shutdown button, and toolbar states that match the
+  system.**
+  - Shutdown closes every component, which releases its hardware (a light
+    source first), and keeps the config loaded, so the system can be built
+    again without restarting the GUI.
+  - Start now also works after Stop. Build, Validate and the mode switch are
+    available only while nothing is built. Before, Build was enabled on a
+    stopped system that still held its devices.
+  - A failed build or a crashed system can be shut down and rebuilt.
+    If closing fails, Shutdown reports it and keeps the old system, so it
+    can be retried.
+  - The toolbar buttons have tooltips; Reset is stop then start, not a
+    teardown.
+
+- **The manager GUI lays out a config by its data flow.** Components without
+  a saved position are placed in columns from source to corrector (WFS ->
+  slopes -> loop -> WFC), with the loop-closing edge treated as feedback.
+  It used to be a 3-column grid in section order, which put the WFC first.
+  Edges now always leave a node's right side and enter the next node's left side,
+  with an arrowhead at the receiving end. Feedback edges run below the nodes
+  they pass, rather than doubling back across them. Nodes show the
+  configured class (`ThorlabsDMP40`), not only the component family. The view
+  fits the graph when a config loads, until you zoom or drag a node.
+
 ### Fixed
 
+- `pyrtc-validate-config` lists every component section in the config (it
+  left out `modulator`, `source` and the other optional sections).
+- **The manager GUI's Launch Viewer and `pyrtc-view-launch-all` work without
+  the environment's `bin` on `PATH`.** They spawned `pyrtc-view` by name, which
+  failed (`FileNotFoundError`) when the GUI was started by absolute path, as
+  from a desktop menu. They now run `python -m pyrtc.scripts.view` with the
+  current interpreter.
+- **A loop can be built before its interaction matrix exists.** A
+  configured `im_file` that is missing used to fail the build, so a new
+  system could not be built in order to calibrate it. The loop now starts
+  with a zero IM (and CM, so it applies no correction) and logs a warning;
+  `compute_im()` then `save_im()` writes the file. A missing directory, or
+  `load_im(path)` with an explicit path, still raises.
+- **`pyrtc-view` waits for streams that do not exist yet.** Started before
+  the system was built, it raised `FileNotFoundError` and exited. Missing
+  streams now show a waiting panel that connects once the stream appears,
+  without pressing Reconnect. A stream that exists but fails to open keeps
+  its Reconnect button and is not retried in a loop. The connections it
+  opened only to size the window are also closed now.
 - **SPECULA examples now correct turbulence (#175).** With
   `use_atmosphere: true`, closing the loop lowered the Strehl (SHWFS
   0.05 -> 0.01) instead of raising it. Two causes:

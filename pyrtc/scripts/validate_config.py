@@ -23,10 +23,16 @@ def _build_arg_parser() -> argparse.ArgumentParser:
 
 
 def _success_payload(config_path: str, normalized_conf: dict, warnings: list[str]) -> dict:
-    components = [
+    from pyrtc.component_descriptors import list_component_sections
+    from pyrtc.manager import DEFAULT_COMPONENT_ORDER
+
+    ordered = ("wfs", "slopes", "loop", "wfc", "psf", "telemetry")
+    others = (*DEFAULT_COMPONENT_ORDER, *list_component_sections())
+    components = [section for section in ordered if section in normalized_conf]
+    components += [
         section
-        for section in ("wfs", "slopes", "loop", "wfc", "psf", "telemetry")
-        if section in normalized_conf
+        for section in dict.fromkeys(others)
+        if section in normalized_conf and section not in components
     ]
     return {
         "valid": True,

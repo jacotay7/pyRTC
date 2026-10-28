@@ -15,7 +15,13 @@ from pyrtc.logging_utils import get_logger
 from pyrtc.manager import launch_component
 from pyrtc.streams import create_stream
 from pyrtc.component import Component
-from pyrtc.modal_basis import BasisConfig, build_m2c, default_actuator_layout, parse_basis_config
+from pyrtc.modal_basis import (
+    BasisConfig,
+    actuator_positions_from_index_map,
+    build_m2c,
+    default_actuator_layout,
+    parse_basis_config,
+)
 from pyrtc.utils import gaussian_2d_grid, pyplot, set_from_config
 
 logger = get_logger(__name__)
@@ -247,15 +253,36 @@ class WavefrontCorrector(Component):
         """
         Set the layout of the actuators.
 
+        A boolean (or 0/1) mask places actuator ``k`` on the ``k``-th
+        active cell in row-major order. An integer *index map* (any entry
+        ``-1``) instead holds each cell's actuator index, ``-1`` for empty
+        cells; an actuator may cover several cells, so DMs that are not
+        numbered row by row (rings, segments) draw in their real shape.
+
         Parameters
         ----------
         layout : numpy.ndarray or None
-            Layout of the actuators. Is converted to boolean if not already.
+            Mask or index map of the actuators.
         """
         try:
             self.layout = layout
+            self.layout_actuators = None
             if isinstance(self.layout, np.ndarray):
-                self.layout = self.layout > 0
+                index_map = None
+                if np.issubdtype(self.layout.dtype, np.integer) and np.any(self.layout < 0):
+                    index_map = np.asarray(self.layout)
+                    present = np.unique(index_map[index_map >= 0])
+                    expected = np.arange(self.num_actuators)
+                    if present.size != expected.size or np.any(present != expected):
+                        raise ValueError(
+                            f"layout index map must hold every actuator 0..{self.num_actuators - 1} "
+                            f"at least once (and nothing else); it holds {present.tolist()}"
+                        )
+                    self.layout = index_map >= 0
+                    # Actuator shown by each active cell, row-major.
+                    self.layout_actuators = index_map[self.layout].astype(np.intp)
+                else:
+                    self.layout = self.layout > 0
                 self.correction_vector_2d = create_stream(
                     self.output_stream_name("wfc_2d"),
                     self.layout.shape,
@@ -267,7 +294,10 @@ class WavefrontCorrector(Component):
                 self.correction_vector_2d_template = self.read_stream("wfc_2d", block=False)
 
                 self.index_map = np.zeros(self.layout.shape, dtype=int)
-                self.index_map[self.layout > 0] = np.arange(np.sum(self.layout)).astype(int) + 1
+                if self.layout_actuators is None:
+                    self.index_map[self.layout > 0] = np.arange(np.sum(self.layout)).astype(int) + 1
+                else:
+                    self.index_map[self.layout] = self.layout_actuators + 1
                 self.logger.info("Configured 2D correction layout shape=%s", self.layout.shape)
                 if (
                     getattr(self, "m2c_source", None) == "basis"
@@ -300,6 +330,10 @@ class WavefrontCorrector(Component):
             if not hasattr(actuators, "__len__"):
                 raise Exception("Actuators given as wrong type, please provide array or list")
 
+            if getattr(self, "layout_actuators", None) is not None:
+                raise NotImplementedError(
+                    "floating actuators need a mask layout (one cell per actuator), not an index map"
+                )
             if isinstance(self.layout, np.ndarray):
                 if len(self.layout.shape) != 2:
                     raise Exception(
@@ -491,6 +525,12 @@ class WavefrontCorrector(Component):
             layout = None
             if not self.basis_conf.positions_file:
                 positions = self.basis_actuator_positions()
+            if (
+                positions is None
+                and not self.basis_conf.positions_file
+                and getattr(self, "layout_actuators", None) is not None
+            ):
+                positions = actuator_positions_from_index_map(self.index_map - 1)
             if positions is None and not self.basis_conf.positions_file:
                 layout = self.layout
                 if not isinstance(layout, np.ndarray) or layout.ndim != 2:
@@ -580,7 +620,11 @@ class WavefrontCorrector(Component):
         # If we have a 2D SHM instance, update it
         if self.correction_vector_2d is not None:
             self.correction_vector_2d_template.fill(0)
-            self.correction_vector_2d_template[self.layout] = self.current_shape - self.flat
+            values = self.current_shape - self.flat
+            order = getattr(self, "layout_actuators", None)  # adapters may set layout directly
+            if order is not None:
+                values = values[order]
+            self.correction_vector_2d_template[self.layout] = values
             self.write_stream("wfc_2d", self.correction_vector_2d_template)
         # Overwrite with hardware instructions after this to send to hardware
         return
@@ -727,7 +771,10 @@ class WavefrontCorrector(Component):
 
         if isinstance(self.layout, np.ndarray):
             new_shape = np.zeros(self.layout.shape)
-            new_shape[self.layout] = self.M2C @ cur_correction
+            values = self.M2C @ cur_correction
+            if getattr(self, "layout_actuators", None) is not None:
+                values = values[self.layout_actuators]
+            new_shape[self.layout] = values
         else:
             new_shape = cur_correction
 

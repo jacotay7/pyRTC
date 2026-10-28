@@ -8,6 +8,7 @@ display controls rather than any AO-specific signal processing.
 
 from dataclasses import dataclass
 import logging
+import time
 
 import numpy as np
 from matplotlib.colors import LogNorm, Normalize
@@ -59,6 +60,7 @@ from .viewer_helpers import (
     compute_window_size,
     normalize_geometry_value,
     resolve_grid,
+    stream_exists,
 )
 
 
@@ -158,11 +160,14 @@ class AddPlotPlaceholder(QFrame):
 class UnavailableStreamPlaceholder(QFrame):
     """Placeholder shown when a requested SHM stream cannot be opened."""
 
-    def __init__(self, shm_name: str, retry_callback):
+    def __init__(self, shm_name: str, retry_callback, waiting: bool = True):
         _require_viewer_backend()
         super().__init__()
         self.shm_name = shm_name
         self.retry_callback = retry_callback
+        # True: the stream does not exist yet and the viewer reconnects by
+        # itself; False: it exists but failed to open (Reconnect button only).
+        self.waiting = waiting
         self.theme = THEMES["dark"]
         self._build_ui()
         self.apply_theme(self.theme)
@@ -179,7 +184,11 @@ class UnavailableStreamPlaceholder(QFrame):
         self.title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self.title_label)
 
-        self.status_label = QLabel("Stream unavailable")
+        self.status_label = QLabel(
+            "Waiting for the stream; connects when it appears"
+            if self.waiting
+            else "Stream unavailable (see the log); press Reconnect"
+        )
         self.status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self.status_label)
 
@@ -592,9 +601,17 @@ class MosaicViewerWindow(QMainWindow):
         while len(self.cells) < self.rows * self.cols:
             self.cells.append(None)
 
-        connections = [StreamConnection(name) for name in shm_names]
-        frames = [connection.cached_frame for connection in connections]
+        # Size the window from the streams that exist; the others get a
+        # waiting placeholder (their producer may not be built yet).
+        frames = []
+        for name in shm_names:
+            if not stream_exists(name):
+                continue
+            connection = StreamConnection(name)
+            frames.append(connection.cached_frame)
+            connection.close()
         width, height = compute_window_size(frames, self.rows, self.cols, pixel_scale)
+        self._next_reconnect = 0.0
 
         self.setWindowTitle(f"{' '.join(shm_names)} - PyRTC Viewer")
         self.resize(width, height)
@@ -853,10 +870,17 @@ class MosaicViewerWindow(QMainWindow):
                     )
                     self.panels[index] = panel
                     self.grid_layout.addWidget(panel, row_index, col_index)
-                except Exception:
+                except Exception as exc:
                     connection_errors += 1
-                    logging.exception("Viewer panel reconnect failed for cell %s (%s)", index, name)
-                    placeholder = UnavailableStreamPlaceholder(name, self.reset_streams)
+                    if isinstance(exc, FileNotFoundError):
+                        logging.info("Waiting for stream %s (cell %s)", name, index)
+                    else:
+                        logging.exception(
+                            "Viewer panel reconnect failed for cell %s (%s)", index, name
+                        )
+                    placeholder = UnavailableStreamPlaceholder(
+                        name, self.reset_streams, waiting=isinstance(exc, FileNotFoundError)
+                    )
                     self.placeholders[index] = placeholder
                     self.grid_layout.addWidget(placeholder, row_index, col_index)
 
@@ -927,9 +951,25 @@ class MosaicViewerWindow(QMainWindow):
         for placeholder in self.placeholders.values():
             placeholder.apply_theme(theme)
 
+    def _reconnect_waiting_streams(self):
+        """Rebuild the grid once a stream a placeholder is waiting for exists."""
+
+        now = time.monotonic()
+        if now < self._next_reconnect:
+            return
+        self._next_reconnect = now + 1.0
+        waiting = [
+            placeholder.shm_name
+            for placeholder in self.placeholders.values()
+            if isinstance(placeholder, UnavailableStreamPlaceholder) and placeholder.waiting
+        ]
+        if any(stream_exists(name) for name in waiting):
+            self.rebuild_grid()
+
     def refresh_panels(self):
         if not self.isVisible():
             return
+        self._reconnect_waiting_streams()
         changed_panels = 0
         error_count = 0
         for index, panel in self.panels.items():

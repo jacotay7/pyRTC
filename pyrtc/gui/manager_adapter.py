@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from ast import literal_eval
+from dataclasses import replace
 import importlib
 import importlib.util
 import inspect
@@ -21,6 +22,7 @@ from pyrtc.component_descriptors import (
 from pyrtc.config_runtime import stream_alias_map
 from pyrtc.config_schema import read_system_config
 from pyrtc.logging_utils import get_logger
+from pyrtc.scripts.viewer_helpers import viewer_command
 
 from .models import GraphEdgeModel, GraphNodeModel, GraphSnapshot
 
@@ -111,6 +113,86 @@ def _infer_layout(index: int) -> tuple[float, float]:
     col = index % columns
     row = index // columns
     return 80.0 + col * 260.0, 60.0 + row * 190.0
+
+
+# Where an AO pipeline starts, so the DFS that breaks its cycle (the DM feeds
+# the WFS) keeps the sensor first and marks the corrector -> sensor edge as
+# the feedback edge.
+_FLOW_PRIORITY = ("modulator", "wfs", "slopes", "loop", "wfc", "psf", "source", "telemetry")
+_FLOW_COLUMN_SPACING = 300.0
+_FLOW_ROW_SPACING = 200.0
+
+
+def _flow_layout(
+    sections: list[str], links: list[tuple[str, str]]
+) -> dict[str, tuple[float, float]]:
+    """Place sections in columns by data flow, left to right.
+
+    ``links`` are ``(source, target)`` section pairs. Each section's column
+    is its longest path from a source once feedback edges are dropped, so
+    every remaining edge points right. Sections in one column stack in
+    pipeline order.
+    """
+
+    successors: dict[str, list[str]] = {section: [] for section in sections}
+    has_input: set[str] = set()
+    for source, target in links:
+        if source in successors and target in successors and source != target:
+            if target not in successors[source]:
+                successors[source].append(target)
+            has_input.add(target)
+
+    def priority(section: str) -> tuple[int, int]:
+        rank = _FLOW_PRIORITY.index(section) if section in _FLOW_PRIORITY else len(_FLOW_PRIORITY)
+        return rank, sections.index(section)
+
+    ordered = sorted(sections, key=priority)
+    roots = [section for section in ordered if section not in has_input] + ordered
+    visited: set[str] = set()
+    on_path: set[str] = set()
+    feedback: set[tuple[str, str]] = set()
+
+    def visit(section: str) -> None:
+        visited.add(section)
+        on_path.add(section)
+        for target in successors[section]:
+            if target in on_path:
+                feedback.add((section, target))
+            elif target not in visited:
+                visit(target)
+        on_path.discard(section)
+
+    for section in roots:
+        if section not in visited:
+            visit(section)
+
+    column = {section: 0 for section in sections}
+    remaining = {section: 0 for section in sections}
+    for source, targets in successors.items():
+        for target in targets:
+            if (source, target) not in feedback:
+                remaining[target] += 1
+    ready = [section for section in ordered if remaining[section] == 0]
+    while ready:
+        source = ready.pop(0)
+        for target in successors[source]:
+            if (source, target) in feedback:
+                continue
+            column[target] = max(column[target], column[source] + 1)
+            remaining[target] -= 1
+            if remaining[target] == 0:
+                ready.append(target)
+
+    rows: dict[int, int] = {}
+    positions = {}
+    for section in ordered:
+        row = rows.get(column[section], 0)
+        rows[column[section]] = row + 1
+        positions[section] = (
+            80.0 + column[section] * _FLOW_COLUMN_SPACING,
+            60.0 + row * _FLOW_ROW_SPACING,
+        )
+    return positions
 
 
 def _graph_layout_positions(config: dict[str, Any]) -> dict[str, dict[str, float]]:
@@ -679,6 +761,21 @@ class ManagerAdapter:
         self._last_status = manager.status()
         return self._last_status
 
+    def shutdown(self) -> dict[str, Any]:
+        """Close every component, releasing its hardware, and keep the config loaded.
+
+        The components are closed in teardown order (a light source first),
+        then a fresh, unbuilt manager for the same config takes over, so the
+        system can be built again. A failed close raises, and the old manager
+        stays in place so Shutdown can be retried.
+        """
+        manager = self.manager
+        if manager is not None:
+            manager.close()
+        self.manager = None
+        self._rebuild_manager()
+        return self._last_status
+
     def reset(self) -> dict[str, Any]:
         manager = self.ensure_manager()
         if manager.state in {"running", "degraded", "failed"}:
@@ -972,11 +1069,14 @@ class ManagerAdapter:
             component_info = component_status.get(section_name, {})
             x, y = self.get_component_position(section_name, default_index=index)
             title = section_name.upper()
-            subtitle = (
-                descriptor.class_name
-                if descriptor is not None
-                else self.config[section_name].get("name", "component")
-            )
+            # The configured class (e.g. a hardware adapter), not just its family.
+            class_name = self.config[section_name].get("class_name")
+            if isinstance(class_name, str) and class_name:
+                subtitle = class_name.rsplit(".", 1)[-1]
+            elif descriptor is not None:
+                subtitle = descriptor.class_name
+            else:
+                subtitle = self.config[section_name].get("name", "component")
             input_names = (
                 {
                     _component_stream_name(self.config, section_name, "input", stream.name)
@@ -1106,6 +1206,20 @@ class ManagerAdapter:
                     )
                 )
 
+        # Sections the user has not placed follow the data flow.
+        placed = _graph_layout_positions(self.config)
+        if any(node.section_name not in placed for node in nodes):
+            flow = _flow_layout(
+                [node.section_name for node in nodes],
+                [(edge.source_section, edge.target_section) for edge in edges],
+            )
+            nodes = [
+                node
+                if node.section_name in placed
+                else replace(node, x=flow[node.section_name][0], y=flow[node.section_name][1])
+                for node in nodes
+            ]
+
         return GraphSnapshot(
             nodes=tuple(nodes),
             edges=tuple(edges),
@@ -1129,7 +1243,7 @@ class ManagerAdapter:
         streams = self.suggested_viewer_streams()
         if not streams:
             raise RuntimeError("No viewer-compatible output streams are available")
-        return subprocess.Popen(["pyrtc-view", *streams])
+        return subprocess.Popen(viewer_command(*streams))
 
     def log_files(self) -> list[str]:
         status = self._last_status or self.status()

@@ -546,6 +546,41 @@ def gaussian_2d_grid(i, j, sigma, grid_size):
     return grid
 
 
+class TightenOnly:
+    """A safety limit that, once set, can only be tightened.
+
+    Use it as a class attribute for limits such as a power cap or a slew
+    limit. Values must be finite and non-negative. The first assignment sets
+    the limit, and ``None`` means no limit.
+    After that, any assignment must keep the limit or lower it; raising or
+    removing it raises ``ValueError``. That covers runtime changes too, such
+    as the manager GUI's Apply on a running component.
+    """
+
+    def __set_name__(self, owner, name):
+        self.name = name
+        self.attribute = f"_tighten_only_{name}"
+
+    def __get__(self, obj, objtype=None):
+        if obj is None:
+            return self
+        return getattr(obj, self.attribute, None)
+
+    def __set__(self, obj, value):
+        if value is not None:
+            value = float(value)
+            # NaN and negatives are not limits (and NaN compares False with anything).
+            if not np.isfinite(value) or value < 0:
+                raise ValueError(f"{self.name} must be a finite, non-negative limit, got {value}")
+        if hasattr(obj, self.attribute):
+            current = getattr(obj, self.attribute)
+            if current is not None and (value is None or value > current):
+                raise ValueError(
+                    f"{self.name} can only be tightened while running ({current} -> {value})"
+                )
+        setattr(obj, self.attribute, value)
+
+
 def require_optional(module: str, extra: str, feature: str):
     """Import an optional dependency, or raise ``ImportError`` naming its extra.
 

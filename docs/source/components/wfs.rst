@@ -183,6 +183,38 @@ IDS, Baumer and others (``pip install pyrtcao[genicam]``):
 are published as the camera returns them, ``(Height, Width)``, so ``width``
 and ``height`` mean the same as the camera's ``Width`` and ``Height`` nodes.
 
+Allied Vision Cameras (Vimba X)
+-------------------------------
+
+``pyrtc.hardware.vimba_camera`` drives Allied Vision cameras (Alvium, Mako,
+...) through Allied Vision's ``vmbpy`` (``pip install pyrtcao[vimba]``):
+
+.. code-block:: yaml
+
+  wfs:
+    class_name: pyrtc.hardware.vimba_camera.VimbaWFS
+    name: shwfs_cam
+    cti_path: /opt/VimbaX/cti/VimbaUSBTL.cti  # or set GENICAM_GENTL64_PATH
+    serial: "0ABCD"                           # or device_index: 0
+    width: 2064
+    height: 1544
+    exposure: 500        # microseconds (ExposureTime)
+    gain: 0.0
+    bit_depth: 8         # PixelFormat Mono8
+    frame_rate: 30       # enables AcquisitionFrameRate
+    node_settings:       # any other features, applied last in order
+      DeviceLinkThroughputLimit: 100000000
+    functions: [expose]
+
+- The camera streams continuously; ``expose()`` publishes the newest
+  complete frame and drops older ones.
+- Auto exposure and auto gain are switched off. Features the adapter
+  changes are put back when it closes, unless ``restore_on_close: false``.
+- ``width`` and ``height`` must match the camera's frame (after ``left``,
+  ``top`` and ``binning``); the adapter checks this when it opens.
+
+``VimbaScienceCamera`` takes the same keys for the ``psf`` section.
+
 Micro-Manager Cameras
 ---------------------
 

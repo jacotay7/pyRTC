@@ -303,6 +303,39 @@ so commands are applied about ``bias``:
   centred disk. Use ``layout_file`` for any other map.
 - Closing the component zeroes the mirror before releasing it.
 
+Thorlabs DMP40
+--------------
+
+``pyrtc.hardware.thorlabs_dmp40.ThorlabsDMP40`` drives the Thorlabs DMP40 /
+DMH40 piezo mirror (40 segments, 3 tilt arms, 0-200 V) through the native
+Linux ``dmp40`` driver package:
+
+.. code-block:: yaml
+
+  wfc:
+    class_name: pyrtc.hardware.thorlabs_dmp40.ThorlabsDMP40
+    name: dmp40
+    serial: "M0000000"
+    num_modes: 40
+    tilt_volts: [100.0, 100.0, 100.0]   # required: held on every write
+    command_cap: 89      # volts about bias_v (default 100 V): 11-189 V
+    max_step_v: 2.0      # optional slew limit per write
+    max_offset_v: 6.0    # optional limit from the shape measured at open
+    functions: [send_to_hardware]
+
+- Commands are volts about ``bias_v``. The tilt arms are not controlled:
+  the driver cannot read them back, so ``tilt_volts`` must be given and is
+  sent with every write.
+- Opening writes nothing. Without ``flat_file``, the flat is the segment
+  voltages measured at open, so a zero correction holds the current shape.
+- ``max_step_v`` and ``max_offset_v`` clip commands (they do not stop the
+  loop); ``limited_actuators`` counts the clipped segments.
+- Closing writes the frame measured at open back if anything was sent
+  (``on_close: restore``) or keeps the last command (``hold``). It never
+  relaxes or zeroes the mirror.
+- There is no built-in segment layout; give ``layout_file`` for a 2D view
+  or a modal basis.
+
 Parameters
 ----------
 

@@ -50,6 +50,7 @@ The base install is the soft-RTC core. Optional extras:
 	pip install pyrtcao[hcipy]         # HCIPy simulator (examples/hcipy)
 	pip install pyrtcao[specula]       # SPECULA simulator (examples/shwfs, examples/pywfs)
 	pip install pyrtcao[genicam]       # GenICam (GigE/USB3 Vision) camera adapters
+	pip install pyrtcao[vimba]         # Allied Vision (Vimba X) camera adapters
 	pip install pyrtcao[micromanager]  # Micro-Manager camera adapters
 	pip install pyrtcao[hardware]      # PI, Spinnaker (rotpy) and XIMEA SDKs for those adapters
 

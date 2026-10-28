@@ -37,9 +37,9 @@ aliases.
   closes the registered streams for good).
 - Core components: `wavefront_sensor.py`, `slopes_process.py`, `loop.py`,
   `wavefront_corrector.py`, `science_camera.py`, `telemetry.py`,
-  `modulator.py`, `optimizer.py`. Hot loops are `@jit(..., cache=True)`
-  Numba kernels; the first call after a source change recompiles (about 1 s
-  each), so warm them before timing anything.
+  `modulator.py`, `optimizer.py`, `light_source.py`. Hot loops are
+  `@jit(..., cache=True)` Numba kernels; the first call after a source change
+  recompiles (about 1 s each), so warm them before timing anything.
 - Components warm their worker kernels at the end of `__init__` with
   `warmup()` (a no-op hook on `Component`; overridden by `SlopesProcess`,
   `Loop`, `WavefrontCorrector`). A numba kernel's first call in a process
@@ -117,8 +117,9 @@ aliases.
 - `pyrtc/latency.py` — stream latency measurement. `pyrtc/exporters/` — AOTPy
   export of telemetry sessions.
 - `pyrtc/hardware/` — reference adapters:
-  - cameras: GenICam, Micro-Manager, XIMEA, Spinnaker;
-  - DMs: ALPAO, BMC;
+  - cameras: GenICam, Allied Vision (Vimba X), Micro-Manager, XIMEA,
+    Spinnaker;
+  - DMs: ALPAO, BMC, Thorlabs DMP40;
   - simulators: synthetic, HCIPy, SPECULA, OOPAO;
   - optimizers.
 
@@ -260,6 +261,16 @@ ruff check . && ruff format --check .    # lint, as in CI
   behaviour changes.
 
 ## Gotchas
+
+- The manager GUI's Apply on a running component is a plain `setattr`, so
+  any attribute named like a config field can change on live hardware. Keep
+  safety limits on `pyrtc.utils.TightenOnly` (they can be lowered, never
+  raised or removed) and make values that must not change after open
+  read-only properties (as `ThorlabsDMP40.tilt_volts` is).
+- `LightSource` (`source` section) is last in `DEFAULT_COMPONENT_ORDER` on
+  purpose: it is built only once everything else built, and stopped and
+  closed first, so the light goes off before the rest shuts down. Its
+  `stop()` turns emission off; nothing turns it on except `enable()`.
 
 - Hand-written stream fakes in tests drifted from pyshmem and hid real bugs,
   such as a blocking read that never blocked. Use `testsupport.private_stream`.

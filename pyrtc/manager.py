@@ -104,7 +104,18 @@ def launch_component(component, conf_key, start=True):
             close()
 
 
-DEFAULT_COMPONENT_ORDER = ("modulator", "wfc", "wfs", "slopes", "loop", "psf", "telemetry")
+# Built in this order and stopped/closed in reverse. The light source comes
+# last, so it opens only once everything else built and turns off first.
+DEFAULT_COMPONENT_ORDER = (
+    "modulator",
+    "wfc",
+    "wfs",
+    "slopes",
+    "loop",
+    "psf",
+    "telemetry",
+    "source",
+)
 
 
 def _with_configured_stream_names(descriptor, section_conf):
@@ -771,6 +782,11 @@ class RTCManager:
             for section in mapping:
                 if section in self.config and section not in sections:
                     sections.append(section)
+        if "source" in sections:
+            # The light source opens after every other section and is torn
+            # down before them, extra and custom sections included.
+            sections.remove("source")
+            sections.append("source")
         return sections
 
     def _resolve_component_class(self, section_name: str):

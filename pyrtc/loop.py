@@ -7,6 +7,7 @@ integrators, and command dispatch all come together here.
 """
 
 import math
+import os
 import numpy as np
 import time
 from collections import deque
@@ -1096,11 +1097,27 @@ class Loop(Component):
         """
         component_logger = getattr(self, "logger", logger)
         try:
-            if filename == "":
+            configured = filename == ""
+            if configured:
                 filename = self.im_file
             if filename == "":
                 self.im = np.zeros_like(self.im)
                 component_logger.info("No interaction matrix file configured; using zeros")
+            elif configured and not os.path.exists(filename):
+                # Not calibrated yet: im_file names where save_im() will write.
+                # A zero IM gives a zero CM, so the loop applies no correction.
+                # A missing directory is more likely a typo than a plan.
+                directory = os.path.dirname(os.path.abspath(filename))
+                if not os.path.isdir(directory):
+                    raise FileNotFoundError(
+                        f"im_file {filename}: directory {directory} does not exist"
+                    )
+                self.im = np.zeros_like(self.im)
+                component_logger.warning(
+                    "Interaction matrix %s does not exist yet; using zeros until "
+                    "compute_im() and save_im()",
+                    filename,
+                )
             else:
                 im = load_component_calibration(
                     filename,

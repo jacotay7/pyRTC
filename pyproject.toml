@@ -90,6 +90,9 @@ hcipy = [
 genicam = [
 	"harvesters>=1.4",
 ]
+vimba = [
+	"vmbpy",
+]
 micromanager = [
 	"pymmcore-plus>=0.11",
 ]
