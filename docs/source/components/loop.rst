@@ -165,9 +165,30 @@ minimizes the predicted residual variance for the loop delay:
 gain is 1.0 for a delay of 1 and 0.618 for 2. The functions in
 :mod:`pyrtc.modal_gains` work on any residual array.
 
-That limit assumes a control matrix that inverts the plant exactly.
-:mod:`pyrtc.loop_stability` gives the limit for a miscalibrated or dynamic
-plant; see :doc:`../guides/slow_and_limited_actuators`.
+Correction Limits
+-----------------
+
+``absolute_limits: [lower, upper]`` bounds the correction the loop sends.
+Each bound is one value for all modes or a list with one value per mode, and
+every integrator applies them (``standard_integrator``, ``leaky_integrator``,
+``standard_integrator_pol``, ``predictive_integrator`` and the PID ones).
+
+The integrators take their state from the last correction they sent, so the
+limits also prevent windup. Without them, an integrator facing an error it
+cannot remove keeps growing while the corrector clips, and after the error
+reverses it needs as many frames again to come back into range. With them, a
+mode held at a limit leaves it on the first frame the error changes sign.
+
+.. code-block:: yaml
+
+  loop:
+    functions: [leaky_integrator]
+    absolute_limits: [0.0, [5.0, 5.0, 9.0, 9.0]]   # one-sided, per-mode upper
+
+The limits are in the loop's basis. With a zonal basis they are the actuator
+limits and the protection is exact. With another basis, choose the range each
+mode can use and keep the corrector's ``command_min`` / ``command_max`` as the
+hard actuator limit.
 
 Predictive Control
 ------------------

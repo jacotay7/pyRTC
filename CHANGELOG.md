@@ -37,27 +37,19 @@ All notable changes to `pyrtcao` will be documented in this file.
 
 ### Added
 
-- **Control elements for slow and range-limited actuators.** Three
-  stream-free modules, usable from a `Loop` or corrector subclass, a
-  simulator, or offline. No existing component changes behaviour.
-  - `pyrtc.allocation`: `BoundedAllocator` finds the command inside
-    per-actuator limits (which may be one-sided) whose effect is closest to
-    the request, by bounded least squares, so actuators with range left make
-    up for saturated ones. `method="exact"` uses SciPy BVLS; `method="fast"`
-    runs a fixed number of warm-started projected-gradient steps.
-    `anti_windup` is back-calculation for an integrator behind a saturation.
-  - `pyrtc.dynamics`: `LinearPlant` (continuous state space, with
-    `first_order`, `second_order` and `from_network` constructors) gives DC
-    gain, time constants, settling time and step response, and
-    `discretize(period)` returns the exact zero-order-hold `DiscretePlant`
-    to step once per frame.
-  - `pyrtc.loop_stability`: eigenvalues, spectral radius and largest stable
-    gain of the matrix integrator for a *true* interaction matrix that
-    differs from the calibrated one, with delay, leak, per-mode gains and an
-    optional `DiscretePlant` in the loop. With a perfect control matrix it
-    reproduces `modal_gains.max_stable_gain`.
-
-  Guide: `docs/source/guides/slow_and_limited_actuators.rst`.
+- **One-sided and per-actuator command limits.** `WavefrontCorrector` takes
+  `command_min` and `command_max`: one value, one per actuator, or a `.npy`
+  file, either side optional. They cover actuators that only work in one
+  direction (heaters) or have unequal ranges, combine with `command_cap`,
+  and feed the existing saturation count and alert.
+  `set_command_limits()` changes them at run time.
+- **Correction limits for every integrator, per mode.** The loop's
+  `absolute_limits` was read only by the PID integrator and took two
+  scalars. All integrators now clip to it, and each bound may be a per-mode
+  list. Since the integrators keep their state in the correction they sent,
+  this stops windup against a limit: in the new test a saturated mode
+  recovers in 1 frame instead of 197. The default (`[-inf, inf]`) leaves
+  behaviour unchanged.
 - **`oopao` extra.** OOPAO 1.0 is on PyPI, so `pip install pyrtcao[oopao]`
   installs `OOPAO>=1.0` for the OOPAO examples and bridge. The git clone on
   `PYTHONPATH` that older OOPAO needed is no longer required or supported.

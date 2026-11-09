@@ -31,9 +31,6 @@ Module Index
    image_reconstructor
    modal_gains
    predictive
-   allocation
-   dynamics
-   loop_stability
    latency
    isio_bridge
    telemetry

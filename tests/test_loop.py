@@ -678,3 +678,107 @@ def test_pid_integrator_pol_matches_numpy_reference(im_dtype):
         np.testing.assert_array_equal(sent["correction"], command)
     finally:
         loop.close()
+
+
+def _streamed_loop(num_modes=3):
+    """A bare loop on real streams whose corrections land on the ``wfc`` stream."""
+    loop = bare_component(loop_mod.Loop)
+    loop.num_modes = num_modes
+    loop.num_active_modes = num_modes
+    loop.wfc_dtype = np.float32
+    loop.gain = 0.5
+    loop.leaky_gain = 0.0
+    loop.cm = np.eye(num_modes, dtype=np.float32)
+    loop.g_cm = 0.5 * loop.cm
+    loop.cl_docrime = False
+    loop.flat = np.zeros(num_modes, dtype=np.float32)
+    loop.signal_shm = private_stream("signal", (num_modes,), np.float32)
+    loop.wfc_shm = private_stream("wfc", (num_modes,), np.float32)
+    loop.register_input_stream("signal", loop.signal_shm)
+    loop.register_output_stream("wfc", loop.wfc_shm)
+    loop.wfc_shm.write(np.zeros(num_modes, dtype=np.float32))
+    loop._signal_buffer = np.empty(num_modes, dtype=np.float32)
+    loop._wfc_buffer = np.empty(num_modes, dtype=np.float32)
+    loop._correction_buffer = np.zeros(num_modes, dtype=np.float32)
+    return loop
+
+
+def _iterate(loop, worker, signal, frames=1):
+    for _ in range(frames):
+        loop.signal_shm.write(np.asarray(signal, dtype=np.float32))
+        getattr(loop, worker)()
+    return loop.wfc_shm.read().copy()
+
+
+@pytest.mark.parametrize("worker", ["standard_integrator", "leaky_integrator"])
+def test_integrators_clip_to_absolute_limits(worker):
+    loop = _streamed_loop()
+    loop.absolute_limits = [[0.0, -1.0, -np.inf], [2.0, 1.0, np.inf]]  # per mode
+
+    # A constant positive signal drives every mode negative.
+    sent = _iterate(loop, worker, [1.0, 1.0, 1.0], frames=10)
+
+    assert np.allclose(sent, [0.0, -1.0, -5.0])
+    assert sent.dtype == np.float32
+
+
+def test_absolute_limits_stop_integrator_windup():
+    """A mode held at its limit leaves it on the first frame the error reverses."""
+
+    def frames_to_leave_limit(limits):
+        loop = _streamed_loop(num_modes=2)
+        loop.absolute_limits = limits
+        _iterate(loop, "standard_integrator", [-1.0, -1.0], frames=200)  # pushes up
+        for frame in range(1, 400):
+            if _iterate(loop, "standard_integrator", [1.0, 1.0])[0] < 2.0:
+                return frame
+        return None
+
+    assert frames_to_leave_limit([-np.inf, 2.0]) == 1
+    # Without the loop-side limit the state winds up to 100 and takes 197
+    # frames to come back under a corrector limit of 2.
+    assert frames_to_leave_limit([-np.inf, np.inf]) == 197
+
+
+def test_absolute_limits_default_is_unlimited_and_free():
+    loop = _streamed_loop()
+    assert loop.absolute_limits == (-np.inf, np.inf)
+    assert loop._correction_limits is None
+    correction = np.array([1e9, -1e9, 0.0], dtype=np.float32)
+    assert loop._limit_correction(correction) is correction
+    loop.absolute_limits = [-np.inf, np.inf]
+    assert loop._correction_limits is None
+
+
+def test_absolute_limits_accept_scalars_arrays_and_reject_bad_input():
+    loop = _streamed_loop()
+    loop.absolute_limits = [-1, 1]
+    assert loop.absolute_limits == (-1.0, 1.0)
+    loop.absolute_limits = np.array([[0.0, 0.0, 0.0], [1.0, 2.0, 3.0]])
+    assert np.allclose(loop.absolute_limits[1], [1.0, 2.0, 3.0])
+    assert loop.absolute_limits[1].dtype == np.float32
+    with pytest.raises(ValueError, match="num_modes=3"):
+        loop.absolute_limits = [[0.0, 0.0], 1.0]
+    with pytest.raises(ValueError, match="must not exceed"):
+        loop.absolute_limits = [1.0, 0.0]
+    with pytest.raises(ValueError, match="lower, upper"):
+        loop.absolute_limits = [0.0]
+    with pytest.raises(ValueError, match="NaN"):
+        loop.absolute_limits = [float("nan"), 1.0]
+
+
+def test_pol_and_predictive_integrators_clip_to_absolute_limits():
+    loop = _streamed_loop()
+    loop.absolute_limits = [-0.25, 0.25]
+    loop.f_im = np.eye(3, dtype=np.float32)
+    loop.modal_gains = np.ones(3, dtype=np.float32)
+    loop.optical_gains = np.ones(3, dtype=np.float32)
+    assert np.allclose(
+        _iterate(loop, "standard_integrator_pol", [1.0, -1.0, 0.1]), [-0.25, 0.25, -0.05]
+    )
+
+    loop.wfc_shm.write(np.zeros(3, dtype=np.float32))
+    loop.configure_predictor({"type": "persistence", "delay_frames": 1})
+    sent = _iterate(loop, "predictive_integrator", [1.0, -1.0, 0.1], frames=5)
+    assert np.all(np.abs(sent) <= 0.25 + 1e-7)
+    assert np.allclose(sent[:2], [-0.25, 0.25])

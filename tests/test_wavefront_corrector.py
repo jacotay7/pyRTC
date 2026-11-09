@@ -168,3 +168,77 @@ def test_wavefront_corrector_without_cap_reports_no_saturation(monkeypatch):
         assert wfc.safety_status()["alerts"] == []
     finally:
         wfc.close()
+
+
+def _limited_wfc(monkeypatch, **conf):
+    from testsupport import private_stream
+
+    monkeypatch.setattr(wfc_mod, "create_stream", private_stream)
+    wfc = wfc_mod.WavefrontCorrector(
+        {"name": "wfc", "num_actuators": 4, "num_modes": 4, "m2c_file": "", "functions": [], **conf}
+    )
+    wfc.set_m2c(np.eye(4, dtype=np.float32))
+    return wfc
+
+
+def _apply(wfc, command):
+    wfc.write(np.array(command, dtype=np.float32))
+    wfc.send_to_hardware()
+    return wfc.current_shape
+
+
+def test_one_sided_command_limit(monkeypatch):
+    """``command_min: 0`` alone: an actuator that only pushes, with no upper limit."""
+    wfc = _limited_wfc(monkeypatch, command_min=0)
+    try:
+        shape = _apply(wfc, [-1.0, 0.0, 0.5, 7.0])
+        assert np.allclose(shape, [0.0, 0.0, 0.5, 7.0])
+        assert shape.dtype == np.float32
+        assert wfc.safety_status()["saturated_actuators"] == 2  # at or below the limit
+        assert wfc.command_limits()[1] is None
+    finally:
+        wfc.close()
+
+
+def test_per_actuator_command_limits(monkeypatch, tmp_path):
+    upper = tmp_path / "upper.npy"
+    np.save(upper, np.array([1.0, 2.0, 3.0, 4.0]))
+    wfc = _limited_wfc(monkeypatch, command_min=[0.0, -1.0, 0.0, -1.0], command_max=str(upper))
+    try:
+        assert np.allclose(_apply(wfc, [5.0, 5.0, -5.0, -5.0]), [1.0, 2.0, 0.0, -1.0])
+        status = wfc.safety_status()
+        assert status["saturated_actuators"] == 4
+        assert status["alerts"] == ["4/4 actuators at a command limit"]
+    finally:
+        wfc.close()
+
+
+def test_command_limits_apply_to_the_flat_and_combine_with_cap(monkeypatch):
+    wfc = _limited_wfc(monkeypatch, command_min=0.0, command_max=10.0, command_cap=2.0)
+    try:
+        wfc.flat = np.full(4, 1.5, dtype=np.float32)
+        # flat + command: 0.5 (inside), 3.5 (cap is tighter than command_max), -0.5 (min)
+        assert np.allclose(_apply(wfc, [-1.0, 2.0, -2.0, 0.0]), [0.5, 2.0, 0.0, 1.5])
+        wfc.command_cap = 5.0  # changed at run time, as through set_property
+        assert np.allclose(_apply(wfc, [-1.0, 2.0, -2.0, 0.0]), [0.5, 3.5, 0.0, 1.5])
+    finally:
+        wfc.close()
+
+
+def test_set_command_limits_at_run_time_and_validation(monkeypatch):
+    wfc = _limited_wfc(monkeypatch)
+    try:
+        assert wfc.command_limits() == (None, None)
+        assert np.allclose(_apply(wfc, [-9.0, 9.0, 0.0, 0.0]), [-9.0, 9.0, 0.0, 0.0])
+        wfc.set_command_limits(-1.0, [1.0, 2.0, 3.0, 4.0])
+        assert np.allclose(_apply(wfc, [-9.0, 9.0, 0.0, 0.0]), [-1.0, 2.0, 0.0, 0.0])
+        wfc.set_command_limits()
+        assert wfc.command_limits() == (None, None)
+        with pytest.raises(ValueError, match="num_actuators=4"):
+            wfc.set_command_limits([0.0, 0.0])
+        with pytest.raises(ValueError, match="must not exceed"):
+            wfc.set_command_limits(1.0, 0.0)
+        with pytest.raises(ValueError, match="NaN"):
+            wfc.set_command_limits(float("nan"))
+    finally:
+        wfc.close()
