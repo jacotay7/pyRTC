@@ -165,6 +165,10 @@ minimizes the predicted residual variance for the loop delay:
 gain is 1.0 for a delay of 1 and 0.618 for 2. The functions in
 :mod:`pyrtc.modal_gains` work on any residual array.
 
+That limit assumes a control matrix that inverts the plant exactly.
+:mod:`pyrtc.loop_stability` gives the limit for a miscalibrated or dynamic
+plant; see :doc:`../guides/slow_and_limited_actuators`.
+
 Predictive Control
 ------------------
 

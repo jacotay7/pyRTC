@@ -92,6 +92,14 @@ aliases.
 - `pyrtc/modal_gains.py` (per-mode gain optimization) and `pyrtc/predictive.py`
   (pluggable predictors for `Loop.predictive_integrator`) hold control
   algorithms as plain numpy, so they are testable without streams.
+- `pyrtc/allocation.py` (bounded least-squares command allocation inside
+  per-actuator limits, anti-windup), `pyrtc/dynamics.py` (linear state-space
+  plants and their zero-order-hold discretization) and
+  `pyrtc/loop_stability.py` (closed-loop eigenvalues of the matrix integrator
+  with a mismatched interaction matrix, delay and plant dynamics) are also
+  stream-free. No component calls them yet: they are building blocks for
+  loops on slow or range-limited actuators
+  (`docs/source/guides/slow_and_limited_actuators.rst`).
 - `pyrtc/corrector_splitter.py` — one loop driving several correctors
   (woofer/tweeter, offload); it sits in the `wfc` section.
   `pyrtc/isio_bridge.py` — mirrors a stream to or from ImageStreamIO

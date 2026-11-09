@@ -54,6 +54,7 @@ pyrtc is an open-source, community-driven Python package for real-time control o
   guides/streams
   guides/migration_2_0
   guides/telemetry_aotpy_export
+  guides/slow_and_limited_actuators
   guides/developers_guide
 
 .. toctree::

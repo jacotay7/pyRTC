@@ -37,6 +37,27 @@ All notable changes to `pyrtcao` will be documented in this file.
 
 ### Added
 
+- **Control elements for slow and range-limited actuators.** Three
+  stream-free modules, usable from a `Loop` or corrector subclass, a
+  simulator, or offline. No existing component changes behaviour.
+  - `pyrtc.allocation`: `BoundedAllocator` finds the command inside
+    per-actuator limits (which may be one-sided) whose effect is closest to
+    the request, by bounded least squares, so actuators with range left make
+    up for saturated ones. `method="exact"` uses SciPy BVLS; `method="fast"`
+    runs a fixed number of warm-started projected-gradient steps.
+    `anti_windup` is back-calculation for an integrator behind a saturation.
+  - `pyrtc.dynamics`: `LinearPlant` (continuous state space, with
+    `first_order`, `second_order` and `from_network` constructors) gives DC
+    gain, time constants, settling time and step response, and
+    `discretize(period)` returns the exact zero-order-hold `DiscretePlant`
+    to step once per frame.
+  - `pyrtc.loop_stability`: eigenvalues, spectral radius and largest stable
+    gain of the matrix integrator for a *true* interaction matrix that
+    differs from the calibrated one, with delay, leak, per-mode gains and an
+    optional `DiscretePlant` in the loop. With a perfect control matrix it
+    reproduces `modal_gains.max_stable_gain`.
+
+  Guide: `docs/source/guides/slow_and_limited_actuators.rst`.
 - **`oopao` extra.** OOPAO 1.0 is on PyPI, so `pip install pyrtcao[oopao]`
   installs `OOPAO>=1.0` for the OOPAO examples and bridge. The git clone on
   `PYTHONPATH` that older OOPAO needed is no longer required or supported.
