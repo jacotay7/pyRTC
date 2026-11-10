@@ -794,8 +794,9 @@ BUILTIN_COMPONENT_DESCRIPTORS: tuple[ComponentDescriptor, ...] = (
             ),
             ConfigFieldDescriptor(
                 "absolute_limits",
-                "list[float]",
-                "Absolute correction limits.",
+                "list",
+                "Lower and upper limits on the correction, each one value or one per mode; "
+                "applied by every integrator.",
                 default=[float("-inf"), float("inf")],
             ),
             ConfigFieldDescriptor(
@@ -915,9 +916,21 @@ BUILTIN_COMPONENT_DESCRIPTORS: tuple[ComponentDescriptor, ...] = (
                 minimum=0.0,
             ),
             ConfigFieldDescriptor(
+                "command_min",
+                "float | list[float] | str | None",
+                "Lower limit on zonal actuator commands: one value, one per actuator, or a .npy file.",
+                default=None,
+            ),
+            ConfigFieldDescriptor(
+                "command_max",
+                "float | list[float] | str | None",
+                "Upper limit on zonal actuator commands: one value, one per actuator, or a .npy file.",
+                default=None,
+            ),
+            ConfigFieldDescriptor(
                 "saturation_warn_fraction",
                 "float",
-                "Fraction of actuators at command_cap that triggers a saturation warning.",
+                "Fraction of actuators at a command limit that triggers a saturation warning.",
                 default=0.05,
                 minimum=0.0,
             ),

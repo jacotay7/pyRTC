@@ -220,13 +220,35 @@ See above for how to launch a soft-RTC equivalent.
 
   print(wfc.get_property("command_cap"))
 
+Command Limits
+--------------
+
+``command_cap`` clips actuator-space commands to ``[-cap, +cap]``. For
+actuators whose range is not symmetric about zero, that only work in one
+direction, or whose limits differ, set ``command_min`` and ``command_max``:
+one value for all actuators, one value per actuator, or a ``.npy`` file.
+Either may be left out to leave that side open. They apply to the full
+command (flat included) and combine with ``command_cap``; the tighter limit
+wins.
+
+.. code-block:: yaml
+
+  wfc:
+    command_min: 0.0                 # actuators that only push (a heater)
+    command_max: ./calib/max_power.npy
+
+``wfc.set_command_limits(command_min, command_max)`` changes them at run
+time. Clipping an actuator does not tell the loop, so pair these with the
+loop's ``absolute_limits`` (see the loop page) to keep its integrator from
+winding up against a limit.
+
 Actuator Saturation
 -------------------
 
-With ``command_cap`` set, the corrector counts the actuators at the cap in each
+With a command limit set, the corrector counts the actuators at a limit in each
 command before clipping. ``wfc.safety_status()`` reports the count, the
 fraction, and how many commands saturated any actuator. When at least
-``saturation_warn_fraction`` of the actuators (default 0.05) are at the cap,
+``saturation_warn_fraction`` of the actuators (default 0.05) are at a limit,
 it logs a warning (at most every 10 s) and reports an alert. The manager
 status (``safety``) and the manager GUI's graph node show it.
 

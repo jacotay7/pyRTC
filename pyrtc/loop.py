@@ -271,7 +271,15 @@ class Loop(Component):
     integral_limits : list, optional
         Integral limits for PID integrator. Default is [-inf, inf].
     absolute_limits : list, optional
-        Absolute limits for corrections. Default is [-inf, inf].
+        ``[lower, upper]`` limits on the correction the loop sends. Each is
+        one value for all modes or a list with one value per mode. Every
+        integrator clips its new correction to them. Because the integrators
+        take their state from the last correction sent, this also stops them
+        winding up against a limit: a mode held at a limit leaves it on the
+        first frame the error changes sign. Set them to the range the
+        corrector can deliver in the loop's basis (exact for a zonal basis;
+        for other bases the corrector's own actuator limits still apply).
+        Default is [-inf, inf].
     derivative_filter : float, optional
         Filter for the derivative term. Default is 0.1.
 
@@ -373,6 +381,55 @@ class Loop(Component):
     """
 
     SUPPORTED_IM_METHODS = ("push-pull", "hadamard", "docrime")
+
+    _absolute_limits = (-np.inf, np.inf)
+    _correction_limits = None
+
+    @property
+    def absolute_limits(self):
+        """``(lower, upper)`` correction limits; each a scalar or per-mode array."""
+
+        return self._absolute_limits
+
+    @absolute_limits.setter
+    def absolute_limits(self, limits):
+        if isinstance(limits, np.ndarray) and limits.ndim == 2:
+            limits = (limits[0], limits[1])
+        if len(limits) != 2:
+            raise ValueError("absolute_limits must be [lower, upper]")
+        dtype = np.dtype(getattr(self, "wfc_dtype", np.float32))
+        bounds = []
+        for name, value in zip(("lower", "upper"), limits):
+            bound = np.asarray(value, dtype=np.float64)
+            if np.any(np.isnan(bound)):
+                raise ValueError("absolute_limits must not contain NaN")
+            if bound.ndim == 0:
+                bounds.append(float(bound))
+                continue
+            bound = bound.reshape(-1)
+            num_modes = getattr(self, "num_modes", bound.size)
+            if bound.size != num_modes:
+                raise ValueError(
+                    f"absolute_limits {name} has {bound.size} values; expected 1 or "
+                    f"num_modes={num_modes}"
+                )
+            bounds.append(bound.astype(dtype))
+        if np.any(np.asarray(bounds[0]) > np.asarray(bounds[1])):
+            raise ValueError("absolute_limits lower must not exceed upper")
+        self._absolute_limits = (bounds[0], bounds[1])
+        unlimited = np.all(np.isneginf(bounds[0])) and np.all(np.isposinf(bounds[1]))
+        self._correction_limits = None if unlimited else self._absolute_limits
+
+    def _limit_correction(self, correction):
+        """Clip ``correction`` to ``absolute_limits`` in place and return it."""
+
+        limits = self._correction_limits
+        if limits is None:
+            return correction
+        flat = correction.reshape(-1)
+        np.clip(flat, limits[0], limits[1], out=flat)
+        return correction
+
     WATCHDOG_ACTIONS = ("hold", "open", "flatten")
     # Watchdog defaults (disabled, healthy); __init__ sets the configured values.
     watchdog_timeout = None
@@ -1674,6 +1731,7 @@ class Loop(Component):
         gain = self.predictor_gain if self.predictor_fitted else self.gain
         new_correction = np.zeros_like(current)
         new_correction[:num_active] = (1 - gain) * current[:num_active] - gain * prediction
+        new_correction = self._limit_correction(new_correction)
         self.send_to_wfc(new_correction, slopes=slopes)
         sent.append(new_correction[:num_active].copy())
 
@@ -1691,7 +1749,7 @@ class Loop(Component):
             correction=current_correction, slopes=residual_slopes
         )
         new_correction[self.num_active_modes :] = 0
-        self.send_to_wfc(new_correction)
+        self.send_to_wfc(self._limit_correction(new_correction))
 
         return
 
@@ -1710,7 +1768,7 @@ class Loop(Component):
             np.float32(0),  # No leak
             self.num_active_modes,
         )
-        self.send_to_wfc(new_correction, slopes=slopes)
+        self.send_to_wfc(self._limit_correction(new_correction), slopes=slopes)
         return
 
     def leaky_integrator(self):
@@ -1728,7 +1786,7 @@ class Loop(Component):
             np.float32(self.leaky_gain),
             self.num_active_modes,
         )
-        self.send_to_wfc(new_correction, slopes=slopes)
+        self.send_to_wfc(self._limit_correction(new_correction), slopes=slopes)
         return
 
     def pid_integrator_pol(self):
@@ -1801,7 +1859,7 @@ class Loop(Component):
         new_correction[self.num_active_modes :] = 0
 
         # Clip correction (force the loop to not over correct a mode)
-        new_correction = np.clip(new_correction, *self.absolute_limits)
+        new_correction = self._limit_correction(new_correction)
 
         # Apply new correction to mirror
         self.send_to_wfc(new_correction, slopes=slopes)

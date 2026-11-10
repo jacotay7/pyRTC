@@ -103,8 +103,16 @@ class WavefrontCorrector(Component):
         Optional absolute limit applied to actuator-space commands before they
         are handed to the hardware adapter. Actuators at the cap are counted
         each frame (see :meth:`safety_status`).
+    command_min, command_max : float, list, str or None
+        Lower and upper limits on actuator-space commands: one value for all
+        actuators, one per actuator (a list or a ``.npy`` file), or ``None``
+        for no limit on that side. Use them for actuators whose range is not
+        symmetric about zero or that only work in one direction (for example
+        ``command_min: 0`` for a heater), and for per-actuator limits. They
+        combine with ``command_cap``; the tighter limit applies. Change them
+        at run time with :meth:`set_command_limits`.
     saturation_warn_fraction : float
-        Fraction of actuators at ``command_cap`` above which the corrector
+        Fraction of actuators at a command limit above which the corrector
         warns (at most every 10 s) and reports a saturation alert.
         Default is 0.05.
     save_file : str
@@ -128,6 +136,9 @@ class WavefrontCorrector(Component):
     # Saturation defaults; __init__ sets the configured values.
     saturation_warn_fraction = 0.05
     saturated_actuators = 0
+    command_min = None
+    command_max = None
+    _limit_cache = None
     _saturated_frames = 0
     _last_saturation_warning = 0.0
 
@@ -165,6 +176,10 @@ class WavefrontCorrector(Component):
             self.current_shape = np.zeros_like(self.flat)
             self.flat_file = set_from_config(conf, "flat_file", "")
             self.command_cap = set_from_config(conf, "command_cap", None)
+            self.set_command_limits(
+                set_from_config(conf, "command_min", None),
+                set_from_config(conf, "command_max", None),
+            )
             self.saturation_warn_fraction = float(
                 set_from_config(conf, "saturation_warn_fraction", 0.05)
             )
@@ -195,6 +210,60 @@ class WavefrontCorrector(Component):
             raise
 
         return
+
+    def _command_limit(self, value, name):
+        """Return one side of the command limits as ``None`` or a per-actuator array."""
+
+        if value is None:
+            return None
+        if isinstance(value, str):
+            value = np.load(value)
+        limit = np.asarray(value, dtype=np.float64)
+        if limit.ndim == 0:
+            limit = np.full(self.num_actuators, float(limit))
+        limit = limit.reshape(-1)
+        if limit.size != self.num_actuators:
+            raise ValueError(
+                f"{name} has {limit.size} values; expected 1 or num_actuators={self.num_actuators}"
+            )
+        if np.any(np.isnan(limit)):
+            raise ValueError(f"{name} must not contain NaN")
+        return limit.astype(self.flat.dtype)
+
+    def set_command_limits(self, command_min=None, command_max=None):
+        """Set the lower and upper actuator-space command limits.
+
+        Each is one value for all actuators, one value per actuator (array,
+        list or ``.npy`` file), or ``None`` for no limit on that side. The
+        limits apply to the full command, flat included, and combine with
+        ``command_cap``.
+        """
+
+        lower = self._command_limit(command_min, "command_min")
+        upper = self._command_limit(command_max, "command_max")
+        if lower is not None and upper is not None and np.any(lower > upper):
+            raise ValueError("command_min must not exceed command_max")
+        self.command_min = lower
+        self.command_max = upper
+        self._limit_cache = None
+
+    def command_limits(self):
+        """Return the effective ``(lower, upper)`` command limits.
+
+        Each is a scalar, a per-actuator array, or ``None`` when that side is
+        unlimited. ``command_cap`` contributes ``-cap`` and ``+cap``.
+        """
+
+        cap = self.command_cap
+        cache = self._limit_cache
+        if cache is not None and cache[0] == cap:
+            return cache[1], cache[2]
+        lower, upper = self.command_min, self.command_max
+        if cap is not None:
+            lower = -cap if lower is None else np.maximum(lower, -cap)
+            upper = cap if upper is None else np.minimum(upper, cap)
+        self._limit_cache = (cap, lower, upper)
+        return lower, upper
 
     def set_flat(self, flat):
         """
@@ -569,12 +638,14 @@ class WavefrontCorrector(Component):
                 self.current_correction, self.f_M2C, self.flat
             )
 
-        if self.command_cap is not None:
-            cap = self.command_cap
-            saturated = int(np.count_nonzero(self.current_shape >= cap)) + int(
-                np.count_nonzero(self.current_shape <= -cap)
-            )
-            self.current_shape = np.clip(self.current_shape, -cap, cap)
+        lower, upper = self.command_limits()
+        if lower is not None or upper is not None:
+            saturated = 0
+            if upper is not None:
+                saturated += int(np.count_nonzero(self.current_shape >= upper))
+            if lower is not None:
+                saturated += int(np.count_nonzero(self.current_shape <= lower))
+            self.current_shape = np.clip(self.current_shape, lower, upper)
             self._record_saturation(saturated)
 
         # If we have a 2D SHM instance, update it
@@ -595,27 +666,33 @@ class WavefrontCorrector(Component):
         if fraction >= self.saturation_warn_fraction and now - self._last_saturation_warning > 10.0:
             self._last_saturation_warning = now
             getattr(self, "logger", logger).warning(
-                "%s of %s actuators (%.0f%%) at command_cap=%s",
+                "%s of %s actuators (%.0f%%) at %s",
                 saturated,
                 self.num_actuators,
                 100.0 * fraction,
-                self.command_cap,
+                self._limit_label(),
             )
+
+    def _limit_label(self) -> str:
+        if self.command_min is None and self.command_max is None:
+            return f"command_cap={self.command_cap}"
+        return "a command limit"
 
     def safety_status(self) -> dict:
         """Return actuator-saturation state for manager status and the GUI.
 
-        ``saturated_actuators`` counts actuators at ``command_cap`` in the last
-        command; ``saturated_frames`` counts commands with any. ``alerts``
+        ``saturated_actuators`` counts actuators at a command limit
+        (``command_cap``, ``command_min``, ``command_max``) in the last command; ``saturated_frames`` counts commands with any. ``alerts``
         lists human-readable problems (empty when healthy).
         """
 
         fraction = self.saturated_actuators / max(1, self.num_actuators)
         alerts = []
-        if self.command_cap is not None and fraction >= self.saturation_warn_fraction:
+        limited = any(limit is not None for limit in self.command_limits())
+        if limited and fraction >= self.saturation_warn_fraction:
             alerts.append(
                 f"{self.saturated_actuators}/{self.num_actuators} actuators at "
-                f"command_cap={self.command_cap}"
+                f"{self._limit_label()}"
             )
         return {
             "command_cap": self.command_cap,

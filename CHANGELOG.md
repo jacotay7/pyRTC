@@ -37,6 +37,19 @@ All notable changes to `pyrtcao` will be documented in this file.
 
 ### Added
 
+- **One-sided and per-actuator command limits.** `WavefrontCorrector` takes
+  `command_min` and `command_max`: one value, one per actuator, or a `.npy`
+  file, either side optional. They cover actuators that only work in one
+  direction (heaters) or have unequal ranges, combine with `command_cap`,
+  and feed the existing saturation count and alert.
+  `set_command_limits()` changes them at run time.
+- **Correction limits for every integrator, per mode.** The loop's
+  `absolute_limits` was read only by the PID integrator and took two
+  scalars. All integrators now clip to it, and each bound may be a per-mode
+  list. Since the integrators keep their state in the correction they sent,
+  this stops windup against a limit: in the new test a saturated mode
+  recovers in 1 frame instead of 197. The default (`[-inf, inf]`) leaves
+  behaviour unchanged.
 - **`oopao` extra.** OOPAO 1.0 is on PyPI, so `pip install pyrtcao[oopao]`
   installs `OOPAO>=1.0` for the OOPAO examples and bridge. The git clone on
   `PYTHONPATH` that older OOPAO needed is no longer required or supported.
